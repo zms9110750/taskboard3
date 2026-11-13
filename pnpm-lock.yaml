@@ -31,6 +31,18 @@ importers:
 
   packages/search: {}
 
+  packages/store:
+    dependencies:
+      '@taskboard/core':
+        specifier: workspace:*
+        version: link:../core
+      '@taskboard/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@taskboard/search':
+        specifier: workspace:*
+        version: link:../search
+
 packages:
 
   '@types/node@22.20.5':

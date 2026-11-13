@@ -1,0 +1,21 @@
+# 存储与搜索的默认实现。
+#
+# **只插自己这一行，不插别人。** 依赖由 `inject` 声明，装配由使用者负责。
+#
+# 想换实现的人：在自己 profile 的 patch 里把本行换成 `disabled: true`，
+# 另插一行提供 `taskboard3Store` / `taskboard3Search` 同名服务的包。
+- insert:
+    - id: taskboard3-store
+      name: '@taskboard/store'
+      config:
+        # ⚠ 必填。没有默认值 —— 装了插件就往用户主目录写库是静默行为。
+        #
+        # `!!js` 是 Cordis Loader 的表达式方言，在行的注入激活之后求值。
+        # `dshHomePath(...)` 是 DSH 提供的路径函数（`dsh-home-paths` 包）。
+        #
+        # ⚠ **未验证**：本包作者没有在真实 profile 里实测过
+        #   `!!js dshHomePath('taskboard3')` 这一行能否求值成功。
+        #   `composition-reference.md` 举的例子是 `!!js dshHomePath('sessions')`，
+        #   所以形式大概率正确，但**安装时必须实测**。
+        #   若失败，回落到明文绝对路径（用户自己要能改）。
+        dataDir: !!js dshHomePath('taskboard3')
