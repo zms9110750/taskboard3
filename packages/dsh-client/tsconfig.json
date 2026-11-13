@@ -1,0 +1,19 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"rootDir": "./src",
+		"outDir": "./lib",
+		"declarationDir": "./lib",
+		"tsBuildInfoFile": "./lib/.tsbuildinfo",
+
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"types": ["react", "react-dom"],
+		"jsx": "react-jsx",
+
+		/* 这个包由 tsdown 打成 IIFE，tsc 只做类型检查 + 出 .d.ts。
+		   产物不能直接跑（`window.__ModuleLoader__` 由 tsdown 包）。 */
+		"emitDeclarationOnly": true
+	},
+	"include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+	"references": [{ "path": "../protocol" }]
+}
