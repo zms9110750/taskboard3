@@ -151,3 +151,85 @@ describe('/taskboard', () => {
 		assert.ok(result.text.includes('未确定'), result.text);
 	});
 });
+
+/* ────────────────────────── /task-card 与 /task-create ────────────────────────── */
+
+/** 注册全部命令，按名字取。 */
+function setupAll(): Map<string, Registered> {
+	const { registry, registered } = makeRegistry();
+	registerCommands(registry, { taskboard, defaultWorkspaceId: async () => current });
+	return new Map(registered.map((one) => [one.name, one]));
+}
+
+/** 造一张卡，返回编号。 */
+async function makeCard(title: string): Promise<string> {
+	const ref = taskboard.listTemplates()[0]?.ref ?? '';
+	const created = await taskboard.create({ workspaceId: current, templateRef: ref, title });
+	assert.equal(created.ok, true);
+	return created.ok ? created.card.id : '';
+}
+
+describe('/task-card', () => {
+	it('注册了三个命令', async () => {
+		const created = await taskboard.createWorkspace('命令空间');
+		assert.equal(created.ok, true);
+		if (created.ok) current = created.workspace.id;
+		const all = setupAll();
+		assert.deepEqual([...all.keys()].sort(), ['task-card', 'task-create', 'taskboard']);
+	});
+
+	it('给编号 ⇒ 返回卡的元数据', async () => {
+		const created = await taskboard.createWorkspace('看卡');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		current = created.workspace.id;
+		const id = await makeCard('要被看到的卡');
+
+		const command = setupAll().get('task-card') as Registered;
+		const result = (await command.handler({ rawInput: id })) as { kind: string; text: string };
+		assert.equal(result.kind, 'success');
+		assert.ok(result.text.includes(id), result.text);
+		assert.ok(result.text.includes('要被看到的卡'), result.text);
+	});
+
+	it('不给编号 ⇒ 用法提示', async () => {
+		const command = setupAll().get('task-card') as Registered;
+		const result = (await command.handler({ rawInput: '' })) as { kind: string; text: string };
+		assert.equal(result.kind, 'error');
+		assert.ok(result.text.includes('用法'), result.text);
+	});
+
+	it('不存在的编号 ⇒ error', async () => {
+		const created = await taskboard.createWorkspace('找不到');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		current = created.workspace.id;
+		const command = setupAll().get('task-card') as Registered;
+		const result = (await command.handler({ rawInput: 'NOPE-99' })) as { kind: string; text: string };
+		assert.equal(result.kind, 'error');
+	});
+});
+
+describe('/task-create', () => {
+	it('建出草稿卡', async () => {
+		const created = await taskboard.createWorkspace('建卡命令');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		current = created.workspace.id;
+
+		const command = setupAll().get('task-create') as Registered;
+		const result = (await command.handler({ rawInput: '命令建的卡' })) as { kind: string; text: string };
+		assert.equal(result.kind, 'success', result.text);
+		assert.ok(result.text.includes('命令建的卡'), result.text);
+
+		const titles = taskboard.list(current).map((one) => one.title);
+		assert.ok(titles.includes('命令建的卡'), titles.join(','));
+	});
+
+	it('不给标题 ⇒ 用法提示', async () => {
+		const command = setupAll().get('task-create') as Registered;
+		const result = (await command.handler({ rawInput: '   ' })) as { kind: string; text: string };
+		assert.equal(result.kind, 'error');
+		assert.ok(result.text.includes('用法'), result.text);
+	});
+});

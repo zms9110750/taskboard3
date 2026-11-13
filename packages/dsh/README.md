@@ -88,30 +88,54 @@ export const inject = ['webServer', 'connection', 'tools', 'commands'];
 
 ## AI 工具
 
-三个，schema **全部静态**（用户裁定：工具 schema 在 prompt 前缀里，一动就击穿 KV cache）。
+九个，schema **全部静态**（用户裁定：工具 schema 在 prompt 前缀里，一动就击穿 KV cache）。
 
 | 工具 | 说明 |
 |---|---|
 | `taskboard_workspaces` | 列工作空间 |
 | `taskboard_cards` | 列卡 / 搜索 |
+| `taskboard_card` | 看单卡详情（元数据 + 章节 + 历史） |
 | `taskboard_create` | 建卡 |
+| `taskboard_update_content` | 改章节内容 |
+| `taskboard_update_note` | 改备注 |
+| `taskboard_transition` | `to` 为空 ⇒ 查可转移目标；有值 ⇒ 执行 |
+| `taskboard_claim` | 领取工作卡 |
+| `taskboard_release` | 释放领取 |
+| `taskboard_registry` | 看模板 / action 注册内容 |
 
 **校验在 core，不在工具**（用户裁定：「就在 core 里面验证就好了。因为用户从 ui 里面创建卡，也是走数据给 core 的。」）。
 
 工具只做三件事：映射参数 → 调 core → 把 `Failure` 翻译成人话。
 
-`content` 参数是**开放对象**：
+三个 schema 上的硬约束（各自对应一条裁定）：
+
+**① `content` 是开放对象**
 
 ```jsonc
 "content": { "type": "object", "additionalProperties": true }
 ```
 
 不按模板展开 —— 展开会随模板变而变，击穿缓存。模型通过
-`GET /api/templates?ref=<ref>` 查章节清单。
+`taskboard_registry({ id: '模板ref' })` 查章节清单。
+
+**② `taskboard_transition` 的 `to` 是 `string`，不是 `enum`**
+
+状态表若扩了，`enum` 会让 schema 变、缓存全废。合法性在 `execute` 里判
+（`resolveStateId` 认协议全名与中文名两种写法）。
+
+**③ `taskboard_update_content` 在工具里做合并**
+
+`core.update()` 的 `content` 是**整体替换**，而本工具的语义是「只改这几章」。
+⇒ 工具先读出既有章节、与传入的合并，再整体提交。**这一步必须在工具里**——
+core 不该知道「增量 vs 全量」这种调用方语义。
 
 ## 斜杠命令
 
-`/taskboard` —— 列出全部工作空间、当前空间，以及按状态的卡数分布。
+| 命令 | 说明 |
+|---|---|
+| `/taskboard` | 概览：全部工作空间 + 当前空间，按状态分布 |
+| `/task-card <编号>` | 看一张卡的元数据与章节 |
+| `/task-create <标题>` | 建一张草稿卡 |
 
 ## 默认空间
 

@@ -473,6 +473,45 @@ describe('POST /api/cards/:id/action', () => {
 		const payload = out.json as { code: string };
 		assert.equal(payload.code, 'TRANSITION_REJECTED');
 	});
+
+	it('已装配写入口时不再答 501，而是调用它', async () => {
+		const created = await taskboard.createWorkspace('动作4');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const wsId = created.workspace.id;
+		const template = taskboard.listTemplates()[0];
+		if (template === undefined) return;
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳2' });
+		assert.equal(made.ok, true);
+		if (!made.ok) return;
+
+		/*
+		 * 用桩替掉 `applyTransition`：本用例只验「路由会把它调起来」，
+		 * 不验 core 真的改状态（那是 core 的测试）。
+		 */
+		let called: { workspaceId: string; cardId: string; to: string } | undefined;
+		const deps = depsOf({
+			defaultWorkspaceId: async () => wsId,
+			applyTransition: async (workspace, cardId, to) => {
+				called = { workspaceId: workspace, cardId, to };
+				return { ok: true, card: made.card };
+			},
+		});
+
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}/action`,
+			body: { to: 'TASK_STATE_SUBMITTED' },
+		});
+
+		assert.notEqual(out.status, 501, `不该再答 501：${out.raw}`);
+		assert.equal(out.status, 200, out.raw);
+		assert.deepEqual(called, {
+			workspaceId: wsId,
+			cardId: made.card.id,
+			to: 'TASK_STATE_SUBMITTED',
+		});
+	});
 });
 
 describe('路径与异常', () => {

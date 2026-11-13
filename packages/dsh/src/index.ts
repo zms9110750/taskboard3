@@ -53,6 +53,7 @@ import { dirname, join } from 'node:path';
 
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
+import type { Failure, TaskState } from '@taskboard/protocol';
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
@@ -120,6 +121,48 @@ export type ApplyContext = {
 };
 
 /**
+ * 把 core 的状态转移接到路由上。
+ *
+ * ## 为什么要「方法存在才接」
+ *
+ * `core` 的 `transition` 由 `task-9` 实现。在本包合并之前，
+ * `Taskboard` 接口上没有它 —— 直接调会 `TypeError`。
+ *
+ * ⇒ 探查一次：有就接，没有就返回 `undefined`（路由据此答 501）。
+ *   **core 合并后这段自动生效，不需要改本包。**
+ *
+ * ## ⚠ 为什么这里不能写成「不管有没有，都答成功」
+ *
+ * 状态转移是这个任务板的核心操作。假装成功会让调用方以为卡变了，
+ * 而实际没变 —— 那比报错坏得多（判据：宁可炸得响）。
+ */
+function coreTransitionOf(
+	taskboard: Taskboard,
+):
+	| ((workspaceId: string, cardId: string, to: TaskState) => Promise<
+			| { readonly ok: true; readonly card: unknown }
+			| Failure
+	  >)
+	| undefined {
+	type Pending = {
+		transition?(
+			workspaceId: string,
+			cardId: string,
+			to: TaskState,
+			trigger: 'ai' | 'button',
+		): Promise<{ readonly ok: true; readonly card: unknown } | Failure>;
+	};
+	const pending = taskboard as unknown as Pending;
+	const fn = pending.transition;
+	if (typeof fn !== 'function') return undefined;
+
+	return async (workspaceId, cardId, to) => {
+		/* `trigger` 写死 `'button'` —— 这是「人点界面按钮」的语义。 */
+		return fn.call(taskboard, workspaceId, cardId, to, 'button');
+	};
+}
+
+/**
  * 插件入口。
  *
  * 所有注册都用 `ctx.effect` 包住，返回清理函数 —— 插件卸载时路由/工具/命令
@@ -151,10 +194,22 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		return created.id;
 	};
 
+	const transition = coreTransitionOf(taskboard);
 	const disposeRoutes = mountRoutes(ctx.webServer, {
 		taskboard,
 		connection: ctx.connection,
 		defaultWorkspaceId,
+		/*
+		 * 状态转移的写入口。
+		 *
+		 * ⚠ `trigger` **由服务端写死 `'button'`** —— 前端不能自称是 `ai`，
+		 *   否则能绕过「AI 不能进终结态」的规则（`judgeTransition` 的规则 3）。
+		 *
+		 * ⚠ `core` 的 `transition` 正在由 `task-9` 实现。这里用「方法存在才接」的方式：
+		 *   不存在时 `applyTransition` 缺席，路由答 501 而不是假装成功。
+		 *   core 合并后这段会自动生效，**不需要改这里**。
+		 */
+		...(transition === undefined ? {} : { applyTransition: transition }),
 	});
 
 	/* 工具：`defineTool` 来自 DSH 的 `@deepseek-ai/dsh-tools`。 */
