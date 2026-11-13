@@ -178,20 +178,6 @@ export interface RouteDeps {
 	 *   用户裁定：「整个激活都只对 dsh 会话有效。mcp 是没法提供的。」
 	 */
 	readonly defaultWorkspaceId: () => Promise<string>;
-	/**
-	 * 状态转移的写入口。
-	 *
-	 * ⚠ core 目前**没有** `transition()`（只有 create/update/remove）。
-	 *   实现方在此接线；未接线时该端点答 501，而不是静默当作成功。
-	 */
-	readonly applyTransition?: (
-		workspaceId: string,
-		cardId: string,
-		to: TaskState,
-	) => Promise<
-		| { readonly ok: true; readonly card: unknown }
-		| Failure
-	>;
 }
 
 /**
@@ -488,16 +474,17 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			return;
 		}
 
-		if (deps.applyTransition === undefined) {
-			sendFailure(
-				res,
-				failure(ErrorCode.PORT_UNAVAILABLE, '状态转移的写入口尚未装配：核心目前缺 transition()。'),
-				501,
-			);
-			return;
-		}
-
-		const applied = await deps.applyTransition(workspaceId, cardId, to);
+		/*
+		 * 状态转移。
+		 *
+		 * ⚠ **直接调 `taskboard.transition`，不做可用性探查。**
+		 *   core 是我们自己的包，方法必须在编译期确定 ——
+		 *   方法名写错应该是**编译错误**，不是运行时静默答 501。
+		 *
+		 * ⚠ `trigger` 写死 `'button'`（人点界面）。前端不能传这个参数，
+		 *   否则能自称是 `ai` 绕过「AI 不能进终结态」的规则。
+		 */
+		const applied = await taskboard.transition(workspaceId, cardId, to, 'button');
 		if (!applied.ok) return sendFailure(res, applied);
 		sendOk(res, { card: applied.card });
 		return;

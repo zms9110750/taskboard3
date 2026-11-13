@@ -475,7 +475,7 @@ describe('POST /api/cards/:id/action', () => {
 		assert.equal(out.status, 400);
 	});
 
-	it('未装配写入口时，合法转移答 501（不是静默成功）', async () => {
+	it('合法转移 ⇒ 200，且卡的状态真的变了', async () => {
 		const created = await taskboard.createWorkspace('动作2');
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
@@ -485,6 +485,7 @@ describe('POST /api/cards/:id/action', () => {
 		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
+		assert.equal(made.card.status, 'TASK_STATE_UNSPECIFIED');
 
 		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
 		const out = await call(deps, {
@@ -492,10 +493,16 @@ describe('POST /api/cards/:id/action', () => {
 			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}/action`,
 			body: { to: 'TASK_STATE_SUBMITTED' },
 		});
-		/* 草稿 → 提交是 goal / work 的「采纳」按钮，合法。 */
-		assert.equal(out.status, 501, out.raw);
-		const payload = out.json as { code: string };
-		assert.equal(payload.code, 'PORT_UNAVAILABLE');
+
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { ok: boolean; data: { card: { status: string } } };
+		assert.equal(payload.ok, true);
+		assert.equal(payload.data.card.status, 'TASK_STATE_SUBMITTED');
+
+		/* 落库验一次 —— 接口说成功了，库里也该是。 */
+		const after = taskboard.get(wsId, made.card.id);
+		assert.equal(after.ok, true);
+		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_SUBMITTED');
 	});
 
 	it('按钮表里没有的转移 ⇒ 409 + TRANSITION_REJECTED', async () => {
@@ -523,45 +530,6 @@ describe('POST /api/cards/:id/action', () => {
 		assert.equal(out.status, 409, out.raw);
 		const payload = out.json as { code: string };
 		assert.equal(payload.code, 'TRANSITION_REJECTED');
-	});
-
-	it('已装配写入口时不再答 501，而是调用它', async () => {
-		const created = await taskboard.createWorkspace('动作4');
-		assert.equal(created.ok, true);
-		if (!created.ok) return;
-		const wsId = created.workspace.id;
-		/* 同 501 那条：要 goal/work 模板，草稿「采纳」→ SUBMITTED 才是合法转移。 */
-		const template = adoptToSubmittedTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳2' });
-		assert.equal(made.ok, true);
-		if (!made.ok) return;
-
-		/*
-		 * 用桩替掉 `applyTransition`：本用例只验「路由会把它调起来」，
-		 * 不验 core 真的改状态（那是 core 的测试）。
-		 */
-		let called: { workspaceId: string; cardId: string; to: string } | undefined;
-		const deps = depsOf({
-			defaultWorkspaceId: async () => wsId,
-			applyTransition: async (workspace, cardId, to) => {
-				called = { workspaceId: workspace, cardId, to };
-				return { ok: true, card: made.card };
-			},
-		});
-
-		const out = await call(deps, {
-			method: 'POST',
-			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}/action`,
-			body: { to: 'TASK_STATE_SUBMITTED' },
-		});
-
-		assert.notEqual(out.status, 501, `不该再答 501：${out.raw}`);
-		assert.equal(out.status, 200, out.raw);
-		assert.deepEqual(called, {
-			workspaceId: wsId,
-			cardId: made.card.id,
-			to: 'TASK_STATE_SUBMITTED',
-		});
 	});
 
 	it('HTTP 的「领取」被拒 ⇒ 409 + CLAIM_REJECTED', async () => {
