@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./lib",
+    "declarationDir": "./lib/types",
+    "tsBuildInfoFile": "./lib/.tsbuildinfo",
+
+    /*
+     * 本包零 import（见 src/types.ts 顶部），因此不需要任何环境类型。
+     * `node --test` 直接跑 .ts 的 `.ts` 导入约定已由根 tsconfig.base.json 统一提供。
+     */
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}
