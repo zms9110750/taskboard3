@@ -22,6 +22,7 @@ import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
 import { createSearch } from '@taskboard/core';
 
 import { createHandler, ROUTE_PREFIX, type RouteDeps } from '../src/http.ts';
+import type { SseHub } from '../src/sse.ts';
 import type { OutgoingLike, ReadableIncoming } from '../src/types.ts';
 
 /* ────────────────────────────── 测试替身 ────────────────────────────── */
@@ -733,6 +734,81 @@ describe('actor 标记：HTTP 写 ⇒ updates.user', () => {
 			result.user.includes(made.card.id),
 			`seen(reader=user) 不该清 updates.user：${JSON.stringify(result)}`,
 		);
+	});
+});
+
+/* ────────────────────────── GET /api/events（原型期，跟 bus 一起拆） ──────────────────────────
+ *
+ * ⚠ 这些用例与 `test/sse.test.ts` **分工不同**：
+ *   · `sse.test.ts` 测 hub 自己的账（订阅/退订/关闭）
+ *   · 这里测**路由层**：鉴权先拦、method 判断、hub 未装配时 404
+ *
+ * ⇒ 这里用**假 hub**（记录 `open` 被调了几次），不验帧内容。
+ */
+
+describe('GET /api/events', () => {
+	/** 假 hub：只记录被调用的次数。 */
+	function fakeHub(): {
+		readonly hub: SseHub;
+		readonly opened: unknown[];
+		readonly closed: () => boolean;
+	} {
+		const opened: unknown[] = [];
+		let closed = false;
+		const hub: SseHub = {
+			open(_req, res) {
+				opened.push(res);
+			},
+			count: () => opened.length,
+			closeAll: () => {
+				closed = true;
+			},
+			isClosed: () => closed,
+		};
+		return { hub, opened, closed: () => closed };
+	}
+
+	it('鉴权拒绝 ⇒ 不调 hub.open，答 401', async () => {
+		const { hub, opened } = fakeHub();
+		const deps = depsOf({
+			events: hub,
+			connection: { requestRejection: () => 401 },
+		});
+		const out = await call(deps, { url: `${ROUTE_PREFIX}/api/events` });
+		assert.equal(out.status, 401);
+		assert.equal(opened.length, 0, '鉴权失败不该建立连接');
+	});
+
+	it('method 不对 ⇒ 405，不调 hub.open', async () => {
+		const { hub, opened } = fakeHub();
+		const deps = depsOf({ events: hub });
+		const out = await call(deps, { method: 'POST', url: `${ROUTE_PREFIX}/api/events` });
+		assert.equal(out.status, 405);
+		assert.equal(out.headers.allow, 'GET');
+		assert.equal(opened.length, 0);
+	});
+
+	it('hub 未装配 ⇒ 404（不是 500）', async () => {
+		const deps = depsOf();
+		const out = await call(deps, { url: `${ROUTE_PREFIX}/api/events` });
+		assert.equal(out.status, 404, out.raw);
+	});
+
+	it('hub 已关闭 ⇒ 503（插件正在卸载）', async () => {
+		const { hub } = fakeHub();
+		hub.closeAll();
+		const deps = depsOf({ events: hub });
+		const out = await call(deps, { url: `${ROUTE_PREFIX}/api/events` });
+		assert.equal(out.status, 503, out.raw);
+	});
+
+	it('正常 ⇒ 调 hub.open（路由层不写任何帧）', async () => {
+		const { hub, opened } = fakeHub();
+		const deps = depsOf({ events: hub });
+		const out = await call(deps, { url: `${ROUTE_PREFIX}/api/events?workspace=ws1` });
+		assert.equal(opened.length, 1, '应建立一条连接');
+		/* 路由层**不 end()** —— response 交给 hub 长期持有。 */
+		assert.equal(out.status, 200);
 	});
 });
 

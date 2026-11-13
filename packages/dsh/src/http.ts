@@ -31,6 +31,7 @@ import type { SearchCondition, Taskboard } from '@taskboard/core';
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
+import type { SseHub, SseResponseLike } from './sse.ts';
 import type { ConnectionLike, IncomingLike, OutgoingLike, ReadableIncoming, WebServerLike } from './types.ts';
 
 /** 路由前缀（Host 注册用，带前导 `/`）。 */
@@ -177,6 +178,13 @@ export interface RouteDeps {
 	 *   用户裁定：「整个激活都只对 dsh 会话有效。mcp 是没法提供的。」
 	 */
 	readonly defaultWorkspaceId: () => Promise<string>;
+	/**
+	 * SSE 连接管理器 —— **原型期脚手架**。
+	 *
+	 * ⚠ 与 `core/src/bus.ts` 同生共死。拆 `bus.ts` 时删掉本字段与
+	 *   `GET /api/events` 那一段。见 `src/sse.ts` 文件头。
+	 */
+	readonly events?: SseHub;
 }
 
 /**
@@ -288,6 +296,39 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		};
 		/* `core.search` 走自己的搜索端口；这里不重复实现筛法。 */
 		sendOk(res, { cards: taskboard.search(workspaceId, condition) });
+		return;
+	}
+
+	/* ── GET /api/events ──
+	 *
+	 * ⚠ **原型期脚手架**，与 `core/src/bus.ts` 同生共死。
+	 *   拆 `bus.ts` 时删掉本段 + `RouteDeps.events` + `src/sse.ts`。
+	 *   见 `src/sse.ts` 文件头与 `core/src/bus.ts` 的拆解步骤第 4 条。
+	 */
+	if (tail === '/events') {
+		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+		const hub = deps.events;
+		if (hub === undefined) {
+			/*
+			 * 没装 bus ⇒ 这个端点不存在。
+			 * 答 404 而不是 501：对客户端来说它就是「没有这个资源」。
+			 */
+			sendFailure(res, failure(ErrorCode.INTERNAL_ERROR, 'SSE 端点未装配（bus 未启用）。'), 404);
+			return;
+		}
+		if (hub.isClosed()) {
+			sendFailure(res, failure(ErrorCode.INTERNAL_ERROR, 'SSE 端点已关闭（插件正在卸载）。'), 503);
+			return;
+		}
+		/*
+		 * ⚠ **这里不 `end()`** —— `open()` 会长期持有 response，
+		 *   直到客户端断开（`close` 事件）或 provider 卸载（`closeAll()`）。
+		 *
+		 *   `host-webserver` 的 `WebRoute.handler` 允许这样做
+		 *   （它的注释写了 `may hold the response open, e.g. SSE`），
+		 *   但 **disposer 不会主动断开已建立的连接** ⇒ `SseHub` 自己管集合。
+		 */
+		hub.open(req, res as SseResponseLike);
 		return;
 	}
 

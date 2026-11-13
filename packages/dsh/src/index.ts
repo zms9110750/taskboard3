@@ -56,6 +56,7 @@ import { createTaskboard, type CardStore, type Taskboard } from '@taskboard/core
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
+import { createLocalBus, createSseHub } from './sse.ts';
 import { createTools } from './tools.ts';
 import type { CommandsLike, ConnectionLike, ToolsLike, WebServerLike } from './types.ts';
 
@@ -134,13 +135,40 @@ export type ApplyContext = {
  */
 export function apply(ctx: ApplyContext, config: Config = {}): void {
 	/*
+	 * ⚠ **原型期脚手架**：广播总线 + SSE。
+	 *
+	 * 与 `core/src/bus.ts` 同生共死 —— 那个文件是临时的，原型完成后要整个拆掉。
+	 * 拆的时候一起删：
+	 *
+	 * ```
+	 * · 本段的 `createLocalBus()` 与 `bus`
+	 * · `createTaskboard({ ..., bus })` 里的 `bus`
+	 * · `createSseHub(bus)` 与 `disposeRoutes` 的 `events: hub`
+	 * · `disposeAll` 里的 `hub.closeAll()`
+	 * · `src/sse.ts` 整个文件
+	 * · `http.ts` 的 `GET /api/events` 与 `RouteDeps.events`
+	 * ```
+	 *
+	 * 依据：`core/src/bus.ts` 文件头的拆解步骤 **第 4 条**（「dsh：删 SSE 端点」）。
+	 *
+	 * ⚠ **为什么用 `createLocalBus()` 而不是 core 的 `createBus()`**：
+	 *   core 目前只 `import type { Bus }` 给 `TaskboardOptions.bus?: Bus` 用，
+	 *   **没有 `export { createBus }`** ⇒ 拿不到。`Bus` 的形状只有三个方法，
+	 *   所以本地实现结构上兼容，`createTaskboard` 会做结构检查；
+	 *   core 若改形状，这里**编译失败**（不是静默漂移）。
+	 *   建议 core 补一行 `export { createBus }`，那时删掉 `createLocalBus()`。
+	 */
+	const bus = createLocalBus();
+	const hub = createSseHub(bus);
+
+	/*
 	 * ⚠ 存储**必须**来自注入。这里不做「缺失就兜底」——
 	 *   用户裁定「如果不提供，那自然是不生效」。兜底会让关掉那一行看起来没效果。
 	 *
 	 * ⚠ **搜索不在这里** —— 它已并入 core 并强耦合（用户裁定）。
 	 *   `createTaskboard` 内部固定调 `createSearch()`，不接受外部注入。
 	 */
-	const taskboard: Taskboard = createTaskboard({ store: ctx.taskboard3Store });
+	const taskboard: Taskboard = createTaskboard({ store: ctx.taskboard3Store, bus });
 
 	/* 模板：默认从 `@taskboard/core` 包内的 `templates/` 加载。失败不阻断 —— core 记进 `templateErrors()`。 */
 	taskboard.templates().loadDirectory(config.templateDir ?? coreTemplateDir());
@@ -162,6 +190,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		taskboard,
 		connection: ctx.connection,
 		defaultWorkspaceId,
+		/* ⚠ 原型期脚手架：与 `core/src/bus.ts` 同生共死。见 `src/sse.ts` 文件头。 */
+		events: hub,
 	});
 
 	/* 工具：`defineTool` 来自 DSH 的 `@deepseek-ai/dsh-tools`。 */
@@ -172,6 +202,15 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 
 	const disposeAll = (): void => {
 		disposeRoutes();
+		/*
+		 * ⚠ **先关 SSE 再清工具**：SSE 连接持有 bus 订阅，
+		 *   而 `taskboard.close()` 之后不该还有人能写帧。
+		 *   `closeAll()` 会 `res.end()` 所有连接 + 退订 ⇒ `bus.size()` 归零。
+		 *
+		 *   顺序也在防一个泄漏：若先清路由再关连接，那段时间里
+		 *   连接还挂着但路由已经不接受新连接 —— 不是致命，但没必要。
+		 */
+		hub.closeAll();
 		for (const dispose of disposeTools) {
 			if (typeof dispose === 'function') (dispose as () => void)();
 		}
@@ -191,6 +230,19 @@ export type { RouteDeps } from './http.ts';
 export { createTools, describeFailure } from './tools.ts';
 export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
 export { holderOf, type ExecLike, type SubagentsLike } from './holder.ts';
+/* ⚠ 原型期脚手架导出 —— 与 `core/src/bus.ts` 同生共死。 */
+export {
+	createLocalBus,
+	createSseHub,
+	encodeFrame,
+	type BusLike,
+	type BusMessageLike,
+	type SseBusFrame,
+	type SseHello,
+	type SseHub,
+	type SsePayload,
+	type SseResponseLike,
+} from './sse.ts';
 export { registerCommands } from './commands.ts';
 export type { CommandDeps } from './commands.ts';
 export type {
