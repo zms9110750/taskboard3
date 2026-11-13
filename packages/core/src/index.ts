@@ -156,14 +156,24 @@ export interface Taskboard {
 	/**
 	 * 领取：提交 → 处理中。
 	 *
-	 * @param holderOf AI 的持有者标识（消息循环 id / 会话 id）。core 不认识会话，
-	 *                 由入口传。省略 = `'ai'`（所有 AI 共用一个占位，仍能过「一次一张」）。
+	 * ## claim 的语义永远是「指派 AI 去做」
+	 *
+	 * > 用户领取是「代」ai 领取，就是规定 ai 现在要做什么。**用户又不做事情。**
+	 *
+	 * ⇒ **「一次一张」与 `actor` 无关**。用户点按钮只是替 AI 下指令，
+	 *   占用的仍是同一个 AI 工作槽位 —— 配额检查一视同仁。
+	 *
+	 * @param actor 谁点的（只影响 `history` 里记什么，**不影响配额判定**）
+	 * @param holder **AI 消息循环 id / 会话 id**。core 不认识会话，由入口传。
+	 *   · 有值 → 检查「这个 holder 名下有没有别的处理中的卡」；
+	 *   · `null` → 跳过配额检查。**这不是用户豁免**，是「调用方没有循环身份」
+	 *     （测试 / 独立脚本 / MCP 二期）。dsh 入口必须传真 holder。
 	 */
 	claim(
 		workspaceId: WorkspaceId,
 		cardId: string,
 		actor: Actor,
-		holderOf?: string,
+		holder: string | null,
 	): Promise<StatusWriteResult>;
 	/** 释放 / 搁置：处理中 → 提交，清占位。 */
 	release(workspaceId: WorkspaceId, cardId: string, actor: Actor): Promise<StatusWriteResult>;
@@ -427,7 +437,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true, card: result.card, recomputed };
 		},
 
-		async claim(workspaceId, cardId, actor, holderOf) {
+		async claim(workspaceId, cardId, actor, holder) {
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -438,23 +448,31 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			}
 
 			/*
-			 * 持有者：**用户**是 `'user'`；AI 用调用方给的 `holder`（消息循环 id / 会话 id）。
+			 * ## 「一次一张」与 `actor` **无关**（用户裁定）
 			 *
-			 * ⚠ core 不认识会话 —— 这个标识是**入口**的事。dsh 入口从 `exec.agent.id` 取，
-			 *   mcp 入口从自己的连接标识取。没给就回落 `'ai'`。
-			 */
-			const holder = actor === 'ai' ? (holderOf ?? 'ai') : 'user';
-
-			/*
-			 * 「一次一张」只约束 **AI**。
+			 * > 用户领取是「代」ai 领取，就是规定 ai 现在要做什么。**用户又不做事情。**
 			 *
-			 * 用户矩阵里「同一当前消息循环没有别的处理中的工作」是 **AI** 领取的条件；
-			 * 用户手动领取只看依赖是否完成。⇒ 人不受这条限制（`holder: null` 跳过该项）。
+			 * ⇒ claim 的语义永远是「指派 AI 去做」，用户点按钮只是**替 AI 下指令**，
+			 *   占用的仍是同一个 AI 工作槽位。**配额检查必须一视同仁** ——
+			 *   否则用户能连点 5 张，给 AI 塞 5 张处理中的卡，那正是这条规则要防的事。
+			 *
+			 * ## `holder === null` 的含义（唯一合法豁免）
+			 *
+			 * ⚠ **`null` 不是「用户豁免」**，是「**调用方没有消息循环身份**」：
+			 *   · 测试 / 独立脚本；
+			 *   · MCP 二期：一个 MCP 连接没有 dsh 的消息循环 id。
+			 * ⇒ 这种情况下无法做「一次一张」判定（不知道该比什么），只能跳过。
+			 *   **dsh 入口必须传真的 holder**，不能图省事传 `null`。
+			 *
+			 * ## `claimedBy` 写什么（能力缺口，需要 dsh 入口决定）
+			 *
+			 * 卡上的 `claimedBy` 存的就是这个 `holder`。用户代 AI 领取时，
+			 * dsh 入口应当传**当前会话的消息循环 id** —— 但 core 拿不到它，
+			 * 也不该发明一个映射（比如把 `'user'` 当 holder）。
+			 * ⇒ 若 dsh 入口拿不到，就只能传 `null`，代价是这次领取不被配额拦住。
+			 *   **这是 dsh 入口需要补的能力，不是 core 该猜的事。**
 			 */
-			const quotaHolder = actor === 'ai' ? holder : null;
-
-			/* 准入三条：依赖 / 子任务要授权 / 一次一张。失败要带原因。 */
-			const admission = judgeClaim(existing, cards, quotaHolder);
+			const admission = judgeClaim(existing, cards, holder);
 			if (!admission.ok) {
 				return failure(ErrorCode.CLAIM_REJECTED, admission.message, {
 					detail: {
@@ -464,7 +482,8 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				});
 			}
 
-			const result = claimCard(existing, holder, now());
+			/* `claimedBy` 写 `holder ?? 'user'`：无身份时记成「用户指派」，不写空串。 */
+			const result = claimCard(existing, holder ?? 'user', now());
 			if (!result.ok) return result;
 
 			await persist(workspaceId, result.card);
