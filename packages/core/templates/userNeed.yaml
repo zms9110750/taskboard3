@@ -6,18 +6,31 @@ domain: 核心
 codePrefix: U
 
 usage: |
-  用户向 ai 发布任务。只有一个自由章节，可以把需求一股脑写下来。
-  语义上不应由 ai 创建。
+  用户向 ai 发布任务。只有一个自由章节，可以把需求一股脑写下来。语义上不应由ai创建。
+  ai应当进行语义解析并为此任务创建具体的子任务卡给用户确认。
 
 description: |
   本卡不记录结果。ai 应按语义拆成若干子任务。
+  用户用语必然有成分省略。ai只能服从用户意志，服务用户目标。
+  私自对缺省部分进行解释是抢夺解释权决定方向的越权行为。
+  解析语义时必须明确语义，未明确的应当追问。
+
+derive:
+  - label: 拆成设计
+    description: 需求还不清楚，先开一张决策卡把方向摆出来
+    template: decision
+  - label: 开调研
+    description: 不清楚现状，先查清楚再拆
+    template: research
+  - label: 开提问
+    description: 语义有省缺、推不出来，先问清楚
+    template: question
 
 sections:
   core-userNeed:
     label: 我想要什么
     hint: |
       这里用可自由书写的大号文本框。
-    action: text
     default:
       $type: text
       placeholder: 把你要 ai 做的事写下来

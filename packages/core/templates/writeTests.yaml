@@ -1,0 +1,84 @@
+schema: template@1
+name: writeTests
+displayName: 编写测试
+kind: goal
+domain: 代码
+codePrefix: T
+
+usage: |
+  用户要一套能留在项目里、以后能反复跑的测试代码。
+  不是这个目的就别用本卡：只想现在跑一次看对不对，用校验；要改被测代码本身，用编写代码。
+
+description: |
+  本卡是目标卡，自己不动手，只把「产出一套测试代码」这件事拆成子任务派发下去。
+
+  要写出测试代码，前面往往还有设计：怎么分命名空间、测试放哪个目录、
+  用哪个测试框架和断言库、判据怎么组织、要不要接 CI。这些都可能是独立的设计子任务。
+
+  典型顺序：设计 → 编写代码（写测试代码）→ 校验（执行：编译、跑）。校验以执行本身为工作内容，
+  通过或不通过、能编译或不能编译，是执行后的事实，写进交付卡，不写在本卡上。
+
+  边界：
+  - 只是现在跑一次、看这次对不对：直接开校验，不要建本卡。
+  - 改动被测代码、修坏掉的测试：另开编写代码卡，不挂在本卡的理由下。
+  - 已有测试只需确认能跑：开校验。
+
+derive:
+  - label: 决策
+    description: 怎么分命名空间、用哪个框架 / 包、要不要接 CI 还没定
+    template: decision
+  - label: 技术架构
+    description: 测试目录、分层与运行方式需要先定
+    template: architecture
+  - label: 编写代码
+    description: 写测试代码
+    template: writeCode
+  - label: 校验
+    description: 执行：编译、跑测试
+    template: verify
+
+sections:
+  testType:
+    label: 测试类型
+    hint: |
+      这里用选项组件，单选，给出几类常见测试类型供用户挑。
+      多类并存时选最主要的一条，其余放到「测什么」里写；候选中不列「跳过」「自定义」，组件自己带。
+    default:
+      $type: ask
+      items:
+        - question: 测试类型
+          multi_select: false
+          options:
+            - label: 性能测试
+            - label: 冒烟测试
+            - label: 边缘测试
+            - label: 回归测试
+            - label: 集成测试
+            - label: 兼容测试
+            - label: 单元测试
+
+  coverage:
+    label: 测什么
+    hint: |
+      这里用可填写的文本框。写范围与对象：哪些行为、哪些接口、哪些失败路径要覆盖。
+      这里是范围，判据写到下一章。
+    default:
+      $type: text
+      placeholder: 要覆盖哪些行为
+
+  expected:
+    label: 预期行为
+    hint: |
+      这里用可填写的文本框。写判据：什么输入下看到什么算通过、什么算不通过。
+      一条一句，能直接写成断言。
+    default:
+      $type: text
+      placeholder: 被测对象应该表现出什么
+
+  nonGoal:
+    label: 非目标
+    hint: |
+      这里用可填写的文本框，写这次明确不测什么。必填 —— 不写的话，以后没人知道为什么缺。
+    default:
+      $type: text
+      placeholder: 这次明确不测什么

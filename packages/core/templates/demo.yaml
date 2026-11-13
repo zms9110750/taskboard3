@@ -1,0 +1,49 @@
+schema: template@1
+name: demo
+displayName: 演示
+kind: work
+domain: 核心
+codePrefix: D
+
+usage: |
+  为设计的方向提供一个极小实现以验证想法
+
+description: |
+  此工作不应该在项目上动手，也不应该作为项目内容提交，不要以项目的方式实现它。
+  例如用户考虑 UI 设计，应该写 SVG 给用户看效果并确认。
+
+sections:
+  idea:
+    label: 要验证的想法
+    hint: |
+      这里用可填写的文本框。写要验证的设计方向或假设，以及「看到什么算验证通过」。
+    default:
+      $type: text
+      placeholder: 要验证哪个方向、什么算通过
+
+  demo:
+    label: 极小实现
+    hint: |
+      这里用可填写的文本框。用最小代价做出来即可 —— SVG、一次性脚本、静态页面、截图都行。
+      写产物位置或「怎么看到它」。产物不进项目：不合并、不作为项目内容提交。
+    default:
+      $type: text
+      placeholder: 产物或怎么看到它
+
+  boundary:
+    label: 不能进项目的东西
+    hint: |
+      这里用可填写的文本框。列出这次演示里不允许提交或合并的内容 ——
+      例如临时文件放哪、不要动哪些目录或分支。
+    default:
+      $type: text
+      placeholder: 哪些东西只能在演示里存在
+
+  confirm:
+    label: 请用户确认什么
+    hint: |
+      这里用可填写的文本框。写用户该看什么、确认之后怎么办 ——
+      丢掉、另开设计卡、转为正式工作。
+    default:
+      $type: text
+      placeholder: 需要用户确认的点，以及确认后怎么处理

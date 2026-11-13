@@ -1,0 +1,63 @@
+schema: template@1
+name: optimize
+displayName: 项目优化
+kind: goal
+domain: 代码
+codePrefix: O
+
+usage: |
+  已有项目要在不改对外行为的前提下改内部：更快、更清楚、更好扩展。
+
+  如果改完会变对外行为（接口、输出、交互），那就不是本卡，该先开决策或技术架构。
+
+description: |
+  先证明「行为不变」能做到，再动手；证明不了就先开调研，不改代码。
+
+  改前要知道现在是什么样：性能类先量一次基线，否则改完无法证明变好；
+  结构类先看当前调用关系。
+
+  优化方向是主导类型，不是唯一类型：多类并存就拆成并列子卡，各自有可验收的点。
+
+  改完并列开校验，证明对外行为与改前一致 —— 这是本卡的验收方式。
+
+  改的是别人的项目：先看它的贡献规则，再决定动不动手。
+
+derive:
+  - label: 调研
+    description: 现状不清、基线没有、能不能改不确定
+    template: research
+  - label: 编写代码
+    description: 开工作卡去改
+    template: writeCode
+  - label: 校验
+    description: 改完证明对外行为没变
+    template: verify
+
+sections:
+  aspect:
+    label: 优化类型
+    hint: |
+      这里用选项组件，单选，给出几类常见的优化方向供用户挑。
+      多类并存的场合不在这章堆选项：选最主要的一条，其余放「优化哪」里，由 AI 拆成并列子卡。
+      选项只是备选，用户可跳过或自定义回答，候选中不列这两项；要补自由描述就再加一个文本框。
+    default:
+      $type: ask
+      items:
+        - question: 优化类型
+          multi_select: false
+          options:
+            - label: 性能优化
+            - label: 语义优化
+            - label: 可读性优化
+            - label: 接口界面优化
+            - label: 扩展性优化
+            - label: 一致性优化
+
+  where:
+    label: 优化哪
+    hint: |
+      这里用可填写的文本框。写要动的范围、不动的边界（哪些目录、哪些对外行为不能变）、
+      做到什么程度停。要标出位置也可以给几个候选供选，但主体按文本写。
+    default:
+      $type: text
+      placeholder: 具体要动哪一块
