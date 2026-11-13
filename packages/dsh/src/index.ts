@@ -53,7 +53,6 @@ import { dirname, join } from 'node:path';
 
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
-import type { Failure, TaskState } from '@taskboard/protocol';
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
@@ -191,7 +190,6 @@ export { createHandler, mountRoutes, ROUTE_PREFIX } from './http.ts';
 export type { RouteDeps } from './http.ts';
 export { createTools, describeFailure } from './tools.ts';
 export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
-export { actorAware, type ActorAwareWrites, type WriteActor } from './core-writes.ts';
 export { holderOf, type ExecLike, type SubagentsLike } from './holder.ts';
 export { registerCommands } from './commands.ts';
 export type { CommandDeps } from './commands.ts';
