@@ -25,14 +25,36 @@
 
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { ActionRegistry, BUILTIN_ACTIONS } from '../lib/template/actions.js';
 import { TemplateRegistry } from '../lib/template/registry.js';
 
-/** 模板目录（相对仓库根；`node --test` 的工作目录是仓库根）。 */
-const TEMPLATES_DIR = join('packages', 'core', 'templates');
+/**
+ * 模板目录 —— **从 `@taskboard/core` 包的位置推**，不走 cwd。
+ *
+ * ## 为什么不能用 `join('packages', 'core', 'templates')`
+ *
+ * 那要求调用者的工作目录正好是仓库根。`node --test` 从别的目录跑、
+ * IDE 的测试运行器、CI 的任意 checkout 路径 —— 都会看到「找不到模板目录」，
+ * 而那是**假失败**：模板明明在。
+ *
+ * ## 为什么是 `createRequire(...).resolve('@taskboard/core/package.json')`
+ *
+ * `import.meta.url` 指向**测试文件**（`packages/core/test/`），
+ * 而模板在**包根**（`packages/core/templates/`）—— 从测试文件推要跨 `..`，
+ * 一旦测试文件挪目录就错。
+ *
+ * 改从**包自己的 `package.json`** 推：无论从哪个 cwd 调用，
+ * 无论测试文件在哪，拿到的都是这个包被解析到的真实位置。
+ * 这也是 `packages/dsh/test/*.test.ts` 已经在用的写法（全仓统一）。
+ */
+const TEMPLATES_DIR = join(
+	dirname(createRequire(import.meta.url).resolve('@taskboard/core/package.json')),
+	'templates',
+);
 
 /** 期望的模板数量。改模板就改这个数字 —— 让「少了一个」变成测试失败。 */
 const EXPECTED_COUNT = 18;
