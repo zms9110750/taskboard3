@@ -127,6 +127,7 @@ export const BASE_TOOLS: readonly string[] = Object.freeze(BASE_TOOL_NAMES);
 const POLICY_TOOL_NAMES = [
 	'taskboard_tool_policies',
 	'taskboard_tool_policy_set',
+	'taskboard_tool_policy_members',
 	'taskboard_tool_policy_reset',
 ] as const;
 
