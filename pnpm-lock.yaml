@@ -29,6 +29,8 @@ importers:
 
   packages/protocol: {}
 
+  packages/search: {}
+
 packages:
 
   '@types/node@22.20.5':
