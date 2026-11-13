@@ -110,7 +110,7 @@ async function run(name: string, args: unknown, exec: unknown = {}): Promise<str
 /* ────────────────────────────── 用例 ────────────────────────────── */
 
 describe('工具注册面', () => {
-	it('九个工具，名字稳定', () => {
+	it('十几个工具，名字与顺序稳定', () => {
 		/*
 		 * ⚠ 名字与顺序都是**契约**：模型按名字调用，改名字等于破坏已有会话。
 		 *   顺序影响 prompt 前缀的字节序 ⇒ 也不能随意调整。
@@ -126,6 +126,7 @@ describe('工具注册面', () => {
 			'taskboard_claim',
 			'taskboard_release',
 			'taskboard_registry',
+			'taskboard_mark_seen',
 		]);
 	});
 
@@ -273,6 +274,126 @@ describe('taskboard_cards', () => {
 	});
 });
 
+/* ────────────────────────── actor 标记（配对断言） ──────────────────────────
+ *
+ * ## 为什么需要「配对」断言
+ *
+ * 只测「AI 写完 ⇒ 进 updates.ai」不够 —— 如果两边都把 actor 标成 `'ai'`，
+ * 这条也会过。反过来只测 HTTP 侧同理。
+ *
+ * ⇒ 两条合起来才有判别力：
+ *   AI 工具写完  ⇒ 进 `updates.ai`、**不进** `updates.user`
+ *   HTTP 写完    ⇒ 进 `updates.user`、**不进** `updates.ai`
+ *
+ * 如果哪天有人把某一侧的 actor 标错（或忘了标，默认成 `'user'`），
+ * 其中一条必然失败。
+ */
+
+describe('actor 标记：AI 工具写 ⇒ updates.ai', () => {
+	/** 取当前空间的 updates。 */
+	async function updates(): Promise<{ ai: readonly string[]; user: readonly string[] }> {
+		return taskboard.updates(workspaceId);
+	}
+
+	it('AI 工具建卡 ⇒ 进 updates.ai，不进 updates.user', async () => {
+		const id = await makeCardByAi('AI 建的卡');
+		assert.notEqual(id, '');
+
+		const result = await updates();
+		assert.ok(result.ai.includes(id), `应进 updates.ai：${JSON.stringify(result)}`);
+		assert.ok(!result.user.includes(id), `不该进 updates.user：${JSON.stringify(result)}`);
+	});
+
+	it('AI 工具改备注 ⇒ 进 updates.ai，不进 updates.user', async () => {
+		const id = await makeCardByAi('AI 改备注');
+		/*
+		 * ⚠ 要清 `updates.ai`，必须由**用户**标记已读（`markSeen(..., 'user')`）——
+		 *   因为 `updates.ai` 比的是「用户的游标」。
+		 *   测试里直接调 core 模拟「用户打开过这张卡」。
+		 */
+		await taskboard.markSeen(workspaceId, id, 'user');
+
+		const before = await updates();
+		assert.ok(!before.ai.includes(id), `用户已读之后不该还在 ai：${JSON.stringify(before)}`);
+
+		const text = await run('taskboard_update_note', { id, note: 'AI 写的备注' });
+		assert.ok(text.includes('已更新'), text);
+
+		const after = await updates();
+		assert.ok(after.ai.includes(id), `改备注后应重新进 ai：${JSON.stringify(after)}`);
+		assert.ok(!after.user.includes(id), `不该进 user：${JSON.stringify(after)}`);
+	});
+
+	it('AI 工具改章节内容 ⇒ 进 updates.ai', async () => {
+		const ref = taskboard.listTemplates()[0]?.ref ?? '';
+		const meta = taskboard.templateMeta(ref);
+		const section = meta?.sections[0];
+		assert.notEqual(section, undefined);
+		if (section === undefined) return;
+
+		const id = await makeCardByAi('AI 改内容');
+		await taskboard.markSeen(workspaceId, id, 'user');
+
+		const text = await run('taskboard_update_content', {
+			id,
+			content: { [section.label]: { $type: section.action, value: '改过' } },
+		});
+		assert.ok(text.includes('已改'), text);
+
+		const after = await updates();
+		assert.ok(after.ai.includes(id), `应进 ai：${JSON.stringify(after)}`);
+		assert.ok(!after.user.includes(id), `不该进 user：${JSON.stringify(after)}`);
+	});
+
+	it('taskboard_mark_seen 清的是 updates.user（不是 updates.ai）', async () => {
+		/*
+		 * ⚠ **这是最容易搞反的一条。**
+		 *
+		 * `markSeen(cardId, reader)` 写的是**那个读者**的游标：
+		 *   · `updates.ai`   比的是「用户的游标」⇒ 要用户标已读才清
+		 *   · `updates.user` 比的是「AI 的游标」  ⇒ 要 AI 标已读才清
+		 *
+		 * 所以 `taskboard_mark_seen`（reader 固定 `'ai'`）清的是 **`updates.user`**。
+		 */
+		/* 用户建的卡 ⇒ 进 updates.user（用户改过、AI 未读）。 */
+		const id = await makeCard('用户建的卡');
+		const before = await updates();
+		assert.ok(before.user.includes(id), `用户建卡后应在 user：${JSON.stringify(before)}`);
+		assert.ok(!before.ai.includes(id), `不该在 ai：${JSON.stringify(before)}`);
+
+		const text = await run('taskboard_mark_seen', { id });
+		assert.ok(text.includes('已把'), text);
+
+		const after = await updates();
+		assert.ok(!after.user.includes(id), `mark_seen 后应移出 user：${JSON.stringify(after)}`);
+	});
+
+	it('userChanged / userUnread 筛选按作者区分（不是按读者）', async () => {
+		/*
+		 * 这条直接钉住那两个容易搞反的参数名：
+		 *   userChanged ⇒ updates.user（**用户**改的）
+		 *   userUnread  ⇒ updates.ai  （**用户**未读的 = AI 改的）
+		 */
+		const id = await makeCardByAi('AI 改的卡');
+		const userCard = await makeCard('用户建的卡');
+
+		/* AI 改的卡应在 updates.ai。 */
+		const result = await updates();
+		assert.ok(result.ai.includes(id), `AI 改的卡应在 ai：${JSON.stringify(result)}`);
+		assert.ok(result.user.includes(userCard), `用户建的卡应在 user：${JSON.stringify(result)}`);
+
+		/* userUnread ⇒ updates.ai ⇒ 命中 AI 改的卡。 */
+		const byUnread = await run('taskboard_cards', { userUnread: true, status: ['draft'] });
+		assert.ok(byUnread.includes('AI 改的卡'), `userUnread 应命中 AI 改的卡：${byUnread}`);
+		assert.ok(!byUnread.includes('用户建的卡'), `userUnread 不该命中用户建的卡：${byUnread}`);
+
+		/* userChanged ⇒ updates.user ⇒ 命中用户建的卡。 */
+		const byChanged = await run('taskboard_cards', { userChanged: true, status: ['draft'] });
+		assert.ok(byChanged.includes('用户建的卡'), `userChanged 应命中用户建的卡：${byChanged}`);
+		assert.ok(!byChanged.includes('AI 改的卡'), `userChanged 不该命中 AI 改的卡：${byChanged}`);
+	});
+});
+
 describe('describeFailure', () => {
 	it('带 issues 时逐条列出', () => {
 		const text = describeFailure({
@@ -298,12 +419,27 @@ describe('describeFailure', () => {
 
 /* ────────────────────────── 新增的六个工具 ────────────────────────── */
 
-/** 建一张卡，返回编号。 */
+/**
+ * 建一张卡，返回编号。
+ *
+ * ⚠ **这个辅助函数模拟「用户建卡」**（直接调 core、不传 actor ⇒ 默认 `'user'`）。
+ *   它**不会**让卡进 `updates.ai` —— 要测 AI 路径就用 `run('taskboard_create', ...)`。
+ */
 async function makeCard(title: string, templateRef?: string): Promise<string> {
 	const ref = templateRef ?? taskboard.listTemplates()[0]?.ref ?? '';
-	const created = await taskboard.create({ workspaceId, templateRef: ref, title });
+	const created = await taskboard.create({ workspaceId, templateRef: ref, title, actor: 'user' });
 	assert.equal(created.ok, true, `建卡失败：${created.ok ? '' : created.message}`);
 	return created.ok ? created.card.id : '';
+}
+
+/** 用 **AI 工具**建一张卡，返回编号（会让卡进 `updates.ai`）。 */
+async function makeCardByAi(title: string): Promise<string> {
+	const ref = taskboard.listTemplates()[0]?.ref ?? '';
+	const text = await run('taskboard_create', { title, templateRef: ref });
+	assert.ok(text.includes('已建卡'), text);
+	const found = taskboard.list(workspaceId).find((one) => one.title === title);
+	assert.notEqual(found, undefined, `AI 建卡后找不到「${title}」`);
+	return found?.id ?? '';
 }
 
 describe('taskboard_card', () => {

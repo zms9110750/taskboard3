@@ -32,6 +32,7 @@ import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
 import type { ConnectionLike, IncomingLike, OutgoingLike, ReadableIncoming, WebServerLike } from './types.ts';
+import { actorAware } from './core-writes.ts';
 
 /** 路由前缀（Host 注册用，带前导 `/`）。 */
 export const ROUTE_PREFIX = '/taskboard3';
@@ -177,20 +178,6 @@ export interface RouteDeps {
 	 *   用户裁定：「整个激活都只对 dsh 会话有效。mcp 是没法提供的。」
 	 */
 	readonly defaultWorkspaceId: () => Promise<string>;
-	/**
-	 * 状态转移的写入口。
-	 *
-	 * ⚠ core 目前**没有** `transition()`（只有 create/update/remove）。
-	 *   实现方在此接线；未接线时该端点答 501，而不是静默当作成功。
-	 */
-	readonly applyTransition?: (
-		workspaceId: string,
-		cardId: string,
-		to: TaskState,
-	) => Promise<
-		| { readonly ok: true; readonly card: unknown }
-		| Failure
-	>;
 }
 
 /**
@@ -305,6 +292,46 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		return;
 	}
 
+	/* ── GET /api/updates ── */
+	if (tail === '/updates') {
+		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+		const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+		const updates = await taskboard.updates(workspaceId);
+		/*
+		 * ⚠ 字段名按「**谁改的**」命名（core 的口径，别搞反）：
+		 *   `ai`   —— AI 改过，**用户**还没看过
+		 *   `user` —— 用户改过，**AI** 还没看过
+		 */
+		sendOk(res, { ai: updates.ai, user: updates.user });
+		return;
+	}
+
+	/* ── POST /api/cards/:id/seen ── */
+	const seenMatch = /^\/cards\/([^/]+)\/seen$/.exec(tail);
+	if (seenMatch !== null) {
+		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
+		const cardId = decodeURIComponent(seenMatch[1] ?? '');
+		const body = await readJson(req);
+		const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
+		/*
+		 * ⚠ **`reader` 固定 `'user'`，不从 body 取。**
+		 *
+		 * 浏览器里操作的人是用户 —— 这条通道不可信到能自称「我是 AI」。
+		 * AI 的已读游标由 AI 工具 `taskboard_mark_seen` 自己写（那边有真实 agent 身份）。
+		 *
+		 * ⚠ 若前端传了 `reader: 'ai'`，忽略并继续 —— 不报错（避免前端猜错时整个打开卡流程坏掉），
+		 *   但日志里留一条，便于发现「前端以为自己是 AI」这种误解。
+		 */
+		const claimed = str(body, 'reader');
+		if (claimed !== undefined && claimed !== 'user') {
+			console.warn(`[taskboard3] /seen 收到 reader=${claimed}，忽略（HTTP 通道固定 user）。`);
+		}
+		const result = await taskboard.markSeen(workspaceId, cardId, 'user');
+		if (!result.ok) return sendFailure(res, result);
+		sendOk(res, { at: result.at });
+		return;
+	}
+
 	/* ── POST /api/cards ── */
 	if (tail === '/cards') {
 		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
@@ -315,6 +342,13 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			workspaceId,
 			templateRef: str(body, 'templateRef') ?? '',
 			title: str(body, 'title') ?? '',
+			/*
+			 * ⚠ **显式**标 `'user'`，不靠默认值。
+			 *
+			 * 默认值让「忘了传」和「故意传 user」变成同一件事 —— 两者都编译通过、
+			 * 都不报错。显式传之后 `grep "actor"` 就能确认每个入口都表了态。
+			 */
+			actor: 'user',
 			...(content === undefined ? {} : { content }),
 		});
 		if (!created.ok) return sendFailure(res, created);
@@ -339,18 +373,25 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			const title = raw(body, 'title');
 			const note = raw(body, 'note');
 			const content = raw(body, 'content');
-			const updated = await taskboard.update(workspaceId, cardId, {
-				...(title === undefined ? {} : { title: str(body, 'title') ?? '' }),
-				...(note === undefined ? {} : { note: str(body, 'note') ?? '' }),
-				...(content === undefined ? {} : { content }),
-			});
+			/* 显式 `'user'`：浏览器里操作的人是用户。 */
+			const updated = await actorAware(taskboard).update(
+				workspaceId,
+				cardId,
+				{
+					...(title === undefined ? {} : { title: str(body, 'title') ?? '' }),
+					...(note === undefined ? {} : { note: str(body, 'note') ?? '' }),
+					...(content === undefined ? {} : { content }),
+				},
+				'user',
+			);
 			if (!updated.ok) return sendFailure(res, updated);
 			sendOk(res, { card: updated.card });
 			return;
 		}
 		if (method === 'DELETE') {
 			const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
-			const removed = await taskboard.remove(workspaceId, cardId);
+			/* 显式 `'user'`：同上。 */
+			const removed = await actorAware(taskboard).remove(workspaceId, cardId, 'user');
 			if (!removed.ok) return sendFailure(res, removed);
 			sendOk(res, { card: removed.card });
 			return;
@@ -433,16 +474,17 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			return;
 		}
 
-		if (deps.applyTransition === undefined) {
-			sendFailure(
-				res,
-				failure(ErrorCode.PORT_UNAVAILABLE, '状态转移的写入口尚未装配：核心目前缺 transition()。'),
-				501,
-			);
-			return;
-		}
-
-		const applied = await deps.applyTransition(workspaceId, cardId, to);
+		/*
+		 * 状态转移。
+		 *
+		 * ⚠ **直接调 `taskboard.transition`，不做可用性探查。**
+		 *   core 是我们自己的包，方法必须在编译期确定 ——
+		 *   方法名写错应该是**编译错误**，不是运行时静默答 501。
+		 *
+		 * ⚠ `trigger` 写死 `'button'`（人点界面）。前端不能传这个参数，
+		 *   否则能自称是 `ai` 绕过「AI 不能进终结态」的规则。
+		 */
+		const applied = await taskboard.transition(workspaceId, cardId, to, 'button');
 		if (!applied.ok) return sendFailure(res, applied);
 		sendOk(res, { card: applied.card });
 		return;

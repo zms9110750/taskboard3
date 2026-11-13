@@ -47,6 +47,7 @@ import {
 } from '@taskboard/protocol';
 
 import { holderOf } from './holder.ts';
+import { actorAware } from './core-writes.ts';
 
 /** 一个已定义工具的最小形状（对齐 DSH `ToolDefinition` 的字段子集）。 */
 export interface ToolLike {
@@ -163,19 +164,25 @@ function strs(args: unknown, key: string): readonly string[] | undefined {
 	return value.filter((one): one is string => typeof one === 'string');
 }
 
+/** 读参数里的布尔值（严格：只认 `true`，其它一律 `undefined`）。 */
+function boolOf(args: unknown, key: string): boolean | undefined {
+	if (typeof args !== 'object' || args === null) return undefined;
+	const value = (args as Record<string, unknown>)[key];
+	return typeof value === 'boolean' ? value : undefined;
+}
+
 /** 读参数里的任意值。 */
 function rawOf(args: unknown, key: string): unknown {
 	if (typeof args !== 'object' || args === null) return undefined;
 	return (args as Record<string, unknown>)[key];
 }
 
-/* ──────────────────────── core 的方法：cast 不再需要 ────────────────────────
+/* ─────────────────────── core 接口缺的 actor 参数 ───────────────────────
  *
- * `task-9` 已合并：`claim` / `release` / `transition` 都在 `Taskboard` 上，
- * 所以**不再需要探查式降级**。
+ * 见 `src/core-writes.ts` 顶部的说明：core 的**实现**接受 `actor`，
+ * 但 `Taskboard` **接口声明**漏了这个参数。
  *
- * ⚠ 但**保留一种降级**：`subagents` 服务可能不存在 —— 那时 holder 回落
- *   `agent.id`（UUID），功能照样能用。见 `src/holder.ts` 的三条回落表。
+ * ⇒ `actorAware(taskboard)` 补上，让 AI 路径能显式标 `'ai'`。
  */
 
 /**
@@ -231,7 +238,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 	const cards = defineTool({
 		name: 'taskboard_cards',
 		description:
-			'列任务卡，可按标题、状态、类别、领域、模板筛选。不填条件时列出当前空间的全部有效卡（不含草稿）。',
+			'列任务卡，可按标题、状态、类别、领域、模板、以及「谁改过而对方未读」筛选。不填条件时列出当前空间的全部有效卡（不含草稿）。',
 		parameters: {
 			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
 			title: { type: 'string', description: '标题子串（大小写不敏感）。' },
@@ -243,6 +250,30 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			kind: { type: 'array', items: { type: 'string' }, description: '类别 id。数组内 OR。' },
 			domain: { type: 'array', items: { type: 'string' }, description: '领域名。数组内 OR。' },
 			templateRef: { type: 'array', items: { type: 'string' }, description: '模板 ref。数组内 OR。' },
+			/*
+			 * ⚠ **两个 boolean 的名字容易搞反，注释必须写清对应关系。**
+			 *
+			 * 字段名按「**谁改的**」命名（core 的口径）：
+			 *   updates.user —— 用户改过，**AI** 还没看过
+			 *   updates.ai   —— AI 改过，**用户**还没看过
+			 *
+			 * 所以：
+			 *   userChanged ⇒ updates.user（**用户**改的）
+			 *   userUnread  ⇒ updates.ai  （**用户**未读的，也就是 AI 改的）
+			 *
+			 * 记忆法：「Changed」说的是**作者**（谁改的）；「Unread」说的是**读者**
+			 * （谁还没看）—— 两个词的视角正好相反，这是文件名最容易错的地方。
+			 */
+			userChanged: {
+				type: 'boolean',
+				description:
+					'只看「用户改过、而 AI 还没看过」的卡（对应 core 的 updates.user）。想找「AI 需要处理什么」时用它。',
+			},
+			userUnread: {
+				type: 'boolean',
+				description:
+					'只看「AI 改过、而用户还没看过」的卡（对应 core 的 updates.ai）。想找「用户还没看到的改动」时用它。',
+			},
 		},
 		output: OUTPUT,
 		async execute(args: unknown): Promise<unknown> {
@@ -252,12 +283,38 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			const kind = strs(args, 'kind');
 			const domain = strs(args, 'domain');
 			const templateRef = strs(args, 'templateRef');
+
+			/*
+			 * 「谁改过、对方未读」这个**事件维度** search 自己算不出来
+			 * （它要历史事件 + 已读游标）⇒ 这里先问 core 要结果集，再交给 search 做集合判定。
+			 *
+			 * ⚠ 两个 boolean 的映射见上面参数注释 —— **名和方向是反的**，别照字面理解。
+			 */
+			const wantUserChanged = boolOf(args, 'userChanged');
+			const wantUserUnread = boolOf(args, 'userUnread');
+			let updatedBy: readonly ('ai' | 'user')[] | undefined;
+			let updatedCardIds: readonly string[] | undefined;
+			if (wantUserChanged === true || wantUserUnread === true) {
+				const updates = await taskboard.updates(workspaceId);
+				const ids = new Set<string>();
+				if (wantUserChanged === true) for (const id of updates.user) ids.add(id);
+				if (wantUserUnread === true) for (const id of updates.ai) ids.add(id);
+				updatedCardIds = [...ids];
+				/* 只用于让 search 走「集合判定」分支；具体是哪个集合已由 `updatedCardIds` 决定。 */
+				updatedBy = [
+					...(wantUserChanged === true ? (['user'] as const) : []),
+					...(wantUserUnread === true ? (['ai'] as const) : []),
+				];
+			}
+
 			const list = taskboard.search(workspaceId, {
 				...(title === undefined ? {} : { title }),
 				...(status === undefined ? {} : { status }),
 				...(kind === undefined ? {} : { kind }),
 				...(domain === undefined ? {} : { domain }),
 				...(templateRef === undefined ? {} : { templateRef }),
+				...(updatedBy === undefined ? {} : { updatedBy }),
+				...(updatedCardIds === undefined ? {} : { updatedCardIds }),
 			});
 			if (list.length === 0) return { text: '没有符合条件的卡。' };
 			return {
@@ -361,6 +418,8 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 				workspaceId,
 				templateRef,
 				title,
+				/* ⚠ 必须显式标 `'ai'` —— 省略会默认成 `'user'`，于是「AI 改过」的角标永远不出现。 */
+				actor: 'ai',
 				...(content === undefined ? {} : { content }),
 			});
 			if (!created.ok) return { text: `建卡失败：\n${describeFailure(created)}` };
@@ -422,7 +481,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 				merged[key] = value;
 			}
 
-			const updated = await taskboard.update(workspaceId, cardId, { content: merged });
+			const updated = await actorAware(taskboard).update(workspaceId, cardId, { content: merged }, 'ai');
 			if (!updated.ok) return { text: `改内容失败：\n${describeFailure(updated)}` };
 
 			const changed = Object.keys(incoming as Record<string, unknown>);
@@ -447,7 +506,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			const cardId = str(args, 'id') ?? '';
 			const note = str(args, 'note') ?? '';
 
-			const updated = await taskboard.update(workspaceId, cardId, { note });
+			const updated = await actorAware(taskboard).update(workspaceId, cardId, { note }, 'ai');
 			if (!updated.ok) return { text: `改备注失败：\n${describeFailure(updated)}` };
 			return {
 				text: note === ''
@@ -666,7 +725,43 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	return [workspaces, cards, card, create, updateContent, updateNote, transition, claim, release, registry];
+	/* ── 11. 标记已读 ── */
+	const markSeen = defineTool({
+		name: 'taskboard_mark_seen',
+		description:
+			'把一张卡标记为「AI 已看过」。看过之后，用户那些早于这一刻的改动就不再算「AI 未读」（updates.user 里不再出现它）。你读完一张卡、处理完它的改动后调一次。',
+		parameters: {
+			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
+			id: { type: 'string', required: true, description: '卡编号。' },
+		},
+		output: OUTPUT,
+		async execute(args: unknown): Promise<unknown> {
+			const workspaceId = await resolveWorkspace(args);
+			const cardId = str(args, 'id') ?? '';
+			/*
+			 * ⚠ `reader` 写死 `'ai'` —— 这是 AI 工具路径。
+			 *   界面侧的「用户已读」走 `POST /api/cards/:id/seen`（那里固定 `'user'`）。
+			 */
+			const result = await taskboard.markSeen(workspaceId, cardId, 'ai');
+			if (!result.ok) return { text: `标记已读失败：\n${describeFailure(result)}` };
+			const at = new Date(result.at).toISOString();
+			return { text: `已把 ${cardId} 标记为 AI 已读（游标时间 ${at}）。` };
+		},
+	});
+
+	return [
+		workspaces,
+		cards,
+		card,
+		create,
+		updateContent,
+		updateNote,
+		transition,
+		claim,
+		release,
+		registry,
+		markSeen,
+	];
 }
 
 /**
