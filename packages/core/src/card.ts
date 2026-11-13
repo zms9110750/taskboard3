@@ -145,6 +145,14 @@ export interface Card {
 	 *   `at` 是**那个人**开始持有的时间，不是卡的时间。
 	 */
 	readonly holders: readonly CardHolder[];
+	/**
+	 * 未读标记 —— 「对方改过，我还没读」。
+	 *
+	 * ⚠ **这是卡的字段，不是从 `history` + 外部游标算出来的**（用户 `2026-11-13`
+	 *   「不能再用胶水代码了」）。维护点唯一：`withHistory`。
+	 *   不变量由 `test/unread.test.ts` 的逐卡比对守着。
+	 */
+	readonly unread: CardUnread;
 }
 
 /** 一个持有者 + 它开始持有的时间。 */
@@ -153,6 +161,81 @@ export interface CardHolder {
 	readonly holder: string;
 	/** 开始持有的时间（毫秒）。 */
 	readonly at: number;
+}
+
+/**
+ * 未读标记 —— 「对方改过，我还没读」。
+ *
+ * ## 用户原话（`2026-11-13`）
+ *
+ * > 由于任务版2的需求里面出现了，**ai写过，我还没读。我写过，ai还没读。**
+ * > 的这种对称的东西。所以这个东西**应该要有一个字段**。
+ * > 但是是**存bool还是时间**，需要考虑。
+ * > 但是，总之，他现在得**作为任务卡的字段**，不能再用胶水代码了。
+ *
+ * ## 为什么是 bool，不是时间 / 历史下标
+ *
+ * | 方案 | 为什么不 |
+ * |---|---|
+ * | 时间戳 | 同毫秒两次事件**分不出先后** ⇒ 会重现「看过之后又改，仍算已读」的 bug |
+ * | 历史下标 | 仍然是**对 `history` 的派生** ⇒ 同一事实存两处；而且见下 |
+ * | **bool** | 见下 |
+ *
+ * **读取是全有或全无的** —— 打开一张卡就看完了，没有「读了一半」。
+ * ⇒ 「看到第几条」这个粒度**根本没有意义**。
+ * ⇒ 这个字段要回答的问题只有两个答案，**不需要次序**，bool 就够。
+ *
+ * ⚠ 旧实现把这份信息拆成两处：卡上的 `history` + 卡外的 kv 游标。
+ *   那是胶水 —— 卡删了 kv 会成孤儿、`computeUpdates` 要读 store 所以不是纯函数、
+ *   为了次序判断还得比时间戳。现在它是**卡自己的字段**。
+ */
+export interface CardUnread {
+	/** AI 改过、用户还没读。 */
+	readonly ai: boolean;
+	/** 用户改过、AI 还没读。 */
+	readonly user: boolean;
+}
+
+/** 两个都没读。 */
+export const UNREAD_NONE: CardUnread = Object.freeze({ ai: false, user: false });
+
+/**
+ * 哪些 `action` **不算「改过」**（不置未读）。
+ *
+ * - `recompute` —— 沿树重算，机器推导的状态变化，不是人/AI 编辑内容。
+ *   若不排除，一张父卡会随子任务状态变化不停地弹「AI 更新过」。
+ *
+ * ⚠ 这条规则原来在 `updates.ts` 的 `NON_CONTENT_ACTIONS` 里；
+ *   现在未读是卡的字段、由 `withHistory` 维护 ⇒ 规则跟着搬到这里。
+ */
+const NON_CONTENT_ACTIONS: ReadonlySet<string> = new Set(['recompute']);
+
+/**
+ * 一条历史之后，未读标记应该变成什么（纯函数）。
+ *
+ * | 事件的 `actor` | 置哪个未读 | 为什么 |
+ * |---|---|---|
+ * | `'ai'` | `ai: true` | AI 改过 ⇒ **用户**未读 |
+ * | `'user'` | `user: true` | 用户改过 ⇒ **AI** 未读 |
+ *
+ * ⚠ 命名以**「谁改的」**为准（与 `updates()` 的返回值一致）。
+ */
+export function unreadAfter(unread: CardUnread, entry: HistoryEntry): CardUnread {
+	/* 机器推导不算「改过」。 */
+	if (NON_CONTENT_ACTIONS.has(entry.action)) return unread;
+	if (entry.actor === 'ai') return unread.ai ? unread : { ...unread, ai: true };
+	return unread.user ? unread : { ...unread, user: true };
+}
+
+/**
+ * 清掉某个读者自己的未读标记（纯函数）。
+ *
+ * @param reader 谁读完了 —— `'user'` 清 `ai`（有人读掉了「AI 改过」）；`'ai'` 清 `user`
+ * @returns 没变化时返回**同一个对象**（避免无谓的持久化）
+ */
+export function clearedUnread(unread: CardUnread, reader: 'user' | 'ai'): CardUnread {
+	if (reader === 'user') return unread.ai ? { ...unread, ai: false } : unread;
+	return unread.user ? { ...unread, user: false } : unread;
 }
 
 /** 是否是草稿。 */
@@ -170,9 +253,27 @@ export function groupOfCard(card: Card): StatusGroup {
 	return STATUS_GROUP[card.status];
 }
 
-/** 追加一条历史（纯函数，返回新数组）。 */
+/**
+ * 追加一条历史（纯函数）—— **`unread` 的唯一维护点**。
+ *
+ * ## 为什么在这里
+ *
+ * `unread` 是**增量维护的缓存**（不是从 history 现算的）。只要有一条路径
+ * 绕过本函数直接改 `history`，`unread` 就会漂 —— 而漂了**不会报错**，
+ * 只表现为「角标偶尔不对」。
+ *
+ * ⇒ 所有追加历史的路径都必须走这个函数。`index.ts` 里原来是
+ * `history: [...existing.history, entry]` 的两处（update / remove）已改成调本函数。
+ *
+ * 守卫：`test/unread.test.ts` 的**不变量测试**逐卡比对
+ * 「`card.unread`」与「按 `history` 重算的期望值」。
+ */
 export function withHistory(card: Card, entry: HistoryEntry): Card {
-	return { ...card, history: [...card.history, entry] };
+	return {
+		...card,
+		history: [...card.history, entry],
+		unread: unreadAfter(card.unread, entry),
+	};
 }
 
 /** 改状态并记一条历史（纯函数）。 */

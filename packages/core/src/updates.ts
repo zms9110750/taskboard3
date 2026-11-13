@@ -1,77 +1,41 @@
 /**
- * 更新计数 —— 「AI 改过用户未读 / 用户改过 AI 未读」。
+ * 更新计数 —— 现在只是**读卡上的 `unread` 字段**，不是派生计算。
  *
- * ## 用户规则（`2026-11-10`）
+ * ## 用户裁定（`2026-11-13`）
  *
- * > `ai` = AI 改过、用户还没看过；
- * > `user` = 用户改过、AI 还没看过（AI/MCP 靠这个知道用户改了什么）。
+ * > 由于任务版2的需求里面出现了，**ai写过，我还没读。我写过，ai还没读。**
+ * > 的这种对称的东西。所以这个东西**应该要有一个字段**。
+ * > 但是是**存bool还是时间**，需要考虑。
+ * > 但是，总之，他现在得**作为任务卡的字段**，不能再用胶水代码了。
  *
- * ⚠ **命名以「谁改的」为准**，不是「谁没看」。
+ * ## 这个文件曾经是「派生计算」，现在只剩两个轻量操作
  *
- * ## 两个数据源
+ * 旧设计：卡上的 `history` + **卡外**的 kv 游标 `read:<cardId>:<reader>`，
+ * 每次算更新都要读 store、扫 history、比时间戳/下标。
  *
- * | 数据 | 从哪来 |
- * |---|---|
- * | 「谁改的」 | `Card.history[].actor`（`HistoryEntry.actor`） |
- * | 「看到哪儿了」 | `CardStore` 的 kv：`read:<cardId>:<reader>` → **历史下标（条数）** |
+ * 那是胶水：
  *
- * ## 为什么已读游标不放卡上
+ * · **两处存储** —— 卡删了 kv 会成孤儿；
+ * · `computeUpdates(cards, store)` 要读 store ⇒ **不是纯函数**，`search()` 也跟着不纯；
+ * · 为了「次序判断」要比时间戳 ⇒ **同毫秒会永久漏掉改动**（真 bug，已修过一次）。
  *
- * 卡是**共享的**（一个空间多会话读），而「看到哪儿了」是**每个读者各自的**。
- * 放卡上会让「用户看过」变成「所有人都看过」。
- * ⇒ 走 kv，键里带 reader。
+ * ⇒ 现在未读是 `Card.unread`（bool 对），**字段本身就是真值**。
+ *   本文件不再持有任何机制，只剩「读一遍、按条件挑 id」。
  *
- * ## ⚠⚠ 游标是**历史下标**，不是时间戳（这是修过一次的真 bug）
+ * ## 维护点在哪
  *
- * 曾经用「最新事件的 `at` 时间戳」当游标。那在**同一毫秒**内会永久漏掉改动：
+ * **`card.ts` 的 `withHistory`** —— 它是唯一往 `history` 追加事件的地方，
+ * 也是唯一维护 `unread` 的地方。本文件只读不写。
  *
- * ```
- * 游标  = 1000      （标记已读到最新事件）
- * AI 改 = 1000      （同一毫秒又改了一次）
- * 1000 > 1000 ⇒ false ⇒ 这次改动永远不可见
- * ```
- *
- * 实测表现是**测试 flake**：103 次跑过 1 次失败，因为 `Date.now()` 的毫秒数
- * 是否撞上是运气。时间戳只适合给人看，**不适合做次序判断**。
- *
- * ⇒ 改用**历史下标**：`card.history` 是有序追加数组，下标天然全序，
- *   同毫秒多事件完全不打架。
- *
- * 语义也更准确：`markSeen` 表示「**我看到第 N 条事件了**」，
- * 比「我看到时刻 T 为止」更贴近事实。
- *
- * ## ⚠ 代价：依赖「history 只追加、不裁剪」
- *
- * 现在成立（`withHistory` 只 push）。**若将来要做历史裁剪，这套机制必须换掉** ——
- * 裁剪会让下标整体前移，已存的游标就指向错误的位置，表现为「旧的已读被当成未读」
- * 或更糟的「未读被当成已读」。
- *
- * 真到那时有两个方向：给事件发**单调递增序号**（存在每条 history 里，
- * 与数组位置解耦），或者改用「最后一条已见事件的唯一 id」。
- * 两者都要改 `HistoryEntry` 形状，所以现在不做。
- *
- * ## ⚠ 为什么不用 `Date.now()` 当游标
- *
- * 旧仓库的既定口径：
- *
- * > 打开之后又发生新事件 ⇒ 仍然算未读。
- *
- * 若存 `Date.now()`，那么「打开卡」这个动作本身会把「打开之后到达的新事件」
- * 也标记成已读（因为新事件的 at 可能 ≤ now）。那是错的。
- * 存「当前历史长度」就没有这个问题：它精确表示「我看过的那一瞬间有几条」。
- *
- * ## ⚠ `recompute` 事件不算「改过」
- *
- * 沿树重算只改**父卡状态**，那是机器推导，不是内容编辑。
- * 用户开卡看到的是内容，不是状态推演 —— 所以重算不该让卡变成「AI 改过未读」。
- * 否则一张父卡会随子任务状态变化不停地弹「AI 更新过」。
+ * 守卫：`test/unread.test.ts` 的**不变量测试**逐卡比对
+ * 「`card.unread`」与「按 `history` 重算的期望值」。
  */
 
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, failure } from '@taskboard/protocol';
 
-import type { Card } from './card.js';
-import type { CardStore } from './ports.js';
+import type { Card, CardUnread } from './card.js';
+import { clearedUnread } from './card.js';
 
 /** 读者。`user` = 人，`ai` = 模型 / MCP。 */
 export type UpdateReader = 'user' | 'ai';
@@ -88,110 +52,60 @@ export interface UpdatesResult {
 	readonly user: readonly string[];
 }
 
-/** 已读游标的 kv 键。 */
-export function readCursorKey(cardId: string, reader: UpdateReader): string {
-	return `read:${cardId}:${reader}`;
-}
-
 /**
- * 哪些 `action` **不算内容变更**（不参与更新计数）。
+ * 算一个空间的两类更新 —— **纯函数**，不碰存储。
  *
- * - `recompute` —— 沿树重算，机器推导的状态变化，不是人/AI 编辑内容。
+ * 旧签名是 `computeUpdates(cards, store)`；`store` 参数已删除 ——
+ * kv 游标没了，未读就在卡上。
+ *
+ * @param cards 该空间全部卡（含墓碑 —— 墓碑也可能带未读标记，由调用方决定要不要过滤）
  */
-const NON_CONTENT_ACTIONS: ReadonlySet<string> = new Set(['recompute']);
-
-/** 一条历史是不是「内容变更」。 */
-function isContentChange(action: string): boolean {
-	return !NON_CONTENT_ACTIONS.has(action);
-}
-
-/**
- * 这个 actor 引发的**最后一条内容变更**的历史下标 + 1。
- *
- * 为什么 +1：让 `0` 能表示「从未改过」，与游标的「0 = 从未看过」同一个基准。
- * 直接返回下标的话，「从未改过」和「改在第 0 条」都是 `0`，分不开。
- *
- * @returns `0` = 这个 actor 从未改过这张卡
- */
-export function lastChangeIndexBy(card: Card, actor: UpdateReader): number {
-	for (let index = card.history.length - 1; index >= 0; index -= 1) {
-		const entry = card.history[index];
-		if (entry === undefined) continue;
-		if (entry.actor !== actor) continue;
-		if (!isContentChange(entry.action)) continue;
-		return index + 1;
-	}
-	return 0;
-}
-
-/**
- * 读已读游标 —— **历史下标（条数）**。
- *
- * 不存在（从未看过）= `0`。
- *
- * ⚠ 旧实现返回 `-Infinity`（时间戳基准）；现在返回 `0`（下标基准）。
- *   两者都是「从未看过」，但只有 `0` 与下标可比。
- */
-export function readCursor(store: CardStore, cardId: string, reader: UpdateReader): number {
-	const raw = store.kvGet(readCursorKey(cardId, reader));
-	if (raw === undefined) return 0;
-	const value = Number(raw);
-	/* 脏值（非数字 / 负数）当成从未看过 —— 不能让它把未读永久吃掉。 */
-	return Number.isSafeInteger(value) && value >= 0 ? value : 0;
-}
-
-/**
- * 算一个空间的两类更新 —— **同步纯逻辑**（存储的 kv 读取是同步的）。
- *
- * 同步是有意的：`search()` 也是同步的，它要在条件含 `updatedBy` 时算这个。
- *
- * @param cards 该空间全部卡（含墓碑 —— 墓碑也可能是「AI 改过未读」，由调用方决定要不要过滤）
- */
-export function computeUpdates(cards: readonly Card[], store: CardStore): UpdatesResult {
+export function computeUpdates(cards: readonly Card[]): UpdatesResult {
 	const ai: string[] = [];
 	const user: string[] = [];
 
 	for (const card of cards) {
 		/*
-		 * `ai` 类：AI 改过、**用户**未读 ⇒ 比的是「用户的游标」。
-		 * `user` 类：用户改过、**AI** 未读 ⇒ 比的是「AI 的游标」。
-		 *
-		 * ⚠ 比较的是**下标**，不是时间。同毫秒多事件靠这个才不打架。
+		 * `ai` 类：AI 改过、**用户**未读 ⇒ 看 `unread.ai`。
+		 * `user` 类：用户改过、**AI** 未读 ⇒ 看 `unread.user`。
 		 */
-		if (lastChangeIndexBy(card, 'ai') > readCursor(store, card.id, 'user')) {
-			ai.push(card.id);
-		}
-		if (lastChangeIndexBy(card, 'user') > readCursor(store, card.id, 'ai')) {
-			user.push(card.id);
-		}
+		if (card.unread.ai) ai.push(card.id);
+		if (card.unread.user) user.push(card.id);
 	}
 
 	return { ai, user };
 }
 
 /**
- * 标记一张卡被某个读者「看过」。
+ * 标记一张卡被某个读者「看过」—— **纯函数**，只清标记，不改 history。
  *
- * ## 写的是「当前历史长度」，不是 `now()`、也不是最新事件的 at
+ * ## 为什么不清 history 里的事件
  *
- * 语义是「**我看到第 N 条事件了**」：
+ * 历史是**审计记录**，不是未读状态。读完了不代表那件事没发生过。
+ * ⇒ 只翻 bool，history 一条不动。
  *
- * - 之后**追加**的事件（下标 ≥ N）都算未读 ⇒ 「打开之后又发生新事件」仍然算未读；
- * - 同毫秒追加也照样算未读 ⇒ 不再有 flake。
+ * ## 只清「自己的」那一半
  *
- * @returns `seenUpTo` = 写入的游标（= 当时的历史条数）；卡不存在返回 `Failure`
+ * | `reader` | 清哪个 | 为什么 |
+ * |---|---|---|
+ * | `'user'` | `unread.ai` | 用户读掉了「AI 改过」 |
+ * | `'ai'` | `unread.user` | AI 读掉了「用户改过」 |
+ *
+ * ⇒ `markSeen('user')` **不动** `unread.user`（那是「用户改过、AI 未读」，
+ *   只有 AI 读了才算清）。
+ *
+ * @returns `card` 未变时是**同一个对象**（调用方可据此跳过持久化）
  */
-export async function markCardSeen(
-	store: CardStore,
+export function markCardSeen(
 	card: Card | undefined,
 	cardId: string,
 	reader: UpdateReader,
-): Promise<{ readonly ok: true; readonly seenUpTo: number } | Failure> {
+): { readonly ok: true; readonly card: Card; readonly changed: boolean } | Failure {
 	if (card === undefined) {
 		return failure(ErrorCode.CARD_NOT_FOUND, `编号「${cardId}」不存在。`);
 	}
 
-	const seenUpTo = card.history.length;
-	await store.kvSet(readCursorKey(cardId, reader), String(seenUpTo));
-	return { ok: true, seenUpTo };
+	const unread: CardUnread = clearedUnread(card.unread, reader);
+	if (unread === card.unread) return { ok: true, card, changed: false };
+	return { ok: true, card: { ...card, unread }, changed: true };
 }
