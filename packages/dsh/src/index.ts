@@ -52,11 +52,11 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
+import { createBus, createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
-import { createLocalBus, createSseHub } from './sse.ts';
+import { createSseHub } from './sse.ts';
 import { createTools } from './tools.ts';
 import type { CommandsLike, ConnectionLike, ToolsLike, WebServerLike } from './types.ts';
 
@@ -141,7 +141,7 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	 * 拆的时候一起删：
 	 *
 	 * ```
-	 * · 本段的 `createLocalBus()` 与 `bus`
+	 * · 本段的 `createBus()` 与 `bus`
 	 * · `createTaskboard({ ..., bus })` 里的 `bus`
 	 * · `createSseHub(bus)` 与 `disposeRoutes` 的 `events: hub`
 	 * · `disposeAll` 里的 `hub.closeAll()`
@@ -150,15 +150,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	 * ```
 	 *
 	 * 依据：`core/src/bus.ts` 文件头的拆解步骤 **第 4 条**（「dsh：删 SSE 端点」）。
-	 *
-	 * ⚠ **为什么用 `createLocalBus()` 而不是 core 的 `createBus()`**：
-	 *   core 目前只 `import type { Bus }` 给 `TaskboardOptions.bus?: Bus` 用，
-	 *   **没有 `export { createBus }`** ⇒ 拿不到。`Bus` 的形状只有三个方法，
-	 *   所以本地实现结构上兼容，`createTaskboard` 会做结构检查；
-	 *   core 若改形状，这里**编译失败**（不是静默漂移）。
-	 *   建议 core 补一行 `export { createBus }`，那时删掉 `createLocalBus()`。
 	 */
-	const bus = createLocalBus();
+	const bus = createBus();
 	const hub = createSseHub(bus);
 
 	/*
@@ -232,11 +225,8 @@ export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
 export { holderOf, type ExecLike, type SubagentsLike } from './holder.ts';
 /* ⚠ 原型期脚手架导出 —— 与 `core/src/bus.ts` 同生共死。 */
 export {
-	createLocalBus,
 	createSseHub,
 	encodeFrame,
-	type BusLike,
-	type BusMessageLike,
 	type SseBusFrame,
 	type SseHello,
 	type SseHub,
