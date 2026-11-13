@@ -23,16 +23,22 @@ export const inject = ['webServer', 'connection', 'tools', 'commands'];
 
 **这四个都是 DSH 自带的**，正常 profile 里都有。缺任何一个 ⇒ 本插件不激活（Cordis 的依赖语义），用户会看到任务板没出现。
 
-### 可替换的两个端口
+### 唯一可替换的依赖：存储
 
-`@taskboard/core` 的存储与搜索是可替换实现（用户裁定：「别人可能想换实现的才拆」）：
+`@taskboard/core` 的存储是可替换实现（用户裁定：「别人可能想换实现的才拆」）：
 
-| 端口 | 服务名 | 缺失时 |
+| 依赖 | 服务名 | 缺失时 |
 |---|---|---|
-| 存储 | `taskboard3Store` | 用 core 内置的 `node:sqlite` 实现 |
-| 搜索 | `taskboard3Search` | 用 `@taskboard/search` 的纯函数实现 |
+| 存储 | `taskboard3Store` | **插件不激活**（硬依赖，无兜底） |
 
-⇒ 两者都**不是硬依赖**。想换实现：写一个插件 `provide('taskboard3Store', ...)`，本包自动用它。
+⇒ 想换存储：写一个插件 `provide('taskboard3Store', ...)`，关掉 `@taskboard/store` 那一行即可。
+
+**搜索不可替换。** 用户裁定：
+
+> 是把搜索并入 core 强依赖。ui 和 tool 都强依赖搜索，替换了搜索，那接口也没法做啊。
+> 他只能说替换底层实现，那没有意义。要么他增加 api，那又调用不了。所以没意义。就强耦合吧。
+
+⇒ `createSearch()` 在 core 内部固定调用，`TaskboardOptions` 不接受 `search`。
 
 ## HTTP 路由
 

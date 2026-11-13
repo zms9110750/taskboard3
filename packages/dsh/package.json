@@ -29,8 +29,7 @@
   },
   "dependencies": {
     "@taskboard/core": "workspace:*",
-    "@taskboard/protocol": "workspace:*",
-    "@taskboard/search": "workspace:*"
+    "@taskboard/protocol": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0"
@@ -53,3 +52,4 @@
     }
   }
 }
+

@@ -8,12 +8,16 @@
  *
  * ⇒ 用一个**记录调用的假 ctx**，直接断言「提供了什么服务、登记了什么清理」。
  *
- * ## 覆盖的四件事
+ * ## 覆盖哪些事
  *
- * 1. 两个服务名都 provide 了（换实现靠这个名字接上）
+ * 1. 服务名 `taskboard3Store` 被 provide 了（换实现靠这个名字接上）
  * 2. 提供的 store 真能读写（不是空壳）
- * 3. 提供的 search 真能筛选（不是空壳）
- * 4. 卸载时 `close()` 被调用（不泄漏文件句柄）
+ * 3. 按空间隔离
+ * 4. kv 读写与删除
+ * 5. 卸载时登记了 `close()` 清理
+ *
+ * ⚠ **不再测试「提供了 search」** —— 搜索已并入 core 并强耦合，
+ *   本插件不管搜索了。见 `src/index.ts` 顶部说明。
  */
 
 import assert from 'node:assert/strict';
@@ -22,7 +26,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
-import { apply, SEARCH_SERVICE, STORE_SERVICE } from '../src/index.ts';
+import { apply, STORE_SERVICE } from '../src/index.ts';
 import type { ApplyContext } from '../src/index.ts';
 
 import type { Card, CardStore } from '@taskboard/core';
@@ -60,6 +64,8 @@ function makeCard(id: string, title: string, status: string): Card {
 		deleted: false,
 		claimedBy: null,
 		claimedAt: null,
+		createdAt: 0,
+		adoptedAt: null,
 	};
 }
 
@@ -78,12 +84,12 @@ describe('store 插件', () => {
 		rmSync(dataDir, { recursive: true, force: true });
 	});
 
-	it('provide 了两个约定好的服务名', () => {
+	it('provide 了约定好的服务名', () => {
 		assert.equal(ctx.provided.has(STORE_SERVICE), true, `缺少 ${STORE_SERVICE}`);
-		assert.equal(ctx.provided.has(SEARCH_SERVICE), true, `缺少 ${SEARCH_SERVICE}`);
 		/* 名字是**对外契约** —— 换实现的人必须提供同名服务。锁住字符串本身。 */
 		assert.equal(STORE_SERVICE, 'taskboard3Store');
-		assert.equal(SEARCH_SERVICE, 'taskboard3Search');
+		/* 只有一个服务 —— 搜索不再是本插件的职责。 */
+		assert.equal(ctx.provided.size, 1);
 	});
 
 	it('提供的 store 能写、能全量读回', async () => {
@@ -118,41 +124,8 @@ describe('store 插件', () => {
 		assert.equal(store.kvGet('current:abc'), undefined);
 	});
 
-	it('提供的 search 能按标题筛选', () => {
-		const store = ctx.provided.get(STORE_SERVICE) as CardStore;
-		const search = ctx.provided.get(SEARCH_SERVICE) as (
-			cards: readonly Card[],
-			condition: { readonly title?: string },
-		) => readonly Card[];
-
-		const cards = store.loadAll('ws1');
-		const hit = search(cards, { title: '第一张' });
-		assert.equal(hit.length, 1);
-		assert.equal(hit[0]?.id, 'GU01');
-
-		const miss = search(cards, { title: '不存在的词' });
-		assert.equal(miss.length, 0);
-	});
-
-	it('提供的 search 能按状态组筛选（草稿默认不可见）', () => {
-		const store = ctx.provided.get(STORE_SERVICE) as CardStore;
-		const search = ctx.provided.get(SEARCH_SERVICE) as (
-			cards: readonly Card[],
-			condition: { readonly status?: readonly string[] },
-		) => readonly Card[];
-
-		/* 补一张草稿：无 status 条件时它不该出现。 */
-		const draft = makeCard('GU99', '草稿卡', 'TASK_STATE_UNSPECIFIED');
-		const cards = [draft, ...store.loadAll('ws1')];
-
-		assert.equal(search(cards, {}).some((c) => c.id === 'GU99'), false);
-		assert.equal(search(cards, { status: ['draft'] }).some((c) => c.id === 'GU99'), true);
-		assert.equal(search(cards, { status: ['active'] }).some((c) => c.id === 'GU99'), false);
-	});
-
 	it('卸载时登记了 close 清理', () => {
 		assert.equal(ctx.cleanups.length, 1, '应当只登记一个 effect');
-		/* 真调一次 —— 关完再写应当抛（库里已关闭）。 */
 		const cleanup = ctx.cleanups[0];
 		assert.equal(typeof cleanup, 'function');
 	});

@@ -2,7 +2,7 @@
   "name": "@taskboard/store",
   "version": "0.1.0-3.a.1",
   "type": "module",
-  "description": "任务板存储与搜索的默认实现：sqlite 存储 + 纯函数搜索。可整行替换。",
+  "description": "任务板存储的默认实现：node:sqlite。可整行替换。",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
   "exports": {
@@ -21,9 +21,7 @@
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@taskboard/core": "workspace:*",
-    "@taskboard/protocol": "workspace:*",
-    "@taskboard/search": "workspace:*"
+    "@taskboard/core": "workspace:*"
   },
   "dsh": {
     "bundle": {

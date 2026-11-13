@@ -1,9 +1,11 @@
-# 存储与搜索的默认实现。
+# 存储的默认实现（node:sqlite）。
 #
-# **只插自己这一行，不插别人。** 依赖由 `inject` 声明，装配由使用者负责。
+# **只插自己这一行，不插别人。** 装配由使用者负责。
 #
 # 想换实现的人：在自己 profile 的 patch 里把本行换成 `disabled: true`，
-# 另插一行提供 `taskboard3Store` / `taskboard3Search` 同名服务的包。
+# 另插一行提供 `taskboard3Store` 同名服务的包。
+#
+# ⚠ 搜索不在这里 —— 它已并入 core 并强耦合，不是可替换的服务。
 - insert:
     - id: taskboard3-store
       name: '@taskboard/store'

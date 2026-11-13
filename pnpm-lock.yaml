@@ -38,9 +38,6 @@ importers:
       '@taskboard/protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@taskboard/search':
-        specifier: workspace:*
-        version: link:../search
     devDependencies:
       '@deepseek-ai/dsh-tools':
         specifier: 0.2.1-rc.5
@@ -64,19 +61,11 @@ importers:
 
   packages/protocol: {}
 
-  packages/search: {}
-
   packages/store:
     dependencies:
       '@taskboard/core':
         specifier: workspace:*
         version: link:../core
-      '@taskboard/protocol':
-        specifier: workspace:*
-        version: link:../protocol
-      '@taskboard/search':
-        specifier: workspace:*
-        version: link:../search
 
 packages:
 

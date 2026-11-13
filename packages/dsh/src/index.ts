@@ -16,16 +16,18 @@
  * > 依赖不存在，这个包就不能用。用户就要找一个这个来。
  * > 这是插件的依赖语义。
  *
- * ⇒ 本包在 `inject` 里声明六个服务，但 **`cordis.patch.yml` 只插自己这一行**。
- *   存储与搜索的实现由 `@taskboard/store` 那一行提供（或用户自己的替换品）。
+ * ⇒ 本包在 `inject` 里声明五个服务，但 **`cordis.patch.yml` 只插自己这一行**。
+ *   存储的实现由 `@taskboard/store` 那一行提供（或用户自己的替换品）。
  *
  * | 服务 | 提供者 | 缺失时 |
  * |---|---|---|
  * | `webServer` / `connection` / `tools` / `commands` | DSH 自带 | 插件不激活 |
  * | `taskboard3Store` | `@taskboard/store` 或替换品 | **插件不激活** |
- * | `taskboard3Search` | `@taskboard/store` 或替换品 | **插件不激活** |
  *
- * ⚠ 后两个**没有兜底**。「不提供 ⇒ 不生效」是用户明确要的语义 ——
+ * ⚠ **搜索不在这个表里** —— 它已并入 core 并强耦合（用户裁定：
+ *   「ui 和 tool 都强依赖搜索，替换了搜索，那接口也没法做啊……就强耦合吧」）。
+ *
+ * ⚠ `taskboard3Store` **没有兜底**。「不提供 ⇒ 不生效」是用户明确要的语义 ——
  *   留兜底会让「关掉那一行」看起来没效果，那是更坏的失败方式。
  *
  * ## 为什么 `defineTool` 走静态 import
@@ -50,7 +52,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { createTaskboard, type CardStore, type SearchStrategy, type Taskboard } from '@taskboard/core';
+import { createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
@@ -63,17 +65,10 @@ export const name = 'taskboard3';
 /**
  * 前置服务。
  *
- * ⚠ **声明依赖，不替用户装配。** 六个服务缺任何一个 ⇒ 本插件不激活。
+ * ⚠ **声明依赖，不替用户装配。** 五个服务缺任何一个 ⇒ 本插件不激活。
  *   用户会看到「任务板没出现」，然后去补那一行 —— 这是正确的失败方式。
  */
-export const inject = [
-	'webServer',
-	'connection',
-	'tools',
-	'commands',
-	'taskboard3Store',
-	'taskboard3Search',
-];
+export const inject = ['webServer', 'connection', 'tools', 'commands', 'taskboard3Store'];
 
 /** 插件配置。 */
 export interface Config {
@@ -119,10 +114,8 @@ export type ApplyContext = {
 	readonly connection: ConnectionLike;
 	readonly tools: ToolsLike;
 	readonly commands: CommandsLike;
-	/** 存储实现。由 `@taskboard/store` 或替换品提供。 */
+	/** 存储实现。由 `@taskboard/store` 或替换品提供。**唯一可替换的依赖。** */
 	readonly taskboard3Store: CardStore;
-	/** 搜索实现。由 `@taskboard/store` 或替换品提供。 */
-	readonly taskboard3Search: SearchStrategy;
 	effect?(dispose: () => void, label?: string): void;
 };
 
@@ -134,21 +127,13 @@ export type ApplyContext = {
  */
 export function apply(ctx: ApplyContext, config: Config = {}): void {
 	/*
-	 * ⚠ 存储与搜索**必须**来自注入。这里不做「缺失就兜底」——
+	 * ⚠ 存储**必须**来自注入。这里不做「缺失就兜底」——
 	 *   用户裁定「如果不提供，那自然是不生效」。兜底会让关掉那一行看起来没效果。
 	 *
-	 * ⚠ 这里的 `as` 是绕一个 **core 的 API 缺陷**：
-	 *   `TaskboardOptions.dataDir` 是必填，但当 `store` 已给定时它**根本用不到**
-	 *   （`createTaskboard` 里是 `options.store ?? createSqliteStore(options.dataDir)`）。
-	 *   正确形状是判别联合：
-	 *   `{ store, search } | { dataDir, search? }`。
-	 *
-	 *   ⇒ 已报给 lead 修 core。修好后删掉这个 `as`。
+	 * ⚠ **搜索不在这里** —— 它已并入 core 并强耦合（用户裁定）。
+	 *   `createTaskboard` 内部固定调 `createSearch()`，不接受外部注入。
 	 */
-	const taskboard: Taskboard = createTaskboard({
-		store: ctx.taskboard3Store,
-		search: ctx.taskboard3Search,
-	} as Parameters<typeof createTaskboard>[0]);
+	const taskboard: Taskboard = createTaskboard({ store: ctx.taskboard3Store });
 
 	/* 模板：默认从 `@taskboard/core` 包内的 `templates/` 加载。失败不阻断 —— core 记进 `templateErrors()`。 */
 	taskboard.templates().loadDirectory(config.templateDir ?? coreTemplateDir());

@@ -19,7 +19,7 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createTaskboard, type Taskboard } from '@taskboard/core';
 import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
-import { createSearch } from '@taskboard/search';
+import { createSearch } from '@taskboard/core';
 
 import { createHandler, ROUTE_PREFIX, type RouteDeps } from '../src/http.ts';
 import type { OutgoingLike, ReadableIncoming } from '../src/types.ts';

@@ -1,5 +1,5 @@
 /**
- * `@taskboard/store` —— 存储与搜索的**默认实现**，一个 Cordis 插件行。
+ * `@taskboard/store` —— 存储的**默认实现**，一个 Cordis 插件行。
  *
  * ## 这个包为什么存在
  *
@@ -7,20 +7,27 @@
  * > 对于搜索，后端存储，这种东西，可能使用者想要不同的实现，
  * > 关闭部分插件并替换他的实现。
  *
- * ⇒ 存储与搜索是**可替换的服务**，不是一个写死在 core 里的函数。
+ * 后来又裁掉了搜索那一半：
+ * > 是把搜索并入 core 强依赖。ui 和 tool 都强依赖搜索，替换了搜索，
+ * > 那接口也没法做啊。他只能说替换底层实现，那没有意义。
+ * > 要么他增加 api，那又调用不了。所以没意义。就强耦合吧。
+ *
+ * ⇒ **今天只有存储是可替换的**，搜索已经并进 core、强耦合。
  *
  * ```
- * core 只认接口（CardStore / SearchStrategy）
+ * core 只认接口（CardStore）
  *    ↑
- *    ├── @taskboard/store ← 本包：默认实现（sqlite + 纯函数搜索）
+ *    ├── @taskboard/store ← 本包：默认实现（node:sqlite）
  *    └── 别人的实现        ← 关掉本包这行，装自己的一行
  * ```
  *
- * ## 它只做三件事
+ * ⚠ 不要因为「本包曾经也 provide 搜索」就以为它还管搜索 —— 它不管了。
+ *   `packages/search` 整个包已取消，`createSearch` 在 core 里。
+ *
+ * ## 它只做两件事
  *
  * 1. `provide('taskboard3Store', store)` —— 换实现只要提供同名服务
- * 2. `provide('taskboard3Search', search)` —— 同理
- * 3. 把配置里的 `dataDir` 传给实现
+ * 2. 把配置里的 `dataDir` 传给实现
  *
  * **不做业务判断、不认识卡的状态、不碰模板。** 那些在 core。
  *
@@ -32,7 +39,7 @@
  * ## 为什么 `ctx` 用最小结构接口而不是 `import type { Context } from '@deepseek-ai/cordis'`
  *
  * 本包要能被单独测试（`node --test`，不需要真 Cordis），也要能在
- * 「只有 3 个方法」的最小实现上跑。用 `import type` 会引入对 dsh 的
+ * 「只有 2 个方法」的最小实现上跑。用 `import type` 会引入对 dsh 的
  * 编译期依赖，那与本包「薄、可测、零宿主依赖」的定位相悖。
  *
  * ⚠ `provide` 在 Cordis 里是**同步**的；`effect` 的约定是
@@ -40,19 +47,13 @@
  *
  * ## 关闭它会怎样
  *
- * `dsh` 那边的 `inject` 里有 `taskboard3Store` / `taskboard3Search`，
+ * `dsh` 那边的 `inject` 里有 `taskboard3Store`，
  * 本行被关掉 ⇒ 依赖不满足 ⇒ 上层插件不激活（而不是抛错）。
  * **这是正确的失败方式。**
  */
 
 import { createSqliteStore } from '@taskboard/core';
-import type { CardStore, SearchStrategy } from '@taskboard/core';
-import { STATUS_GROUP_OF } from '@taskboard/protocol';
-import { createSearch } from '@taskboard/search';
-
-import { asCoreSearch } from './adapt.ts';
-
-import type { TaskState } from '@taskboard/protocol';
+import type { CardStore } from '@taskboard/core';
 
 /** Cordis 插件名。 */
 export const name = 'taskboard3-store';
@@ -91,9 +92,6 @@ export interface ApplyContext {
 /** 提供的存储服务名。换实现必须提供同名服务。 */
 export const STORE_SERVICE = 'taskboard3Store' as const;
 
-/** 提供的搜索服务名。换实现必须提供同名服务。 */
-export const SEARCH_SERVICE = 'taskboard3Search' as const;
-
 /**
  * 装一行：造实现并 provide。
  *
@@ -103,39 +101,15 @@ export const SEARCH_SERVICE = 'taskboard3Search' as const;
 export function apply(ctx: ApplyContext, config: Config): void {
 	const store: CardStore = createSqliteStore(config.dataDir);
 
-	/*
-	 * 搜索是纯函数，但要注入 `groupOf`（状态 → 组名）。
-	 * 那是 protocol 的词汇，本包 import 它、**不留拷贝** ——
-	 * 所以这里直接传 `STATUS_GROUP_OF` 的查询函数。
-	 *
-	 * `STATUS_GROUP_OF` 的类型是 `Record<TaskState, StatusGroup>`，
-	 * 而 search 只要求 `(status: string) => StatusGroupName | undefined`。
-	 * 用一次安全查找把「未知状态」变成 `undefined`（search 内部按"不命中"处理），
-	 * 而不是 `as` 断言让未知状态被当成某个组。
-	 */
-	const groupOf = (status: string): 'draft' | 'active' | 'shelved' | 'ended' | undefined =>
-		STATUS_GROUP_OF[status as TaskState];
-
-	/*
-	 * `@taskboard/search` 的 `SearchStrategy` 与 `@taskboard/core` 的
-	 * `SearchStrategy` **形状不同**（条件字段 `template` vs `templateRef`、
-	 * 返回 `SearchableCard[]` vs `Card[]`）。两者故意不互相 import，
-	 * 所以这里要过一层薄适配 —— 见 `adapt.ts` 顶部说明。
-	 *
-	 * ⚠ 这是临时桥。根治要让 lead 统一两侧的类型来源，不要在 store 里长期留着。
-	 */
-	const search: SearchStrategy = asCoreSearch(createSearch({ groupOf }));
-
 	ctx.provide(STORE_SERVICE, store);
-	ctx.provide(SEARCH_SERVICE, search);
 
 	/*
 	 * 关库是**本插件的副作用**：Cordis 卸载本行时调 `store.close()`。
 	 *
-	 * ⚠ 不在 `apply` 里直接 `close` —— 那样插件一装上库就关了。
-	 *   必须登记成待清理的资源。
+	 * 为什么用 `effect` 而不是让调用方自己管：库句柄是**这一行**打开的，
+	 * 就该由这一行关。换实现时，新实现自己登记自己的清理 —— 上层不用改。
 	 */
 	ctx.effect(() => () => {
 		void store.close();
-	}, 'taskboard3-store: close database on unload');
+	}, 'taskboard3-store: close database');
 }
