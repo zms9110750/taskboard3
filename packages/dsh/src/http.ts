@@ -28,8 +28,8 @@
  */
 
 import type { SearchCondition, Taskboard } from '@taskboard/core';
-import type { Failure, TaskState } from '@taskboard/protocol';
-import { ErrorCode, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
+import type { Failure } from '@taskboard/protocol';
+import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
 import type { ConnectionLike, IncomingLike, OutgoingLike, ReadableIncoming, WebServerLike } from './types.ts';
 
@@ -375,6 +375,45 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		const found = taskboard.get(workspaceId, cardId);
 		if (!found.ok) return sendFailure(res, found, 404);
 		const card = found.card;
+
+		/*
+		 * ── 领取 / 释放只能由 AI 工具发起 ──
+		 *
+		 * HTTP 请求**没有 `exec.agent`** —— 浏览器不知道「是哪个 agent 在领」。
+		 * 而 claim 的语义是「指派某个 agent 去做」，持有者必须是**可信的** agent 身份。
+		 *
+		 * ⚠ 让前端传 `?holder=` 是不可行的：那是**自报**，任何页面脚本都能声称自己是
+		 *   任意 agent，于是「一次一张」这条约束形同虚设。
+		 *
+		 * ⇒ 界面点「领取」时，正确做法是让 AI 调 `taskboard_claim` 工具 ——
+		 *   工具那边从 `exec.agent` 取**真实**身份（见 `src/holder.ts`）。
+		 *
+		 * 释放同理：释放的对象是「自己这个持有者」，而 HTTP 说不清「自己」是谁。
+		 */
+		if (to === TaskState.WORKING) {
+			sendFailure(
+				res,
+				failure(
+					ErrorCode.CLAIM_REJECTED,
+					'「领取」只能由 AI 工具发起（taskboard_claim），不能从界面直接领 —— 界面无法证明是哪个 agent 在领。',
+					{ detail: { reason: 'CLAIM_REQUIRES_AGENT' } },
+				),
+				409,
+			);
+			return;
+		}
+		if (card.status === TaskState.WORKING && to === TaskState.SUBMITTED) {
+			sendFailure(
+				res,
+				failure(
+					ErrorCode.CLAIM_REJECTED,
+					'「释放」只能由 AI 工具发起（taskboard_release）—— 界面无法证明「自己」是哪个持有者。',
+					{ detail: { reason: 'RELEASE_REQUIRES_AGENT' } },
+				),
+				409,
+			);
+			return;
+		}
 
 		/* 判定：人点按钮 ⇒ `trigger: 'button'`。规则全在 protocol 的判定表里。 */
 		const verdict = judgeTransition({

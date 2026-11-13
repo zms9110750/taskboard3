@@ -85,8 +85,14 @@ beforeEach(async () => {
 		taskboard,
 		defineTool: fakeDefineTool,
 		defaultWorkspaceId: async () => workspaceId,
+		subagents: stubSubagents('测试agent'),
 	});
 });
+
+/** 假的 `ctx.subagents`：把 agent 映射成固定名字。 */
+function stubSubagents(self: string): unknown {
+	return { namesOf: () => ({ self }) };
+}
 
 /** 按名字取工具。 */
 function tool(name: string): ToolLike {
@@ -96,8 +102,8 @@ function tool(name: string): ToolLike {
 }
 
 /** 跑一个工具，取回文本。 */
-async function run(name: string, args: unknown): Promise<string> {
-	const value = (await tool(name).execute(fakeDefineTool === undefined ? args : args, {})) as { text: string };
+async function run(name: string, args: unknown, exec: unknown = {}): Promise<string> {
+	const value = (await tool(name).execute(args, exec)) as { text: string };
 	return value.text;
 }
 
@@ -469,16 +475,132 @@ describe('taskboard_transition', () => {
 });
 
 describe('taskboard_claim / taskboard_release', () => {
-	it('claim 在 core 未实现时给出明确提示，不抛', async () => {
-		const id = await makeCard('领取测试');
-		const text = await run('taskboard_claim', { id });
-		/* core 的 claim 可能已实现（成功/失败）或还没实现（提示）。两种都不该抛。 */
-		assert.ok(text.length > 0, text);
+	/**
+	 * 造一张能领的工作卡（提交态）：先建草稿再采纳。
+	 *
+	 * ⚠ 必须用 `work` 类别的模板 —— 领取只对工作卡开放（目标 / 设计 / 记录不需要执行权限）。
+	 */
+	async function claimableCard(title: string): Promise<string> {
+		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
+		assert.notEqual(template, undefined, '应当存在 work 类别的模板');
+		const ref = template?.ref ?? '';
+		const created = await taskboard.create({ workspaceId, templateRef: ref, title });
+		assert.equal(created.ok, true);
+		if (!created.ok) return '';
+		const cardId = created.card.id;
+		/* 草稿 → 提交（work 的「采纳」）。 */
+		const adopted = await taskboard.transition(workspaceId, cardId, 'TASK_STATE_SUBMITTED', 'button');
+		assert.equal(adopted.ok, true, adopted.ok ? '' : adopted.message);
+		return cardId;
+	}
+
+	/** 落库后的持有者名字列表（`Card.holders` 是 `CardHolder[]`，不是字符串数组）。 */
+	function holderNames(cardId: string): readonly string[] {
+		const found = taskboard.get(workspaceId, cardId);
+		assert.equal(found.ok, true);
+		return found.ok ? found.card.holders.map((one) => one.holder) : [];
+	}
+
+	it('claim 用 subagents 给的名字当 holder', async () => {
+		const id = await claimableCard('领取测试');
+		if (id === '') return;
+
+		/* 工具里的 holder 来自 stubSubagents('测试agent')。 */
+		const text = await run('taskboard_claim', { id }, { agent: { id: 'uuid-claim' } });
+		assert.ok(text.includes('已领取'), text);
+		assert.ok(text.includes('测试agent'), `holder 应是 agent 名字：${text}`);
+
+		/* 落库的持有者是那个名字，不是 UUID。 */
+		assert.deepEqual(holderNames(id), ['测试agent']);
+
+		const after = taskboard.get(workspaceId, id);
+		assert.equal(after.ok, true);
+		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_WORKING');
 	});
 
-	it('release 在 core 未实现时给出明确提示，不抛', async () => {
-		const id = await makeCard('释放测试');
-		const text = await run('taskboard_release', { id });
-		assert.ok(text.length > 0, text);
+	it('claim 时 subagents 缺席 ⇒ holder 回落 agent.id（功能照样可用）', async () => {
+		/* 换一个没有 subagents 的工具集。 */
+		const withoutSubagents = createTools({
+			taskboard,
+			defineTool: fakeDefineTool,
+			defaultWorkspaceId: async () => workspaceId,
+		});
+		const id = await claimableCard('领取回落');
+		if (id === '') return;
+
+		const claimTool = withoutSubagents.find((one) => one.name === 'taskboard_claim');
+		assert.notEqual(claimTool, undefined);
+		const value = (await claimTool?.execute({ id }, { agent: { id: 'uuid-fallback' } })) as { text: string };
+		assert.ok(value.text.includes('已领取'), value.text);
+		assert.deepEqual(holderNames(id), ['uuid-fallback']);
+	});
+
+	it('claim 草稿卡 ⇒ 失败文案（草稿不能领）', async () => {
+		const ref = taskboard.listTemplates().find((one) => one.kind === 'work')?.ref ?? '';
+		const created = await taskboard.create({ workspaceId, templateRef: ref, title: '还是草稿' });
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+
+		const text = await run('taskboard_claim', { id: created.card.id }, { agent: { id: 'uuid-y' } });
+		assert.ok(text.includes('失败'), text);
+	});
+
+	it('claim 非工作类别的卡 ⇒ 失败文案（目标 / 设计 / 记录不可领）', async () => {
+		const template = taskboard.listTemplates().find((one) => one.kind === 'goal');
+		assert.notEqual(template, undefined);
+		if (template === undefined) return;
+
+		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '目标卡' });
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		await taskboard.transition(workspaceId, created.card.id, 'TASK_STATE_SUBMITTED', 'button');
+
+		const text = await run('taskboard_claim', { id: created.card.id }, { agent: { id: 'uuid-goal' } });
+		assert.ok(text.includes('失败'), text);
+	});
+
+	it('release 释放自己 ⇒ 回到提交', async () => {
+		const id = await claimableCard('释放测试');
+		if (id === '') return;
+		const claimed = await run('taskboard_claim', { id }, { agent: { id: 'uuid-z' } });
+		assert.ok(claimed.includes('已领取'), claimed);
+
+		const text = await run('taskboard_release', { id }, { agent: { id: 'uuid-z' } });
+		assert.ok(text.includes('已释放'), text);
+
+		assert.deepEqual(holderNames(id), []);
+		const after = taskboard.get(workspaceId, id);
+		assert.equal(after.ok, true);
+		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_SUBMITTED');
+	});
+
+	it('release 自己不在持有者里 ⇒ 失败文案（列出当前持有者）', async () => {
+		/*
+		 * ⚠ 要让两个不同的 holder，必须用**没有 subagents** 的工具集 ——
+		 *   有 stub 时两个调用的 holder 都是 `'测试agent'`，那样 release 会成功。
+		 */
+		const byId = createTools({
+			taskboard,
+			defineTool: fakeDefineTool,
+			defaultWorkspaceId: async () => workspaceId,
+		});
+		const claimTool = byId.find((one) => one.name === 'taskboard_claim');
+		const releaseTool = byId.find((one) => one.name === 'taskboard_release');
+		assert.notEqual(claimTool, undefined);
+		assert.notEqual(releaseTool, undefined);
+		if (claimTool === undefined || releaseTool === undefined) return;
+
+		const id = await claimableCard('别人持有');
+		if (id === '') return;
+
+		const claimed = (await claimTool.execute({ id }, { agent: { id: 'uuid-owner' } })) as { text: string };
+		assert.ok(claimed.text.includes('已领取'), claimed.text);
+		assert.deepEqual(holderNames(id), ['uuid-owner']);
+
+		/* 换一个 holder 释放 —— 它不在列表里。 */
+		const released = (await releaseTool.execute({ id }, { agent: { id: 'uuid-stranger' } })) as { text: string };
+		assert.ok(released.text.includes('失败'), released.text);
+		/* 失败文案要列出真正的持有者，否则用户不知道该找谁。 */
+		assert.ok(released.text.includes('uuid-owner'), released.text);
 	});
 });

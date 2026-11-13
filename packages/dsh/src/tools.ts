@@ -46,6 +46,8 @@ import {
 	labelOf,
 } from '@taskboard/protocol';
 
+import { holderOf } from './holder.ts';
+
 /** 一个已定义工具的最小形状（对齐 DSH `ToolDefinition` 的字段子集）。 */
 export interface ToolLike {
 	readonly name: string;
@@ -76,6 +78,13 @@ export interface ToolDeps {
 	readonly defineTool: DefineTool;
 	/** 解析默认空间（入口策略，不是 core 概念）。 */
 	readonly defaultWorkspaceId: () => Promise<string>;
+	/**
+	 * `ctx.subagents` —— 用来取当前 agent 的**名字**（holder）。
+	 *
+	 * ⚠ 可以是 `undefined`：没有 subagent 环境的 profile 也该能用任务板。
+	 *   那时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
+	 */
+	readonly subagents?: unknown;
 }
 
 /*
@@ -160,36 +169,14 @@ function rawOf(args: unknown, key: string): unknown {
 	return (args as Record<string, unknown>)[key];
 }
 
-/* ────────────────────────── core 尚未提供的能力 ──────────────────────────
+/* ──────────────────────── core 的方法：cast 不再需要 ────────────────────────
  *
- * ⚠ **等 `task-9` 合并**：`core` 正在实现 `transition` / `claim` / `release`。
- *   在那之前 `Taskboard` 接口上没有这三个方法。
+ * `task-9` 已合并：`claim` / `release` / `transition` 都在 `Taskboard` 上，
+ * 所以**不再需要探查式降级**。
  *
- * ⇒ 用一个局部扩展类型 + 一次 `as` 访问它们，**不改 core**：
- *   方法不存在时返回 `undefined`，工具答「功能尚未在核心中实现」而不是抛。
- *   core 合并后把 `?` 去掉、删掉 `as` 即可。
+ * ⚠ 但**保留一种降级**：`subagents` 服务可能不存在 —— 那时 holder 回落
+ *   `agent.id`（UUID），功能照样能用。见 `src/holder.ts` 的三条回落表。
  */
-
-/** 一次写操作的结果。 */
-type WriteOutcome = { readonly ok: true; readonly card: Card } | Failure;
-
-/** core 正在补的三个方法（`task-9`）。 */
-interface PendingCoreMethods {
-	transition?(
-		workspaceId: string,
-		cardId: string,
-		to: TaskState,
-		trigger: 'ai' | 'button',
-		actor?: string,
-	): Promise<WriteOutcome>;
-	claim?(workspaceId: string, cardId: string, actor?: string): Promise<WriteOutcome>;
-	release?(workspaceId: string, cardId: string, actor?: string): Promise<WriteOutcome>;
-}
-
-/** 取「可能还不存在」的 core 方法。 */
-function pendingMethods(taskboard: Taskboard): PendingCoreMethods {
-	return taskboard as unknown as PendingCoreMethods;
-}
 
 /**
  * 建九个工具。
@@ -551,15 +538,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			}
 
 			/* ── 执行转移：AI 触发 ── */
-			const transitionFn = pendingMethods(taskboard).transition;
-			if (typeof transitionFn !== 'function') {
-				/* 等 task-9 合并；core 还没提供 transition。 */
-				return {
-					text: `状态转移功能尚未在核心中实现（等 core 的 transition）。当前状态：${stateText(one.status)}。`,
-				};
-			}
-
-			const applied = await transitionFn.call(taskboard, workspaceId, cardId, to, 'ai');
+			const applied = await taskboard.transition(workspaceId, cardId, to, 'ai');
 			if (!applied.ok) return { text: `转移失败：\n${describeFailure(applied)}` };
 			return {
 				text: `已把 ${applied.card.id} 从「${labelOf(one.status)}」改为「${labelOf(applied.card.status)}」。`,
@@ -571,45 +550,44 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 	const claim = defineTool({
 		name: 'taskboard_claim',
 		description:
-			'领取一张工作卡（提交 → 处理中）。要满足 core 的准入条件（依赖已结束、手上没有别的处理中工作卡等）；不满足时返回原因。',
+			'领取一张工作卡（提交 → 处理中）。持有者 = 你（当前 agent 的名字）。要满足核心的准入条件（依赖已结束、手上没有别的处理中工作卡等）；不满足时返回原因。',
 		parameters: {
 			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
 			id: { type: 'string', required: true, description: '卡编号。' },
 		},
 		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
+		async execute(args: unknown, exec: unknown): Promise<unknown> {
 			const workspaceId = await resolveWorkspace(args);
 			const cardId = str(args, 'id') ?? '';
-			const claimFn = pendingMethods(taskboard).claim;
-			if (typeof claimFn !== 'function') {
-				return { text: '领取功能尚未在核心中实现（等 core 的 claim）。' };
-			}
-			const claimed = await claimFn.call(taskboard, workspaceId, cardId, 'ai');
+			const holder = holderOf(deps.subagents, exec);
+
+			const claimed = await taskboard.claim(workspaceId, cardId, 'ai', holder);
 			if (!claimed.ok) return { text: `领取失败：\n${describeFailure(claimed)}` };
-			return { text: `已领取 ${claimed.card.id}「${claimed.card.title}」，状态 ${labelOf(claimed.card.status)}。` };
+			return {
+				text: `已领取 ${claimed.card.id}「${claimed.card.title}」，状态 ${labelOf(claimed.card.status)}，持有者 ${holder}。`,
+			};
 		},
 	});
 
 	/* ── 9. 释放 ── */
 	const release = defineTool({
 		name: 'taskboard_release',
-		description: '释放对一张处理中工作卡的领取（处理中 → 提交），不算取消，改天还能再领。',
+		description:
+			'释放对一张处理中工作卡的领取（把自己从持有者里移除）。不算取消，改天还能再领。释放后若还有别人持有，状态不变。',
 		parameters: {
 			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
 			id: { type: 'string', required: true, description: '卡编号。' },
 		},
 		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
+		async execute(args: unknown, exec: unknown): Promise<unknown> {
 			const workspaceId = await resolveWorkspace(args);
 			const cardId = str(args, 'id') ?? '';
-			const releaseFn = pendingMethods(taskboard).release;
-			if (typeof releaseFn !== 'function') {
-				return { text: '释放功能尚未在核心中实现（等 core 的 release）。' };
-			}
-			const released = await releaseFn.call(taskboard, workspaceId, cardId, 'ai');
+			const holder = holderOf(deps.subagents, exec);
+
+			const released = await taskboard.release(workspaceId, cardId, 'ai', holder);
 			if (!released.ok) return { text: `释放失败：\n${describeFailure(released)}` };
 			return {
-				text: `已释放 ${released.card.id}「${released.card.title}」，状态回到 ${labelOf(released.card.status)}。`,
+				text: `已释放 ${released.card.id}「${released.card.title}」，状态 ${labelOf(released.card.status)}。`,
 			};
 		},
 	});

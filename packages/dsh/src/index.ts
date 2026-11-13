@@ -117,6 +117,13 @@ export type ApplyContext = {
 	readonly commands: CommandsLike;
 	/** 存储实现。由 `@taskboard/store` 或替换品提供。**唯一可替换的依赖。** */
 	readonly taskboard3Store: CardStore;
+	/**
+	 * `ctx.subagents`（可选）—— 用来把「当前 agent 的名字」当作 claim 的 holder。
+	 *
+	 * ⚠ **不是硬依赖**：没有 subagent 环境的 profile 也该能用任务板。
+	 *   缺席时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
+	 */
+	readonly subagents?: unknown;
 	effect?(dispose: () => void, label?: string): void;
 };
 
@@ -213,7 +220,7 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	});
 
 	/* 工具：`defineTool` 来自 DSH 的 `@deepseek-ai/dsh-tools`。 */
-	const tools = createTools({ taskboard, defineTool, defaultWorkspaceId });
+	const tools = createTools({ taskboard, defineTool, defaultWorkspaceId, subagents: ctx.subagents });
 	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
 
 	registerCommands(ctx.commands, { taskboard, defaultWorkspaceId });
