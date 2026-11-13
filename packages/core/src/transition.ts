@@ -117,7 +117,7 @@ export function adoptCard(
 
 	return {
 		ok: true,
-		card: withHistory({ ...card, status: to, adoptedAt: at }, { at, action: 'adopt' }),
+		card: withHistory({ ...card, status: to, adoptedAt: at }, { at, action: 'adopt', actor }),
 	};
 }
 
@@ -304,6 +304,7 @@ export function judgeClaim(
 export function claimCard(
 	card: Card,
 	holder: string,
+	actor: Actor,
 	at: number,
 ): { readonly ok: true; readonly card: Card } | Failure {
 	const added = withHolder(card, holder, at);
@@ -317,6 +318,7 @@ export function claimCard(
 		card: withHistory(next, {
 			at,
 			action: 'claim',
+			actor,
 			detail: { holder, added: added.added },
 		}),
 	};
@@ -337,6 +339,7 @@ export function claimCard(
 export function releaseCard(
 	card: Card,
 	holder: string,
+	actor: Actor,
 	at: number,
 ): { readonly ok: true; readonly card: Card } | Failure {
 	const removed = withoutHolder(card, holder);
@@ -357,7 +360,7 @@ export function releaseCard(
 		ok: true,
 		card: withHistory(
 			{ ...removed.card, status: nextStatus },
-			{ at, action: 'release', detail: { holder, remaining: removed.card.holders.length } },
+			{ at, action: 'release', actor, detail: { holder, remaining: removed.card.holders.length } },
 		),
 	};
 }
@@ -389,6 +392,8 @@ export function transitionCard(
 	 * 因为卡已经不需要再执行了。
 	 */
 	const ended = isEndedState(to);
+	/* `trigger` 就是事件的作者：`'ai'` 是模型，`'button'` 是人点的。 */
+	const actor: Actor = trigger === 'ai' ? 'ai' : 'user';
 	return {
 		ok: true,
 		card: withHistory(
@@ -397,7 +402,7 @@ export function transitionCard(
 				status: to,
 				...(ended ? { holders: [] } : {}),
 			},
-			{ at, action: 'transition', detail: { to, trigger } },
+			{ at, action: 'transition', actor, detail: { to, trigger } },
 		),
 	};
 }
@@ -488,7 +493,17 @@ export function recomputeOne(card: Card, cards: readonly Card[], at: number): Re
 	if (to === card.status) return null;
 
 	return {
-		card: withHistory({ ...card, status: to }, { at, action: 'recompute', detail: { to } }),
+		card: withHistory(
+			{ ...card, status: to },
+			/*
+			 * 重算的**作者是 `'ai'`**：它是系统自动算出来的，不是人点的。
+			 *
+			 * ⚠ 但不能无条件算「AI 改过」—— 重算只改**父卡状态**，
+			 *   而「AI 改过、用户未读」这条计数关心的是**内容变更**。
+			 *   详见 `updates.ts`：那里会**跳过 `recompute` 事件**。
+			 */
+			{ at, action: 'recompute', actor: 'ai', detail: { to } },
+		),
 		from: card.status,
 		to,
 	};

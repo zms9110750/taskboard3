@@ -25,7 +25,7 @@
  * ⇒ **所有类别都从草稿开始**，区别在采纳之后去哪。
  */
 
-import type { Failure } from '@taskboard/protocol';
+import type { Actor, Failure } from '@taskboard/protocol';
 import { DRAFT, ErrorCode, failure } from '@taskboard/protocol';
 
 import type { Card, CardSection, Relations, TemplateRef } from './card.js';
@@ -54,6 +54,14 @@ export interface CreateInput {
 	};
 	readonly note?: string;
 	readonly origin?: CreateOrigin;
+	/**
+	 * 谁建的卡。省略 = `'user'`。
+	 *
+	 * ⚠ 与 `origin` 不是一回事：`origin` 说的是**从哪儿建**
+	 *   （面板 / 派生 / fork / 导入），`actor` 说的是**谁**（人还是 AI）。
+	 *   AI 工具建卡时 `origin: 'panel'` 且 `actor: 'ai'` 是合法组合。
+	 */
+	readonly actor?: Actor;
 }
 
 /** 建卡的依赖。 */
@@ -150,6 +158,13 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 			{
 				at: deps.now,
 				action: 'create',
+				/*
+				 * 谁建的卡。
+				 *
+				 * ⚠ **不能假设是 user** —— AI 工具也能建卡（`origin` 里就有 `'ai'` 语义）。
+				 * ⇒ 由调用方在 `CreateInput` 里显式给 `actor`。
+				 */
+				actor: input.actor ?? 'user',
 				detail: { origin: input.origin ?? 'panel', templateRef: template.ref },
 			},
 		],

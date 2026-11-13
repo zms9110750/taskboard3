@@ -17,7 +17,7 @@
  * 两者之间的映射只在建卡/编辑那一刻发生，之后卡自给自足。
  */
 
-import type { LinkKindId, StatusGroup, TaskState } from '@taskboard/protocol';
+import type { Actor, LinkKindId, StatusGroup, TaskState } from '@taskboard/protocol';
 import { DRAFT, STATUS_GROUP_OF as STATUS_GROUP } from '@taskboard/protocol';
 
 /** 卡编号。不透明字符串 —— 本模块不解析格式、不从它反推任何东西。 */
@@ -69,10 +69,36 @@ export interface CardSection {
  *
  * `action` 是**封闭的机器可读标识**（英文），不是文案 —— 文案由 UI 按语言映射。
  * `at` 由 core 在写入时盖（卡本身不取时钟）。
+ *
+ * ## 为什么必须记 `actor`
+ *
+ * 用户 `2026-11-10` 的「更新计数」规则：
+ *
+ * > `ai` = AI 改过、用户还没看过；`user` = 用户改过、AI 还没看过
+ * > （AI/MCP 靠这个知道用户改了什么）。
+ *
+ * 要算这个，必须知道**每条事件是谁引发的**。
+ *
+ * ## 为什么不能从 `action` 反推
+ *
+ * | 想当然的推断 | 实际 |
+ * |---|---|
+ * | `create` 一定是 user | **错** —— AI 工具能建卡（`origin: 'ai'`） |
+ * | `claim` 一定是 ai | 错 —— 用户可以「代 AI 领取」（那是 user 点的） |
+ * | `transition` 一定是 user | 错 —— AI 也能调工具转移 |
+ *
+ * ⇒ **作者是事件的固有属性，只能显式记。**
  */
 export interface HistoryEntry {
 	readonly at: number;
 	readonly action: string;
+	/**
+	 * 谁引发的这条事件（不是卡属于谁）。
+	 *
+	 * 与 `Card.holders` 的分工：`holders` 只记「AI 现在持有这张卡」，
+	 * 而**用户的操作没有别的字段能记** ⇒ 必须记在这里。
+	 */
+	readonly actor: Actor;
 	readonly detail?: unknown;
 }
 
@@ -150,10 +176,18 @@ export function withHistory(card: Card, entry: HistoryEntry): Card {
 }
 
 /** 改状态并记一条历史（纯函数）。 */
-export function withStatus(card: Card, status: TaskState, action: string, at: number, detail?: unknown): Card {
+export function withStatus(
+	card: Card,
+	status: TaskState,
+	action: string,
+	at: number,
+	actor: Actor,
+	detail?: unknown,
+): Card {
 	return withHistory({ ...card, status }, {
 		at,
 		action,
+		actor,
 		...(detail === undefined ? {} : { detail }),
 	});
 }
