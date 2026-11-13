@@ -301,7 +301,9 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 				`模板：${one.template.ref}（${one.template.kind} / ${one.template.domain}）`,
 			];
 			if (one.deleted) lines.push('⚠ 这张卡已被删除（墓碑）。');
-			if (one.claimedBy !== null) lines.push(`占用者：${one.claimedBy}`);
+			if (one.holders.length > 0) {
+				lines.push(`占用者：${one.holders.map((held) => held.holder).join('、')}`);
+			}
 			if (one.note !== '') lines.push(`备注：${one.note}`);
 
 			const parent = one.relations.parent;
