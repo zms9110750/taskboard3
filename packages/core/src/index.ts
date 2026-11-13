@@ -28,6 +28,11 @@ import { findCard, withHistory, withoutDeleted } from './card.js';
 import type { Bus } from './bus.js';
 import { buildCard, type CreateInput, type CreateResult } from './create.js';
 import { createSearch, type SearchCondition } from './search.js';
+import {
+	judgeToolCall,
+	type ToolCallJudgement,
+	type ToolCallVerdict,
+} from './permission.js';
 import { createSqliteStore } from './storage/sqlite.js';
 import {
 	computeUpdates,
@@ -173,6 +178,48 @@ export interface Taskboard {
 		cardId: string,
 		reader: UpdateReader,
 	): Promise<{ readonly ok: true; readonly unread: CardUnread } | Failure>;
+
+	/* ── 工具权限（模型见 `permission.ts` 顶部） ── */
+
+	/**
+	 * 打开 / 关闭一个 scope 的**权限编辑开关**。
+	 *
+	 * ## 纯内存
+	 *
+	 * 用户原话：「这个开关是**纯内存**的。重启以后他**默认关**的。」
+	 * ⇒ 不进 kv、不写卡。进程重启即清空 —— 这是安全边界，不是实现偷懒。
+	 *
+	 * 不做超时、不做 AI 主动关（用户明确否掉）—— 只有用户点 UI。
+	 */
+	setPolicyEdit(scope: string, on: boolean): void;
+	/** 这个 scope 的权限编辑开关是否开着。 */
+	isPolicyEditOn(scope: string): boolean;
+
+	/**
+	 * 读全部模板的**额外**工具（`templateRef → extra[]`）。
+	 *
+	 * ⚠ 返回的是**增量**，不是完整策略。完整可用集 = `BASE_TOOLS ∪ extra`。
+	 */
+	getToolPolicies(): Readonly<Record<string, readonly string[]>>;
+	/**
+	 * 设置一个模板的**额外**工具（持久化到 kv）。
+	 *
+	 * ## ⚠ 只存增量，永远不挤掉 BASE
+	 *
+	 * 生效 = `BASE_TOOLS ∪ extra` —— 由 `judgeToolCall` 的结构保证。
+	 * ⇒ 无论这里存什么，`taskboard_*` 那些基础工具**永远不会被收走**
+	 *   （否则 AI 领了卡却无法 transition / release ⇒ 永久卡在「处理中」）。
+	 *
+	 * @param extra 传空数组 = 清掉该模板的额外权限（回到纯 BASE）
+	 */
+	setToolPolicy(templateRef: string, extra: readonly string[]): Promise<{ readonly ok: true } | Failure>;
+
+	/**
+	 * 判定一次工具调用 —— **纯判定**，不读存储、不知 dsh。
+	 *
+	 * `heldCards` 由 dsh 的 guard 收集后传进来（core 不认识 dsh 的 agent）。
+	 */
+	judgeToolCall(input: ToolCallJudgement): ToolCallVerdict;
 
 	/* ── 写 ── */
 	create(input: CreateInput): Promise<CreateResult>;
@@ -333,6 +380,47 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	const needsClaimKinds = (): ReadonlySet<string> =>
 		new Set(kinds.list().filter((one) => one.needsClaim).map((one) => one.id));
 
+	/* ── 工具权限的状态（见 `permission.ts`） ── */
+
+	/**
+	 * 权限编辑开关 —— **纯内存**（用户原话：「重启以后他默认关的」）。
+	 *
+	 * ⚠ 不进 kv、不写卡。重启即清空是**安全边界**，不是偷懒。
+	 */
+	const policyEditScopes = new Set<string>();
+
+	/** kv 里的键：全部模板的 extra 策略（一张表存全部，改动频率极低）。 */
+	const TOOL_POLICY_KEY = 'toolPolicy:v1';
+
+	/**
+	 * 策略缓存 —— **初值从 kv 读一次**。
+	 *
+	 * 为什么缓存：`judgeToolCall` 每次工具调用都要读它，而它是同步纯判定；
+	 * 每次去 `kvGet` + `JSON.parse` 不值得。写入时同步更新缓存 + 落 kv。
+	 */
+	const toolPolicies: Record<string, readonly string[]> = (() => {
+		const raw = store.kvGet(TOOL_POLICY_KEY);
+		if (raw === undefined) return {};
+		try {
+			const parsed = JSON.parse(raw) as unknown;
+			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+			const out: Record<string, readonly string[]> = {};
+			for (const [ref, value] of Object.entries(parsed as Record<string, unknown>)) {
+				/* 脏值跳过 —— 不能因为一条坏记录让整个策略表不可用。 */
+				if (!Array.isArray(value)) continue;
+				out[ref] = Object.freeze(value.filter((one): one is string => typeof one === 'string'));
+			}
+			return out;
+		} catch {
+			return {};
+		}
+	})();
+
+	/** 把策略表整体写回 kv（原子覆盖，不做单条更新）。 */
+	const saveToolPolicies = async (): Promise<void> => {
+		await store.kvSet(TOOL_POLICY_KEY, JSON.stringify(toolPolicies));
+	};
+
 	/**
 	 * 落库 + 返回。
 	 *
@@ -361,8 +449,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	};
 
 	/**
-	 * 工作空间变更的广播 —— **当前故意不接**（见下）。
-	 *
+	 * 工作空间变更的广播 —— **当前故意不接**（见下）。	 *
 	 * ## 发现：工作空间写路径完全绕开 `persist`
 	 *
 	 * 工作空间 CRUD 写的是 `store.kvSet`（`workspace.ts` 的 `writeAll`），
@@ -494,6 +581,73 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			if (result.changed) await persist(workspaceId, result.card);
 
 			return { ok: true, unread: result.card.unread };
+		},
+
+		/* ── 工具权限（模型见 permission.ts 顶部） ── */
+
+		setPolicyEdit(scope, on) {
+			/*
+			 * ## 纯内存（用户原话）
+			 *
+			 * > 这个开关是**纯内存**的。重启以后他**默认关**的。
+			 *
+			 * ⇒ 不进 kv、不写卡、不落库。进程重启即清空 —— 这是**安全边界**，
+			 *   不是"实现偷懒"：一个被遗忘打开的开关不该跨重启继续放大权限。
+			 *
+			 * ⚠ 不做超时、不做 AI 主动关（用户明确否掉）—— 只有用户点 UI。
+			 */
+			if (on) policyEditScopes.add(scope);
+			else policyEditScopes.delete(scope);
+		},
+
+		isPolicyEditOn(scope) {
+			return policyEditScopes.has(scope);
+		},
+
+		getToolPolicies() {
+			return { ...toolPolicies };
+		},
+
+		async setToolPolicy(templateRef, extra) {
+			const ref = templateRef.trim();
+			if (ref === '') {
+				return failure(ErrorCode.FIELD_REQUIRED, '模板 ref 不能为空。', {
+					issues: [{ path: '/templateRef', message: '必填' }],
+				});
+			}
+
+			/*
+			 * 模板不存在 ⇒ 拒。这是**唯一**的校验 —— 工具名不校验
+			 * （用户：「无所谓是否存在」「没注册的工具本来就不会生效」）。
+			 * core 也不知道 dsh 有哪些工具，校验它就是反向依赖。
+			 */
+			if (!templates.has(ref)) {
+				return failure(ErrorCode.TEMPLATE_NOT_FOUND, `模板「${ref}」不存在。`, {
+					detail: { templateRef: ref },
+				});
+			}
+
+			/*
+			 * ⚠ 存的是**增量**（`extra`），不是完整策略。
+			 *   生效 = `BASE_TOOLS ∪ extra` —— 由 `judgeToolCall` 的结构保证，
+			 *   所以这里无论存什么都不可能把 BASE 挤掉。
+			 *
+			 * 去重 + 丢掉空串，避免脏值进存储。
+			 */
+			const cleaned = [...new Set(extra.map((one) => one.trim()).filter((one) => one !== ''))];
+
+			if (cleaned.length === 0) delete toolPolicies[ref];
+			else toolPolicies[ref] = Object.freeze(cleaned);
+
+			await saveToolPolicies();
+			return { ok: true };
+		},
+
+		judgeToolCall(input) {
+			return judgeToolCall(input, {
+				policies: toolPolicies,
+				policyEditOn: policyEditScopes,
+			});
 		},
 
 		/* ── 写 ── */
@@ -783,6 +937,19 @@ export type {
 /** 持有者工具（多人协作）。 */
 export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
 
+/** 工具权限（BASE 常量 + 工作卡 extra + 纯内存开关 + 纯判定）。 */
+export {
+	BASE_TOOLS,
+	POLICY_TOOLS,
+	EXECUTION_TOOLS,
+	judgeToolCall,
+	isBaseTool,
+	isPolicyTool,
+	type PermissionFacts,
+	type ToolCallJudgement,
+	type ToolCallVerdict,
+} from './permission.ts';
+
 /** 未读工具（卡上的字段 + 维护它的纯函数）。 */
 export {
 	UNREAD_NONE,
@@ -801,6 +968,7 @@ export {
 
 /** 类别定义（`needsClaim` 由它声明）。 */
 export { BUILTIN_KINDS, KindRegistry, type KindDef } from './template/kinds.ts';
+
 
 
 
