@@ -1,0 +1,21 @@
+{
+  "name": "@local/taskboard3-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "任务板 3：可替换持久化与搜索的 Cordis 插件 bundle。",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "tsc -b packages/protocol packages/core packages/dsh",
+    "typecheck": "tsc -b --dry",
+    "clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['protocol','core','dsh'])rmSync('packages/'+p+'/lib',{recursive:true,force:true})\"",
+    "test:unit": "node --test \"packages/*/test/**/*.test.ts\"",
+    "test": "npm run test:unit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.9.3"
+  }
+}

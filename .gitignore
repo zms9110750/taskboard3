@@ -1,0 +1,21 @@
+# 依赖
+node_modules/
+
+# 编译产物（tsc / tsdown 生成，可重建）
+packages/*/lib/
+packages/*/dist/
+
+# 日志
+*.log
+
+# 本地数据（不入库）
+data/
+
+# 临时
+*.tmp
+.commitmsg.tmp
+
+# 编辑器
+.vs/
+*.vsidx
+*.suo
