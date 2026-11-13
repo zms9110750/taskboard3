@@ -146,6 +146,53 @@ function depsOf(overrides: Partial<RouteDeps> = {}): RouteDeps {
 	};
 }
 
+/* ────────────────────────── 模板选择器 ──────────────────────────
+ *
+ * ⚠ **不要用 `listTemplates()[0]`。**
+ *
+ * 模板清单按文件名字典序，第一个会随「新加了哪些 YAML」而变
+ * （只有 2 个模板时是 `research`；搬进 18 个之后变成 `architecture`）。
+ * 而不同 `kind` 的「草稿采纳」去向不同：
+ *
+ * | kind | 草稿的「采纳」去哪 |
+ * |---|---|
+ * | `goal` / `work` | → `SUBMITTED` |
+ * | `design` / `record` | → `AUTH_REQUIRED` |
+ *
+ * ⇒ 每个用例按**自己的意图**挑模板，而不是挑第一个。
+ * 这是「数据变了、断言的前提也跟着变」的典型 —— 断言写的是意图，不是位置。
+ */
+
+/** 模板的最小形状（`listTemplates()` 的元素）。 */
+interface TemplateLike {
+	readonly ref: string;
+	readonly displayName: string;
+	readonly kind: string;
+	readonly domain: string;
+	readonly codePrefix: string;
+}
+
+/** 找一个 `goal` / `work` 模板：它们的草稿「采纳」→ `SUBMITTED`。 */
+function adoptToSubmittedTemplate(): TemplateLike {
+	const found = taskboard.listTemplates().find((one) => one.kind === 'goal' || one.kind === 'work');
+	assert.ok(found !== undefined, '应当存在 goal / work 类别的模板');
+	return found as TemplateLike;
+}
+
+/** 找一个 `design` / `record` 模板：它们的草稿「采纳」**不**去 `SUBMITTED`。 */
+function adoptToAuthTemplate(): TemplateLike {
+	const found = taskboard.listTemplates().find((one) => one.kind === 'design' || one.kind === 'record');
+	assert.ok(found !== undefined, '应当存在 design / record 类别的模板');
+	return found as TemplateLike;
+}
+
+/** 任意一个模板（用例不关心类别时用）。 */
+function anyTemplate(): TemplateLike {
+	const found = taskboard.listTemplates()[0];
+	assert.ok(found !== undefined, '应当至少有一个模板');
+	return found as TemplateLike;
+}
+
 /** 跑一次请求。 */
 async function call(
 	deps: RouteDeps,
@@ -296,7 +343,7 @@ describe('POST /api/cards', () => {
 		const created = await taskboard.createWorkspace('缺标题');
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
-		const template = taskboard.listTemplates()[0];
+		const template = anyTemplate();
 		if (template === undefined) return;
 
 		const deps = depsOf({ defaultWorkspaceId: async () => created.workspace.id });
@@ -336,7 +383,7 @@ describe('GET /api/search', () => {
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
-		const template = taskboard.listTemplates()[0];
+		const template = anyTemplate();
 		if (template === undefined) return;
 
 		const card = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '唯一一张' });
@@ -383,7 +430,7 @@ describe('PATCH /api/cards/:id', () => {
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
-		const template = taskboard.listTemplates()[0];
+		const template = anyTemplate();
 		if (template === undefined) return;
 		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '旧标题' });
 		assert.equal(made.ok, true);
@@ -433,8 +480,8 @@ describe('POST /api/cards/:id/action', () => {
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
-		const template = taskboard.listTemplates()[0];
-		if (template === undefined) return;
+		/* 要 goal/work 模板：它们的草稿「采纳」→ SUBMITTED，这条路才是合法转移。 */
+		const template = adoptToSubmittedTemplate();
 		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
@@ -456,14 +503,18 @@ describe('POST /api/cards/:id/action', () => {
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
-		const template = taskboard.listTemplates()[0];
-		if (template === undefined) return;
+		/*
+		 * 要 design/record 模板：它们的草稿「采纳」去 AUTH_REQUIRED，
+		 * 所以「草稿 → SUBMITTED」在按钮表里**没有**这一条 —— 正是本用例要的。
+		 * 用 goal/work 反而不稳：那条转移是合法的。
+		 */
+		const template = adoptToAuthTemplate();
 		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '草稿' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 
 		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
-		/* 草稿 → 成功：没有任何类别有这条按钮。 */
+		/* 草稿 → 成功：没有任何类别有这条按钮（谁都不能从草稿直接跳到成功）。 */
 		const out = await call(deps, {
 			method: 'POST',
 			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}/action`,
@@ -479,8 +530,8 @@ describe('POST /api/cards/:id/action', () => {
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
-		const template = taskboard.listTemplates()[0];
-		if (template === undefined) return;
+		/* 同 501 那条：要 goal/work 模板，草稿「采纳」→ SUBMITTED 才是合法转移。 */
+		const template = adoptToSubmittedTemplate();
 		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳2' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
