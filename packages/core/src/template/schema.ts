@@ -1,5 +1,5 @@
 /**
- * 建卡内容校验 —— **按模板动态构建 zod schema**，惰性、带缓存、模板一变就重建。
+ * 建卡内容校验 —— **逐章节校验**，不构造整体对象 schema。
  *
  * ## 为什么在这里而不是在 tool 层（用户裁定）
  *
@@ -16,28 +16,37 @@
  *   · **m 个 action** —— payload 形状只定义一次；
  *   · 章节**引用** action，不复制它的形状。
  *
- * 实现上：每个模板的 schema 是 `z.strictObject({ [章节名]: actionSchema })`，
- * `actionSchema` 直接从 action 注册表拿 —— **同一个 ZodType 实例被多个章节复用**。
+ * 实现上：章节按 `section.action` 去 action 注册表取**同一个 ZodType 实例**，
  * 21 个模板共 93 个章节，但只存在 3 份 payload schema。
  *
- * ## 为什么缓存，为什么清空
+ * ## ⚠ 这里曾经有一个 `as unknown as`（已删除）
  *
- * 建卡时才需要 schema（不是每次启动都编译 21 个模板）。首次用到某模板时构建并缓存。
+ * 旧实现把章节拼成 `z.strictObject({ [动态章节名]: actionSchema })`：
  *
- * 用户裁定：「任何模板被注册/注销的时候需要通知。而架构会监听这个通知。
- * 他会在这个时候重建架构。」
+ * ```ts
+ * schema: z.strictObject(shape) as unknown as z.ZodType<Record<string, unknown>>
+ * ```
  *
- * ⇒ 注册/注销时**清空整个缓存**（不是只清那一个）——
- *   因为注销一个 action 会同时让所有引用它的模板失效，逐条追依赖不划算，
- *   而重建一个模板的 schema 是微秒级。
+ * `shape` 的 key 是**运行时才知道**的章节名，zod 推不出精确类型，于是强行断言。
+ * 那个断言掩了两件事：
  *
- * ## `additionalProperties: false` 等价物是 `z.strictObject`
+ * 1. **类型逃逸** —— 某个章节的 schema 拼错了，编译期看不出来；
+ * 2. **两套错误路径** —— 「未知章节名」与「payload 形状不对」各自造 `Failure`，
+ *    形状可能不一致，且各维护一份。
  *
- * 这是**拦住「模型编了个不存在的章节名」的唯一手段**。
- * 少了它就是「自由 object + 靠描述约束」，那正是旧仓库的问题。
+ * 判断标准（用户提的）：**删掉断言会编译失败吗？会 ⇒ 暴露的是设计问题。**
+ *
+ * ⇒ 改成**逐章节校验**：不需要「把 n 个章节合成一个对象」这个中间物，
+ *   于是没有类型可猜，也就没有断言要打。两套错误路径也合成一套。
+ *
+ * ## `additionalProperties: false` 由谁保证
+ *
+ * 现在是**手工的 key 归一化那一步**：`content` 的每个 key 都必须能在
+ * `sectionByKey` 里命中（label 或 id），否则记进 `unknown` 并整体拒绝。
+ * 这与旧 `z.strictObject` 等价，且错误消息能列出可用章节 —— 后者更可修。
  */
 
-import { z } from 'zod';
+import type { z } from 'zod';
 
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, failure } from '@taskboard/protocol';
@@ -46,24 +55,41 @@ import type { ActionRegistry } from './actions.js';
 import type { TemplateRegistry } from './registry.js';
 import type { SectionDef, TemplateDef } from './types.js';
 
-/**
- * 一个模板的校验器。
- *
- * `sectionByKey` 同时接受 **label**（人写得出名字）与 **id**（稳定标识），
- * 两者都映射到同一个章节 —— 校验前先把 key 归一化成 id。
- */
+/** 一个模板的校验器。 */
 export interface TemplateValidator {
-	/** 归一化后的 key（= sectionId）对应的 zod schema，`z.strictObject`。 */
-	readonly schema: z.ZodType<Record<string, unknown>>;
 	/** key（label 或 id）→ 章节定义。 */
 	readonly sectionByKey: ReadonlyMap<string, SectionDef>;
 	/** sectionId → 章节定义。 */
 	readonly sectionById: ReadonlyMap<string, SectionDef>;
+	/**
+	 * 校验一个章节的 payload。
+	 *
+	 * 直接调该章节所用 action 的 zod schema —— **没有整体对象 schema**，
+	 * 所以不需要任何类型断言。
+	 */
+	validateSection(section: SectionDef, payload: unknown): SectionValidation;
+}
+
+/** 单个章节的校验结果。 */
+export type SectionValidation =
+	| { readonly ok: true; readonly value: unknown }
+	| { readonly ok: false; readonly issues: readonly SectionIssue[] };
+
+/** 单章节校验失败的一条问题（`path` 是章节内的相对路径）。 */
+export interface SectionIssue {
+	/** 章节内相对路径：`[]` 表示 payload 本身，`['value']` 表示 payload.value。 */
+	readonly path: readonly (string | number)[];
+	readonly message: string;
 }
 
 /** 章节 payload 的校验结果（校验后的 payload，key = sectionId）。 */
 export type ValidatedContent =
-	| { readonly ok: true; readonly payloads: ReadonlyMap<string, unknown> }
+	| {
+			readonly ok: true;
+			readonly payloads: ReadonlyMap<string, unknown>;
+			/** 调用方给的原始 key（label 或 id），按 sectionId 索引 —— 用于错误路径。 */
+			readonly keys: ReadonlyMap<string, string>;
+	  }
 	| Failure;
 
 /**
@@ -154,7 +180,7 @@ export class ContentSchemaCache {
 
 		/* 省略 content ⇒ 全部用模板默认值（合法）。 */
 		if (raw === undefined || raw === null) {
-			return { ok: true, payloads: defaultsOf(template) };
+			return { ok: true, payloads: defaultsOf(template), keys: new Map() };
 		}
 		if (typeof raw !== 'object' || Array.isArray(raw)) {
 			return failure(ErrorCode.CONTENT_INVALID, 'content 必须是对象：key = 章节名，value = payload。', {
@@ -162,8 +188,9 @@ export class ContentSchemaCache {
 			});
 		}
 
-		/* ── 第一步：key 归一化（label 或 id → id），未知 key 收集起来 ── */
-		const normalized: Record<string, unknown> = {};
+		/* ── ① key 归一化（label 或 id → sectionId），未知 key 收集起来 ── */
+		const given = new Map<string, unknown>(); /* sectionId → 原始 payload */
+		const keyOf = new Map<string, string>(); /* sectionId → 调用方给的原始 key */
 		const unknown: string[] = [];
 		for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
 			const section = validator.sectionByKey.get(key);
@@ -171,31 +198,44 @@ export class ContentSchemaCache {
 				unknown.push(key);
 				continue;
 			}
-			normalized[section.id] = value;
+			given.set(section.id, value);
+			keyOf.set(section.id, key);
 		}
 
+		/* ── ② 未知 key ⇒ 一次报全（列出可用章节 + 它们的 action） ── */
 		if (unknown.length > 0) {
 			return unknownKeysFailure(ref, template, unknown);
 		}
 
-		/* ── 第二步：形状校验（strictObject 会拦住多余 key，但归一化后 key 都是合法的） ── */
-		const parsed = validator.schema.safeParse(normalized);
-		if (!parsed.success) {
-			return zodIssuesToFailure(ref, parsed.error);
-		}
-
-		/* ── 第三步：省略的章节填模板默认值 ── */
+		/* ── ③ 逐章节校验 —— 失败就攒起来，一次报全（不是只报第一个） ── */
 		const payloads = new Map<string, unknown>();
+		const issues: { section: SectionDef; key: string; issue: SectionIssue }[] = [];
+
 		for (const section of template.sections) {
-			const given = normalized[section.id];
-			if (given !== undefined) {
-				payloads.set(section.id, given);
+			const provided = given.get(section.id);
+			if (provided === undefined) continue; /* 省略 ⇒ 第 ④ 步填默认值 */
+
+			const verdict = validator.validateSection(section, provided);
+			if (verdict.ok) {
+				payloads.set(section.id, verdict.value);
 				continue;
 			}
+			const key = keyOf.get(section.id) ?? section.label;
+			for (const issue of verdict.issues) issues.push({ section, key, issue });
+		}
+
+		if (issues.length > 0) {
+			return sectionIssuesFailure(ref, template, issues);
+		}
+
+		/* ── ④ 省略的章节填模板默认值 ── */
+		for (const section of template.sections) {
+			if (payloads.has(section.id)) continue;
 			const fallback = section.defaultPayload;
 			if (fallback !== undefined) payloads.set(section.id, fallback);
 		}
-		return { ok: true, payloads };
+
+		return { ok: true, payloads, keys: keyOf };
 	}
 }
 
@@ -210,7 +250,8 @@ export function buildValidator(
 ): TemplateValidator | undefined {
 	const sectionByKey = new Map<string, SectionDef>();
 	const sectionById = new Map<string, SectionDef>();
-	const shape: Record<string, z.ZodType> = {};
+	/** sectionId → 该章节用的 payload schema。 */
+	const schemaById = new Map<string, z.ZodType>();
 
 	for (const section of template.sections) {
 		sectionById.set(section.id, section);
@@ -220,18 +261,51 @@ export function buildValidator(
 
 		const action = actions.get(section.action);
 		if (action === undefined) return undefined;
-		/* 章节可省略 ⇒ optional；省略时用模板默认值。 */
-		shape[section.id] = action.payloadSchema.optional();
+		/* 章节可省略 ⇒ 只在「给了」的时候校验；省略由模板默认值补。 */
+		schemaById.set(section.id, action.payloadSchema);
 	}
 
 	return {
-		schema: z.strictObject(shape) as unknown as z.ZodType<Record<string, unknown>>,
 		sectionByKey,
 		sectionById,
+		validateSection(section: SectionDef, payload: unknown): SectionValidation {
+			const schema = schemaById.get(section.id);
+			if (schema === undefined) {
+				/*
+				 * 走到这里说明 buildValidator 与 sections 不一致（不该发生）。
+				 * 不静默放行 —— 那是「校验器坏了却装作数据没问题」。
+				 */
+				return {
+					ok: false,
+					issues: [{ path: [], message: `章节「${section.label}」没有可用的 schema` }],
+				};
+			}
+			const parsed = schema.safeParse(payload);
+			if (parsed.success) return { ok: true, value: parsed.data };
+			return {
+				ok: false,
+				issues: parsed.error.issues.map((issue) => ({
+					path: issue.path.map((one) => (typeof one === 'number' ? one : String(one))),
+					message: issue.message,
+				})),
+			};
+		},
 	};
 }
 
-/** 未知章节名的失败 —— **错误消息就是修复指南**。 */
+/* ────────────────────────── 两种失败，一套形状 ────────────────────────── */
+
+/**
+ * 未知章节名的失败 —— **错误消息就是修复指南**。
+ *
+ * 消息格式（有测试断言，别改）：
+ *
+ * ```
+ * 模板「X」没有这些章节：「a」、「b」。
+ * 可用的章节（key 用引号里的原文）：
+ *   「label」 → action=text
+ * ```
+ */
 function unknownKeysFailure(ref: string, template: TemplateDef, unknown: readonly string[]): Failure {
 	const lines = [
 		`模板「${template.displayName || ref}」没有这些章节：${unknown.map((one) => `「${one}」`).join('、')}。`,
@@ -247,16 +321,40 @@ function unknownKeysFailure(ref: string, template: TemplateDef, unknown: readonl
 	});
 }
 
-/** 把 zod 的 issue 翻成 `Failure`（path 转 JSON Pointer）。 */
-function zodIssuesToFailure(ref: string, error: z.ZodError): Failure {
-	const issues = error.issues.map((issue) => ({
-		path: `/content/${issue.path.map(String).join('/')}`,
-		message: issue.message,
-	}));
-	return failure(ErrorCode.CONTENT_INVALID, `模板「${ref}」的章节内容格式不对。`, {
-		issues,
+/**
+ * 章节 payload 形状不对的失败。
+ *
+ * 与 `unknownKeysFailure` **同一个 `Failure` 形状**：
+ * `code` 都是 `CONTENT_INVALID`，都有 `issues: FieldIssue[]`，
+ * `path` 都是 JSON Pointer（`/content/<调用方给的原 key>/<字段>`）。
+ *
+ * 消息开头保留旧格式（`模板「X」的章节内容格式不对。`），
+ * 后面补上逐章节的精确位置 —— 那才是模型能照着改的东西。
+ */
+function sectionIssuesFailure(
+	ref: string,
+	template: TemplateDef,
+	issues: readonly { section: SectionDef; key: string; issue: SectionIssue }[],
+): Failure {
+	const lines = [`模板「${template.displayName || ref}」的章节内容格式不对。`, '逐条修正：'];
+	for (const { section, key, issue } of issues) {
+		const where = issue.path.length === 0 ? '（整体）' : issue.path.map(String).join('.');
+		lines.push(`  「${key}」的 ${where}：${issue.message}（该章 action=${section.action}）`);
+	}
+
+	return failure(ErrorCode.CONTENT_INVALID, lines.join('\n'), {
+		issues: issues.map(({ key, issue }) => ({
+			path: pointerOf(['content', key, ...issue.path.map(String)]),
+			message: issue.message,
+		})),
 		detail: { templateRef: ref },
 	});
+}
+
+/** 拼一个 JSON Pointer（每段转义 `~` 与 `/`）。 */
+function pointerOf(segments: readonly string[]): string {
+	const escaped = segments.map((one) => one.replace(/~/gu, '~0').replace(/\//gu, '~1'));
+	return `/${escaped.join('/')}`;
 }
 
 /** 取模板的全部默认 payload（key = sectionId）。 */

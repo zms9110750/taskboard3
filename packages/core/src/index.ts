@@ -24,6 +24,8 @@ import { DRAFT, ErrorCode, failure, type Actor, type TaskState } from '@taskboar
 
 import type { Card, CardSection, WorkspaceId } from './card.js';
 import { findCard, withoutDeleted } from './card.js';
+/* ⚠ 原型期脚手架，整个文件可删 —— 见 `bus.ts` 顶部的拆解步骤。 */
+import type { Bus } from './bus.js';
 import { buildCard, type CreateInput, type CreateResult } from './create.js';
 import { createSearch, type SearchCondition } from './search.js';
 import { createSqliteStore } from './storage/sqlite.js';
@@ -89,6 +91,13 @@ type CommonOptions = {
 	readonly builtinDomains?: boolean;
 	/** 是否自动注册三个内置 action（默认 `true`）。 */
 	readonly builtinActions?: boolean;
+	/**
+	 * 广播总线。**省略 = 不广播**（生产 / 测试默认）。
+	 *
+	 * ⚠ 这是**原型期脚手架**，见 `bus.ts` 顶部与拆解步骤。
+	 *   拆掉时删这一行即可 —— 默认不创建，所以生产路径零开销。
+	 */
+	readonly bus?: Bus;
 };
 
 /** 工厂参数：给 `store` 或给 `dataDir`，二选一。 */
@@ -315,11 +324,53 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	const needsClaimKinds = (): ReadonlySet<string> =>
 		new Set(kinds.list().filter((one) => one.needsClaim).map((one) => one.id));
 
-	/** 落库 + 返回。 */
+	/**
+	 * 落库 + 返回。
+	 *
+	 * ## ⚠ 这里是**唯一的广播收口**（原型期脚手架）
+	 *
+	 * 所有写卡路径都经过本函数 —— `create` / `update` / `remove` / `adopt` /
+	 * `claim` / `release` / `transition` / `recomputeUpward` 全部。
+	 * ⇒ 在这一处 `emit` 就覆盖了全部卡片写入，不需要在每个方法里各发一次。
+	 *
+	 * ## 已知代价（刻意接受）
+	 *
+	 * 一次 `update` 如果连带重算了 2 张父卡，会发出 **3 条** `card:written`。
+	 * 消费方会重拉 3 次 —— **这是原型期刻意接受的浪费**，换「一处收口、一处可拆」。
+	 *
+	 * 合并成一条要等其他写路径也收口、或者干脆拆掉这条管道换成真接口。
+	 * 现在合并会引入「批次」概念（begin/chunk/commit），那是给临时脚手架修永久设施。
+	 */
 	const persist = async (workspaceId: WorkspaceId, card: Card): Promise<Card> => {
 		await store.save(workspaceId, card);
+		/*
+		 * 消息只带「有事发生」+ 被写的那**一张**卡。
+		 * 消费方收到后自己 `loadAll` 重拉 —— 不解析细节（见 `bus.ts`）。
+		 */
+		options.bus?.emit({ type: 'card:written', workspaceId, cards: [card] });
 		return card;
 	};
+
+	/**
+	 * 工作空间变更的广播 —— **当前故意不接**（见下）。
+	 *
+	 * ## 发现：工作空间写路径完全绕开 `persist`
+	 *
+	 * 工作空间 CRUD 写的是 `store.kvSet`（`workspace.ts` 的 `writeAll`），
+	 * **不经过 `persist`**。所以卡片广播对空间变更是无效的。
+	 *
+	 * ## 为什么现在不接
+	 *
+	 * 接它有两种做法，都超出「可拆 = 3 处」的预算：
+	 *
+	 * 1. 在 4 个空间方法里各加一行 `emit` ⇒ 删除成本从 3 处变成 8 处；
+	 * 2. 加一个 `emitWorkspace()` 收口 + 5 处调用 ⇒ 仍是多一处必须删的东西。
+	 *
+	 * ⇒ **宁可让 `workspace:written` 类型暂时空着**，保持「删 3 处就能拆干净」。
+	 *   这是原型期的功能缺口，已报给 lead 决策 —— 要补的时候按上面 2 做。
+	 *
+	 * ⚠ 别在这里留一行注释掉的 `emit` 假装接了。
+	 */
 
 	/**
 	 * 沿 `parent` 链向上重算并落库。
@@ -382,7 +433,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			}
 			return { ok: true, workspace: result.workspace };
 		},
-		ensureAnyWorkspace() {
+		async ensureAnyWorkspace() {
 			return ensureAnyWorkspace(store, now());
 		},
 
@@ -722,6 +773,7 @@ export {
 
 /** 类别定义（`needsClaim` 由它声明）。 */
 export { BUILTIN_KINDS, KindRegistry, type KindDef } from './template/kinds.ts';
+
 
 
 
