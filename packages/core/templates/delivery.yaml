@@ -1,0 +1,40 @@
+schema: template@1
+name: delivery
+displayName: 交付
+kind: record
+domain: 核心
+codePrefix: L
+
+usage: |
+  工作任务需要一个交付类型的子任务对工作结果进行汇报，才能将工作通过。
+  应该仅作为工作的子任务使用。
+
+description: |
+  这张卡是「工作的完成记录」。它不判断好坏，只记录发生了什么。
+  用户会过目并评审，通过后工作可以置成功 —— 换言之，工作必须由用户验收后才算成功。
+
+sections:
+  what:
+    label: 交付了什么
+    hint: |
+      这里用提交后不可交互的展示组件。内容写实际做了什么。
+    default:
+      $type: markdown
+      placeholder: 描述你实际做了什么
+
+  where:
+    label: 在哪里
+    hint: |
+      这里用提交后不可交互的展示组件。写哪里可以查阅；
+      调研汇报类且没有留下实体文件时，写证据出处。
+    default:
+      $type: markdown
+      placeholder: 在哪里可以查阅；没有实体文件就写证据出处
+
+  howToLook:
+    label: 怎么查看 / 怎么使用
+    hint: |
+      这里用提交后不可交互的展示组件。写这个结果怎么使用、怎么验证它确实完成了工作。
+    default:
+      $type: markdown
+      placeholder: 怎么使用 / 怎么验证

@@ -1,0 +1,53 @@
+schema: template@1
+name: verify
+displayName: 校验
+kind: work
+domain: 核心
+codePrefix: V
+
+usage: |
+  执行一个动作看实际结果：编译、跑测试、跑一遍看行为。
+  执行本身就是工作内容，不产出判定；结果如何、归哪一类，写进交付卡。
+  要留下可重复运行的测试文件，用 `编写测试`。
+
+description: |
+  本卡是「去验」：执行什么、在哪执行、什么条件下执行。
+  执行结果不写在本卡上 —— 建交付子任务记录。
+
+  有结果：建交付记下实际结果与差异。通过与否都算校验做完了，只是结论不同；
+  要不要修是另一张工作卡的事，不塞回本卡。
+  根本没法执行：开阻碍说明原因，本卡按失败收尾。
+
+derive:
+  - label: 开交付
+    description: 验完了，把实际结果与差异作为交付子任务记下来
+    template: delivery
+  - label: 记阻碍
+    description: 根本没法执行，把挡路的事记下来
+    template: blocker
+
+sections:
+  target:
+    label: 校验什么
+    hint: |
+      这里用可填写的文本框。写被校验的对象。
+    default:
+      $type: text
+      placeholder: 被校验的对象
+
+  expected:
+    label: 预期的结果鉴别
+    hint: |
+      这里用可填写的文本框。写「怎么识别出预期结果」——
+      预设可能的行为与鉴别结果的映射关系。
+    default:
+      $type: text
+      placeholder: 怎么识别出预期结果
+
+  method:
+    label: 怎么校验
+    hint: |
+      这里用可填写的文本框。写用什么手段执行。
+    default:
+      $type: text
+      placeholder: 用什么手段校验

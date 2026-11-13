@@ -1,0 +1,74 @@
+schema: template@1
+name: architecture
+displayName: 技术架构
+kind: design
+domain: 代码
+codePrefix: R
+
+usage: |
+  用户要新建项目，或要换掉整个技术底座 —— 此时还没有框架。
+  项目已存在、只是加功能时别用本卡：架构继承自既有结构，不重开。
+
+description: |
+  本卡里有一大堆抉择：服务器 + 客户端还是仅客户端；网页、服务器端网页、游戏引擎还是 WPF；
+  消息走观察者还是异步流；用内置事件还是消息总线；输出走控制台还是日志库写文件；
+  数据用 HTML、JSON 还是直接拉通信库；用 API 的话用哪个平台的 API。
+
+  每一条都可能需要另开一张设计卡 —— 拆成独立子任务分别定，不要挤在本卡里一次写完。
+
+  拿不准的时候为设计开演示：极小实现跑一遍看效果，产物不进项目、不合并。
+
+  一直拆到架构能定下来为止；或者用户授意「不在意这里，先这样」—— 那就停，
+  把「还没定、用户接受了这个不确定」写清楚。
+
+  方向由用户确认，ai 不拍板。
+
+derive:
+  - label: 调研
+    description: 某个引擎 / 包 / 平台选不定，先查清
+    template: research
+  - label: 决策
+    description: 几条路线都成立，先摆岔口
+    template: decision
+  - label: 演示
+    description: 先跑个极小实现，看方向是否成立
+    template: demo
+  - label: 接口界面
+    description: 架构定了，接着定对外形状
+    template: interfaceUi
+
+sections:
+  architecture:
+    label: 选择什么架构
+    hint: |
+      这里用可填写的文本框。写已经定下来的那几条：形态、消息机制、输出方式、数据格式、外部 API 来源，
+      各自写选定的理由。还没定的不要写进来，它们应该先被拆成子任务。
+    default:
+      $type: text
+      placeholder: 选什么架构，为什么
+
+  packages:
+    label: 可能采用的包
+    hint: |
+      这里用可填写的文本框。逐个写候选的包 / 库 / 服务，注明各自解决什么、有什么已知限制。
+      还没查就写「待查」，不要把没查过的写成结论。
+    default:
+      $type: text
+      placeholder: 候选的包 / 库 / 服务
+
+  nonGoal:
+    label: 明确不采用
+    hint: |
+      这里用可填写的文本框。写这次明确不引入的技术、明确不支持的平台与运行环境。
+      不写这一章，以后会被当成遗漏。
+    default:
+      $type: text
+      placeholder: 这次明确不采用什么
+
+  check:
+    label: 怎么判断选型成立
+    hint: |
+      这里用可填写的文本框。写一个最小的验证：跑通什么、看到什么，就算这个选型成立。
+    default:
+      $type: text
+      placeholder: 跑通什么就算选型成立

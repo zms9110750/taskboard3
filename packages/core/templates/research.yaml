@@ -11,6 +11,10 @@ usage: |
 description: |
   本卡是「去查」。查到的东西不写在本卡上 —— 建交付子任务记录。
 
+  有结论：建交付汇报结果。
+  查不到：成本超过章节写的上限，开阻碍说明原因，本卡按失败收尾。
+  方向错了：不要在本卡上改目标，取消本卡，另开新卡。
+
 derive:
   - label: 开交付
     description: 查完了，把结果作为交付子任务记下来
@@ -23,8 +27,7 @@ sections:
   question:
     label: 要查什么
     hint: |
-      写待回答的具体问题。
-    action: text
+      这里用可填写的文本框。写待回答的具体问题。
     default:
       $type: text
       placeholder: 要回答的问题
@@ -32,17 +35,26 @@ sections:
   method:
     label: 怎么查
     hint: |
-      写打算用什么办法查。
-    action: text
+      这里用可填写的文本框。写打算用什么办法查。
     default:
       $type: text
       placeholder: 打算用什么办法
 
-  costLimit:
-    label: 成本上限
+  noInfo:
+    label: 没有信息时，怎么知道怎么查
     hint: |
-      写收益上限与成本上限。
-    action: markdown
+      这里用可填写的文本框。写「连从哪里入手都不知道」时的应对 ——
+      例如先问谁、先读哪个文件、先跑什么命令。
     default:
-      $type: markdown
+      $type: text
+      placeholder: 完全没头绪时，从哪里入手
+
+  costLimit:
+    label: 最高收益是什么；查询成本多大时无法接受
+    hint: |
+      这里用可填写的文本框，写两件事：
+      1) 查到之后最多能带来什么收益；
+      2) 成本（时间 / 调用次数 / 人力）超过多少就放弃。
+    default:
+      $type: text
       placeholder: 收益上限、成本上限

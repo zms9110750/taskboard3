@@ -1,0 +1,50 @@
+schema: template@1
+name: writeCode
+displayName: 编写代码
+kind: work
+domain: 代码
+codePrefix: W
+
+usage: |
+  真正动手改代码 —— 实现类路径的最后一站。
+
+  只有在「要改什么」已经明确、没有歧义时才开。方案、方向、接口形状还没定，
+  回到对应的设计卡，不要用这张卡边写边定。
+
+description: |
+  本卡是「去写」。写完的产物不写在本卡上 —— 用交付子任务记录：交付了什么、在哪、怎么查看。
+
+  写完要跑一次看对不对：在同一父卡下并列开校验，校验依赖本卡。
+  写完要留下可反复运行的测试：开编写测试，不要在交付里附一段跑完就丢的脚本。
+
+  中途发现方案不对：不要在本卡上改方向，也不要自己硬扛。
+  搁置本卡，开阻碍或提问向用户说明；取消与重定方向归用户。
+
+  遇到挡住的事：开阻碍卡。
+
+derive:
+  - label: 交付
+    description: 写完了，记做了什么、在哪、怎么看
+    template: delivery
+  - label: 阻碍
+    description: 被什么挡住了
+    template: blocker
+
+sections:
+  what:
+    label: 要写什么
+    hint: |
+      这里用可填写的文本框。写动作本身：改哪些文件、加什么、删什么、边界在哪。
+      方案论证不写这里；方案没定说明开错了卡。
+    default:
+      $type: text
+      placeholder: 要写什么
+
+  magic:
+    label: 现在拍脑袋决定的东西
+    hint: |
+      这里用可填写的文本框。列出哪些是暂时定的、没有依据、靠猜的，以及打算什么时候补依据。
+      没有就写没有，不要留空。
+    default:
+      $type: text
+      placeholder: 哪些是暂时定的、没有依据
