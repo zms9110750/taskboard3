@@ -724,6 +724,16 @@ export function loadTemplatesFrom(tb: Taskboard, dir: string): { readonly loaded
 export { createSqliteStore } from './storage/sqlite.ts';
 
 /*
+ * ── 广播总线（⚠ 原型期脚手架，整个可删） ──
+ *
+ * `bus.ts` 的文件头写了拆解步骤。**导出 `createBus` 是为了让入口（dsh / mcp）
+ * 能真的造出一个 bus 传给 `createTaskboard({ bus })`** —— 不导出它，入口只能
+ * 自己照结构再写一个（dsh 现在就是这么绕的），那正是要避免的「第二份真值」。
+ */
+export { createBus, type Bus, type TaskboardMessage } from './bus.ts';
+
+
+/*
  * ── 搜索（core 强依赖） ──
  *
  * 用户裁定：「就强耦合吧」⇒ 搜索不是端口，`TaskboardOptions` 里没有 `search`。
