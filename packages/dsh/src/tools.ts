@@ -47,7 +47,6 @@ import {
 } from '@taskboard/protocol';
 
 import { holderOf } from './holder.ts';
-import { actorAware } from './core-writes.ts';
 
 /** 一个已定义工具的最小形状（对齐 DSH `ToolDefinition` 的字段子集）。 */
 export interface ToolLike {
@@ -177,16 +176,8 @@ function rawOf(args: unknown, key: string): unknown {
 	return (args as Record<string, unknown>)[key];
 }
 
-/* ─────────────────────── core 接口缺的 actor 参数 ───────────────────────
- *
- * 见 `src/core-writes.ts` 顶部的说明：core 的**实现**接受 `actor`，
- * 但 `Taskboard` **接口声明**漏了这个参数。
- *
- * ⇒ `actorAware(taskboard)` 补上，让 AI 路径能显式标 `'ai'`。
- */
-
 /**
- * 建九个工具。
+ * 建十一个工具。
  *
  * @returns 工具定义数组（调用方逐个 `ctx.tools.register`）
  */
@@ -481,7 +472,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 				merged[key] = value;
 			}
 
-			const updated = await actorAware(taskboard).update(workspaceId, cardId, { content: merged }, 'ai');
+			const updated = await taskboard.update(workspaceId, cardId, { content: merged }, 'ai');
 			if (!updated.ok) return { text: `改内容失败：\n${describeFailure(updated)}` };
 
 			const changed = Object.keys(incoming as Record<string, unknown>);
@@ -506,7 +497,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			const cardId = str(args, 'id') ?? '';
 			const note = str(args, 'note') ?? '';
 
-			const updated = await actorAware(taskboard).update(workspaceId, cardId, { note }, 'ai');
+			const updated = await taskboard.update(workspaceId, cardId, { note }, 'ai');
 			if (!updated.ok) return { text: `改备注失败：\n${describeFailure(updated)}` };
 			return {
 				text: note === ''

@@ -32,7 +32,6 @@ import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
 import type { ConnectionLike, IncomingLike, OutgoingLike, ReadableIncoming, WebServerLike } from './types.ts';
-import { actorAware } from './core-writes.ts';
 
 /** 路由前缀（Host 注册用，带前导 `/`）。 */
 export const ROUTE_PREFIX = '/taskboard3';
@@ -374,7 +373,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			const note = raw(body, 'note');
 			const content = raw(body, 'content');
 			/* 显式 `'user'`：浏览器里操作的人是用户。 */
-			const updated = await actorAware(taskboard).update(
+			const updated = await taskboard.update(
 				workspaceId,
 				cardId,
 				{
@@ -391,7 +390,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		if (method === 'DELETE') {
 			const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
 			/* 显式 `'user'`：同上。 */
-			const removed = await actorAware(taskboard).remove(workspaceId, cardId, 'user');
+			const removed = await taskboard.remove(workspaceId, cardId, 'user');
 			if (!removed.ok) return sendFailure(res, removed);
 			sendOk(res, { card: removed.card });
 			return;

@@ -190,7 +190,6 @@ export { createHandler, mountRoutes, ROUTE_PREFIX } from './http.ts';
 export type { RouteDeps } from './http.ts';
 export { createTools, describeFailure } from './tools.ts';
 export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
-export { actorAware, type ActorAwareWrites, type WriteActor } from './core-writes.ts';
 export { holderOf, type ExecLike, type SubagentsLike } from './holder.ts';
 export { registerCommands } from './commands.ts';
 export type { CommandDeps } from './commands.ts';
