@@ -53,7 +53,6 @@ import { dirname, join } from 'node:path';
 
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
-import type { Failure, TaskState } from '@taskboard/protocol';
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
