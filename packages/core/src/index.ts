@@ -28,6 +28,12 @@ import { buildCard, type CreateInput, type CreateResult } from './create.js';
 import { createSearch, type SearchCondition } from './search.js';
 import { createSqliteStore } from './storage/sqlite.js';
 import {
+	computeUpdates,
+	markCardSeen,
+	type UpdateReader,
+	type UpdatesResult,
+} from './updates.js';
+import {
 	adoptCard,
 	claimCard,
 	judgeClaim,
@@ -126,6 +132,29 @@ export interface Taskboard {
 	get(workspaceId: WorkspaceId, cardId: string): { readonly ok: true; readonly card: Card } | Failure;
 	/** 筛选。 */
 	search(workspaceId: WorkspaceId, condition: SearchCondition): readonly Card[];
+
+	/* ── 更新计数 ── */
+
+	/**
+	 * 两类「更新」的卡 id 清单。
+	 *
+	 * - `ai` —— AI 改过，**用户**还没看过；
+	 * - `user` —— 用户改过，**AI** 还没看过。
+	 *
+	 * 「看过」的游标存在 `CardStore` 的 kv 里（`read:<cardId>:<reader>`），
+	 * 截止时间是**卡历史里最新事件的 `at`**，不是当前时间。
+	 */
+	updates(workspaceId: WorkspaceId): Promise<UpdatesResult>;
+	/**
+	 * 标记一张卡被某个读者「看过」。
+	 *
+	 * @returns 写入的游标时间（= 卡历史里最新事件的 `at`，**不是 `now()`**）
+	 */
+	markSeen(
+		workspaceId: WorkspaceId,
+		cardId: string,
+		reader: UpdateReader,
+	): Promise<{ readonly ok: true; readonly at: number } | Failure>;
 
 	/* ── 写 ── */
 	create(input: CreateInput): Promise<CreateResult>;
@@ -356,8 +385,35 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true, card };
 		},
 		search(workspaceId, condition) {
-			/* 搜索走**读路径** ⇒ 过滤墓碑（「按 id 直查可见」是另一条路径）。 */
-			return search(withoutDeleted(load(workspaceId)), condition);
+			const visible = withoutDeleted(load(workspaceId));
+
+			/*
+			 * `updatedBy` 是**事件维度**：搜索实现算不出（要已读游标）。
+			 * ⇒ 在这一层先算 `updates()`，把结果集塞进条件再交给搜索。
+			 *
+			 * `search` 本身仍是同步的 —— 游标读的是 kv（同步接口），
+			 * 所以这里不需要 async。
+			 */
+			if (condition.updatedBy !== undefined && condition.updatedBy.length > 0) {
+				const { ai, user } = computeUpdates(visible, store);
+				const wanted = new Set<string>();
+				for (const reader of condition.updatedBy) {
+					if (reader === 'ai') for (const id of ai) wanted.add(id);
+					if (reader === 'user') for (const id of user) wanted.add(id);
+				}
+				return search(visible, { ...condition, updatedCardIds: [...wanted] });
+			}
+
+			return search(visible, condition);
+		},
+
+		/* ── 更新计数 ── */
+		async updates(workspaceId) {
+			return computeUpdates(withoutDeleted(load(workspaceId)), store);
+		},
+		async markSeen(workspaceId, cardId, reader) {
+			const cards = load(workspaceId);
+			return markCardSeen(store, findCard(cards, cardId), cardId, reader);
 		},
 
 		/* ── 写 ── */
@@ -379,7 +435,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true, card: built.card };
 		},
 
-		async update(workspaceId, cardId, patch) {
+		async update(workspaceId, cardId, patch, actor: Actor = 'user') {
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -417,13 +473,13 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				title,
 				sections,
 				note: patch.note ?? existing.note,
-				history: [...existing.history, { at, action: 'update' }],
+				history: [...existing.history, { at, action: 'update', actor }],
 			};
 			await persist(workspaceId, next);
 			return { ok: true, card: next };
 		},
 
-		async remove(workspaceId, cardId) {
+		async remove(workspaceId, cardId, actor: Actor = 'user') {
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -440,7 +496,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			const next: Card = {
 				...existing,
 				deleted: true,
-				history: [...existing.history, { at, action: 'delete' }],
+				history: [...existing.history, { at, action: 'delete', actor }],
 			};
 			await persist(workspaceId, next);
 			return { ok: true, card: next };
@@ -503,7 +559,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				});
 			}
 
-			const result = claimCard(existing, holder, now());
+			const result = claimCard(existing, holder, actor, now());
 			if (!result.ok) return result;
 
 			await persist(workspaceId, result.card);
@@ -511,7 +567,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true, card: result.card, recomputed };
 		},
 
-		async release(workspaceId, cardId, _actor, holder) {
+		async release(workspaceId, cardId, actor, holder) {
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -525,7 +581,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			 * 只移除**自己**那一条。列表里还有别人 ⇒ 状态不变；
 			 * 空了才回「提交」—— 那由 `releaseCard` 处理。
 			 */
-			const result = releaseCard(existing, holder, now());
+			const result = releaseCard(existing, holder, actor, now());
 			if (!result.ok) return result;
 
 			await persist(workspaceId, result.card);
@@ -639,6 +695,20 @@ export type {
 /** 持有者工具（多人协作）。 */
 export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
 
+/** 更新计数（读游标 + 事件作者）。 */
+export {
+	computeUpdates,
+	lastChangeBy,
+	latestEventAt,
+	markCardSeen,
+	readCursor,
+	readCursorKey,
+	type UpdateReader,
+	type UpdatesResult,
+} from './updates.ts';
+
 /** 类别定义（`needsClaim` 由它声明）。 */
 export { BUILTIN_KINDS, KindRegistry, type KindDef } from './template/kinds.ts';
+
+
 
