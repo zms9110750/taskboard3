@@ -159,6 +159,13 @@ function str(body: unknown, key: string): string | undefined {
 	return typeof value === 'string' ? value : undefined;
 }
 
+/** 读参数里的布尔值（严格：只认 `true` / `false`）。 */
+function bool(body: unknown, key: string): boolean | undefined {
+	if (typeof body !== 'object' || body === null) return undefined;
+	const value = (body as Record<string, unknown>)[key];
+	return typeof value === 'boolean' ? value : undefined;
+}
+
 /** 从已解析的 body 里取任意字段。 */
 function raw(body: unknown, key: string): unknown {
 	if (typeof body !== 'object' || body === null) return undefined;
@@ -185,6 +192,19 @@ export interface RouteDeps {
 	 *   `GET /api/events` 那一段。见 `src/sse.ts` 文件头。
 	 */
 	readonly events?: SseHub;
+	/**
+	 * 权限编辑开关（**纯内存**）。
+	 *
+	 * ⚠ 这两个端点是**用户在 UI 上点的**，不是 AI 工具。
+	 *   scope 用**会话 id**（UI 拿得到），不是 agent 名字（UI 拿不到）。
+	 *   见 `src/permission.ts` 文件头「两个身份不是一个东西」。
+	 */
+	readonly policyEdit?: {
+		/** 读开关状态。 */
+		isOn(scope: string): boolean;
+		/** 设置开关。 */
+		set(scope: string, on: boolean): void;
+	};
 }
 
 /**
@@ -329,6 +349,50 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		 *   但 **disposer 不会主动断开已建立的连接** ⇒ `SseHub` 自己管集合。
 		 */
 		hub.open(req, res as SseResponseLike);
+		return;
+	}
+
+	/* ── 权限编辑开关（用户点 UI） ──
+	 *
+	 * ⚠ **scope 由前端传 `?scope=<sessionId>`** —— 这是**自报**。
+	 *
+	 *   为什么不安全但可接受：这个开关是「用户给自己开权限」。
+	 *   自报别人的 sessionId 最多是**给别人开权限**（放大他人权限），
+	 *   不是自己越权。真正的越权得靠用户在 UI 上主动点，攻击者拿不到那个按钮。
+	 *
+	 *   对比：`POST /api/cards/:id/action` 的 claim 必须拒绝，因为那里
+	 *   「谁在领」决定的是**执行者身份**，自报就等于冒充。
+	 *
+	 * ⚠ **AI 工具不能调这两个端点** —— 它们不在 `POLICY_TOOLS` 里，
+	 *   AI 走 `taskboard_tool_policy_*` 三个工具，那些受这个开关控制。
+	 */
+	if (tail === '/policy-edit') {
+		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+		const scope = query.get('scope') ?? '';
+		const on = scope === '' ? false : (deps.policyEdit?.isOn(scope) ?? false);
+		sendOk(res, { unlocked: on });
+		return;
+	}
+
+	if (tail === '/policy-edit/toggle') {
+		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
+		const body = await readJson(req);
+		const scope = str(body, 'scope') ?? query.get('scope') ?? '';
+		const unlocked = bool(body, 'unlocked');
+		if (scope === '') {
+			sendFailure(res, failure(ErrorCode.FIELD_REQUIRED, '缺 scope（会话 id）。'), 400);
+			return;
+		}
+		if (unlocked === undefined) {
+			sendFailure(res, failure(ErrorCode.FIELD_REQUIRED, '缺 unlocked（true / false）。'), 400);
+			return;
+		}
+		if (deps.policyEdit === undefined) {
+			sendFailure(res, failure(ErrorCode.PORT_UNAVAILABLE, '权限编辑开关未装配。'), 501);
+			return;
+		}
+		deps.policyEdit.set(scope, unlocked);
+		sendOk(res, { unlocked: deps.policyEdit.isOn(scope) });
 		return;
 	}
 

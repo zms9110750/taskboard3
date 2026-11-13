@@ -63,6 +63,12 @@ export interface ConnectionLike {
 /** `ctx.tools` 的最小面。 */
 export interface ToolsLike {
 	register(definition: unknown): unknown;
+	/**
+	 * 注册一个**单调拒绝** guard（`dsh-tools/src/index.ts:384`）。
+	 *
+	 * 返回的拒绝理由无法被后续监听器翻回允许 —— 这是权限判定的正确位置。
+	 */
+	guard(guard: (execution: unknown) => string | undefined): () => void;
 }
 
 /** `ctx.commands` 的最小面。 */
@@ -72,4 +78,15 @@ export interface CommandsLike {
 		description: string;
 		handler(invocation: unknown): unknown;
 	}): unknown;
+}
+
+/**
+ * `ctx.permissionPresets` 的最小面。
+ *
+ * ⚠ 只用到 `current(session)` —— 读「这个会话当前选的是哪个权限预设」。
+ *   真实接口见 `dsh-permission-presets/src/index.ts:343`：
+ *   `current(session: Session): string`（可能返回 `'custom'`）。
+ */
+export interface PermissionPresetsLike {
+	current(session: unknown): string;
 }

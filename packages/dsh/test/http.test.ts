@@ -821,6 +821,136 @@ describe('GET /api/events', () => {
 	});
 });
 
+/* ────────────────────────── 权限编辑开关端点 ──────────────────────────
+ *
+ * ⚠ 这两个端点是**用户点 UI** 用的，走 `actor: 'user'`。
+ *   scope 是**会话 id**（UI 拿得到），不是 agent 名字（UI 拿不到）。
+ *   见 `src/permission.ts` 文件头「两个身份不是一个东西」。
+ */
+
+describe('权限编辑开关', () => {
+	/** 造一份带开关的路由依赖（开关存在内存 Map 里）。 */
+	function depsWithSwitch(overrides: Partial<RouteDeps> = {}): {
+		readonly deps: RouteDeps;
+		readonly state: Map<string, boolean>;
+	} {
+		const state = new Map<string, boolean>();
+		const deps = depsOf({
+			policyEdit: {
+				isOn: (scope) => state.get(scope) === true,
+				set: (scope, on) => {
+					if (on) state.set(scope, true);
+					else state.delete(scope);
+				},
+			},
+			...overrides,
+		});
+		return { deps, state };
+	}
+
+	it('GET 读状态：默认关', async () => {
+		const { deps } = depsWithSwitch();
+		const out = await call(deps, { url: `${ROUTE_PREFIX}/api/policy-edit?scope=sess-1` });
+		assert.equal(out.status, 200);
+		const payload = out.json as { data: { unlocked: boolean } };
+		assert.equal(payload.data.unlocked, false);
+	});
+
+	it('POST toggle 打开 ⇒ 之后 GET 读到 true', async () => {
+		const { deps, state } = depsWithSwitch();
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
+			body: { scope: 'sess-1', unlocked: true },
+		});
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { data: { unlocked: boolean } };
+		assert.equal(payload.data.unlocked, true);
+		assert.equal(state.get('sess-1'), true);
+
+		const read = await call(deps, { url: `${ROUTE_PREFIX}/api/policy-edit?scope=sess-1` });
+		const readPayload = read.json as { data: { unlocked: boolean } };
+		assert.equal(readPayload.data.unlocked, true);
+	});
+
+	it('POST toggle 关闭 ⇒ 从表里删掉', async () => {
+		const { deps, state } = depsWithSwitch();
+		await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
+			body: { scope: 'sess-1', unlocked: true },
+		});
+		await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
+			body: { scope: 'sess-1', unlocked: false },
+		});
+		assert.equal(state.has('sess-1'), false, '关闭应删键（不是存 false）');
+	});
+
+	it('⚠ scope 隔离：开 sess-1 不影响 sess-2', async () => {
+		const { deps } = depsWithSwitch();
+		await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
+			body: { scope: 'sess-1', unlocked: true },
+		});
+		const other = await call(deps, { url: `${ROUTE_PREFIX}/api/policy-edit?scope=sess-2` });
+		const payload = other.json as { data: { unlocked: boolean } };
+		assert.equal(payload.data.unlocked, false, '别的会话不该被打开');
+	});
+
+	it('缺 scope ⇒ 400', async () => {
+		const { deps } = depsWithSwitch();
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
+			body: { unlocked: true },
+		});
+		assert.equal(out.status, 400, out.raw);
+		const payload = out.json as { code: string };
+		assert.equal(payload.code, 'FIELD_REQUIRED');
+	});
+
+	it('缺 unlocked ⇒ 400', async () => {
+		const { deps } = depsWithSwitch();
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
+			body: { scope: 'sess-1' },
+		});
+		assert.equal(out.status, 400, out.raw);
+	});
+
+	it('开关未装配 ⇒ POST 答 501', async () => {
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
+			body: { scope: 'sess-1', unlocked: true },
+		});
+		assert.equal(out.status, 501, out.raw);
+	});
+
+	it('鉴权拒绝 ⇒ 401，且不改状态', async () => {
+		const { deps, state } = depsWithSwitch({ connection: { requestRejection: () => 401 } });
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
+			body: { scope: 'sess-1', unlocked: true },
+		});
+		assert.equal(out.status, 401);
+		assert.equal(state.size, 0, '鉴权失败不该改开关');
+	});
+
+	it('method 不对 ⇒ 405', async () => {
+		const { deps } = depsWithSwitch();
+		const read = await call(deps, { method: 'POST', url: `${ROUTE_PREFIX}/api/policy-edit?scope=s` });
+		assert.equal(read.status, 405);
+		const toggle = await call(deps, { url: `${ROUTE_PREFIX}/api/policy-edit/toggle` });
+		assert.equal(toggle.status, 405);
+	});
+});
+
 describe('路径与异常', () => {
 	it('不认识的前缀 ⇒ 404', async () => {
 		const out = await call(depsOf(), { url: '/taskboard3/other' });
