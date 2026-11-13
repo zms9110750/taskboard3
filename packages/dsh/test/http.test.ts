@@ -648,13 +648,13 @@ describe('actor 标记：HTTP 写 ⇒ updates.user', () => {
 		const wsId = created.workspace.id;
 		const template = anyTemplate();
 		/*
-		 * 用 `actor: 'ai'` 建卡 ⇒ 卡进 `updates.ai`。
-		 * 然后让**用户**标记已读（清 `updates.ai` 比的是用户游标）。
+		 * 用 `actor: 'ai'` 建卡 ⇒ `Card.unread.ai = true`（进 `updates.ai`）。
+		 * 然后让**用户**标记已读 ⇒ 清掉 `unread.ai`。
 		 *
-		 * ⚠ 不反过来做（建卡用 user、再让 AI 标已读）—— 那种写法会撞上
-		 *   「两条事件同一毫秒」的边界：`markSeen` 写的是**已有**最新事件的 at，
-		 *   紧接着的写入若落同一毫秒，`事件 at > 游标` 不成立，卡片就不会进 updates。
-		 *   而这里 AI 的游标是 0，任何后续用户改动都严格大于它。
+		 * ⚠ 早期版本这里有一段「同一毫秒」的注意事项 —— 那是对**读游标**时代的
+		 *   描述（`markSeen` 写「已有最新事件的 at」，紧接着同毫秒写入会漏判）。
+		 *   现在未读是卡上的两个 bool（用户裁定「不能再用胶水代码了」），
+		 *   **没有时间比较 ⇒ 那个边界不存在了**。先 AI 建卡再用户已读仍然是最直接的写法。
 		 */
 		const made = await taskboard.create({
 			workspaceId: wsId,
@@ -726,14 +726,23 @@ describe('actor 标记：HTTP 写 ⇒ updates.user', () => {
 		assert.equal(out.status, 200, out.raw);
 
 		/*
-		 * `seen` 标的是**用户**的游标 ⇒ 清的是 `updates.ai`，**不是** `updates.user`。
-		 * 所以这条 user 类的记录**还在**（它还等着 AI 标已读）。
+		 * `seen(reader: 'user')` 清的是 `Card.unread.ai`（「AI 改过、用户待读」，
+		 * **不是** `Card.unread.user`）。
+		 *
+		 * ⇒ 这条 `user` 类的记录**还在**（它还等着 AI 标已读）。
+		 *
+		 * ⚠ 字段名方向是交叉的：名字说的是「谁改的」，不是「谁没读」。
 		 */
 		result = await updatesOf(wsId);
 		assert.ok(
 			result.user.includes(made.card.id),
 			`seen(reader=user) 不该清 updates.user：${JSON.stringify(result)}`,
 		);
+
+		/* 但返回值现在带的是**标记之后的未读状态**（不再是 `at`）。 */
+		const payload = out.json as { data: { unread: { ai: boolean; user: boolean } } };
+		assert.equal(payload.data.unread.ai, false, '用户已读 ⇒ unread.ai 应为 false');
+		assert.equal(payload.data.unread.user, true, '用户改过 ⇒ unread.user 应为 true');
 	});
 });
 

@@ -220,7 +220,7 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 
 export { createHandler, mountRoutes, ROUTE_PREFIX } from './http.ts';
 export type { RouteDeps } from './http.ts';
-export { createTools, describeFailure } from './tools.ts';
+export { createTools, describeFailure, describeUnread } from './tools.ts';
 export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
 export { holderOf, type ExecLike, type SubagentsLike } from './holder.ts';
 /* ⚠ 原型期脚手架导出 —— 与 `core/src/bus.ts` 同生共死。 */
