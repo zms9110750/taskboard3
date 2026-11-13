@@ -1,0 +1,48 @@
+schema: template@1
+name: research
+displayName: 调研
+kind: work
+domain: 核心
+codePrefix: S
+
+usage: |
+  不知道该怎么做之前，先查清楚。
+
+description: |
+  本卡是「去查」。查到的东西不写在本卡上 —— 建交付子任务记录。
+
+derive:
+  - label: 开交付
+    description: 查完了，把结果作为交付子任务记下来
+    template: delivery
+  - label: 记阻碍
+    description: 查不到或成本超上限，把挡路的事记下来
+    template: blocker
+
+sections:
+  question:
+    label: 要查什么
+    hint: |
+      写待回答的具体问题。
+    action: text
+    default:
+      $type: text
+      placeholder: 要回答的问题
+
+  method:
+    label: 怎么查
+    hint: |
+      写打算用什么办法查。
+    action: text
+    default:
+      $type: text
+      placeholder: 打算用什么办法
+
+  costLimit:
+    label: 成本上限
+    hint: |
+      写收益上限与成本上限。
+    action: markdown
+    default:
+      $type: markdown
+      placeholder: 收益上限、成本上限
