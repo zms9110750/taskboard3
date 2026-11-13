@@ -29,9 +29,12 @@ import type { Bus } from './bus.js';
 import { buildCard, type CreateInput, type CreateResult } from './create.js';
 import { createSearch, type SearchCondition } from './search.js';
 import {
+	effectiveToolsOf,
 	judgeToolCall,
 	type ToolCallJudgement,
 	type ToolCallVerdict,
+	type ToolPolicyDelta,
+	type ToolPolicyStore,
 } from './permission.js';
 import { createSqliteStore } from './storage/sqlite.js';
 import {
@@ -127,6 +130,55 @@ export interface StatusWriteOk {
 /** 一次状态写的结果。 */
 export type StatusWriteResult = StatusWriteOk | Failure;
 
+/**
+ * 从不可信的 kv 值里读一份**增量**（`string[]`）。
+ *
+ * 非数组 / 坏元素 ⇒ 静默降级成空。不能因为一条坏记录让权限系统不可用。
+ */
+function readDelta(raw: unknown): readonly string[] {
+	if (!Array.isArray(raw)) return Object.freeze([]);
+	return Object.freeze(raw.filter((one): one is string => typeof one === 'string'));
+}
+
+/** 从不可信的 kv 值里读 `name → 增量` 映射。 */
+function readDeltaMap(raw: unknown): Record<string, readonly string[]> {
+	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+	const out: Record<string, readonly string[]> = {};
+	for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+		if (key === '') continue;
+		out[key] = readDelta(value);
+	}
+	return out;
+}
+
+/** 从不可信的 kv 值里读 `name → string[]` 映射（组的成员）。 */
+function readStringListMap(raw: unknown): Record<string, readonly string[]> {
+	return readDeltaMap(raw);
+}
+
+/**
+ * 清洗一份增量：去首尾空白、丢空串、去重、冻结。
+ *
+ * ⚠ **不校验工具名是否存在。** 用户原话：
+ *   「只校验工具名字。所以无所谓是否存在」「没注册的工具本来就不会生效」。
+ *   core 也不知道 dsh 注册了哪些工具，校验它就是反向依赖。
+ */
+function cleanDelta(delta: readonly string[]): readonly string[] {
+	return Object.freeze([...new Set(delta.map((one) => one.trim()).filter((one) => one !== ''))]);
+}
+
+/** 清洗名字（组名 / 模板 ref）。 */
+function cleanName(name: string): string {
+	return name.trim();
+}
+
+/** 空名字的失败。 */
+function emptyNameFailure(what: string): Failure {
+	return failure(ErrorCode.FIELD_REQUIRED, `${what}不能为空。`, {
+		issues: [{ path: '/name', message: '必填' }],
+	});
+}
+
 /** 任务板实例的公开面。 */
 export interface Taskboard {
 	/* ── 工作空间 ── */
@@ -196,23 +248,59 @@ export interface Taskboard {
 	isPolicyEditOn(scope: string): boolean;
 
 	/**
-	 * 读全部模板的**额外**工具（`templateRef → extra[]`）。
+	 * 读**完整四档策略**（通用 / 组 / 组成员 / 独立）。
 	 *
-	 * ⚠ 返回的是**增量**，不是完整策略。完整可用集 = `BASE_TOOLS ∪ extra`。
+	 * ⚠ 返回的是**增量**集合，不是生效集。生效集用 `effectiveToolsOf(ref)`。
 	 */
-	getToolPolicies(): Readonly<Record<string, readonly string[]>>;
+	getToolPolicies(): ToolPolicyStore;
 	/**
-	 * 设置一个模板的**额外**工具（持久化到 kv）。
+	 * 算一个模板的**生效工具集** = `BASE ∪ common ∪ 命中的组 ∪ 独立档`。
 	 *
-	 * ## ⚠ 只存增量，永远不挤掉 BASE
-	 *
-	 * 生效 = `BASE_TOOLS ∪ extra` —— 由 `judgeToolCall` 的结构保证。
-	 * ⇒ 无论这里存什么，`taskboard_*` 那些基础工具**永远不会被收走**
-	 *   （否则 AI 领了卡却无法 transition / release ⇒ 永久卡在「处理中」）。
-	 *
-	 * @param extra 传空数组 = 清掉该模板的额外权限（回到纯 BASE）
+	 * @returns 去重、稳定顺序（先 BASE 原序，再按档位叠加）
 	 */
-	setToolPolicy(templateRef: string, extra: readonly string[]): Promise<{ readonly ok: true } | Failure>;
+	effectiveToolsOf(templateRef: string): readonly string[];
+
+	/**
+	 * **通用档**：所有工作卡都吃这份增量。
+	 *
+	 * @param delta 传空数组 = 清掉通用档
+	 */
+	setCommonPolicy(delta: ToolPolicyDelta): Promise<{ readonly ok: true } | Failure>;
+	/**
+	 * **组档**：给一个组设增量。组内所有模板都吃。
+	 *
+	 * ⚠ 组名不存在时自动创建（只是名字，不校验"组是否已存在"）。
+	 *   只设策略不设成员 ⇒ 组存在但没人，谁都不生效 —— 合法状态。
+	 *
+	 * @param groupName 用户起的名字
+	 * @param delta 传空数组 = 清掉这个组的增量（组成员保留）
+	 */
+	setGroupPolicy(groupName: string, delta: ToolPolicyDelta): Promise<{ readonly ok: true } | Failure>;
+	/**
+	 * **独立档**：只对这一个模板生效。
+	 *
+	 * ⚠ **保守旧名字**（dsh 已有工具调它），语义从「唯一一档」变成「四档之一」。
+	 *
+	 * @param templateRef 模板 ref（会校验存在性 —— 这是唯一校验的粒度）
+	 * @param delta 传空数组 = 清掉该模板的独立档
+	 */
+	setTemplatePolicy(
+		templateRef: string,
+		delta: ToolPolicyDelta,
+	): Promise<{ readonly ok: true } | Failure>;
+
+	/**
+	 * 设置一个组的**成员**（`templateRef` 列表）。
+	 *
+	 * ⚠ **不校验模板是否存在** —— 用户「无所谓是否存在」。
+	 *   组里有个不存在的模板名只会静默不生效。
+	 */
+	setGroupMembers(
+		groupName: string,
+		templates: readonly string[],
+	): Promise<{ readonly ok: true } | Failure>;
+	/** 删掉一个组（策略 + 成员一起删）。幂等：组不存在也算成功。 */
+	removeGroup(groupName: string): Promise<{ readonly ok: true } | Failure>;
 
 	/**
 	 * 判定一次工具调用 —— **纯判定**，不读存储、不知 dsh。
@@ -389,30 +477,52 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	 */
 	const policyEditScopes = new Set<string>();
 
-	/** kv 里的键：全部模板的 extra 策略（一张表存全部，改动频率极低）。 */
-	const TOOL_POLICY_KEY = 'toolPolicy:v1';
+	/**
+	 * kv 里的键：**四档策略**（一张表存全部，改动频率极低）。
+	 *
+	 * ## ⚠ v1 → v2 不迁移
+	 *
+	 * `v1` 是旧的 `{ [templateRef]: extra }` 平铺结构。新结构是
+	 * `{ common, groups, groupMembers, templates }` —— 形状完全不同。
+	 *
+	 * 用户说过旧数据不需要迁移 ⇒ **直接换键，旧值不读也不删**
+	 * （留着不碍事；真要清，`kvSet('toolPolicy:v1', undefined)` 一行）。
+	 */
+	const TOOL_POLICY_KEY = 'toolPolicy:v2';
 
 	/**
-	 * 策略缓存 —— **初值从 kv 读一次**。
+	 * 策略缓存 —— **初值从 kv 读一次**，之后写入时同步更新 + 整体写回。
 	 *
 	 * 为什么缓存：`judgeToolCall` 每次工具调用都要读它，而它是同步纯判定；
-	 * 每次去 `kvGet` + `JSON.parse` 不值得。写入时同步更新缓存 + 落 kv。
+	 * 每次去 `kvGet` + `JSON.parse` 不值得。
+	 *
+	 * ⚠ 缓存是**可变的**（`common` / `groups` 等字段会被赋值）——
+	 *   因为 `setCommonPolicy` 这类方法是"改一个档位再整体写回"。
+	 *   对外 `getToolPolicies()` 返回的是**浅拷贝**，防止调用方改到缓存。
 	 */
-	const toolPolicies: Record<string, readonly string[]> = (() => {
+	const toolPolicies: {
+		common: readonly string[];
+		groups: Record<string, readonly string[]>;
+		groupMembers: Record<string, readonly string[]>;
+		templates: Record<string, readonly string[]>;
+	} = (() => {
 		const raw = store.kvGet(TOOL_POLICY_KEY);
-		if (raw === undefined) return {};
+		const empty = { common: [] as readonly string[], groups: {}, groupMembers: {}, templates: {} };
+		if (raw === undefined) return empty;
 		try {
 			const parsed = JSON.parse(raw) as unknown;
-			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
-			const out: Record<string, readonly string[]> = {};
-			for (const [ref, value] of Object.entries(parsed as Record<string, unknown>)) {
-				/* 脏值跳过 —— 不能因为一条坏记录让整个策略表不可用。 */
-				if (!Array.isArray(value)) continue;
-				out[ref] = Object.freeze(value.filter((one): one is string => typeof one === 'string'));
-			}
-			return out;
+			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return empty;
+
+			const source = parsed as Record<string, unknown>;
+			return {
+				common: readDelta(source['common']),
+				groups: readDeltaMap(source['groups']),
+				groupMembers: readStringListMap(source['groupMembers']),
+				templates: readDeltaMap(source['templates']),
+			};
 		} catch {
-			return {};
+			/* 整个值坏掉 ⇒ 回到空策略（不能因为一条坏记录让权限系统不可用）。 */
+			return empty;
 		}
 	})();
 
@@ -605,10 +715,33 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		getToolPolicies() {
-			return { ...toolPolicies };
+			return toolPolicies;
 		},
 
-		async setToolPolicy(templateRef, extra) {
+		effectiveToolsOf(templateRef) {
+			return effectiveToolsOf(toolPolicies, templateRef);
+		},
+
+		async setCommonPolicy(delta) {
+			toolPolicies.common = cleanDelta(delta);
+			await saveToolPolicies();
+			return { ok: true };
+		},
+
+		async setGroupPolicy(groupName, delta) {
+			const name = cleanName(groupName);
+			if (name === '') return emptyNameFailure('组名');
+
+			toolPolicies.groups[name] = cleanDelta(delta);
+			/*
+			 * 只设策略不设成员时，组存在但没有成员 ⇒ 谁都不生效。
+			 * 那是合法状态（用户刚建组还没拉人），不是错误。
+			 */
+			await saveToolPolicies();
+			return { ok: true };
+		},
+
+		async setTemplatePolicy(templateRef, delta) {
 			const ref = templateRef.trim();
 			if (ref === '') {
 				return failure(ErrorCode.FIELD_REQUIRED, '模板 ref 不能为空。', {
@@ -627,18 +760,35 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				});
 			}
 
+			toolPolicies.templates[ref] = cleanDelta(delta);
+			await saveToolPolicies();
+			return { ok: true };
+		},
+
+		async setGroupMembers(groupName, members) {
+			const name = cleanName(groupName);
+			if (name === '') return emptyNameFailure('组名');
+
 			/*
-			 * ⚠ 存的是**增量**（`extra`），不是完整策略。
-			 *   生效 = `BASE_TOOLS ∪ extra` —— 由 `judgeToolCall` 的结构保证，
-			 *   所以这里无论存什么都不可能把 BASE 挤掉。
-			 *
-			 * 去重 + 丢掉空串，避免脏值进存储。
+			 * ⚠ **不校验模板是否存在** —— 用户「无所谓是否存在」。
+			 *   组里有个不存在的模板名只会静默不生效（`effectiveToolsOf` 按
+			 *   `member` 匹配，那个 ref 永远不会被任何卡命中）。
+			 *   校验它反而会在"模板暂时卸载"时拒掉一次合理的批量设置。
 			 */
-			const cleaned = [...new Set(extra.map((one) => one.trim()).filter((one) => one !== ''))];
+			toolPolicies.groupMembers[name] = Object.freeze(
+				[...new Set(members.map((one) => one.trim()).filter((one) => one !== ''))],
+			);
+			await saveToolPolicies();
+			return { ok: true };
+		},
 
-			if (cleaned.length === 0) delete toolPolicies[ref];
-			else toolPolicies[ref] = Object.freeze(cleaned);
+		async removeGroup(groupName) {
+			const name = cleanName(groupName);
+			if (name === '') return emptyNameFailure('组名');
 
+			/* 组名不存在不算错误 —— 幂等删除。 */
+			delete toolPolicies.groups[name];
+			delete toolPolicies.groupMembers[name];
 			await saveToolPolicies();
 			return { ok: true };
 		},
