@@ -67,3 +67,24 @@ export {
 	type Failure,
 	type FieldIssue,
 } from './error.ts';
+
+export {
+	judgeTransition,
+	autoTargetsOf,
+	endedStates,
+	isEndedState,
+	isKnownKind,
+	buttonTargetsOf,
+	buttonsOf,
+	AUTO_STATES,
+	BUTTON_ACTIONS,
+	type Actor,
+	type KindId,
+	type TransitionTrigger,
+	type TransitionVerdict,
+	type TransitionRejection,
+	type TransitionRejectReason,
+	type EndedTaskState,
+	type ButtonAction,
+	type ButtonMethod,
+} from './transition.ts';
