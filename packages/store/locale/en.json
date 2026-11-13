@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Task board storage",
+    "description": "Default storage and search for the task board: SQLite persistence plus a pure filter function. Replaceable as one plugin row."
+  }
+}

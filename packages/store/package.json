@@ -1,0 +1,36 @@
+{
+  "name": "@taskboard/store",
+  "version": "0.1.0-3.a.1",
+  "type": "module",
+  "description": "任务板存储与搜索的默认实现：sqlite 存储 + 纯函数搜索。可整行替换。",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": ["lib", "cordis.patch.yml", "locale"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@taskboard/core": "workspace:*",
+    "@taskboard/protocol": "workspace:*",
+    "@taskboard/search": "workspace:*"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
