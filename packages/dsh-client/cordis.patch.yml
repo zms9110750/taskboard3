@@ -1,0 +1,3 @@
+- insert:
+    - id: taskboard3-dsh-client
+      name: '@taskboard/dsh-client'
