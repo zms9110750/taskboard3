@@ -39,7 +39,16 @@ import {
 } from '@taskboard/protocol';
 
 import type { Card, CardId } from './card.js';
-import { childIdsOf, findCard, isEndedCard, withHistory } from './card.js';
+import {
+	childIdsOf,
+	findCard,
+	holderIdsOf,
+	isEndedCard,
+	isHeldBy,
+	withHistory,
+	withHolder,
+	withoutHolder,
+} from './card.js';
 
 /* ────────────────────────────── 采纳 ────────────────────────────── */
 
@@ -117,20 +126,28 @@ export function adoptCard(
 /**
  * 领取准入的拒绝原因。
  *
- * ⚠ **三条各自独立** —— 用户要求「不能合并成一句不能领取」：
+ * ⚠ **各自独立** —— 用户要求「不能合并成一句不能领取」：
  *   调用方（AI 工具）要把具体原因说给模型听，模型才知道下一步做什么。
  */
 export type ClaimRejectReason =
 	/** 不是「提交」状态（草稿 / 处理中 / 终结态都不能领）。 */
 	| 'NOT_SUBMITTED'
+	/**
+	 * 这类卡**不需要领取**。
+	 *
+	 * 用户 `2026-11-13`：
+	 * > 一次一张要的。因为自动化下。就是工作卡给的权限。这是为了防止越狱。
+	 * > 因为其他的所有卡，都是可以在仅聊天下去做的。
+	 *
+	 * ⇒ 只有「工作」类是执行权限凭证。目标 / 设计 / 记录直接在聊天里做。
+	 */
+	| 'KIND_NEEDS_NO_CLAIM'
 	/** 依赖（`dependsOn` 边）里有没结束的卡。 */
 	| 'DEPENDENCY_NOT_ENDED'
 	/** 有子任务停在「需要授权」—— 作者要先处理它。 */
 	| 'CHILD_NEEDS_AUTH'
-	/** 同一持有者名下已有另一张处理中的卡（一次只能做一件事）。 */
-	| 'ALREADY_HOLDING_A_CARD'
-	/** 类别未注册 / 没有领取按钮。 */
-	| 'NOT_CLAIMABLE_KIND';
+	/** 同一持有者名下已有**另一张**处理中的**工作**卡（一次只能做一件事）。 */
+	| 'ALREADY_HOLDING_A_CARD';
 
 /** 一条领取准入失败。 */
 export interface ClaimRejection {
@@ -138,53 +155,78 @@ export interface ClaimRejection {
 	readonly reason: ClaimRejectReason;
 	/** 人话说明（已含具体卡号）。 */
 	readonly message: string;
-	/** 阻塞它的卡（依赖没结束 / 子任务要授权时给出）。 */
+	/** 阻塞它的卡（依赖没结束 / 子任务要授权 / 手上那张卡）。 */
 	readonly blockers?: readonly CardId[];
 }
 
 /** 领取准入的判定结果。 */
 export type ClaimAdmission = { readonly ok: true } | ClaimRejection;
 
+/** `judgeClaim` 需要的外部事实（类别注册表）。 */
+export interface ClaimContext {
+	/**
+	 * **需要领取的类别 id 集合**。
+	 *
+	 * ⚠ 由调用方从 `KindRegistry` 派生（`KindDef.needsClaim`），
+	 *   **不在这里写字面量 `'work'`** —— 第三方注册的类别自己声明要不要领取。
+	 */
+	readonly claimableKinds: ReadonlySet<string>;
+}
+
 /**
- * 判「能不能领取」—— **纯函数**，给卡 + 同空间全部卡 + 持卡人标识。
+ * 判「能不能领取」—— **纯函数**。
  *
- * ## 三条准入（用户矩阵「工作 / 提交 / 用户：领取」的附加条件）
+ * ## 三条准入（用户 `2026-11-13` 的新口径）
  *
- * 1. **所有 `dependsOn` 关系的目标卡都在 `ended` 组**
- *    —— 依赖没做完就不能开始。
- * 2. **没有子任务处于 `AUTH_REQUIRED`**
- *    —— 用户：「ai 不能新建除了复盘以外的子任务」那类规则的上游：
- *    子任务等人点头时，父卡不该被领。
- * 3. **同一 `holder` 名下没有另一张 `WORKING` 的卡**
- *    —— 「一次一个」：一个消息循环不能同时做两件事。
+ * > 一次一张要的。因为自动化下。就是工作卡给的权限。这是为了防止越狱。
+ * > 比如编写代码是没有命令行的。跑一边要另外开卡。这也是为了记录流程。
+ * > 而只能一个人领取其实没啥用。那是为了防止两个ai一起做。
+ * > 那返回来说。应该有任何人领取，就是进行中。然后显示有谁拿了。
+ * > 现在不限制一个卡只能被一个拿，应该就没问题了。
  *
- * ⚠ 顺序即优先级：先报「不是提交态」（最根本），再依赖，再子任务，最后占位。
- *   下层失败时上层即使也失败，报的是上层 —— 这样错误消息指向**先要解决的事**。
+ * | # | 条件 | 为什么 |
+ * |---|---|---|
+ * | ① | 必须是**需要领取的类别**（= 工作） | 领取 = 执行权限凭证；其它类在纯聊天里就能做 |
+ * | ② | 必须是「提交」状态 | 已经处理中 / 终结态的卡不用再领 |
+ * | ③ | 这个 holder 名下**没有另一张**处理中的**工作**卡 | 「一次一张」—— 防止一个 AI 同时开两条执行线 |
+ *
+ * ## ⚠ 「一张卡只能一个人领」这条**已删除**
+ *
+ * 用户明确否掉了：「只能一个人领取其实没啥用」。同一张卡允许多人协作，
+ * 各自占各自那份配额（AB 都持有 X ⇒ AB 各自都不能再领 Y）。
+ *
+ * ## ⚠ 配额判定要**排除正在 claim 的这张卡本身**
+ *
+ * 否则「我已持有 X，再 claim X」会被自己拦住。重复 claim 应当幂等成功。
  *
  * @param card 要领取的卡
- * @param cards 同空间全部卡（用于查依赖与子任务）
- * @param holder 谁要领（消息循环 id / 会话 id；`null` = 不知道自己是谁，跳过第 3 条）
+ * @param cards 同空间全部卡（用于查依赖、子任务、配额）
+ * @param holder 领取者（AI 消息循环 id / 会话 id；**必传**）
+ * @param context 类别事实
  */
 export function judgeClaim(
 	card: Card,
 	cards: readonly Card[],
-	holder: string | null,
+	holder: string,
+	context: ClaimContext,
 ): ClaimAdmission {
-	/* ① 必须是「提交」 */
-	if (card.status !== TaskState.SUBMITTED) {
+	/* ① 这类卡要不要领取 */
+	if (!context.claimableKinds.has(card.template.kind)) {
+		return {
+			ok: false,
+			reason: 'KIND_NEEDS_NO_CLAIM',
+			message:
+				`类别「${card.template.kind}」不需要领取 —— 只有需要执行权限的工作卡才领取；` +
+				'这类卡直接在聊天里做。',
+		};
+	}
+
+	/* ② 必须是「提交」 */
+	if (card.status !== TaskState.SUBMITTED && card.status !== TaskState.WORKING) {
 		return {
 			ok: false,
 			reason: 'NOT_SUBMITTED',
 			message: `「${labelOf(card.status)}」的卡不能领取；只有「提交」能领。`,
-		};
-	}
-
-	/* ② 类别必须可领（表里有 claim 按钮） */
-	if (!CLAIMABLE_KINDS.has(card.template.kind)) {
-		return {
-			ok: false,
-			reason: 'NOT_CLAIMABLE_KIND',
-			message: `类别「${card.template.kind}」没有领取按钮。`,
 		};
 	}
 
@@ -206,8 +248,7 @@ export function judgeClaim(
 	}
 
 	/* ④ 没有子任务停在「需要授权」 */
-	const childIds = childIdsOf(cards, card.id);
-	const waitingAuth = childIds.filter((id) => {
+	const waitingAuth = childIdsOf(cards, card.id).filter((id) => {
 		const child = findCard(cards, id);
 		return child !== undefined && child.status === TaskState.AUTH_REQUIRED;
 	});
@@ -220,37 +261,44 @@ export function judgeClaim(
 		};
 	}
 
-	/* ⑤ 同一持有者名下不能已有另一张处理中的卡 */
-	if (holder !== null && holder !== '') {
-		const other = cards.find(
-			(one) =>
-				one.id !== card.id &&
-				one.status === TaskState.WORKING &&
-				one.claimedBy === holder,
-		);
-		if (other !== undefined) {
-			return {
-				ok: false,
-				reason: 'ALREADY_HOLDING_A_CARD',
-				message: `手上已有处理中的卡「${other.id}」；先完成或释放它。`,
-				blockers: [other.id],
-			};
-		}
+	/*
+	 * ⑤ 配额：这个 holder 名下不能有**另一张**处理中的**工作**卡。
+	 *
+	 * ⚠ 三个过滤缺一不可：
+	 *   · `one.id !== card.id` —— 排除正在 claim 的这张（重复 claim 要幂等成功）；
+	 *   · `one.status === WORKING` —— 只算处理中的；
+	 *   · `context.claimableKinds.has(one.template.kind)` —— **只看工作卡**
+	 *     （目标卡也可能处于处理中，那是重算推出来的，不该占配额）。
+	 *   · `isHeldBy(one, holder)` —— 是这个人持有的。
+	 */
+	const occupied = cards.find(
+		(one) =>
+			one.id !== card.id &&
+			!one.deleted &&
+			one.status === TaskState.WORKING &&
+			context.claimableKinds.has(one.template.kind) &&
+			isHeldBy(one, holder),
+	);
+	if (occupied !== undefined) {
+		return {
+			ok: false,
+			reason: 'ALREADY_HOLDING_A_CARD',
+			message: `手上已有处理中的工作卡「${occupied.id}」；先完成或释放它。`,
+			blockers: [occupied.id],
+		};
 	}
 
 	return { ok: true };
 }
 
-/** `kind` → 是否能领（从协议按钮表派生，不手写）。 */
-const CLAIMABLE_KINDS: ReadonlySet<string> = new Set(
-	BUTTON_ACTIONS.filter((action) => action.method === 'claim').map((action) => action.kind),
-);
-
 /**
  * 领取（纯函数）。**调用方先用 `judgeClaim` 判准入。**
  *
+ * - 追加 `holder` 到 `holders`（**幂等**：已在列表里就不重复追加）；
+ * - 状态置为「处理中」。
+ *
  * @param card 已通过准入的卡
- * @param holder 领取者标识
+ * @param holder 领取者
  * @param at 时间戳
  */
 export function claimCard(
@@ -258,41 +306,59 @@ export function claimCard(
 	holder: string,
 	at: number,
 ): { readonly ok: true; readonly card: Card } | Failure {
-	if (card.status !== TaskState.SUBMITTED) {
-		return failure(ErrorCode.CLAIM_REJECTED, `「${labelOf(card.status)}」的卡不能领取。`, {
-			detail: { reason: 'NOT_SUBMITTED', from: card.status },
-		});
-	}
+	const added = withHolder(card, holder, at);
+	const next =
+		added.card.status === TaskState.WORKING
+			? added.card
+			: { ...added.card, status: TaskState.WORKING };
+
 	return {
 		ok: true,
-		card: withHistory(
-			{ ...card, status: TaskState.WORKING, claimedBy: holder, claimedAt: at },
-			{ at, action: 'claim', detail: { holder } },
-		),
+		card: withHistory(next, {
+			at,
+			action: 'claim',
+			detail: { holder, added: added.added },
+		}),
 	};
 }
 
 /**
- * 释放 / 搁置（纯函数）：处理中 → 提交，清占位。
+ * 释放（纯函数）：把 `holder` 从 `holders` 里移除。
  *
- * 用户 `2026-11-01 06:55`：「（释放后）回到「提交」。」
+ * ## 两条结果（用户口径）
+ *
+ * - **列表空了 ⇒ 状态回「提交」** —— 没人做了，回到待领取。
+ * - **列表还有别人 ⇒ 状态不变** —— 别人还在做，不能把卡退回排队。
+ *
+ * @param card 当前卡
+ * @param holder 谁在释放（必须是持有者之一）
+ * @param at 时间戳
  */
 export function releaseCard(
 	card: Card,
+	holder: string,
 	at: number,
 ): { readonly ok: true; readonly card: Card } | Failure {
-	if (card.status !== TaskState.WORKING) {
-		return failure(ErrorCode.TRANSITION_REJECTED, `只有「处理中」能释放；这张卡是「${labelOf(card.status)}」。`, {
-			detail: { from: card.status, reason: 'NOT_WORKING' },
-		});
+	const removed = withoutHolder(card, holder);
+	if (!removed.removed) {
+		const current = card.holders.length === 0 ? '（无人持有）' : holderIdsOf(card).join('、');
+		return failure(
+			ErrorCode.TRANSITION_REJECTED,
+			`「${holder}」不是这张卡的持有者；当前持有者：${current}。`,
+			{ detail: { reason: 'NOT_A_HOLDER', holder, holders: holderIdsOf(card) } },
+		);
 	}
+
+	/* 还有别人在持有 ⇒ 状态不变；否则退回「提交」。 */
+	const stillHeld = removed.card.holders.length > 0;
+	const nextStatus = stillHeld ? removed.card.status : TaskState.SUBMITTED;
+
 	return {
 		ok: true,
-		card: withHistory({ ...card, status: TaskState.SUBMITTED, claimedBy: null, claimedAt: null }, {
-			at,
-			action: 'release',
-			detail: { holder: card.claimedBy },
-		}),
+		card: withHistory(
+			{ ...removed.card, status: nextStatus },
+			{ at, action: 'release', detail: { holder, remaining: removed.card.holders.length } },
+		),
 	};
 }
 
@@ -316,8 +382,11 @@ export function transitionCard(
 	if (!verdict.ok) return rejectFailure(card, to, verdict.reason);
 
 	/*
-	 * 进终结态时顺手清占位：一张卡结束了却还挂着 claimedBy，
-	 * 会让「一次一张」的准入永远卡住。
+	 * 进终结态时清空持有者：一张卡结束了却还挂着 holders，
+	 * 会让那些人的「一次一张」配额永远卡住。
+	 *
+	 * 用户：「现在不限制一个卡只能被一个拿」—— 但**结束时所有人都该释放**，
+	 * 因为卡已经不需要再执行了。
 	 */
 	const ended = isEndedState(to);
 	return {
@@ -326,7 +395,7 @@ export function transitionCard(
 			{
 				...card,
 				status: to,
-				...(ended ? { claimedBy: null, claimedAt: null } : {}),
+				...(ended ? { holders: [] } : {}),
 			},
 			{ at, action: 'transition', detail: { to, trigger } },
 		),

@@ -154,8 +154,8 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 			},
 		],
 		deleted: false,
-		claimedBy: null,
-		claimedAt: null,
+		/* 新卡还没有人持有。持有者由 `claim` 追加，可以多个。 */
+		holders: [],
 	};
 
 	return { ok: true, card };

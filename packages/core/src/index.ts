@@ -154,29 +154,50 @@ export interface Taskboard {
 	/** 采纳：草稿 → 按类别进「提交」或「需要授权」；同时写 `adoptedAt`。 */
 	adopt(workspaceId: WorkspaceId, cardId: string, actor: Actor): Promise<StatusWriteResult>;
 	/**
-	 * 领取：提交 → 处理中。
+	 * 领取：把「执行权限」发给一个 AI 身份。
 	 *
-	 * ## claim 的语义永远是「指派 AI 去做」
+	 * ## claim 是**权限边界**，不是并发锁（用户 `2026-11-13`）
 	 *
-	 * > 用户领取是「代」ai 领取，就是规定 ai 现在要做什么。**用户又不做事情。**
+	 * > 一次一张要的。因为自动化下。就是工作卡给的权限。这是为了防止越狱。
+	 * > 比如编写代码是没有命令行的。跑一边要另外开卡。这也是为了记录流程。
+	 * > 而只能一个人领取其实没啥用。那是为了防止两个ai一起做。
+	 * > 应该有任何人领取，就是进行中。然后显示有谁拿了。
+	 * > 现在不限制一个卡只能被一个拿，应该就没问题了。
 	 *
-	 * ⇒ **「一次一张」与 `actor` 无关**。用户点按钮只是替 AI 下指令，
-	 *   占用的仍是同一个 AI 工作槽位 —— 配额检查一视同仁。
+	 * | 规则 | 内容 |
+	 * |---|---|
+	 * | 只对工作卡 | 目标 / 设计 / 记录在纯聊天里就能做，不需要执行权限 ⇒ 领取被拒 |
+	 * | 可多人持有 | 同一张卡能被多个 holder 同时持有（`Card.holders` 是列表） |
+	 * | 一次一张 | 每个 holder 名下只能有**一张**处理中的**工作**卡 |
 	 *
-	 * @param actor 谁点的（只影响 `history` 里记什么，**不影响配额判定**）
-	 * @param holder **AI 消息循环 id / 会话 id**。core 不认识会话，由入口传。
-	 *   · 有值 → 检查「这个 holder 名下有没有别的处理中的卡」；
-	 *   · `null` → 跳过配额检查。**这不是用户豁免**，是「调用方没有循环身份」
-	 *     （测试 / 独立脚本 / MCP 二期）。dsh 入口必须传真 holder。
+	 * ⚠ 「AB 都持有 X ⇒ AB 都不能领 Y」—— X 是工作卡，各自占了自己那份配额。这是用户明确要的。
+	 * ⚠ 重复 claim 同一张卡**幂等**：不重复追加、不报错。
+	 *
+	 * @param actor 谁点的（只影响 `history`，**不影响任何判定**）
+	 * @param holder **AI 消息循环 id / 会话 id**（必传）。
+	 *   用户点按钮是「代 AI 指派」，此时也传那个 AI 的 holder。
 	 */
 	claim(
 		workspaceId: WorkspaceId,
 		cardId: string,
 		actor: Actor,
-		holder: string | null,
+		holder: string,
 	): Promise<StatusWriteResult>;
-	/** 释放 / 搁置：处理中 → 提交，清占位。 */
-	release(workspaceId: WorkspaceId, cardId: string, actor: Actor): Promise<StatusWriteResult>;
+	/**
+	 * 释放：把自己从持有者里移除。
+	 *
+	 * - 自己不在列表里 ⇒ 拒（并列出当前持有者）；
+	 * - 移除后列表还有别人 ⇒ **状态不变**；
+	 * - 移除后列表空了 ⇒ 状态回「提交」。
+	 *
+	 * @param holder 谁在释放（必须是持有者之一）
+	 */
+	release(
+		workspaceId: WorkspaceId,
+		cardId: string,
+		actor: Actor,
+		holder: string,
+	): Promise<StatusWriteResult>;
 	/**
 	 * 通用状态转移。
 	 *
@@ -243,6 +264,14 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 
 	/** 读一个空间全部卡。 */
 	const load = (workspaceId: WorkspaceId): readonly Card[] => store.loadAll(workspaceId);
+
+	/**
+	 * 「需要领取」的类别集合 —— 从 `KindDef.needsClaim` 派生，**不写 `'work'` 字面量**。
+	 *
+	 * 第三方注册的类别自己声明要不要领取，`judgeClaim` 只查这个集合。
+	 */
+	const needsClaimKinds = (): ReadonlySet<string> =>
+		new Set(kinds.list().filter((one) => one.needsClaim).map((one) => one.id));
 
 	/** 落库 + 返回。 */
 	const persist = async (workspaceId: WorkspaceId, card: Card): Promise<Card> => {
@@ -448,31 +477,23 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			}
 
 			/*
-			 * ## 「一次一张」与 `actor` **无关**（用户裁定）
+			 * ## claim 是**权限边界**，不是并发控制（用户 `2026-11-13`）
 			 *
-			 * > 用户领取是「代」ai 领取，就是规定 ai 现在要做什么。**用户又不做事情。**
+			 * > 一次一张要的。因为自动化下。就是工作卡给的权限。这是为了防止越狱。
+			 * > 比如编写代码是没有命令行的。跑一边要另外开卡。这也是为了记录流程。
+			 * > 而只能一个人领取其实没啥用。那是为了防止两个ai一起做。
+			 * > 应该有任何人领取，就是进行中。然后显示有谁拿了。
+			 * > 现在不限制一个卡只能被一个拿，应该就没问题了。
 			 *
-			 * ⇒ claim 的语义永远是「指派 AI 去做」，用户点按钮只是**替 AI 下指令**，
-			 *   占用的仍是同一个 AI 工作槽位。**配额检查必须一视同仁** ——
-			 *   否则用户能连点 5 张，给 AI 塞 5 张处理中的卡，那正是这条规则要防的事。
+			 * ⇒ 三条准入由 `judgeClaim` 判（类别必须是工作 + 状态 + 配额），
+			 *   一张卡可以被**多个人同时持有**。
 			 *
-			 * ## `holder === null` 的含义（唯一合法豁免）
-			 *
-			 * ⚠ **`null` 不是「用户豁免」**，是「**调用方没有消息循环身份**」：
-			 *   · 测试 / 独立脚本；
-			 *   · MCP 二期：一个 MCP 连接没有 dsh 的消息循环 id。
-			 * ⇒ 这种情况下无法做「一次一张」判定（不知道该比什么），只能跳过。
-			 *   **dsh 入口必须传真的 holder**，不能图省事传 `null`。
-			 *
-			 * ## `claimedBy` 写什么（能力缺口，需要 dsh 入口决定）
-			 *
-			 * 卡上的 `claimedBy` 存的就是这个 `holder`。用户代 AI 领取时，
-			 * dsh 入口应当传**当前会话的消息循环 id** —— 但 core 拿不到它，
-			 * 也不该发明一个映射（比如把 `'user'` 当 holder）。
-			 * ⇒ 若 dsh 入口拿不到，就只能传 `null`，代价是这次领取不被配额拦住。
-			 *   **这是 dsh 入口需要补的能力，不是 core 该猜的事。**
+			 * `actor` 只影响 history 记谁点的，**不影响任何判定** ——
+			 * 用户点按钮是「代 AI 指派」，占的是那个 AI 的配额。
 			 */
-			const admission = judgeClaim(existing, cards, holder);
+			const admission = judgeClaim(existing, cards, holder, {
+				claimableKinds: needsClaimKinds(),
+			});
 			if (!admission.ok) {
 				return failure(ErrorCode.CLAIM_REJECTED, admission.message, {
 					detail: {
@@ -482,8 +503,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				});
 			}
 
-			/* `claimedBy` 写 `holder ?? 'user'`：无身份时记成「用户指派」，不写空串。 */
-			const result = claimCard(existing, holder ?? 'user', now());
+			const result = claimCard(existing, holder, now());
 			if (!result.ok) return result;
 
 			await persist(workspaceId, result.card);
@@ -491,7 +511,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true, card: result.card, recomputed };
 		},
 
-		async release(workspaceId, cardId, _actor) {
+		async release(workspaceId, cardId, _actor, holder) {
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -501,7 +521,11 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
 			}
 
-			const result = releaseCard(existing, now());
+			/*
+			 * 只移除**自己**那一条。列表里还有别人 ⇒ 状态不变；
+			 * 空了才回「提交」—— 那由 `releaseCard` 处理。
+			 */
+			const result = releaseCard(existing, holder, now());
 			if (!result.ok) return result;
 
 			await persist(workspaceId, result.card);
@@ -605,9 +629,16 @@ export type {
 	CardId,
 	WorkspaceId,
 	CardSection,
+	CardHolder,
 	HistoryEntry,
 	RelationEntry,
 	Relations,
 	TemplateRef,
 } from './card.ts';
+
+/** 持有者工具（多人协作）。 */
+export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
+
+/** 类别定义（`needsClaim` 由它声明）。 */
+export { BUILTIN_KINDS, KindRegistry, type KindDef } from './template/kinds.ts';
 

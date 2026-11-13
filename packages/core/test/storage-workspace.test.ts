@@ -29,8 +29,7 @@ function makeCard(id: string): Card {
 		adoptedAt: null,
 		history: [],
 		deleted: false,
-		claimedBy: null,
-		claimedAt: null,
+		holders: [],
 	};
 }
 

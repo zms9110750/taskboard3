@@ -57,8 +57,7 @@ function card(
 		adoptedAt: extra.adoptedAt ?? null,
 		history: [],
 		deleted: false,
-		claimedBy: null,
-		claimedAt: null,
+		holders: [],
 	};
 }
 

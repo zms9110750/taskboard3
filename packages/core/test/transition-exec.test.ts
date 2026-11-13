@@ -7,7 +7,7 @@
  * |---|---|
  * | 采纳 | 4 个类别的目标状态、`adoptedAt` 被写、非草稿被拒 |
  * | 领取 | 三条准入**各自**拒绝一次 + 通过一次 |
- * | 释放 | 清 `claimedBy` / `claimedAt`，回到提交 |
+ * | 释放 | 只移除自己；列表空了才回提交 |
  * | 通用转移 | 判定拒绝时**不写盘**；判定通过时写状态 + history |
  * | **重算** | 子处理中 → 父处理中；子全要授权 → 父要授权；**父卡永远不是终结态** |
  * | 重算 | 递归两层；遇到环不死循环 |
@@ -155,14 +155,81 @@ describe('状态转移执行', () => {
 
 	/* ────────────────────────── 领取 ────────────────────────── */
 
-	it('领取：通过（无依赖、无子任务、无占位）', async () => {
+	it('领取：通过（无依赖、无子任务）', async () => {
 		const id = await makeCard('work');
 		await tb.adopt(ws, id, 'user');
 		const result = await tb.claim(ws, id, 'user', 'loop-basic');
 		assert.ok(result.ok, JSON.stringify(result));
 		assert.equal(result.card.status, TaskState.WORKING);
-		assert.equal(result.card.claimedBy, 'loop-basic', 'claimedBy 存的是 holder');
-		assert.equal(typeof result.card.claimedAt, 'number');
+		/* 新模型：持有者是列表，不是一个标量字段。 */
+		assert.deepEqual(
+			result.card.holders.map((one) => one.holder),
+			['loop-basic'],
+			'holders 里有这个 holder',
+		);
+		assert.equal(typeof result.card.holders[0]?.at, 'number');
+	});
+
+	it('领取：非 work 卡被拒（KIND_NEEDS_NO_CLAIM）', async () => {
+		/* 用户：「其他的所有卡，都是可以在仅聊天下去做的」⇒ 不需要领取。 */
+		for (const kind of ['goal', 'design', 'record'] as const) {
+			const id = await makeCard(kind);
+			await tb.adopt(ws, id, 'user');
+			const result = await tb.claim(ws, id, `loop-${kind}`);
+			assert.equal(result.ok, false, `类别 ${kind} 不该能领取`);
+			const detail = (result as { detail?: { reason?: string } }).detail;
+			assert.equal(detail?.reason, 'KIND_NEEDS_NO_CLAIM', `类别 ${kind} 应报 KIND_NEEDS_NO_CLAIM`);
+		}
+	});
+
+	it('★ 多人持有：A 持有 X 后，B 也能 claim X（两人都在 holders 里）', async () => {
+		const id = await makeCard('work');
+		await tb.adopt(ws, id, 'user');
+
+		const byA = await tb.claim(ws, id, 'ai', 'loop-A');
+		assert.ok(byA.ok, JSON.stringify(byA));
+
+		const byB = await tb.claim(ws, id, 'ai', 'loop-B');
+		assert.ok(byB.ok, 'B 也能领同一张卡 —— 用户：「不限制一个卡只能被一个拿」');
+		assert.deepEqual(
+			byB.card.holders.map((one) => one.holder).sort(),
+			['loop-A', 'loop-B'],
+		);
+		assert.equal(byB.card.status, TaskState.WORKING);
+	});
+
+	it('★ 重复 claim 幂等：holders 不重复、不报错', async () => {
+		const id = await makeCard('work');
+		await tb.adopt(ws, id, 'user');
+
+		const first = await tb.claim(ws, id, 'ai', 'loop-idem');
+		assert.ok(first.ok);
+		const firstAt = first.card.holders[0]?.at;
+
+		const again = await tb.claim(ws, id, 'ai', 'loop-idem');
+		assert.ok(again.ok, '重复 claim 应当成功（幂等）');
+		assert.equal(again.card.holders.length, 1, 'holders 不应重复追加');
+		assert.equal(again.card.holders[0]?.at, firstAt, '重复 claim 不该刷新开始时间');
+	});
+
+	it('★ AB 都持有 X ⇒ AB 都不能领 Y', async () => {
+		const x = await makeCard('work');
+		await tb.adopt(ws, x, 'user');
+		const claimA = await tb.claim(ws, x, 'ai', 'loop-AB-A');
+		assert.ok(claimA.ok);
+		const claimB = await tb.claim(ws, x, 'ai', 'loop-AB-B');
+		assert.ok(claimB.ok);
+
+		const y = await makeCard('work');
+		await tb.adopt(ws, y, 'user');
+
+		const byA = await tb.claim(ws, y, 'ai', 'loop-AB-A');
+		assert.equal(byA.ok, false, 'A 已持有工作卡 X ⇒ 不能领 Y');
+		assert.equal((byA as { detail?: { reason?: string } }).detail?.reason, 'ALREADY_HOLDING_A_CARD');
+
+		const byB = await tb.claim(ws, y, 'ai', 'loop-AB-B');
+		assert.equal(byB.ok, false, 'B 已持有工作卡 X ⇒ 不能领 Y');
+		assert.equal((byB as { detail?: { reason?: string } }).detail?.reason, 'ALREADY_HOLDING_A_CARD');
 	});
 
 	it('领取准入①：依赖未结束 ⇒ DEPENDENCY_NOT_ENDED', async () => {
@@ -263,18 +330,6 @@ describe('状态转移执行', () => {
 		assert.deepEqual(detail?.blockers, [first]);
 	});
 
-	it('holder === null 时跳过配额检查（唯一合法豁免：调用方没有循环身份）', async () => {
-		const first = await makeCard('work');
-		await tb.adopt(ws, first, 'user');
-		const claimedFirst = await tb.claim(ws, first, 'user', null);
-		assert.ok(claimedFirst.ok, JSON.stringify(claimedFirst));
-
-		const second = await makeCard('work');
-		await tb.adopt(ws, second, 'user');
-		const result = await tb.claim(ws, second, 'user', null);
-		assert.ok(result.ok, 'null 表示没有循环身份 ⇒ 无从比较，只能跳过配额检查');
-	});
-
 	it('领取：不同持有者互不影响', async () => {
 		const id = await makeCard('work');
 		await tb.adopt(ws, id, 'user');
@@ -284,22 +339,51 @@ describe('状态转移执行', () => {
 
 	/* ────────────────────────── 释放 ────────────────────────── */
 
-	it('释放：处理中 → 提交，清占位', async () => {
+	it('★ 释放只移除自己：A 释放后 B 还在，状态不变', async () => {
+		/* ⚠ 每个用例用**独立的 holder 名** —— 同一个 tb 里前面的用例会留下处理中的卡，
+		 *   共用 holder 名会撞上「一次一张」配额。 */
 		const id = await makeCard('work');
 		await tb.adopt(ws, id, 'user');
-		await tb.claim(ws, id, 'user', 'loop-release');
+		await tb.claim(ws, id, 'ai', 'rel-A');
+		await tb.claim(ws, id, 'ai', 'rel-B');
 
-		const result = await tb.release(ws, id, 'user');
+		const result = await tb.release(ws, id, 'ai', 'rel-A');
 		assert.ok(result.ok, JSON.stringify(result));
-		assert.equal(result.card.status, TaskState.SUBMITTED);
-		assert.equal(result.card.claimedBy, null);
-		assert.equal(result.card.claimedAt, null);
+		assert.deepEqual(
+			result.card.holders.map((one) => one.holder),
+			['rel-B'],
+			'只移除 A，B 还在',
+		);
+		assert.equal(result.card.status, TaskState.WORKING, '列表还有别人 ⇒ 状态不变');
 	});
 
-	it('释放：非处理中被拒', async () => {
+	it('★ 最后一个 release 后状态回 SUBMITTED', async () => {
 		const id = await makeCard('work');
 		await tb.adopt(ws, id, 'user');
-		const result = await tb.release(ws, id, 'user');
+		await tb.claim(ws, id, 'ai', 'rel2-A');
+		await tb.claim(ws, id, 'ai', 'rel2-B');
+
+		await tb.release(ws, id, 'ai', 'rel2-A');
+		const result = await tb.release(ws, id, 'ai', 'rel2-B');
+		assert.ok(result.ok, JSON.stringify(result));
+		assert.deepEqual(result.card.holders, [], '列表空了');
+		assert.equal(result.card.status, TaskState.SUBMITTED, '没人做了 ⇒ 回「提交」');
+	});
+
+	it('释放：不是持有者被拒，并列出当前持有者', async () => {
+		const id = await makeCard('work');
+		await tb.adopt(ws, id, 'user');
+		await tb.claim(ws, id, 'ai', 'loop-owner');
+
+		const result = await tb.release(ws, id, 'ai', 'loop-stranger');
+		assert.equal(result.ok, false);
+		assert.ok(result.message.includes('loop-owner'), '错误消息要列出当前持有者');
+	});
+
+	it('释放：非持有者被拒（列表为空时也一样）', async () => {
+		const id = await makeCard('work');
+		await tb.adopt(ws, id, 'user');
+		const result = await tb.release(ws, id, 'user', 'nobody');
 		assert.equal(result.ok, false);
 	});
 
@@ -331,14 +415,13 @@ describe('状态转移执行', () => {
 		assert.equal(last?.action, 'transition');
 	});
 
-	it('转移：进终结态时清占位（避免「一次一张」被挂死的卡堵住）', async () => {
+	it('转移：进终结态时清空持有者（避免配额被挂死的卡堵住）', async () => {
 		const id = await makeCard('work');
 		await tb.adopt(ws, id, 'user');
 		await tb.claim(ws, id, 'ai', 'loop-clean');
 		const result = await tb.transition(ws, id, TaskState.COMPLETED, 'button');
 		assert.ok(result.ok);
-		assert.equal(result.card.claimedBy, null);
-		assert.equal(result.card.claimedAt, null);
+		assert.deepEqual(result.card.holders, [], '终结后所有人都释放');
 	});
 });
 

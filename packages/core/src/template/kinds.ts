@@ -46,6 +46,21 @@ export interface KindDef {
 	 * 用户：「目标与设计可以由用户重开；工作与记录没有重开入口，重来就新建一张。」
 	 */
 	readonly reopenable: boolean;
+	/**
+	 * 这类卡**是否需要领取**（即：领取是它的权限凭证）。
+	 *
+	 * 用户 `2026-11-13`：
+	 * > 一次一张要的。因为自动化下。就是工作卡给的权限。这是为了防止越狱。
+	 * > 比如编写代码是没有命令行的。跑一边要另外开卡。这也是为了记录流程。
+	 * > 因为其他的所有卡，都是可以在仅聊天下去做的。
+	 *
+	 * ⇒ **只有「工作」是 `true`**。目标 / 设计 / 记录在纯聊天里就能做，
+	 *   不需要执行权限，也就不需要领取。
+	 *
+	 * ⚠ 这是**类别自身的属性**，不是「名字叫 work」的硬编码。
+	 *   第三方注册的类别自己声明要不要领取。
+	 */
+	readonly needsClaim: boolean;
 }
 
 /** 四个内置类别。顺序 = UI 里的显示顺序。 */
@@ -56,6 +71,7 @@ export const BUILTIN_KINDS: readonly KindDef[] = Object.freeze([
 		letter: 'G',
 		description: '达成某个结果的目标。子任务的状态会推着它走。',
 		reopenable: true,
+		needsClaim: false,
 	},
 	{
 		id: 'design',
@@ -63,13 +79,15 @@ export const BUILTIN_KINDS: readonly KindDef[] = Object.freeze([
 		letter: 'D',
 		description: '决定方向。建出来先停在「需要授权」，等用户点头。',
 		reopenable: true,
+		needsClaim: false,
 	},
 	{
 		id: 'work',
 		displayName: '工作',
 		letter: 'W',
-		description: '实际动手做的任务。可以被领取。',
+		description: '实际动手做的任务。领取它就是拿到执行权限。',
 		reopenable: false,
+		needsClaim: true,
 	},
 	{
 		id: 'record',
@@ -77,6 +95,7 @@ export const BUILTIN_KINDS: readonly KindDef[] = Object.freeze([
 		letter: 'R',
 		description: '记一件事。建出来先停在「需要授权」。',
 		reopenable: false,
+		needsClaim: false,
 	},
 ]);
 

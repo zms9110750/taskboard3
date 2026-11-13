@@ -9,7 +9,7 @@
  * | `sections: Record<id, {label, payload}>` | 同左 | 保留：`label` 是**模板章节名的副本**，模板被卸载后卡仍能显示 |
  * | `history: HistoryEntry[]` | 同左 | 保留 |
  * | `deleted: boolean` | 同左 | 墓碑是独立字段，不是状态值 |
- * | `claimedBy: ''` | `claimedBy: string \| null` | 同 `parent` 的理由 |
+ * | `claimedBy` / `claimedAt` 两个标量 | **`holders: CardHolder[]`** | 用户 `2026-11-13`：「现在不限制一个卡只能被一个拿」。一卡多人协作 ⇒ 持有者必须是列表，不是一个值 |
  *
  * ## 为什么 `sections` 的 key 是 sectionId 而不是 label
  *
@@ -108,10 +108,25 @@ export interface Card {
 	readonly history: readonly HistoryEntry[];
 	/** 墓碑标记（独立字段，不是状态值）。 */
 	readonly deleted: boolean;
-	/** 当前占用者；`null` = 无人占用。 */
-	readonly claimedBy: string | null;
-	/** 占用起始时间；与 `claimedBy` 同生同灭。 */
-	readonly claimedAt: number | null;
+	/**
+	 * 当前持有的 AI 身份。**可以为多个** —— 同一张卡允许多人协作。
+	 *
+	 * 用户 `2026-11-13`：
+	 * > 现在不限制一个卡只能被一个拿，应该就没问题了。
+	 *
+	 * ⚠ 旧模型是 `claimedBy` / `claimedAt` 两个标量字段（一卡一人）。
+	 *   新模型把「谁持有」变成**列表**：两人可同时持有同一张卡。
+	 *   `at` 是**那个人**开始持有的时间，不是卡的时间。
+	 */
+	readonly holders: readonly CardHolder[];
+}
+
+/** 一个持有者 + 它开始持有的时间。 */
+export interface CardHolder {
+	/** AI 的消息循环 id / 会话 id（用户代 AI 领取时也是它）。 */
+	readonly holder: string;
+	/** 开始持有的时间（毫秒）。 */
+	readonly at: number;
 }
 
 /** 是否是草稿。 */
@@ -189,4 +204,40 @@ export function childIdsOf(cards: readonly Card[], parentId: CardId): readonly C
 /** 沿 `label` 找指向 `card` 的边（有向边反查用）。 */
 export function incomingLinks(cards: readonly Card[], to: CardId, label: LinkKindId): readonly Card[] {
 	return cards.filter((card) => card.relations.links.some((link) => link.label === label && link.to === to));
+}
+
+/* ────────────────────────── 持有者（多人协作） ────────────────────────── */
+
+/** 某人是否持有这张卡。 */
+export function isHeldBy(card: Card, holder: string): boolean {
+	return card.holders.some((one) => one.holder === holder);
+}
+
+/** 全部持有者标识。 */
+export function holderIdsOf(card: Card): readonly string[] {
+	return card.holders.map((one) => one.holder);
+}
+
+/**
+ * 追加一个持有者（纯函数）。
+ *
+ * **幂等**：同一个人重复持有不重复追加、不改他已记的开始时间
+ * （「我什么时候开始做这件事」不该被重复点击刷新）。
+ *
+ * @returns `added: false` 表示本来就有，卡没变
+ */
+export function withHolder(card: Card, holder: string, at: number): { card: Card; added: boolean } {
+	if (isHeldBy(card, holder)) return { card, added: false };
+	return { card: { ...card, holders: [...card.holders, { holder, at }] }, added: true };
+}
+
+/**
+ * 移除一个持有者（纯函数）。
+ *
+ * @returns `removed: false` 表示本来就没有
+ */
+export function withoutHolder(card: Card, holder: string): { card: Card; removed: boolean } {
+	const next = card.holders.filter((one) => one.holder !== holder);
+	if (next.length === card.holders.length) return { card, removed: false };
+	return { card: { ...card, holders: next }, removed: true };
 }
