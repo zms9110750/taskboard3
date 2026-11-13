@@ -33,6 +33,7 @@
  */
 
 import type { Card, Taskboard } from '@taskboard/core';
+import { BASE_TOOLS, EXECUTION_TOOLS } from '@taskboard/core';
 import type { Failure, TaskState } from '@taskboard/protocol';
 import {
 	ERROR_HINTS,
@@ -769,6 +770,84 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
+	/* ── 12. 权限管理：读全部模板的 extra ── */
+	const toolPolicies = defineTool({
+		name: 'taskboard_tool_policies',
+		description:
+			'读工具权限策略。返回「基础工具」（BASE，任何时候都有）和「每个模板的额外工具」（extra，领了那张工作卡才额外获得）。改之前先读它。',
+		parameters: {},
+		output: OUTPUT,
+		async execute(): Promise<unknown> {
+			const policies = taskboard.getToolPolicies();
+			const refs = Object.keys(policies).sort();
+
+			const lines: string[] = [
+				'基础工具（BASE_TOOLS —— 不需要领卡，任何时候都有）：',
+				...BASE_TOOLS.map((name) => `  ${name}`),
+				'',
+				`执行类工具（不在 BASE 里 ⇒ 必须靠某个模板的 extra 授予）：`,
+				...EXECUTION_TOOLS.map((name) => `  ${name}`),
+				'',
+				`模板额外权限（${refs.length} 个模板配了 extra）：`,
+			];
+			if (refs.length === 0) {
+				lines.push('  （一个都没有 —— 所有模板都只有 BASE）');
+			} else {
+				for (const ref of refs) {
+					const extra = policies[ref] ?? [];
+					lines.push(`  ${ref}：${extra.length === 0 ? '（空）' : extra.join('、')}`);
+				}
+			}
+			lines.push('', '生效规则：未持有工作卡 = BASE；持有工作卡 X = BASE ∪ extra[X]。');
+			return { text: lines.join('\n') };
+		},
+	});
+
+	/* ── 13. 权限管理：改一个模板的 extra ── */
+	const toolPolicySet = defineTool({
+		name: 'taskboard_tool_policy_set',
+		description:
+			'改一个模板的额外工具（extra，持久化）。只存增量 —— 生效永远是 BASE ∪ extra，不可能把基础工具挤掉。模板必须存在。传空数组 = 清掉该模板的额外权限。',
+		parameters: {
+			templateRef: { type: 'string', required: true, description: '模板 ref（如 writeCode）。' },
+			extra: {
+				type: 'array',
+				items: { type: 'string' },
+				required: true,
+				description: '额外授予的工具名（如 bash / write / edit）。传空数组 = 清空。',
+			},
+		},
+		output: OUTPUT,
+		async execute(args: unknown): Promise<unknown> {
+			const templateRef = str(args, 'templateRef') ?? '';
+			const extra = strs(args, 'extra') ?? [];
+			const result = await taskboard.setToolPolicy(templateRef, extra);
+			if (!result.ok) return { text: `改权限失败：\n${describeFailure(result)}` };
+			return {
+				text:
+					extra.length === 0
+						? `已清空模板「${templateRef}」的额外权限（只剩 BASE）。`
+						: `已把模板「${templateRef}」的额外权限设为：${extra.join('、')}（生效 = BASE ∪ 这些）。`,
+			};
+		},
+	});
+
+	/* ── 14. 权限管理：清空一个模板的 extra ── */
+	const toolPolicyReset = defineTool({
+		name: 'taskboard_tool_policy_reset',
+		description: '把一个模板的额外工具清空（回到纯 BASE）。等价于 taskboard_tool_policy_set 传空数组，但语义更明确。',
+		parameters: {
+			templateRef: { type: 'string', required: true, description: '模板 ref。' },
+		},
+		output: OUTPUT,
+		async execute(args: unknown): Promise<unknown> {
+			const templateRef = str(args, 'templateRef') ?? '';
+			const result = await taskboard.setToolPolicy(templateRef, []);
+			if (!result.ok) return { text: `重置权限失败：\n${describeFailure(result)}` };
+			return { text: `已把模板「${templateRef}」的额外权限清空（只剩 BASE）。` };
+		},
+	});
+
 	return [
 		workspaces,
 		cards,
@@ -781,6 +860,9 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		release,
 		registry,
 		markSeen,
+		toolPolicies,
+		toolPolicySet,
+		toolPolicyReset,
 	];
 }
 

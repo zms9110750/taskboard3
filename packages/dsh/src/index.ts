@@ -56,9 +56,10 @@ import { createBus, createTaskboard, type CardStore, type Taskboard } from '@tas
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
+import { createPermissionGuard, PERMISSION_PRESET } from './permission.ts';
 import { createSseHub } from './sse.ts';
 import { createTools } from './tools.ts';
-import type { CommandsLike, ConnectionLike, ToolsLike, WebServerLike } from './types.ts';
+import type { CommandsLike, ConnectionLike, PermissionPresetsLike, ToolsLike, WebServerLike } from './types.ts';
 
 /** Cordis 插件名。 */
 export const name = 'taskboard3';
@@ -124,6 +125,13 @@ export type ApplyContext = {
 	 *   缺席时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
 	 */
 	readonly subagents?: unknown;
+	/**
+	 * `ctx.permissionPresets`（可选）—— 用来读「当前会话的权限预设名」。
+	 *
+	 * ⚠ **不是硬依赖**：没装 `@deepseek-ai/dsh-permission-presets` 的 profile
+	 *   也该能用任务板。缺席时 guard **对所有工具调用生效**（不做预设过滤）。
+	 */
+	readonly permissionPresets?: PermissionPresetsLike;
 	effect?(dispose: () => void, label?: string): void;
 };
 
@@ -185,7 +193,42 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		defaultWorkspaceId,
 		/* ⚠ 原型期脚手架：与 `core/src/bus.ts` 同生共死。见 `src/sse.ts` 文件头。 */
 		events: hub,
+		/*
+		 * 权限编辑开关：**转发到 core**。
+		 *
+		 * ⚠ 开关是 core 的状态（`Taskboard.setPolicyEdit`），本包只是转发 ——
+		 *   因为 `judgeToolCall` 在 core 里读它，而 guard 也调 core 的判定。
+		 *   本包自己存一份会让「UI 打开」与「guard 判定」读到两个不同的地方。
+		 */
+		policyEdit: {
+			isOn: (scope) => taskboard.isPolicyEditOn(scope),
+			set: (scope, on) => taskboard.setPolicyEdit(scope, on),
+		},
 	});
+
+	/*
+	 * 权限 guard —— **加装**在 dsh 的工具管线上。
+	 *
+	 * ⚠ 预设过滤是可选的：`presetOf` 拿不到权限预设服务时（没装
+	 *   `@deepseek-ai/dsh-permission-presets`），guard 对**所有**工具调用生效。
+	 *   那是对的：任务板的权限模型不依赖 dsh 的预设机制，预设只是一个
+	 *   「用户想让任务板接管时才接管」的开关。
+	 */
+	const permissionGuard = createPermissionGuard({
+		taskboard,
+		subagents: ctx.subagents,
+		...(ctx.permissionPresets === undefined
+			? {}
+			: {
+					presetOf: (agent: unknown) => {
+						const session = (agent as { session?: unknown }).session;
+						if (session === undefined) return undefined;
+						return ctx.permissionPresets?.current(session);
+					},
+					presetName: PERMISSION_PRESET,
+				}),
+	});
+	const disposeGuard = ctx.tools.guard(permissionGuard);
 
 	/* 工具：`defineTool` 来自 DSH 的 `@deepseek-ai/dsh-tools`。 */
 	const tools = createTools({ taskboard, defineTool, defaultWorkspaceId, subagents: ctx.subagents });
@@ -195,6 +238,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 
 	const disposeAll = (): void => {
 		disposeRoutes();
+		/* 先摘 guard —— 它在每次工具调用时都跑，不该比工具活得久。 */
+		disposeGuard();
 		/*
 		 * ⚠ **先关 SSE 再清工具**：SSE 连接持有 bus 订阅，
 		 *   而 `taskboard.close()` 之后不该还有人能写帧。

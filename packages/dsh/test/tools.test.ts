@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createTaskboard, type Taskboard } from '@taskboard/core';
+import { BASE_TOOLS, POLICY_TOOLS } from '@taskboard/core';
 import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
 import { createSearch } from '@taskboard/core';
 
@@ -127,7 +128,25 @@ describe('工具注册面', () => {
 			'taskboard_release',
 			'taskboard_registry',
 			'taskboard_mark_seen',
+			'taskboard_tool_policies',
+			'taskboard_tool_policy_set',
+			'taskboard_tool_policy_reset',
 		]);
+	});
+
+	it('权限管理工具受开关控制，且不在 BASE 里（core 的契约）', async () => {
+		/*
+		 * ⚠ 这是**跨包断言**：core 的 `POLICY_TOOLS` / `BASE_TOOLS` 是本仓库
+		 *   权限模型的安全边界，dsh 注册的工具名必须与之对齐 ——
+		 *   名字不一致的表现是「永远拒绝」（比永远放行安全，但仍是错）。
+		 */
+		const policyNames = tools
+			.map((one) => one.name)
+			.filter((name) => name.startsWith('taskboard_tool_'));
+		assert.deepEqual(policyNames.sort(), [...POLICY_TOOLS].sort(), 'dsh 注册的权限工具名必须与 core 的 POLICY_TOOLS 一致');
+		for (const name of policyNames) {
+			assert.ok(!BASE_TOOLS.includes(name), `${name} 不该在 BASE_TOOLS 里`);
+		}
 	});
 
 	it('每个工具都有名字、描述、参数表', () => {
