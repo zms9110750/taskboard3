@@ -135,29 +135,28 @@ describe('工具注册面', () => {
 		]);
 	});
 
-	it('⚠ 权限工具与 core 的 POLICY_TOOLS 对齐（含一个待 core 补的差集）', async () => {
+	it('⚠ 权限工具与 core 的 POLICY_TOOLS 对齐', async () => {
 		/*
 		 * ⚠ 这是**跨包断言**：core 的 `POLICY_TOOLS` 是本仓库权限模型的
 		 *   安全边界，dsh 注册的权限工具名必须与之对齐 ——
 		 *   不在里面的那个 **guard 不会受开关控制**（会掉进「需要领卡」那条，
 		 *   行为是错的：既能改权限又不该需要卡）。
 		 *
-		 * 现状：dsh 多一个 `taskboard_tool_policy_members`（`task-23` 要求新增），
-		 *       core 的 `POLICY_TOOLS` 还是 3 个 ⇒ 差集在这里显式列出，
-		 *       **一旦 core 补上，这里会失败并提示删掉这个白名单**（不会静默通过）。
+		 * 历史：`taskboard_tool_policy_members` 曾有一个 `pendingCoreUpdate`
+		 *      白名单（core 的 `POLICY_TOOLS` 当时只有 3 个）。core 已在
+		 *      `c232ee8` 补上，白名单按它自己写的提示删掉了。
+		 *      ⇒ **以后再加权限工具，两边必须同时改**，这条断言会抓住漏改。
 		 */
-		const pendingCoreUpdate = ['taskboard_tool_policy_members'];
-
 		const dshPolicyTools = tools
 			.map((one) => one.name)
 			.filter((name) => name.startsWith('taskboard_tool_'))
 			.sort();
 
-		/* dsh 注册的每个权限工具，要么在 core 的 POLICY_TOOLS 里，要么在待补清单里。 */
+		/* dsh 注册的每个权限工具，都必须在 core 的 POLICY_TOOLS 里。 */
 		for (const name of dshPolicyTools) {
 			assert.ok(
-				POLICY_TOOLS.includes(name) || pendingCoreUpdate.includes(name),
-				`「${name}」既不在 core 的 POLICY_TOOLS 里，也不在待补清单里 —— 它不会受开关控制`,
+				POLICY_TOOLS.includes(name),
+				`「${name}」不在 core 的 POLICY_TOOLS 里 —— 它不会受开关控制`,
 			);
 		}
 
@@ -166,12 +165,11 @@ describe('工具注册面', () => {
 			assert.ok(dshPolicyTools.includes(name), `core 的 POLICY_TOOLS 里有「${name}」，但 dsh 没注册它`);
 		}
 
-		/* 差集必须**只剩**待补清单里的那些 —— core 补齐后这里会失败，提醒删白名单。 */
-		const missing = dshPolicyTools.filter((name) => !POLICY_TOOLS.includes(name));
+		/* 两个方向都对齐 ⇒ 差集必须为空。 */
 		assert.deepEqual(
-			missing,
-			pendingCoreUpdate,
-			`与 core 的差集变了：实际 ${JSON.stringify(missing)}。若 core 已补上，删掉 pendingCoreUpdate。`,
+			dshPolicyTools,
+			[...POLICY_TOOLS].sort(),
+			'dsh 注册的权限工具与 core 的 POLICY_TOOLS 不一致：两边必须同时改',
 		);
 
 		/* 权限工具一个都不能在 BASE 里（否则开关失效）。 */
