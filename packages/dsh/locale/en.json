@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Task board",
+    "description": "Task cards with a state machine and typed relations: nine states, six relation kinds, per-workspace storage."
+  }
+}
