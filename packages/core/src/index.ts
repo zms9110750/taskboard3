@@ -1087,17 +1087,24 @@ export type {
 /** 持有者工具（多人协作）。 */
 export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
 
-/** 工具权限（BASE 常量 + 工作卡 extra + 纯内存开关 + 纯判定）。 */
+/** 工具权限（BASE 常量 + 四档增量 + 纯内存开关 + 纯判定）。 */
 export {
 	BASE_TOOLS,
 	POLICY_TOOLS,
 	EXECUTION_TOOLS,
+	READONLY_TOOLS,
+	EMPTY_POLICY_STORE,
 	judgeToolCall,
 	isBaseTool,
 	isPolicyTool,
+	effectiveToolsOf,
+	extrasOf,
 	type PermissionFacts,
 	type ToolCallJudgement,
 	type ToolCallVerdict,
+	type ToolPolicyStore,
+	type ToolPolicyDelta,
+	type ToolPolicyGroup,
 } from './permission.ts';
 
 /** 未读工具（卡上的字段 + 维护它的纯函数）。 */
