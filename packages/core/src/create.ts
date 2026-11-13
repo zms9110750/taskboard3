@@ -25,8 +25,8 @@
  * ⇒ **所有类别都从草稿开始**，区别在采纳之后去哪。
  */
 
-import type { Actor, Failure } from '@taskboard/protocol';
-import { DRAFT, ErrorCode, failure } from '@taskboard/protocol';
+import type { Actor, Failure, LinkKindId } from '@taskboard/protocol';
+import { DRAFT, ErrorCode, LINK_KINDS, failure, isLinkKindId } from '@taskboard/protocol';
 
 import type { Card, CardSection, Relations, TemplateRef } from './card.js';
 import { nextId, prefixOf } from './ids.js';
@@ -210,8 +210,24 @@ function checkRelations(
 		}
 	}
 
-	const links: { label: Card['relations']['links'][number]['label']; to: string }[] = [];
+	const links: { label: LinkKindId; to: string }[] = [];
 	for (const link of input?.links ?? []) {
+		/*
+		 * 关系标识必须真的是五条边之一。
+		 *
+		 * ⚠ 这里曾经是 `link.label as Card[...]['label']` —— 那是个**假校验**：
+		 *   类型断言不会拦住 `'totallyMadeUp'`，于是脏关系会被写进卡里，
+		 *   而所有按 `label` 分支的代码（级联、渲染、筛选）都静默跳过它。
+		 * ⇒ 改成真判定 `isLinkKindId`，失败给可修的错误。
+		 */
+		if (!isLinkKindId(link.label)) {
+			return failure(
+				ErrorCode.RELATION_TARGET_INVALID,
+				`关系标识「${link.label}」不存在；可用：${LINK_KINDS.map((one) => one.id).join('、')}。`,
+				{ detail: { label: link.label, to: link.to } },
+			);
+		}
+
 		const target = cards.find((one) => one.id === link.to);
 		if (target === undefined) {
 			return failure(ErrorCode.RELATION_TARGET_INVALID, `关系目标「${link.to}」不存在。`, {
@@ -228,7 +244,7 @@ function checkRelations(
 				detail: { to: link.to, label: link.label },
 			});
 		}
-		links.push({ label: link.label as Card['relations']['links'][number]['label'], to: link.to });
+		links.push({ label: link.label, to: link.to });
 	}
 
 	return { ok: true, parent: parent === '' ? null : parent, links };

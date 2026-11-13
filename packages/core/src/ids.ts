@@ -86,10 +86,21 @@ export function prefixOf(
  *
  * 用户 `2026-11-01 03:32`：「ui 和终端显示的都是 GU-02。」
  * ⇒ 存储用 `GU02`（无连字符，好比较），显示用 `GU-02`。
+ *
+ * ## 为什么这里有 `undefined` 检查而不是断言
+ *
+ * `noUncheckedIndexedAccess` 把 `match[1]` 的类型变成 `string | undefined`
+ * —— 这是它与正则结果类型的**固有摩擦**（`RegExpExecArray` 的元素在类型上
+ * 不保证存在）。
+ *
+ * 但仍**不需要断言**：正则有两个捕获组，`undefined` 检查是**真实分支**，
+ * 不是"让编译器闭嘴"。跑不到就该原样返回，而不是拼出一个 `undefined-undefined`。
  */
 export function toDisplay(id: string): string {
 	const match = /^([A-Z]+)(\d+)$/u.exec(id);
 	if (match === null) return id;
-	const [, letters, digits] = match as unknown as [string, string, string];
+	const letters = match[1];
+	const digits = match[2];
+	if (letters === undefined || digits === undefined) return id;
 	return `${letters}-${digits}`;
 }
