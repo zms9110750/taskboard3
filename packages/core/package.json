@@ -1,0 +1,29 @@
+{
+  "name": "@local/taskboard3-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "任务板核心：卡、状态、关系、模板、工作空间。存储与搜索是可替换端口。",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "templates"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@local/taskboard3-protocol": "workspace:*",
+    "yaml": "^2.5.0",
+    "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

@@ -1,0 +1,23 @@
+schema: template@1
+name: userNeed
+displayName: 用户任务
+kind: goal
+domain: 核心
+codePrefix: U
+
+usage: |
+  用户向 ai 发布任务。只有一个自由章节，可以把需求一股脑写下来。
+  语义上不应由 ai 创建。
+
+description: |
+  本卡不记录结果。ai 应按语义拆成若干子任务。
+
+sections:
+  core-userNeed:
+    label: 我想要什么
+    hint: |
+      这里用可自由书写的大号文本框。
+    action: text
+    default:
+      $type: text
+      placeholder: 把你要 ai 做的事写下来
