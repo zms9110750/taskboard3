@@ -25,6 +25,8 @@ function makeCard(id: string): Card {
 		relations: { parent: null, links: [] },
 		sections: {},
 		note: '',
+		createdAt: 0,
+		adoptedAt: null,
 		history: [],
 		deleted: false,
 		claimedBy: null,

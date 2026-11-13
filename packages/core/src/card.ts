@@ -87,6 +87,23 @@ export interface Card {
 	readonly sections: Readonly<Record<string, CardSection>>;
 	/** 追加备注。永远可写，不随采纳清空。 */
 	readonly note: string;
+	/**
+	 * 建卡时间（毫秒）。建卡时盖，**终身不变**。
+	 *
+	 * ⚠ 这是卡的**固有属性**，不是从 `history` 派生出来的数据。
+	 *   早期实现把它藏在 `history[0].at` 里 ⇒ 排序要扫历史、
+	 *   而 `history` 可被追加/裁剪 ⇒ 不是稳定锚点。现在显式建模。
+	 */
+	readonly createdAt: number;
+	/**
+	 * 采纳时间；未采纳为 `null`。**采纳时盖，之后不变。**
+	 *
+	 * 排序首选它（「采纳时间 ?? 创建时间」倒序）。
+	 *
+	 * ⚠ 采纳（`adopt`）尚未实装。实装时必须在这一步写 `adoptedAt: deps.now`，
+	 *   与 `history` 里那条 `action: 'adopt'` 用**同一个 `at`**。
+	 */
+	readonly adoptedAt: number | null;
 	/** 只读追加。 */
 	readonly history: readonly HistoryEntry[];
 	/** 墓碑标记（独立字段，不是状态值）。 */

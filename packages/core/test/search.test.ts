@@ -40,9 +40,6 @@ function card(
 		adoptedAt?: number;
 	} = {},
 ): Card {
-	const history: Card['history'][number][] = [];
-	if (extra.createdAt !== undefined) history.push({ at: extra.createdAt, action: 'create' });
-	if (extra.adoptedAt !== undefined) history.push({ at: extra.adoptedAt, action: 'adopt' });
 	return {
 		id,
 		title,
@@ -55,7 +52,10 @@ function card(
 		relations: { parent: null, links: [] },
 		sections: {},
 		note: '',
-		history,
+		/* 两个时间是卡的固有字段，直接从夹具参数填（不再塞 history）。 */
+		createdAt: extra.createdAt ?? 0,
+		adoptedAt: extra.adoptedAt ?? null,
+		history: [],
 		deleted: false,
 		claimedBy: null,
 		claimedAt: null,
@@ -357,13 +357,23 @@ test('排序：非有限数值的时间戳视为缺失', () => {
 	assert.deepEqual(ids(search(cards, {})), ['B', 'A']);
 });
 
-test('排序：没有 history 的卡视为无时间戳，排最后', () => {
+test('排序：createdAt 为 0 / 非有限数值的卡排最后', () => {
 	const search = createSearch();
 	const cards = [
-		card('X', '无历史', 'TASK_STATE_SUBMITTED'),
-		card('Y', '有历史', 'TASK_STATE_SUBMITTED', { createdAt: 10 }),
+		card('X', '无时间戳', 'TASK_STATE_SUBMITTED', { createdAt: Number.NaN }),
+		card('Y', '有时间戳', 'TASK_STATE_SUBMITTED', { createdAt: 10 }),
 	];
 	assert.deepEqual(ids(search(cards, {})), ['Y', 'X']);
+});
+
+test('排序：adoptedAt 为 null 时回落 createdAt（字段直读，不扫 history）', () => {
+	const search = createSearch();
+	const cards = [
+		card('A', '甲', 'TASK_STATE_SUBMITTED', { createdAt: 100, adoptedAt: null }),
+		card('B', '乙', 'TASK_STATE_SUBMITTED', { createdAt: 200, adoptedAt: 50 }),
+	];
+	/* B 有采纳时间 50 ⇒ 排在 A 的创建时间 100 之后 */
+	assert.deepEqual(ids(search(cards, {})), ['A', 'B']);
 });
 
 /* ────────────────────── 纯函数性 ────────────────────── */

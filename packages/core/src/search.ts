@@ -18,22 +18,28 @@
  *
  * ## 一条铁律：纯函数
  *
+ * ## 不可替换（用户裁定）
+ *
+ * > 「不。是把搜索并入 core 强依赖。ui 和 tool 都强依赖搜索，替换了搜索，
+ * >   那接口也没法做啊。他只能说替换底层实现，那没有意义。要么他增加 api，
+ * >   那又调用不了。所以没意义。就强耦合吧。」
+ *
+ * ⇒ 搜索**不出现在 `TaskboardOptions`** 里，与模板、状态机一样是关不掉的重依赖。
+ *   `SearchStrategy` 保留，但只是 `createSearch()` 的返回类型（内部组合与测试用），
+ *   **不再是跨包端口**。
+ *
+ * ## 一条铁律：纯函数
+ *
  * 不读文件、不读环境变量、不碰 `Date.now()`、不 mutate 入参。
- * 同一输入永远同一输出 —— 这是「可替换搜索实现」的前提。
+ * 同一输入永远同一输出。
  *
  * ## 排序
  *
  * 按「**采纳时间 ?? 创建时间**」倒序（用户 `2026-11-08` 规则 5：
  * 「排序函数对草稿使用创建时间进行排序」）。
  *
- * ⚠ `Card` **没有** `adoptedAt` / `createdAt` 字段 —— 时间信息在 `history` 里。
- * 旧 search 包假设卡上有这两个字段，那条假设在 core 的 `Card` 上会**静默失效**
- * （排序永远是输入顺序）。这里改成**从 history 派生**：
- *
- *   · `adoptedAt` = 历史里 `action === 'adopt'` 的最早 `at`；
- *   · `createdAt` = 历史里 `action === 'create'` 的 `at`，没有就用 `history[0].at`。
- *
- * 这就是「并入 core」的真正收益：**两边字段名不一致的坑只有一个地方能踩。**
+ * 两个时间都是 `Card` 上的**固有字段**（`adoptedAt` / `createdAt`），
+ * 不是从 `history` 派生 —— 见 `sortKeyOf` 的注释。
  *
  * ## 草稿可见性
  *
@@ -47,7 +53,6 @@
  */
 
 import type { Card } from './card.js';
-import type { SearchCondition, SearchStrategy } from './ports.js';
 import {
 	DRAFT,
 	STATUS_GROUP_OF,
@@ -150,31 +155,18 @@ function cardMatches(card: Card, condition: SearchCondition): boolean {
 }
 
 /**
- * 从 `history` 里派生出排序用的两个时间戳。
+ * 排序键：`adoptedAt ?? createdAt`。
  *
- * ⚠ 这是**并入 core 后新增的映射**：旧 search 包假设卡上直接有
- * `adoptedAt` / `createdAt` 字段，而 core 的 `Card` 没有 —— 那条假设会让排序
- * 静默退化成输入顺序。见文件头注释。
+ * ⚠ 两个字段是**卡的固有属性**（`Card` 上直接存），不是从 `history` 派生。
+ *   早期实现扫 `history` 找 `action === 'adopt'` / `'create'`，三条问题：
+ *   排序时 O(history) 扫描、`history[0].at` 不是稳定锚点（history 可增可裁）、
+ *   而 `createdAt` 本来就是固有属性 —— 藏在历史里属于「信息在但没建模」。
+ *
+ * 非有限数值视为缺失（脏数据不该让排序崩）。
  */
-function timestampsOf(card: Card): { adoptedAt: number | null; createdAt: number | null } {
-	let adoptedAt: number | null = null;
-	let createdAtom: number | null = null;
-
-	for (const entry of card.history) {
-		if (entry.action === 'adopt' && adoptedAt === null) adoptedAt = entry.at;
-		if (entry.action === 'create' && createdAtom === null) createdAtom = entry.at;
-	}
-
-	/* 没有 create 事件时回落最早的历史时间（至少能排序）。 */
-	const createdAt = createdAtom ?? (card.history[0]?.at ?? null);
-	return { adoptedAt, createdAt };
-}
-
-/** 排序键：`adoptedAt ?? createdAt ?? null`。 */
 function sortKeyOf(card: Card): number | null {
-	const { adoptedAt, createdAt } = timestampsOf(card);
-	if (adoptedAt !== null && Number.isFinite(adoptedAt)) return adoptedAt;
-	if (createdAt !== null && Number.isFinite(createdAt)) return createdAt;
+	if (card.adoptedAt !== null && Number.isFinite(card.adoptedAt)) return card.adoptedAt;
+	if (Number.isFinite(card.createdAt)) return card.createdAt;
 	return null;
 }
 
@@ -209,6 +201,49 @@ export interface SearchOptions {
 	 */
 	readonly draftState?: string;
 }
+
+/**
+ * 搜索条件 —— `list()` / `search()` 的入参形状。
+ *
+ * ⚠ **不是端口**：搜索已并入 core 强依赖（用户裁定）。这个类型只是方法的入参，
+ *   不构成跨包契约。
+ *
+ * 语义：**字段之间 AND，字段内部（数组）OR。**
+ */
+export interface SearchCondition {
+	/** 标题模糊：子串、大小写不敏感。空串 = 不筛。 */
+	readonly title?: string;
+	/**
+	 * 状态筛选。数组元素可以是**状态 id**，也可以是**组 id**
+	 * （`draft` / `active` / `shelved` / `ended`）。数组内 OR。
+	 *
+	 * ⚠ 不给 `status` ⇒ 结果**不含草稿**（见 `includesDrafts`）。
+	 */
+	readonly status?: readonly string[];
+	/** 类别 id。数组内 OR。 */
+	readonly kind?: readonly string[];
+	/** 领域名。数组内 OR。 */
+	readonly domain?: readonly string[];
+	/** 模板 ref。数组内 OR。 */
+	readonly templateRef?: readonly string[];
+	/**
+	 * 「谁改过、对方还没看过」这个**事件维度**的筛选条件。
+	 *
+	 * 搜索实现算不出它（要历史事件 + 已读游标），调用方把结果集通过
+	 * `updatedCardIds` 传进来。
+	 */
+	readonly updatedBy?: readonly ('ai' | 'user')[];
+	/** `updatedBy` 的**结果集**：这些 id 的卡保留。 */
+	readonly updatedCardIds?: readonly string[];
+}
+
+/**
+ * 搜索实现的形状。
+ *
+ * ⚠ **不是端口**：它是 `createSearch()` 的返回类型，方便内部组合与测试注入。
+ *   用户裁定搜索强耦合后，它**不再出现在 `TaskboardOptions`**。
+ */
+export type SearchStrategy = (cards: readonly Card[], condition: SearchCondition) => readonly Card[];
 
 /**
  * 造一个搜索实现。

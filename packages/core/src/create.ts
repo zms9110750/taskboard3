@@ -143,6 +143,9 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 		relations,
 		sections,
 		note: input.note ?? '',
+		/* 建卡时间 = 那一刻；采纳时间此时还是 `null`（采纳路径会盖）。 */
+		createdAt: deps.now,
+		adoptedAt: null,
 		history: [
 			{
 				at: deps.now,

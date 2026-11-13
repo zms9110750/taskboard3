@@ -25,9 +25,9 @@ import { DRAFT, ErrorCode, failure } from '@taskboard/protocol';
 import type { Card, CardSection, WorkspaceId } from './card.js';
 import { findCard, withoutDeleted } from './card.js';
 import { buildCard, type CreateInput, type CreateResult } from './create.js';
-import { createSearch } from './search.js';
+import { createSearch, type SearchCondition } from './search.js';
 import { createSqliteStore } from './storage/sqlite.js';
-import type { CardStore, SearchCondition, SearchStrategy } from './ports.js';
+import type { CardStore } from './ports.js';
 import { ActionRegistry, BUILTIN_ACTIONS } from './template/actions.js';
 import { DomainRegistry, BUILTIN_DOMAINS } from './template/domains.js';
 import { KindRegistry, BUILTIN_KINDS } from './template/kinds.js';
@@ -44,14 +44,29 @@ import {
 	type Workspace,
 } from './workspace.js';
 
-/** 工厂参数。 */
-export interface TaskboardOptions {
-	/** 数据目录（SQLite 库放这里）。 */
-	readonly dataDir: string;
-	/** 替换存储实现；省略 = 用内置 `node:sqlite`。 */
-	readonly store?: CardStore;
-	/** 替换搜索实现；省略 = 用一个朴素的标题/字段筛选。 */
-	readonly search?: SearchStrategy;
+/**
+ * 工厂参数 —— **判别联合**。
+ *
+ * ## 为什么不是「`dataDir` 必填 + `store` 可选」
+ *
+ * 旧写法有一个类型上说不通的组合：
+ *
+ * ```ts
+ * createTaskboard({ dataDir: 'x', store: myStore })   // dataDir 被忽略
+ * createTaskboard({ store: myStore })                 // ❌ 编译不过，虽然完全够用
+ * ```
+ *
+ * ⇒ 判别联合让两种合法调用都成立，而「两个都不给」变成**编译错误**：
+ *
+ * ```ts
+ * createTaskboard({})                                 // ❌ 编译错误
+ * ```
+ *
+ * ## 搜索不在这里
+ *
+ * 用户裁定搜索强耦合（见 `ports.ts` 顶部）⇒ **没有 `search` 字段**。
+ */
+type CommonOptions = {
 	/** 当前时间来源（测试注入用）。省略 = `Date.now`。 */
 	readonly now?: () => number;
 	/** 是否自动注册四个内置类别（默认 `true`）。 */
@@ -60,7 +75,18 @@ export interface TaskboardOptions {
 	readonly builtinDomains?: boolean;
 	/** 是否自动注册三个内置 action（默认 `true`）。 */
 	readonly builtinActions?: boolean;
-}
+};
+
+/** 工厂参数：给 `store` 或给 `dataDir`，二选一。 */
+export type TaskboardOptions =
+	| (CommonOptions & {
+			/** 注入存储实现（调用方负责 `close` 之外的装配）。 */
+			readonly store: CardStore;
+	  })
+	| (CommonOptions & {
+			/** 数据目录（内置 SQLite 库建在这里）。 */
+			readonly dataDir: string;
+	  });
 
 /** 任务板实例的公开面。 */
 export interface Taskboard {
@@ -118,9 +144,16 @@ export interface Taskboard {
  */
 export function createTaskboard(options: TaskboardOptions): Taskboard {
 	const now = options.now ?? (() => Date.now());
-	const store = options.store ?? createSqliteStore(options.dataDir);
-	/* 默认用 core 自带的搜索；仍允许注入替换（「并入 core」≠「不能换」）。 */
-	const search = options.search ?? createSearch();
+	/*
+	 * 判别联合的窄化：`'store' in options` 在类型层就把两条分支分开，
+	 * 不需要 `as`。给了 `store` 时**绝不**去碰 `dataDir`（那个字段不存在）。
+	 */
+	const store: CardStore = 'store' in options ? options.store : createSqliteStore(options.dataDir);
+	/*
+	 * 搜索**不可注入** —— 用户裁定强耦合（见 `ports.ts` 顶部）。
+	 * `createSearch()` 是无参的：状态 → 组名的映射直接 import protocol，不再需要注入。
+	 */
+	const search = createSearch();
 
 	const templates = new TemplateRegistry();
 	const kinds = new KindRegistry();
@@ -342,11 +375,11 @@ export function loadTemplatesFrom(tb: Taskboard, dir: string): { readonly loaded
 export { createSqliteStore } from './storage/sqlite.ts';
 
 /*
- * ── 搜索（并入 core 的实现） ──
+ * ── 搜索（core 强依赖） ──
  *
- * 用户裁定：「搜索并入 core，`packages/search` 整个包取消。」
- * 但「并入」不等于「不能替换」：`TaskboardOptions.search` 仍在，
- * `SearchStrategy` 接口不变。下面导出的只是**默认实现**及其零件。
+ * 用户裁定：「就强耦合吧」⇒ 搜索不是端口，`TaskboardOptions` 里没有 `search`。
+ * 下面导出的是 core 自己的搜索实现及其零件 —— 供 UI / AI 工具直接复用
+ * （比如 UI 在客户端本地筛选时用同一套规则，不另写一份）。
  */
 export {
 	createSearch,
@@ -355,14 +388,12 @@ export {
 	isStatusGroup,
 	STATUS_GROUPS,
 	DEFAULT_DRAFT_STATE,
+	type SearchCondition,
 	type SearchOptions,
+	type SearchStrategy,
 } from './search.ts';
 
-export type {
-	CardStore,
-	SearchCondition,
-	SearchStrategy,
-} from './ports.ts';
+export type { CardStore } from './ports.ts';
 
 export type {
 	Card,
