@@ -563,6 +563,74 @@ describe('POST /api/cards/:id/action', () => {
 			to: 'TASK_STATE_SUBMITTED',
 		});
 	});
+
+	it('HTTP 的「领取」被拒 ⇒ 409 + CLAIM_REJECTED', async () => {
+		const created = await taskboard.createWorkspace('界面领取');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const wsId = created.workspace.id;
+		/* 要 work 模板：只有工作卡能领，而这里测的是「界面不许领」。 */
+		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
+		assert.notEqual(template, undefined);
+		if (template === undefined) return;
+
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '可领的卡' });
+		assert.equal(made.ok, true);
+		if (!made.ok) return;
+		/* 先采纳到提交（领取的前置状态）。 */
+		await taskboard.transition(wsId, made.card.id, 'TASK_STATE_SUBMITTED', 'button');
+
+		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}/action`,
+			body: { to: 'TASK_STATE_WORKING' },
+		});
+
+		assert.equal(out.status, 409, out.raw);
+		const payload = out.json as { code: string; message: string };
+		assert.equal(payload.code, 'CLAIM_REJECTED');
+		assert.ok(payload.message.includes('AI 工具'), payload.message);
+
+		/* 状态没变 —— 拒绝必须是真的没做事。 */
+		const after = taskboard.get(wsId, made.card.id);
+		assert.equal(after.ok, true);
+		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_SUBMITTED');
+	});
+
+	it('HTTP 的「释放」被拒 ⇒ 409 + CLAIM_REJECTED', async () => {
+		const created = await taskboard.createWorkspace('界面释放');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const wsId = created.workspace.id;
+		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
+		if (template === undefined) return;
+
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '处理中的卡' });
+		assert.equal(made.ok, true);
+		if (!made.ok) return;
+		await taskboard.transition(wsId, made.card.id, 'TASK_STATE_SUBMITTED', 'button');
+		/* 用 core 直接领取（模拟 AI 已领），再让界面尝试释放。 */
+		const claimed = await taskboard.claim(wsId, made.card.id, 'ai', 'some-agent');
+		assert.equal(claimed.ok, true, claimed.ok ? '' : claimed.message);
+
+		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}/action`,
+			body: { to: 'TASK_STATE_SUBMITTED' },
+		});
+
+		assert.equal(out.status, 409, out.raw);
+		const payload = out.json as { code: string; message: string };
+		assert.equal(payload.code, 'CLAIM_REJECTED');
+		assert.ok(payload.message.includes('AI 工具'), payload.message);
+
+		/* 持有者还在。 */
+		const after = taskboard.get(wsId, made.card.id);
+		assert.equal(after.ok, true);
+		if (after.ok) assert.equal(after.card.holders.length, 1);
+	});
 });
 
 describe('路径与异常', () => {
