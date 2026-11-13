@@ -1,7 +1,6 @@
 {
-  "name": "@local/taskboard3-search",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@taskboard/search",
+  "version": "0.1.0-3.a.1",
   "type": "module",
   "description": "任务板搜索：纯函数，全量卡 → 过滤后的卡。零依赖，可进浏览器。",
   "main": "./lib/index.js",
@@ -14,6 +13,7 @@
     "./package.json": "./package.json"
   },
   "files": ["lib"],
+  "sideEffects": false,
   "scripts": {
     "build": "tsc -b",
     "test": "node --test \"test/**/*.test.ts\"",

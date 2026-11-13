@@ -17,7 +17,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@local/taskboard3-protocol':
+      '@taskboard/protocol':
         specifier: workspace:*
         version: link:../protocol
       yaml:

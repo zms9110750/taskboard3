@@ -17,8 +17,8 @@
  * 两者之间的映射只在建卡/编辑那一刻发生，之后卡自给自足。
  */
 
-import type { LinkKindId, StatusGroup, TaskState } from '@local/taskboard3-protocol';
-import { DRAFT, STATUS_GROUP_OF as STATUS_GROUP } from '@local/taskboard3-protocol';
+import type { LinkKindId, StatusGroup, TaskState } from '@taskboard/protocol';
+import { DRAFT, STATUS_GROUP_OF as STATUS_GROUP } from '@taskboard/protocol';
 
 /** 卡编号。不透明字符串 —— 本模块不解析格式、不从它反推任何东西。 */
 export type CardId = string;

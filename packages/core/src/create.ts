@@ -25,8 +25,8 @@
  * ⇒ **所有类别都从草稿开始**，区别在采纳之后去哪。
  */
 
-import type { Failure } from '@local/taskboard3-protocol';
-import { DRAFT, ErrorCode, failure } from '@local/taskboard3-protocol';
+import type { Failure } from '@taskboard/protocol';
+import { DRAFT, ErrorCode, failure } from '@taskboard/protocol';
 
 import type { Card, CardSection, Relations, TemplateRef } from './card.js';
 import { nextId, prefixOf } from './ids.js';

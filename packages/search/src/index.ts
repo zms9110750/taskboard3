@@ -1,5 +1,5 @@
 /**
- * `@local/taskboard3-search` —— 纯函数搜索。
+ * `@taskboard/search` —— 纯函数搜索。
  *
  * ## 这个包是什么
  *
@@ -30,7 +30,7 @@
  * **刻意不留默认值**：留一份拷贝就等于留了第二处真值，而它不会漂移报警。
  *
  * ```ts
- * import { STATUS_GROUP_OF } from '@local/taskboard3-protocol';
+ * import { STATUS_GROUP_OF } from '@taskboard/protocol';
  * const search = createSearch({ groupOf: (s) => STATUS_GROUP_OF[s] });
  * ```
  */

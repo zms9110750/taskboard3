@@ -389,7 +389,7 @@ test('源码不 import node: 或第三方', () => {
 	for (const name of files) {
 		/*
 		 * 先剥掉注释再匹配：JSDoc 的 `@example` 里会出现
-		 * `import { STATUS_GROUP_OF } from '@local/taskboard3-protocol'`
+		 * `import { STATUS_GROUP_OF } from '@taskboard/protocol'`
 		 * 这类**示范代码**，它不是真实依赖。
 		 */
 		const raw = readFileSync(join(srcDir, name), 'utf8');

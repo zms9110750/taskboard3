@@ -19,8 +19,8 @@
  * 读、建、改、删、工作空间、模板注册 —— 以及把校验接进建卡路径。
  */
 
-import type { Failure } from '@local/taskboard3-protocol';
-import { DRAFT, ErrorCode, failure } from '@local/taskboard3-protocol';
+import type { Failure } from '@taskboard/protocol';
+import { DRAFT, ErrorCode, failure } from '@taskboard/protocol';
 
 import type { Card, CardSection, WorkspaceId } from './card.js';
 import { findCard, withoutDeleted } from './card.js';

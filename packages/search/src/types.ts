@@ -125,7 +125,7 @@ export interface SearchOptions {
 	 *
 	 * @example
 	 * ```ts
-	 * import { STATUS_GROUP_OF } from '@local/taskboard3-protocol';
+	 * import { STATUS_GROUP_OF } from '@taskboard/protocol';
 	 * const search = createSearch({ groupOf: (s) => STATUS_GROUP_OF[s] });
 	 * ```
 	 */

@@ -39,8 +39,8 @@
 
 import { z } from 'zod';
 
-import type { Failure } from '@local/taskboard3-protocol';
-import { ErrorCode, failure } from '@local/taskboard3-protocol';
+import type { Failure } from '@taskboard/protocol';
+import { ErrorCode, failure } from '@taskboard/protocol';
 
 import type { ActionRegistry } from './actions.js';
 import type { TemplateRegistry } from './registry.js';

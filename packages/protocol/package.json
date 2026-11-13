@@ -1,7 +1,6 @@
 {
-  "name": "@local/taskboard3-protocol",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@taskboard/protocol",
+  "version": "0.1.0-3.a.1",
   "type": "module",
   "description": "任务板协议：状态词表、关系词表、错误码。零运行时依赖，可进浏览器。",
   "main": "./lib/index.js",
@@ -14,6 +13,7 @@
     "./package.json": "./package.json"
   },
   "files": ["lib"],
+  "sideEffects": false,
   "scripts": {
     "build": "tsc -b",
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
