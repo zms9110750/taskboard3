@@ -341,3 +341,36 @@ export function loadTemplatesFrom(tb: Taskboard, dir: string): { readonly loaded
 	const result = tb.templates().loadDirectory(dir);
 	return { loaded: result.loaded };
 }
+
+/* ────────────────────────── 对外契约（下游 import 这些） ──────────────────────────
+ *
+ * ## 为什么在这里再导出一次
+ *
+ * 下面这些名字的实现分散在 `ports.ts` / `card.ts` / `storage/sqlite.ts`，
+ * 但**下游只该认一个入口**（`package.json` 的 `exports` 只有 `"."`）。
+ * ⇒ 内部怎么分文件是 core 的自由，对外面只暴露这一个面。
+ *
+ * ⚠ **导出 ≠ 让下游乱用**：`createSqliteStore` 是给「默认存储插件行」和
+ *   「测试 / mcp 入口」用的。dsh 与 store 插件应该通过 `CardStore` 端口拿实例，
+ *   而不是自己 new 一个 —— 否则「替换存储实现」这件事就绕过去了。
+ */
+
+export { createSqliteStore } from './storage/sqlite.ts';
+
+export type {
+	CardStore,
+	SearchCondition,
+	SearchStrategy,
+} from './ports.ts';
+
+export type {
+	Card,
+	CardId,
+	WorkspaceId,
+	CardSection,
+	HistoryEntry,
+	RelationEntry,
+	Relations,
+	TemplateRef,
+} from './card.ts';
+
