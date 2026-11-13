@@ -20,13 +20,21 @@
  */
 
 import type { Failure } from '@taskboard/protocol';
-import { DRAFT, ErrorCode, failure } from '@taskboard/protocol';
+import { DRAFT, ErrorCode, failure, type Actor, type TaskState } from '@taskboard/protocol';
 
 import type { Card, CardSection, WorkspaceId } from './card.js';
 import { findCard, withoutDeleted } from './card.js';
 import { buildCard, type CreateInput, type CreateResult } from './create.js';
 import { createSearch, type SearchCondition } from './search.js';
 import { createSqliteStore } from './storage/sqlite.js';
+import {
+	adoptCard,
+	claimCard,
+	judgeClaim,
+	recomputeChain,
+	releaseCard,
+	transitionCard,
+} from './transition.js';
 import type { CardStore } from './ports.js';
 import { ActionRegistry, BUILTIN_ACTIONS } from './template/actions.js';
 import { DomainRegistry, BUILTIN_DOMAINS } from './template/domains.js';
@@ -88,6 +96,17 @@ export type TaskboardOptions =
 			readonly dataDir: string;
 	  });
 
+/** 状态写操作的结果：改过的卡 + 沿树被连带改动的父卡。 */
+export interface StatusWriteOk {
+	readonly ok: true;
+	readonly card: Card;
+	/** 沿 `parent` 链被连带改动的父卡（自底向上）。调用方要刷新它们。 */
+	readonly recomputed: readonly Card[];
+}
+
+/** 一次状态写的结果。 */
+export type StatusWriteResult = StatusWriteOk | Failure;
+
 /** 任务板实例的公开面。 */
 export interface Taskboard {
 	/* ── 工作空间 ── */
@@ -122,6 +141,51 @@ export interface Taskboard {
 	): Promise<{ readonly ok: true; readonly card: Card } | Failure>;
 	/** 墓碑标记（只有草稿能删）。 */
 	remove(workspaceId: WorkspaceId, cardId: string): Promise<{ readonly ok: true; readonly card: Card } | Failure>;
+
+	/* ── 状态转移 ──
+	 *
+	 * 判定在 `@taskboard/protocol` 的 `judgeTransition`（纯函数），
+	 * 改卡在 `transition.ts`（纯函数），本层只做「读卡 → 判定 → 落库 → 沿树重算」。
+	 *
+	 * 每个写方法都返回 `recomputed`：沿 `parent` 链被连带改动的父卡。
+	 * 调用方需要刷新它们，否则界面会拿着旧状态。
+	 */
+
+	/** 采纳：草稿 → 按类别进「提交」或「需要授权」；同时写 `adoptedAt`。 */
+	adopt(workspaceId: WorkspaceId, cardId: string, actor: Actor): Promise<StatusWriteResult>;
+	/**
+	 * 领取：提交 → 处理中。
+	 *
+	 * @param holderOf AI 的持有者标识（消息循环 id / 会话 id）。core 不认识会话，
+	 *                 由入口传。省略 = `'ai'`（所有 AI 共用一个占位，仍能过「一次一张」）。
+	 */
+	claim(
+		workspaceId: WorkspaceId,
+		cardId: string,
+		actor: Actor,
+		holderOf?: string,
+	): Promise<StatusWriteResult>;
+	/** 释放 / 搁置：处理中 → 提交，清占位。 */
+	release(workspaceId: WorkspaceId, cardId: string, actor: Actor): Promise<StatusWriteResult>;
+	/**
+	 * 通用状态转移。
+	 *
+	 * @param trigger `'button'`（人点界面）/ `'ai'`（模型调工具）。
+	 *                **由调用方写死，不从前端传** —— 否则前端传 `button` 就能冒充用户。
+	 */
+	transition(
+		workspaceId: WorkspaceId,
+		cardId: string,
+		to: TaskState,
+		trigger: 'button' | 'ai',
+	): Promise<StatusWriteResult>;
+	/**
+	 * 沿 `parent` 链向上重算并落库。
+	 *
+	 * **自动计算绝不产出终结态** —— 候选只来自 `AUTO_STATES`。
+	 * @returns 被改动的父卡（自底向上）
+	 */
+	recomputeUpward(workspaceId: WorkspaceId, cardId: string): Promise<readonly Card[]>;
 
 	/* ── 模板 / 类别 / 领域 / action 注册面 ── */
 	templates(): TemplateRegistry;
@@ -174,6 +238,26 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	const persist = async (workspaceId: WorkspaceId, card: Card): Promise<Card> => {
 		await store.save(workspaceId, card);
 		return card;
+	};
+
+	/**
+	 * 沿 `parent` 链向上重算并落库。
+	 *
+	 * **自动计算绝不产出终结态** —— 候选只来自 `recomputeTargetOf`，
+	 * 它只会返回 `AUTO_STATES` 的四个成员之一。
+	 */
+	const recomputeUpward = async (
+		workspaceId: WorkspaceId,
+		cardId: string,
+	): Promise<readonly Card[]> => {
+		const cards = load(workspaceId);
+		const steps = recomputeChain(cardId, cards, now());
+		const changed: Card[] = [];
+		for (const step of steps) {
+			await persist(workspaceId, step.card);
+			changed.push(step.card);
+		}
+		return changed;
 	};
 
 	return {
@@ -323,7 +407,109 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true, card: next };
 		},
 
-		/* ── 注册面 ── */
+		/* ── 状态转移（判定在 protocol，改卡在 transition.ts） ── */
+
+		async adopt(workspaceId, cardId, actor) {
+			const cards = load(workspaceId);
+			const existing = findCard(cards, cardId);
+			if (existing === undefined) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `编号「${cardId}」不存在。`);
+			}
+			if (existing.deleted) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
+			}
+
+			const result = adoptCard(existing, actor, now());
+			if (!result.ok) return result;
+
+			await persist(workspaceId, result.card);
+			const recomputed = await recomputeUpward(workspaceId, result.card.id);
+			return { ok: true, card: result.card, recomputed };
+		},
+
+		async claim(workspaceId, cardId, actor, holderOf) {
+			const cards = load(workspaceId);
+			const existing = findCard(cards, cardId);
+			if (existing === undefined) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `编号「${cardId}」不存在。`);
+			}
+			if (existing.deleted) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
+			}
+
+			/*
+			 * 持有者：**用户**是 `'user'`；AI 用调用方给的 `holder`（消息循环 id / 会话 id）。
+			 *
+			 * ⚠ core 不认识会话 —— 这个标识是**入口**的事。dsh 入口从 `exec.agent.id` 取，
+			 *   mcp 入口从自己的连接标识取。没给就回落 `'ai'`。
+			 */
+			const holder = actor === 'ai' ? (holderOf ?? 'ai') : 'user';
+
+			/*
+			 * 「一次一张」只约束 **AI**。
+			 *
+			 * 用户矩阵里「同一当前消息循环没有别的处理中的工作」是 **AI** 领取的条件；
+			 * 用户手动领取只看依赖是否完成。⇒ 人不受这条限制（`holder: null` 跳过该项）。
+			 */
+			const quotaHolder = actor === 'ai' ? holder : null;
+
+			/* 准入三条：依赖 / 子任务要授权 / 一次一张。失败要带原因。 */
+			const admission = judgeClaim(existing, cards, quotaHolder);
+			if (!admission.ok) {
+				return failure(ErrorCode.CLAIM_REJECTED, admission.message, {
+					detail: {
+						reason: admission.reason,
+						...(admission.blockers === undefined ? {} : { blockers: admission.blockers }),
+					},
+				});
+			}
+
+			const result = claimCard(existing, holder, now());
+			if (!result.ok) return result;
+
+			await persist(workspaceId, result.card);
+			const recomputed = await recomputeUpward(workspaceId, result.card.id);
+			return { ok: true, card: result.card, recomputed };
+		},
+
+		async release(workspaceId, cardId, _actor) {
+			const cards = load(workspaceId);
+			const existing = findCard(cards, cardId);
+			if (existing === undefined) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `编号「${cardId}」不存在。`);
+			}
+			if (existing.deleted) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
+			}
+
+			const result = releaseCard(existing, now());
+			if (!result.ok) return result;
+
+			await persist(workspaceId, result.card);
+			const recomputed = await recomputeUpward(workspaceId, result.card.id);
+			return { ok: true, card: result.card, recomputed };
+		},
+
+		async transition(workspaceId, cardId, to, trigger) {
+			const cards = load(workspaceId);
+			const existing = findCard(cards, cardId);
+			if (existing === undefined) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `编号「${cardId}」不存在。`);
+			}
+			if (existing.deleted) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
+			}
+
+			const result = transitionCard(existing, to, trigger, now());
+			if (!result.ok) return result;
+
+			await persist(workspaceId, result.card);
+			const recomputed = await recomputeUpward(workspaceId, result.card.id);
+			return { ok: true, card: result.card, recomputed };
+		},
+
+		/** 见 `recomputeUpward` 的内部实现（闭包里那份）。 */
+		recomputeUpward,
 		templates() {
 			return templates;
 		},
