@@ -22,7 +22,7 @@ import { createTaskboard, type Taskboard } from '@taskboard/core';
 import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
 import { createSearch } from '@taskboard/core';
 
-import { createTools, describeFailure, type DefineTool, type ToolLike } from '../src/tools.ts';
+import { createTools, describeFailure, describeUnread, type DefineTool, type ToolLike } from '../src/tools.ts';
 
 /* ────────────────────────────── 夹具 ────────────────────────────── */
 
@@ -307,9 +307,14 @@ describe('actor 标记：AI 工具写 ⇒ updates.ai', () => {
 	it('AI 工具改备注 ⇒ 进 updates.ai，不进 updates.user', async () => {
 		const id = await makeCardByAi('AI 改备注');
 		/*
-		 * ⚠ 要清 `updates.ai`，必须由**用户**标记已读（`markSeen(..., 'user')`）——
-		 *   因为 `updates.ai` 比的是「用户的游标」。
-		 *   测试里直接调 core 模拟「用户打开过这张卡」。
+		 * ⚠ 要清 `updates.ai`，必须由**用户**标记已读（`markSeen(..., 'user')`）。
+		 *
+		 * 字段名的方向是**交叉**的：`unread.ai` 的意思是「**AI 改过**、用户待读」
+		 * ⇒ 清它的是**用户**看过（`reader: 'user'`）。
+		 *
+		 * ⚠ 这套语义原来靠「读游标 + 历史下标」实现；现在未读是卡上的两个 bool
+		 *   （`Card.unread`，用户裁定「不能再用胶水代码了」）。
+		 *   本用例的**调用方式不变**，但底层已不是游标。
 		 */
 		await taskboard.markSeen(workspaceId, id, 'user');
 
@@ -349,9 +354,11 @@ describe('actor 标记：AI 工具写 ⇒ updates.ai', () => {
 		/*
 		 * ⚠ **这是最容易搞反的一条。**
 		 *
-		 * `markSeen(cardId, reader)` 写的是**那个读者**的游标：
-		 *   · `updates.ai`   比的是「用户的游标」⇒ 要用户标已读才清
-		 *   · `updates.user` 比的是「AI 的游标」  ⇒ 要 AI 标已读才清
+		 * `markSeen(cardId, reader)` 清的是**那个读者**的未读标记 ——
+		 * 但字段名的方向是交叉的（字段名说的是「谁改的」，不是「谁没读」）：
+		 *
+		 *   · `Card.unread.user` = 「用户改过、**AI** 待读」⇒ 要 **AI** 标已读才清
+		 *   · `Card.unread.ai`   = 「AI 改过、**用户**待读」⇒ 要 **用户**标已读才清
 		 *
 		 * 所以 `taskboard_mark_seen`（reader 固定 `'ai'`）清的是 **`updates.user`**。
 		 */
@@ -391,6 +398,15 @@ describe('actor 标记：AI 工具写 ⇒ updates.ai', () => {
 		const byChanged = await run('taskboard_cards', { userChanged: true, status: ['draft'] });
 		assert.ok(byChanged.includes('用户建的卡'), `userChanged 应命中用户建的卡：${byChanged}`);
 		assert.ok(!byChanged.includes('AI 改的卡'), `userChanged 不该命中 AI 改的卡：${byChanged}`);
+	});
+});
+
+describe('describeUnread', () => {
+	it('四种组合的措辞（字段名说的是「谁改的」，不是「谁没读」）', () => {
+		assert.equal(describeUnread({ ai: false, user: false }), '双方都已读');
+		assert.equal(describeUnread({ ai: false, user: true }), '用户改过，AI 待读');
+		assert.equal(describeUnread({ ai: true, user: false }), 'AI 改过，用户待读');
+		assert.equal(describeUnread({ ai: true, user: true }), '双方都有未读');
 	});
 });
 

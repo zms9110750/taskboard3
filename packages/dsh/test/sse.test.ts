@@ -22,15 +22,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { Card } from '@taskboard/core';
+import { createBus, type Card, type TaskboardMessage } from '@taskboard/core';
 
-import {
-	createLocalBus,
-	createSseHub,
-	encodeFrame,
-	type BusMessageLike,
-	type SseResponseLike,
-} from '../src/sse.ts';
+import { createSseHub, encodeFrame, type SseResponseLike } from '../src/sse.ts';
 import type { IncomingLike } from '../src/types.ts';
 
 /* ────────────────────────────── 测试替身 ────────────────────────────── */
@@ -113,7 +107,7 @@ function fakeCard(id: string): Card {
 }
 
 /** 造一条 bus 消息。 */
-function fakeMessage(workspaceId: string, cardIds: readonly string[] = []): BusMessageLike {
+function fakeMessage(workspaceId: string, cardIds: readonly string[] = []): TaskboardMessage {
 	return { type: 'card:written', workspaceId, cards: cardIds.map(fakeCard) };
 }
 
@@ -145,7 +139,7 @@ describe('SSE 帧格式', () => {
 
 describe('连接生命周期', () => {
 	it('open 写 SSE 头 + 先发 hello 帧', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus, { now: () => 123 });
 		const res = makeRes();
 
@@ -167,7 +161,7 @@ describe('连接生命周期', () => {
 	});
 
 	it('订阅后写卡 ⇒ 收到 bus 帧', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const res = makeRes();
 		hub.open(makeReq('ws1'), res);
@@ -179,7 +173,7 @@ describe('连接生命周期', () => {
 		assert.equal(res.frames.length, afterHello + 1);
 		const payload = payloadOf(res.frames[res.frames.length - 1] ?? '') as {
 			kind: string;
-			message: BusMessageLike;
+			message: TaskboardMessage;
 		};
 		assert.equal(payload.kind, 'bus');
 		assert.equal(payload.message.type, 'card:written');
@@ -191,7 +185,7 @@ describe('连接生命周期', () => {
 	});
 
 	it('?workspace= 只转发该空间的消息', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const res = makeRes();
 		hub.open(makeReq('ws1'), res);
@@ -205,7 +199,7 @@ describe('连接生命周期', () => {
 	});
 
 	it('不带 ?workspace= ⇒ 转发全部空间', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const res = makeRes();
 		hub.open(makeReq(''), res);
@@ -219,7 +213,7 @@ describe('连接生命周期', () => {
 
 describe('不泄漏：客户端断开', () => {
 	it('res 触发 close ⇒ 退订 + 从集合移除', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const res = makeRes();
 		hub.open(makeReq('ws1'), res);
@@ -237,7 +231,7 @@ describe('不泄漏：客户端断开', () => {
 	});
 
 	it('重复触发 close 不重复退订（幂等）', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const res = makeRes();
 		hub.open(makeReq('ws1'), res);
@@ -251,7 +245,7 @@ describe('不泄漏：客户端断开', () => {
 	});
 
 	it('多条连接：断开一条，其它不受影响', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const a = makeRes();
 		const b = makeRes();
@@ -273,7 +267,7 @@ describe('不泄漏：客户端断开', () => {
 
 describe('不泄漏：provider 卸载', () => {
 	it('closeAll ⇒ 所有连接 res.end() + bus.size() 归零', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const a = makeRes();
 		const b = makeRes();
@@ -294,7 +288,7 @@ describe('不泄漏：provider 卸载', () => {
 	});
 
 	it('closeAll 幂等', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const res = makeRes();
 		hub.open(makeReq('ws1'), res);
@@ -307,7 +301,7 @@ describe('不泄漏：provider 卸载', () => {
 	});
 
 	it('closeAll 之后 open ⇒ 直接关掉，不进集合', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		hub.closeAll();
 
@@ -321,7 +315,7 @@ describe('不泄漏：provider 卸载', () => {
 	});
 
 	it('关闭后再 emit 不抛、不写帧', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		const res = makeRes();
 		hub.open(makeReq('ws1'), res);
@@ -336,7 +330,7 @@ describe('不泄漏：provider 卸载', () => {
 
 describe('不泄漏：写失败当断开处理', () => {
 	it('连上之后 write 开始抛错 ⇒ 该连接被清理，其它连接不受影响', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 
 		/*
@@ -377,7 +371,7 @@ describe('不泄漏：写失败当断开处理', () => {
 	});
 
 	it('hello 帧写失败 ⇒ 连接根本不该进集合', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 
 		const broken = makeRes();
@@ -407,7 +401,7 @@ describe('不泄漏：写失败当断开处理', () => {
 
 describe('鉴权（由路由层负责，这里验 hub 不会被调用）', () => {
 	it('没有 open 调用 ⇒ 无连接、无订阅、无帧', () => {
-		const bus = createLocalBus();
+		const bus = createBus();
 		const hub = createSseHub(bus);
 		/* 路由层在鉴权失败时直接 return，根本不会调 hub.open。 */
 		assert.equal(hub.count(), 0);

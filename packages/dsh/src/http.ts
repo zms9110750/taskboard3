@@ -357,7 +357,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		 * ⚠ **`reader` 固定 `'user'`，不从 body 取。**
 		 *
 		 * 浏览器里操作的人是用户 —— 这条通道不可信到能自称「我是 AI」。
-		 * AI 的已读游标由 AI 工具 `taskboard_mark_seen` 自己写（那边有真实 agent 身份）。
+		 * AI 的已读由 AI 工具 `taskboard_mark_seen` 自己做（那边有真实 agent 身份）。
 		 *
 		 * ⚠ 若前端传了 `reader: 'ai'`，忽略并继续 —— 不报错（避免前端猜错时整个打开卡流程坏掉），
 		 *   但日志里留一条，便于发现「前端以为自己是 AI」这种误解。
@@ -368,7 +368,14 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		}
 		const result = await taskboard.markSeen(workspaceId, cardId, 'user');
 		if (!result.ok) return sendFailure(res, result);
-		sendOk(res, { at: result.at });
+		/*
+		 * 返回标记之后的**未读状态**（`{ ai, user }` 两个 bool）。
+		 *
+		 * ⚠ 曾经这里返回 `{ at }`（读游标时间）。那个机制已被用户裁定推翻 ——
+		 *   未读现在是卡自己的字段（`Card.unread`），不是卡外的 kv 游标。
+		 *   见 `core/src/card.ts` 的 `CardUnread` 注释。
+		 */
+		sendOk(res, { unread: result.unread });
 		return;
 	}
 

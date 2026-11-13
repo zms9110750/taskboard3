@@ -121,6 +121,29 @@ export function describeFailure(fail: Failure): string {
 	return lines.join('\n');
 }
 
+/**
+ * 把未读状态翻译成人话。
+ *
+ * ## ⚠ 两个字段的方向是**交叉**的（这是最容易搞反的地方）
+ *
+ * ```
+ * ai: true    ⇒ AI 改过，**用户**还没读
+ * user: true  ⇒ 用户改过，**AI** 还没读
+ * ```
+ *
+ * 即字段名是「**谁改的**」，而不是「谁没读」。
+ * 记忆法：`ai: true` 的意思是「有 AI 写的、待读的东西」。
+ *
+ * 这个方向由 core 的 `CardUnread` 定义（`core/src/card.ts:192`），
+ * 本函数只做措辞，不改语义。
+ */
+export function describeUnread(unread: { readonly ai: boolean; readonly user: boolean }): string {
+	if (!unread.ai && !unread.user) return '双方都已读';
+	if (!unread.ai && unread.user) return '用户改过，AI 待读';
+	if (unread.ai && !unread.user) return 'AI 改过，用户待读';
+	return '双方都有未读';
+}
+
 /** 人类可读的卡行。 */
 function cardLine(card: Card): string {
 	return `${card.id}  [${labelOf(card.status)}]  ${card.title}  （${card.template.ref} / ${card.template.kind} / ${card.template.domain}）`;
@@ -277,7 +300,12 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 
 			/*
 			 * 「谁改过、对方未读」这个**事件维度** search 自己算不出来
-			 * （它要历史事件 + 已读游标）⇒ 这里先问 core 要结果集，再交给 search 做集合判定。
+			 * ⇒ 这里先问 core 要结果集，再交给 search 做集合判定。
+			 *
+			 * ⚠ 曾经这份结果集来自卡外的「读游标 + 历史下标」计算。
+			 *   现已改成读卡自己的 `Card.unread` 字段（用户裁定：「不能再用胶水代码了」）。
+			 *   ⇒ 本工具的**调用方式没变**（`updates()` 的返回值形状一样），
+			 *     但底层语义变了：**标记已读会直接改卡字段**。
 			 *
 			 * ⚠ 两个 boolean 的映射见上面参数注释 —— **名和方向是反的**，别照字面理解。
 			 */
@@ -720,7 +748,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 	const markSeen = defineTool({
 		name: 'taskboard_mark_seen',
 		description:
-			'把一张卡标记为「AI 已看过」。看过之后，用户那些早于这一刻的改动就不再算「AI 未读」（updates.user 里不再出现它）。你读完一张卡、处理完它的改动后调一次。',
+			'把一张卡标记为「AI 已读过」。看过之后，这张卡上「用户改过、AI 待读」的标记会被清掉。你读完一张卡、处理完用户的改动后调一次。',
 		parameters: {
 			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
 			id: { type: 'string', required: true, description: '卡编号。' },
@@ -735,8 +763,9 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			 */
 			const result = await taskboard.markSeen(workspaceId, cardId, 'ai');
 			if (!result.ok) return { text: `标记已读失败：\n${describeFailure(result)}` };
-			const at = new Date(result.at).toISOString();
-			return { text: `已把 ${cardId} 标记为 AI 已读（游标时间 ${at}）。` };
+			return {
+				text: `已把 ${cardId} 标记为 AI 已读。当前未读状态：${describeUnread(result.unread)}。`,
+			};
 		},
 	});
 

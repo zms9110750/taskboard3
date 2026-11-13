@@ -14,7 +14,7 @@
  * · 本文件（packages/dsh/src/sse.ts）
  * · packages/dsh/src/http.ts 里 `GET /api/events` 那一段
  * · packages/dsh/src/http.ts 的 `RouteDeps.events` 字段
- * · packages/dsh/src/index.ts 里 `createLocalBus()` + `bus` 的构造与传入
+ * · packages/dsh/src/index.ts 里 `createBus()` + `bus` 的构造与传入
  * · packages/dsh/test/sse.test.ts
  * ```
  *
@@ -22,17 +22,12 @@
  * ⇒ 本文件刻意只做四件事：**订阅、写帧、退订、清理**。不解析消息内容
  *   （收到什么都原样转发），不做重连，不做断点续传，不做压缩。
  *
- * ## ⚠ `createBus` 目前不在 core 的公开面里
+ * ## 消息类型直接用 core 的 `TaskboardMessage`
  *
- * `core/src/index.ts` 只 `import type { Bus }`（给 `TaskboardOptions.bus?: Bus` 用），
- * **没有 `export { createBus }`**。所以 dsh 现在拿不到它。
- *
- * ⇒ 本文件提供一个**结构兼容**的 `createLocalBus()`：`Bus` 的形状只有
- *   `emit` / `on` / `size` 三个方法，`createTaskboard({ bus })` 会**结构检查**它。
- *   若 core 改了 `Bus` 的形状，这里会**编译失败**（不是静默漂移）。
- *
- * ⚠ 推荐让 core 补上 `export { createBus }`（一行，且在同一个临时文件里），
- *   那时把 `createLocalBus()` 换成它、删掉本节的本地实现。
+ * core 已 `export { createBus, type Bus, type TaskboardMessage }`（`8786ac7`），
+ * ⇒ 本文件**不另写一份消息类型**。那是「第二处真值」：
+ * 原来放宽成 `type: string` 会诱使人在这里按 `type` 分支处理，
+ * 而 `bus.ts` 明确禁止「消费方解析细节」。
  *
  * ## 一条连接 = 一个订阅（不是共享订阅）
  *
@@ -44,91 +39,9 @@
  * 就证明不了「有没有泄漏」。
  */
 
-import type { Card } from '@taskboard/core';
+import type { Bus, Card, TaskboardMessage } from '@taskboard/core';
 
 import type { IncomingLike, OutgoingLike } from './types.ts';
-
-/* ────────────────────────── 结构兼容的 Bus ────────────────────────── */
-
-/**
- * 一条广播消息 —— **精确镜像 `core/src/bus.ts` 的 `TaskboardMessage`**。
- *
- * ## ⚠ 为什么要精确镜像（不能放宽成 `type: string`）
- *
- * `createTaskboard({ bus })` 对 `bus` 做**结构检查**，而 `Bus.on` 的参数是
- * `(message: TaskboardMessage) => void` —— 函数参数是**逆变**的：
- *
- * ```
- * 我的 on 收 (m: 我的Message) => void
- * core 要求 (m: TaskboardMessage) => void
- * ⇒ 必须双向可赋值 ⇒ 两个类型必须**结构完全相同**
- * ```
- *
- * 所以 `type` 不能写成 `string`（放宽会让检查失败，方向反了）。
- *
- * ## 好处：core 改了消息类型 ⇒ 这里编译失败
- *
- * 若 `bus.ts` 加了第三种 `type`（比如 `'card:deleted'`），
- * 这里的联合不再等价 ⇒ `createTaskboard({ bus })` **编译失败**。
- *
- * **那是对的**：脚手架必须跟着 core 走，改了就报错，而不是静默漂移。
- * （这也符合「删掉断言会编译失败 ⇒ 暴露设计问题」那条判据。）
- */
-export interface BusMessageLike {
-	readonly type: 'card:written' | 'workspace:written';
-	readonly workspaceId: string;
-	readonly cards: readonly Card[];
-}
-
-/**
- * `Bus` 的最小形状（`core/src/bus.ts` 的 `Bus` 结构上满足它，且反向也成立）。
- *
- * ⚠ 消息类型用 `BusMessageLike`（精确镜像），不用 `unknown` ——
- *   函数参数逆变，放宽会让 `createTaskboard({ bus })` 检查失败。见 `BusMessageLike` 注释。
- *
- * ⚠ 本文件**不按 `type` 分支处理**（那是 `bus.ts` 明确禁止的），
- *   但**必须**能读出 `workspaceId` —— 见 `workspaceIdOf` 的说明。
- */
-export interface BusLike {
-	on(listener: (message: BusMessageLike) => void): () => void;
-	size(): number;
-}
-
-/**
- * 造一个结构兼容 core `Bus` 的本地总线。
- *
- * ⚠ **这是 core 没导出 `createBus` 时的替代品**（见文件头）。
- *   core 导出之后删掉本函数，改用 core 的。
- *
- * `emit` 的语义与 core 版一致：逐个调用订阅者，**吞掉单个订阅者的错**
- * （写操作此时已经落库，广播失败不该回滚）。
- */
-export function createLocalBus(): BusLike & { emit(message: BusMessageLike): void } {
-	const listeners = new Set<(message: BusMessageLike) => void>();
-	return {
-		emit(message: BusMessageLike): void {
-			for (const listener of listeners) {
-				try {
-					listener(message);
-				} catch (error) {
-					console.error('[taskboard3-dsh] SSE 订阅者抛错（已忽略）：', error);
-				}
-			}
-		},
-		on(listener: (message: BusMessageLike) => void): () => void {
-			listeners.add(listener);
-			let disposed = false;
-			return () => {
-				if (disposed) return;
-				disposed = true;
-				listeners.delete(listener);
-			};
-		},
-		size(): number {
-			return listeners.size;
-		},
-	};
-}
 
 /* ────────────────────────── SSE 帧 ────────────────────────── */
 
@@ -150,7 +63,7 @@ export interface SseHello {
 /** 一条 bus 消息的转发帧。`message` 原样转发，不解析。 */
 export interface SseBusFrame {
 	readonly kind: 'bus';
-	readonly message: unknown;
+	readonly message: TaskboardMessage;
 }
 
 /** SSE 帧负载。 */
@@ -224,11 +137,11 @@ export interface SseHub {
 /**
  * 造一个 SSE 连接管理器。
  *
- * @param bus 从 core 传进来的总线（或 `createLocalBus()` 的产物）
+ * @param bus core 的 `createBus()` 产物
  * @param now 时间来源（测试注入）
  */
 export function createSseHub(
-	bus: BusLike,
+	bus: Bus,
 	options: { readonly now?: () => number } = {},
 ): SseHub {
 	const now = options.now ?? (() => Date.now());
@@ -366,6 +279,6 @@ function workspaceOf(req: IncomingLike): string {
  *   读它是因为 SSE 要按空间过滤（客户端只关心自己那个空间）。
  *   其余一律不解析 —— 见 `bus.ts`「消费方不解析细节」。
  */
-function workspaceIdOf(message: BusMessageLike): string {
+function workspaceIdOf(message: TaskboardMessage): string {
 	return message.workspaceId;
 }
