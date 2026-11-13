@@ -61,8 +61,8 @@ export interface CardStore {
  *
  * 只有**标题模糊**与**精确字段筛选**两类 —— 用户口径里的搜索是「只搜标题」。
  *
- * ⚠ 数组字段（`status` / `kind` / `domain`）语义是 **OR**（同一字段内任一命中）。
- * 不同字段之间是 **AND**。
+ * ⚠ 数组字段（`status` / `kind` / `domain` / `templateRef`）语义是 **OR**
+ * （同一字段内任一命中）。不同字段之间是 **AND**。
  */
 export interface SearchCondition {
 	/** 标题模糊匹配（子串、大小写不敏感）。 */
@@ -75,6 +75,15 @@ export interface SearchCondition {
 	readonly domain?: readonly string[];
 	/** 模板 ref。 */
 	readonly templateRef?: readonly string[];
+	/**
+	 * 「谁改过、对方还没看过」这个**事件维度**的筛选。
+	 *
+	 * 条件本身交给搜索实现；**结果集**由调用方（core 的 `updates()` 之类）算好，
+	 * 通过 `updatedCardIds` 传进来。
+	 */
+	readonly updatedBy?: readonly ('ai' | 'user')[];
+	/** `updatedBy` 的**结果集**：这些 id 的卡保留。 */
+	readonly updatedCardIds?: readonly string[];
 }
 
 /**

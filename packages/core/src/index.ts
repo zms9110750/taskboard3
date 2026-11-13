@@ -25,6 +25,7 @@ import { DRAFT, ErrorCode, failure } from '@taskboard/protocol';
 import type { Card, CardSection, WorkspaceId } from './card.js';
 import { findCard, withoutDeleted } from './card.js';
 import { buildCard, type CreateInput, type CreateResult } from './create.js';
+import { createSearch } from './search.js';
 import { createSqliteStore } from './storage/sqlite.js';
 import type { CardStore, SearchCondition, SearchStrategy } from './ports.js';
 import { ActionRegistry, BUILTIN_ACTIONS } from './template/actions.js';
@@ -110,24 +111,6 @@ export interface Taskboard {
 	close(): Promise<void>;
 }
 
-/** 默认搜索：标题子串 + 字段精确（数组内 OR，字段间 AND）。 */
-const naiveSearch: SearchStrategy = (cards, condition) => {
-	const title = condition.title?.toLowerCase();
-	const statuses = condition.status;
-	const kinds = condition.kind;
-	const domains = condition.domain;
-	const refs = condition.templateRef;
-
-	return cards.filter((card) => {
-		if (title !== undefined && !card.title.toLowerCase().includes(title)) return false;
-		if (statuses !== undefined && statuses.length > 0 && !statuses.includes(card.status)) return false;
-		if (kinds !== undefined && kinds.length > 0 && !kinds.includes(card.template.kind)) return false;
-		if (domains !== undefined && domains.length > 0 && !domains.includes(card.template.domain)) return false;
-		if (refs !== undefined && refs.length > 0 && !refs.includes(card.template.ref)) return false;
-		return true;
-	});
-};
-
 /**
  * 建一个任务板实例。
  *
@@ -136,7 +119,8 @@ const naiveSearch: SearchStrategy = (cards, condition) => {
 export function createTaskboard(options: TaskboardOptions): Taskboard {
 	const now = options.now ?? (() => Date.now());
 	const store = options.store ?? createSqliteStore(options.dataDir);
-	const search = options.search ?? naiveSearch;
+	/* 默认用 core 自带的搜索；仍允许注入替换（「并入 core」≠「不能换」）。 */
+	const search = options.search ?? createSearch();
 
 	const templates = new TemplateRegistry();
 	const kinds = new KindRegistry();
@@ -356,6 +340,23 @@ export function loadTemplatesFrom(tb: Taskboard, dir: string): { readonly loaded
  */
 
 export { createSqliteStore } from './storage/sqlite.ts';
+
+/*
+ * ── 搜索（并入 core 的实现） ──
+ *
+ * 用户裁定：「搜索并入 core，`packages/search` 整个包取消。」
+ * 但「并入」不等于「不能替换」：`TaskboardOptions.search` 仍在，
+ * `SearchStrategy` 接口不变。下面导出的只是**默认实现**及其零件。
+ */
+export {
+	createSearch,
+	includesDrafts,
+	titleMatches,
+	isStatusGroup,
+	STATUS_GROUPS,
+	DEFAULT_DRAFT_STATE,
+	type SearchOptions,
+} from './search.ts';
 
 export type {
 	CardStore,
