@@ -33,7 +33,7 @@
  */
 
 import type { Card, Taskboard } from '@taskboard/core';
-import { BASE_TOOLS, EXECUTION_TOOLS } from '@taskboard/core';
+import { BASE_TOOLS, EXECUTION_TOOLS, READONLY_TOOLS } from '@taskboard/core';
 import type { Failure, TaskState } from '@taskboard/protocol';
 import {
 	ERROR_HINTS,
@@ -770,81 +770,216 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 12. 权限管理：读全部模板的 extra ── */
+	/* ── 12. 权限管理：读四档策略 ── */
 	const toolPolicies = defineTool({
 		name: 'taskboard_tool_policies',
 		description:
-			'读工具权限策略。返回「基础工具」（BASE，任何时候都有）和「每个模板的额外工具」（extra，领了那张工作卡才额外获得）。改之前先读它。',
+			'读工具权限策略。权限分四档，生效集永远是「BASE ∪ 通用档 ∪ 命中的组 ∪ 独立档」。⚠ BASE 是常量、改不了（也不该改）—— 它已经有 11 个任务板工具。要放开执行类 / 读文件类工具，只能往「通用档 / 组 / 独立档」里加增量。改之前先读它。',
 		parameters: {},
 		output: OUTPUT,
 		async execute(): Promise<unknown> {
-			const policies = taskboard.getToolPolicies();
-			const refs = Object.keys(policies).sort();
-
+			const store = taskboard.getToolPolicies();
 			const lines: string[] = [
-				'基础工具（BASE_TOOLS —— 不需要领卡，任何时候都有）：',
+				'## BASE（固定，改不了）',
+				'这 11 个工具任何时候都有，不需要领卡：',
 				...BASE_TOOLS.map((name) => `  ${name}`),
 				'',
-				`执行类工具（不在 BASE 里 ⇒ 必须靠某个模板的 extra 授予）：`,
+				'⚠ **不要试图把 BASE 里的工具配进任何档** —— 它们已经在里面了，配了也没用。',
+				'',
+				'## 需要增量才放开的工具',
+				'执行类（会改动工作区）：',
 				...EXECUTION_TOOLS.map((name) => `  ${name}`),
 				'',
-				`模板额外权限（${refs.length} 个模板配了 extra）：`,
+				'只读 / 外部信息类（会绕过「不知道就问」—— 用户判据：无法获得不知道的信息）：',
+				...READONLY_TOOLS.map((name) => `  ${name}`),
+				'',
+				`## 通用档（${store.common.length} 个，所有工作卡都生效）`,
+				store.common.length === 0 ? '  （空）' : `  ${store.common.join('、')}`,
 			];
-			if (refs.length === 0) {
-				lines.push('  （一个都没有 —— 所有模板都只有 BASE）');
+
+			/* 组：成员 + 增量。 */
+			const groupNames = [...new Set([...Object.keys(store.groups), ...Object.keys(store.groupMembers)])].sort();
+			lines.push('', `## 组（${groupNames.length} 个，批量设置用；组之间没有优先级，命中就叠加）`);
+			if (groupNames.length === 0) {
+				lines.push('  （没有组）');
 			} else {
-				for (const ref of refs) {
-					const extra = policies[ref] ?? [];
-					lines.push(`  ${ref}：${extra.length === 0 ? '（空）' : extra.join('、')}`);
+				for (const name of groupNames) {
+					const members = store.groupMembers[name] ?? [];
+					const delta = store.groups[name] ?? [];
+					lines.push(`  「${name}」`);
+					lines.push(`    成员（${members.length}）：${members.length === 0 ? '（空 —— 谁都不会命中）' : members.join('、')}`);
+					lines.push(`    增量（${delta.length}）：${delta.length === 0 ? '（空）' : delta.join('、')}`);
 				}
 			}
-			lines.push('', '生效规则：未持有工作卡 = BASE；持有工作卡 X = BASE ∪ extra[X]。');
+
+			/* 独立档。 */
+			const refs = Object.keys(store.templates).sort();
+			lines.push('', `## 独立档（${refs.length} 个模板，只对那个模板生效）`);
+			if (refs.length === 0) {
+				lines.push('  （空）');
+			} else {
+				for (const ref of refs) {
+					const delta = store.templates[ref] ?? [];
+					lines.push(`  ${ref}：${delta.length === 0 ? '（空）' : delta.join('、')}`);
+				}
+			}
+
+			lines.push(
+				'',
+				'生效规则：未持有工作卡 = 只有 BASE；持有工作卡 X = BASE ∪ 通用档 ∪ X 命中的组 ∪ X 的独立档。',
+			);
 			return { text: lines.join('\n') };
 		},
 	});
 
-	/* ── 13. 权限管理：改一个模板的 extra ── */
+	/* ── 13. 权限管理：改某一档的增量 ── */
 	const toolPolicySet = defineTool({
 		name: 'taskboard_tool_policy_set',
 		description:
-			'改一个模板的额外工具（extra，持久化）。只存增量 —— 生效永远是 BASE ∪ extra，不可能把基础工具挤掉。模板必须存在。传空数组 = 清掉该模板的额外权限。',
+			'改某一档的工具增量（持久化）。只存增量 —— 生效永远是「BASE ∪ 各档」，不可能把 BASE 挤掉。granularity 三选一：common（通用，所有工作卡都吃）/ group（按组，要先有组和成员）/ template（独立，只管一个模板）。传空数组 = 清空那一档。',
 		parameters: {
-			templateRef: { type: 'string', required: true, description: '模板 ref（如 writeCode）。' },
-			extra: {
+			granularity: {
+				type: 'string',
+				required: true,
+				/*
+				 * ⚠ `enum` 在这里安全：三档是我们的**结构**，不随数据变。
+				 *   （对比 `taskboard_transition` 的 `to`：那个随状态表变，不能用 enum。）
+				 */
+				enum: ['common', 'group', 'template'],
+				description: 'common = 通用档 / group = 组档 / template = 独立档。',
+			},
+			name: {
+				type: 'string',
+				description: 'granularity=group 时是组名；=template 时是模板 ref；=common 时忽略。',
+			},
+			delta: {
 				type: 'array',
 				items: { type: 'string' },
 				required: true,
-				description: '额外授予的工具名（如 bash / write / edit）。传空数组 = 清空。',
+				description: '增量工具名（如 bash / write / read_file）。传空数组 = 清空那一档。',
 			},
 		},
 		output: OUTPUT,
 		async execute(args: unknown): Promise<unknown> {
-			const templateRef = str(args, 'templateRef') ?? '';
-			const extra = strs(args, 'extra') ?? [];
-			const result = await taskboard.setToolPolicy(templateRef, extra);
-			if (!result.ok) return { text: `改权限失败：\n${describeFailure(result)}` };
+			const granularity = str(args, 'granularity') ?? '';
+			const name = str(args, 'name') ?? '';
+			const delta = strs(args, 'delta') ?? [];
+
+			if (granularity === 'common') {
+				const result = await taskboard.setCommonPolicy(delta);
+				if (!result.ok) return { text: `改权限失败：\n${describeFailure(result)}` };
+				return {
+					text:
+						delta.length === 0
+							? '已清空通用档。'
+							: `已把通用档设为：${delta.join('、')}（所有工作卡都多这些）。`,
+				};
+			}
+
+			if (granularity === 'group') {
+				if (name.trim() === '') {
+					return { text: 'granularity=group 时必须给 name（组名）。' };
+				}
+				const result = await taskboard.setGroupPolicy(name, delta);
+				if (!result.ok) return { text: `改权限失败：\n${describeFailure(result)}` };
+				return {
+					text:
+						delta.length === 0
+							? `已清空组「${name}」的增量（成员还在，但不再授予任何工具）。`
+							: `已把组「${name}」的增量设为：${delta.join('、')}（该组成员的工作卡生效）。`,
+				};
+			}
+
+			if (granularity === 'template') {
+				if (name.trim() === '') {
+					return { text: 'granularity=template 时必须给 name（模板 ref）。' };
+				}
+				const result = await taskboard.setTemplatePolicy(name, delta);
+				if (!result.ok) return { text: `改权限失败：\n${describeFailure(result)}` };
+				return {
+					text:
+						delta.length === 0
+							? `已清空模板「${name}」的独立档。`
+							: `已把模板「${name}」的独立档设为：${delta.join('、')}。`,
+				};
+			}
+
+			return { text: `granularity 必须是 common / group / template 之一；收到「${granularity}」。` };
+		},
+	});
+
+	/* ── 14. 权限管理：设组成员 ── */
+	const toolPolicyMembers = defineTool({
+		name: 'taskboard_tool_policy_members',
+		description:
+			'设一个组的成员（模板列表）。组 = 一个命名的模板集合，用来批量设权限。组名不存在会自动建。传空数组 = 清空成员（组和它的增量都还在，但谁都不命中）。',
+		parameters: {
+			groupName: { type: 'string', required: true, description: '组名（如「代码类」）。' },
+			templates: {
+				type: 'array',
+				items: { type: 'string' },
+				required: true,
+				description: '组成员：模板 ref 列表。传空数组 = 清空成员。',
+			},
+		},
+		output: OUTPUT,
+		async execute(args: unknown): Promise<unknown> {
+			const groupName = str(args, 'groupName') ?? '';
+			const templates = strs(args, 'templates') ?? [];
+			const result = await taskboard.setGroupMembers(groupName, templates);
+			if (!result.ok) return { text: `设组成员失败：\n${describeFailure(result)}` };
 			return {
 				text:
-					extra.length === 0
-						? `已清空模板「${templateRef}」的额外权限（只剩 BASE）。`
-						: `已把模板「${templateRef}」的额外权限设为：${extra.join('、')}（生效 = BASE ∪ 这些）。`,
+					templates.length === 0
+						? `已清空组「${groupName}」的成员。`
+						: `已把组「${groupName}」的成员设为：${templates.join('、')}。`,
 			};
 		},
 	});
 
-	/* ── 14. 权限管理：清空一个模板的 extra ── */
+	/* ── 15. 权限管理：清空某一档 ── */
 	const toolPolicyReset = defineTool({
 		name: 'taskboard_tool_policy_reset',
-		description: '把一个模板的额外工具清空（回到纯 BASE）。等价于 taskboard_tool_policy_set 传空数组，但语义更明确。',
+		description:
+			'清空某一档。granularity=common ⇒ 清空通用档；=group ⇒ **整个删掉那个组**（成员 + 增量）；=template ⇒ 清空该模板的独立档。语义比 taskboard_tool_policy_set 传空数组更明确。',
 		parameters: {
-			templateRef: { type: 'string', required: true, description: '模板 ref。' },
+			granularity: {
+				type: 'string',
+				required: true,
+				enum: ['common', 'group', 'template'],
+				description: 'common = 通用档 / group = 整组删除 / template = 独立档。',
+			},
+			name: {
+				type: 'string',
+				description: 'granularity=group 时是组名；=template 时是模板 ref；=common 时忽略。',
+			},
 		},
 		output: OUTPUT,
 		async execute(args: unknown): Promise<unknown> {
-			const templateRef = str(args, 'templateRef') ?? '';
-			const result = await taskboard.setToolPolicy(templateRef, []);
-			if (!result.ok) return { text: `重置权限失败：\n${describeFailure(result)}` };
-			return { text: `已把模板「${templateRef}」的额外权限清空（只剩 BASE）。` };
+			const granularity = str(args, 'granularity') ?? '';
+			const name = str(args, 'name') ?? '';
+
+			if (granularity === 'common') {
+				const result = await taskboard.setCommonPolicy([]);
+				if (!result.ok) return { text: `重置失败：\n${describeFailure(result)}` };
+				return { text: '已清空通用档。' };
+			}
+
+			if (granularity === 'group') {
+				if (name.trim() === '') return { text: 'granularity=group 时必须给 name（组名）。' };
+				const result = await taskboard.removeGroup(name);
+				if (!result.ok) return { text: `重置失败：\n${describeFailure(result)}` };
+				return { text: `已删除组「${name}」（成员 + 增量都删了）。` };
+			}
+
+			if (granularity === 'template') {
+				if (name.trim() === '') return { text: 'granularity=template 时必须给 name（模板 ref）。' };
+				const result = await taskboard.setTemplatePolicy(name, []);
+				if (!result.ok) return { text: `重置失败：\n${describeFailure(result)}` };
+				return { text: `已清空模板「${name}」的独立档。` };
+			}
+
+			return { text: `granularity 必须是 common / group / template 之一；收到「${granularity}」。` };
 		},
 	});
 
@@ -862,6 +997,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		markSeen,
 		toolPolicies,
 		toolPolicySet,
+		toolPolicyMembers,
 		toolPolicyReset,
 	];
 }

@@ -24,7 +24,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { createTaskboard, type Taskboard } from '@taskboard/core';
+import { createTaskboard, BASE_TOOLS, type Taskboard } from '@taskboard/core';
 import { TaskState } from '@taskboard/protocol';
 
 import {
@@ -270,11 +270,23 @@ describe('createPermissionGuard', () => {
 
 	it('BASE 里的工具 ⇒ 放行（不需要领卡）', () => {
 		const guard = guardOf();
-		const verdict = guard(execOf({ agent: { id: 'u' }, name: 'read_file' }));
-		assert.equal(verdict, undefined, 'BASE 工具不该被拦');
-
+		/*
+		 * ⚠ BASE 只剩 11 个 `taskboard_*`。`read_file` 已经被移出 BASE ——
+		 *   用户判据：「无法获得不知道的信息。所以读文件不是中立行为」。
+		 *   ⇒ 读文件现在**需要先领工作卡**，那是设计，不是 bug。
+		 */
 		const taskboardTool = guard(execOf({ agent: { id: 'u' }, name: 'taskboard_cards' }));
-		assert.equal(taskboardTool, undefined, '任务板工具也在 BASE 里');
+		assert.equal(taskboardTool, undefined, 'BASE 工具不该被拦');
+
+		const transitionTool = guard(execOf({ agent: { id: 'u' }, name: 'taskboard_transition' }));
+		assert.equal(transitionTool, undefined, '任务板工具都在 BASE 里');
+	});
+
+	it('⚠ read_file 不在 BASE 了（用户裁定：读文件不是中立行为）', () => {
+		const guard = guardOf();
+		const verdict = guard(execOf({ agent: { id: 'u' }, name: 'read_file' }));
+		assert.notEqual(verdict, undefined, 'read_file 已移出 BASE ⇒ 没领卡该被拒');
+		assert.ok(BASE_TOOLS.every((name) => name.startsWith('taskboard_')), 'BASE 应该只剩 taskboard_* 工具');
 	});
 
 	it('执行类工具 + 没有卡 ⇒ 拒绝，且理由说清「先领卡」', () => {
@@ -291,19 +303,49 @@ describe('createPermissionGuard', () => {
 		assert.notEqual(verdict, undefined, 'extra 里没 bash 该被拒');
 	});
 
-	it('执行类工具 + 持有卡的 extra 有 ⇒ 放行', async () => {
+	it('执行类工具 + 持有卡的独立档有 ⇒ 放行', async () => {
 		const cardId = await claimedWorkCard('要写代码', 'lead');
 		assert.notEqual(cardId, '');
 
 		const ref = taskboard.get(workspaceId, cardId);
 		assert.equal(ref.ok, true);
 		if (!ref.ok) return;
-		const set = await taskboard.setToolPolicy(ref.card.template.ref, ['bash', 'write']);
+		/* 四档里的**独立档**（按 templateRef）。 */
+		const set = await taskboard.setTemplatePolicy(ref.card.template.ref, ['bash', 'write']);
 		assert.equal(set.ok, true);
 
 		const guard = guardOf({ subagents: subagentsOf('root', 'lead') });
-		assert.equal(guard(execOf({ agent: { id: 'child' }, name: 'bash' })), undefined, 'extra 里有 bash 该放行');
-		assert.notEqual(guard(execOf({ agent: { id: 'child' }, name: 'edit' })), undefined, 'extra 里没有 edit 仍该拒');
+		assert.equal(guard(execOf({ agent: { id: 'child' }, name: 'bash' })), undefined, '独立档里有 bash 该放行');
+		assert.notEqual(guard(execOf({ agent: { id: 'child' }, name: 'edit' })), undefined, '独立档里没有 edit 仍该拒');
+	});
+
+	it('通用档对**任何**工作卡都生效', async () => {
+		const cardId = await claimedWorkCard('吃通用档', 'lead');
+		assert.notEqual(cardId, '');
+
+		await taskboard.setCommonPolicy(['bash']);
+		const guard = guardOf({ subagents: subagentsOf('root', 'lead') });
+		assert.equal(guard(execOf({ agent: { id: 'child' }, name: 'bash' })), undefined, '通用档该对所有工作卡生效');
+	});
+
+	it('组档只对组成员生效', async () => {
+		const cardId = await claimedWorkCard('组测试', 'lead');
+		assert.notEqual(cardId, '');
+		const ref = taskboard.get(workspaceId, cardId);
+		assert.equal(ref.ok, true);
+		if (!ref.ok) return;
+		const templateRef = ref.card.template.ref;
+
+		/* 组里有别的模板、没这张卡的模板 ⇒ 不生效。 */
+		await taskboard.setGroupPolicy('别组', ['bash']);
+		await taskboard.setGroupMembers('别组', ['完全不存在的模板']);
+		let guard = guardOf({ subagents: subagentsOf('root', 'lead') });
+		assert.notEqual(guard(execOf({ agent: { id: 'child' }, name: 'bash' })), undefined, '卡不在组里 ⇒ 组增量不生效');
+
+		/* 把这张卡的模板加进组 ⇒ 生效。 */
+		await taskboard.setGroupMembers('别组', [templateRef]);
+		guard = guardOf({ subagents: subagentsOf('root', 'lead') });
+		assert.equal(guard(execOf({ agent: { id: 'child' }, name: 'bash' })), undefined, '卡在组里 ⇒ 组增量生效');
 	});
 
 	it('权限管理工具：开关关着 ⇒ 拒绝', () => {

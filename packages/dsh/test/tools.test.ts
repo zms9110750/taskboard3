@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createTaskboard, type Taskboard } from '@taskboard/core';
-import { BASE_TOOLS, POLICY_TOOLS } from '@taskboard/core';
+import { BASE_TOOLS, POLICY_TOOLS, type ToolPolicyStore } from '@taskboard/core';
 import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
 import { createSearch } from '@taskboard/core';
 
@@ -130,21 +130,52 @@ describe('工具注册面', () => {
 			'taskboard_mark_seen',
 			'taskboard_tool_policies',
 			'taskboard_tool_policy_set',
+			'taskboard_tool_policy_members',
 			'taskboard_tool_policy_reset',
 		]);
 	});
 
-	it('权限管理工具受开关控制，且不在 BASE 里（core 的契约）', async () => {
+	it('⚠ 权限工具与 core 的 POLICY_TOOLS 对齐（含一个待 core 补的差集）', async () => {
 		/*
-		 * ⚠ 这是**跨包断言**：core 的 `POLICY_TOOLS` / `BASE_TOOLS` 是本仓库
-		 *   权限模型的安全边界，dsh 注册的工具名必须与之对齐 ——
-		 *   名字不一致的表现是「永远拒绝」（比永远放行安全，但仍是错）。
+		 * ⚠ 这是**跨包断言**：core 的 `POLICY_TOOLS` 是本仓库权限模型的
+		 *   安全边界，dsh 注册的权限工具名必须与之对齐 ——
+		 *   不在里面的那个 **guard 不会受开关控制**（会掉进「需要领卡」那条，
+		 *   行为是错的：既能改权限又不该需要卡）。
+		 *
+		 * 现状：dsh 多一个 `taskboard_tool_policy_members`（`task-23` 要求新增），
+		 *       core 的 `POLICY_TOOLS` 还是 3 个 ⇒ 差集在这里显式列出，
+		 *       **一旦 core 补上，这里会失败并提示删掉这个白名单**（不会静默通过）。
 		 */
-		const policyNames = tools
+		const pendingCoreUpdate = ['taskboard_tool_policy_members'];
+
+		const dshPolicyTools = tools
 			.map((one) => one.name)
-			.filter((name) => name.startsWith('taskboard_tool_'));
-		assert.deepEqual(policyNames.sort(), [...POLICY_TOOLS].sort(), 'dsh 注册的权限工具名必须与 core 的 POLICY_TOOLS 一致');
-		for (const name of policyNames) {
+			.filter((name) => name.startsWith('taskboard_tool_'))
+			.sort();
+
+		/* dsh 注册的每个权限工具，要么在 core 的 POLICY_TOOLS 里，要么在待补清单里。 */
+		for (const name of dshPolicyTools) {
+			assert.ok(
+				POLICY_TOOLS.includes(name) || pendingCoreUpdate.includes(name),
+				`「${name}」既不在 core 的 POLICY_TOOLS 里，也不在待补清单里 —— 它不会受开关控制`,
+			);
+		}
+
+		/* core 的每个 POLICY_TOOL 都必须真的注册了（否则那是一条空规则）。 */
+		for (const name of POLICY_TOOLS) {
+			assert.ok(dshPolicyTools.includes(name), `core 的 POLICY_TOOLS 里有「${name}」，但 dsh 没注册它`);
+		}
+
+		/* 差集必须**只剩**待补清单里的那些 —— core 补齐后这里会失败，提醒删白名单。 */
+		const missing = dshPolicyTools.filter((name) => !POLICY_TOOLS.includes(name));
+		assert.deepEqual(
+			missing,
+			pendingCoreUpdate,
+			`与 core 的差集变了：实际 ${JSON.stringify(missing)}。若 core 已补上，删掉 pendingCoreUpdate。`,
+		);
+
+		/* 权限工具一个都不能在 BASE 里（否则开关失效）。 */
+		for (const name of dshPolicyTools) {
 			assert.ok(!BASE_TOOLS.includes(name), `${name} 不该在 BASE_TOOLS 里`);
 		}
 	});
@@ -429,9 +460,204 @@ describe('describeUnread', () => {
 	});
 });
 
+/* ────────────────────────── 四档权限工具 ──────────────────────────
+ *
+ * 用户原话（四档的来源）：
+ * > 组，用户自己手动拉一骡子放一起。相当于说批量设置权限。并不特别。
+ *
+ * 生效集 = BASE ∪ common ∪ 命中的组 ∪ 独立档 —— 由 core 的 `effectiveToolsOf` 实现。
+ * 本层只负责**读写**四档，不重新实现并集。
+ */
+
+describe('四档权限工具', () => {
+	/** 取当前库里的策略。 */
+	function policies(): ToolPolicyStore {
+		return taskboard.getToolPolicies();
+	}
+
+	it('读工具打印四档，且明确标「BASE 改不了」', async () => {
+		await run('taskboard_tool_policy_set', { granularity: 'common', delta: ['bash'] });
+		const text = await run('taskboard_tool_policies', {});
+
+		assert.ok(text.includes('BASE'), text);
+		assert.ok(text.includes('改不了') || text.includes('不要试图'), `要告诉 AI BASE 不可改：${text}`);
+		assert.ok(text.includes('通用档'), text);
+		assert.ok(text.includes('组'), text);
+		assert.ok(text.includes('独立档'), text);
+		/* 通用档里应该有 bash。 */
+		assert.ok(text.includes('bash'), text);
+	});
+
+	it('⚠ BASE 不可改：设独立档之后 taskboard_transition 仍然可用（它是 BASE）', async () => {
+		/*
+		 * 这是 lead 点名要的那条断言。
+		 *
+		 * 「BASE 不可改」不是靠 UI 提示保证的，是靠**结构**：
+		 *   · BASE 是 `Object.freeze` 的常量，没有任何 setter；
+		 *   · 四档存的是**增量**（只加不减）；
+		 *   · 生效集 = `BASE ∪ ...` ⇒ 结构上不可能把 BASE 挤掉。
+		 *
+		 * ⇒ 这里从**工具层**验证：改完独立档，BASE 里的工具判定仍然放行。
+		 */
+		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
+		assert.notEqual(template, undefined);
+		if (template === undefined) return;
+
+		/* 把 writeCode（或第一个 work 模板）的独立档设成只有 bash。 */
+		const set = await run('taskboard_tool_policy_set', {
+			granularity: 'template',
+			name: template.ref,
+			delta: ['bash'],
+		});
+		assert.ok(set.includes('独立档'), set);
+
+		/* 拿一张这个模板的工作卡，领到「处理中」。 */
+		const created = await taskboard.create({
+			workspaceId,
+			templateRef: template.ref,
+			title: 'BASE 不可改',
+			actor: 'user',
+		});
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const cardId = created.card.id;
+		await taskboard.transition(workspaceId, cardId, 'TASK_STATE_SUBMITTED', 'button');
+		await taskboard.claim(workspaceId, cardId, 'ai', 'lead');
+
+		const heldCards = [{ templateRef: template.ref }];
+
+		/* taskboard_transition 在 BASE ⇒ 任何时候都放行，不受 delta 影响。 */
+		const baseVerdict = taskboard.judgeToolCall({
+			scope: 's',
+			toolName: 'taskboard_transition',
+			heldCards,
+		});
+		assert.deepEqual(baseVerdict, { ok: true }, 'BASE 里的工具不该被 delta 影响');
+
+		/* 而 bash 因为在独立档里 ⇒ 也放行（证明 delta 生效了）。 */
+		const bashVerdict = taskboard.judgeToolCall({ scope: 's', toolName: 'bash', heldCards });
+		assert.deepEqual(bashVerdict, { ok: true }, '独立档里的 bash 该放行');
+
+		/* edit 既不在 BASE 也不在独立档 ⇒ 拒。 */
+		const editVerdict = taskboard.judgeToolCall({ scope: 's', toolName: 'edit', heldCards });
+		assert.equal(editVerdict.ok, false, 'edit 没被授予 ⇒ 该拒');
+	});
+
+	it('granularity=common ⇒ 写通用档', async () => {
+		const text = await run('taskboard_tool_policy_set', { granularity: 'common', delta: ['bash', 'write'] });
+		assert.ok(text.includes('通用档'), text);
+		assert.deepEqual([...policies().common].sort(), ['bash', 'write']);
+	});
+
+	it('granularity=group ⇒ 写组增量', async () => {
+		const text = await run('taskboard_tool_policy_set', {
+			granularity: 'group',
+			name: '代码类',
+			delta: ['bash'],
+		});
+		assert.ok(text.includes('代码类'), text);
+		assert.deepEqual([...(policies().groups['代码类'] ?? [])], ['bash']);
+	});
+
+	it('granularity=template ⇒ 写独立档', async () => {
+		const template = taskboard.listTemplates()[0];
+		assert.notEqual(template, undefined);
+		if (template === undefined) return;
+		const text = await run('taskboard_tool_policy_set', {
+			granularity: 'template',
+			name: template.ref,
+			delta: ['read_file'],
+		});
+		assert.ok(text.includes('独立档'), text);
+		assert.deepEqual([...(policies().templates[template.ref] ?? [])], ['read_file']);
+	});
+
+	it('granularity 非法 ⇒ 明确报错，不静默成功', async () => {
+		/* 先清空通用档，这样「非法粒度有没有写进去」才判得准。 */
+		await run('taskboard_tool_policy_reset', { granularity: 'common' });
+		const before = [...policies().common];
+
+		const text = await run('taskboard_tool_policy_set', { granularity: 'nope', delta: ['bash'] });
+		assert.ok(text.includes('必须是'), text);
+		assert.deepEqual([...policies().common], before, '非法粒度不该写任何档');
+	});
+
+	it('group / template 缺 name ⇒ 报错', async () => {
+		const g = await run('taskboard_tool_policy_set', { granularity: 'group', delta: ['bash'] });
+		assert.ok(g.includes('必须给 name'), g);
+		const t = await run('taskboard_tool_policy_set', { granularity: 'template', delta: ['bash'] });
+		assert.ok(t.includes('必须给 name'), t);
+	});
+
+	it('未知模板的独立档 ⇒ core 拒绝（TEMPLATE_NOT_FOUND）', async () => {
+		const text = await run('taskboard_tool_policy_set', {
+			granularity: 'template',
+			name: '不存在的模板',
+			delta: ['bash'],
+		});
+		assert.ok(text.includes('失败'), text);
+		assert.ok(policies().templates['不存在的模板'] === undefined, '不该写进库');
+	});
+
+	it('taskboard_tool_policy_members ⇒ 设组成员', async () => {
+		const text = await run('taskboard_tool_policy_members', {
+			groupName: '代码类',
+			templates: ['writeCode', 'writeTests'],
+		});
+		assert.ok(text.includes('代码类'), text);
+		assert.deepEqual([...(policies().groupMembers['代码类'] ?? [])], ['writeCode', 'writeTests']);
+	});
+
+	it('组只设策略不设成员 ⇒ 谁都不命中（合法状态）', async () => {
+		await run('taskboard_tool_policy_set', { granularity: 'group', name: '空组', delta: ['bash'] });
+		assert.deepEqual([...(policies().groupMembers['空组'] ?? [])], []);
+	});
+
+	it('reset common ⇒ 清空通用档', async () => {
+		await run('taskboard_tool_policy_set', { granularity: 'common', delta: ['bash'] });
+		const text = await run('taskboard_tool_policy_reset', { granularity: 'common' });
+		assert.ok(text.includes('已清空'), text);
+		assert.deepEqual([...policies().common], []);
+	});
+
+	it('reset group ⇒ 整组删除（成员 + 增量都没了）', async () => {
+		await run('taskboard_tool_policy_set', { granularity: 'group', name: '要删的组', delta: ['bash'] });
+		await run('taskboard_tool_policy_members', { groupName: '要删的组', templates: ['writeCode'] });
+
+		const text = await run('taskboard_tool_policy_reset', { granularity: 'group', name: '要删的组' });
+		assert.ok(text.includes('已删除'), text);
+		assert.equal(policies().groups['要删的组'], undefined);
+		assert.equal(policies().groupMembers['要删的组'], undefined);
+	});
+
+	it('reset template ⇒ 只清那个模板的独立档', async () => {
+		const template = taskboard.listTemplates()[0];
+		if (template === undefined) return;
+		await run('taskboard_tool_policy_set', { granularity: 'template', name: template.ref, delta: ['bash'] });
+
+		const text = await run('taskboard_tool_policy_reset', {
+			granularity: 'template',
+			name: template.ref,
+		});
+		assert.ok(text.includes('已清空'), text);
+		/*
+		 * ⚠ core 的语义是「设成**空增量**」而不是「删键」：
+		 *   `setTemplatePolicy(ref, [])` 会把 `templates[ref] = []`。
+		 *   空数组与 undefined 在 `effectiveToolsOf` 里等价（都加不了东西），
+		 *   所以这里断言「没有增量」而不是「键不存在」—— 断言实际的契约，
+		 *   不是断言实现细节。
+		 */
+		assert.deepEqual([...(policies().templates[template.ref] ?? [])], [], '该模板不该再有额外工具');
+	});
+
+	it('reset 幂等：删不存在的组不算错', async () => {
+		const text = await run('taskboard_tool_policy_reset', { granularity: 'group', name: '从来没建过' });
+		assert.ok(text.includes('已删除'), text);
+	});
+});
+
 describe('describeFailure', () => {
-	it('带 issues 时逐条列出', () => {
-		const text = describeFailure({
+	it('带 issues 时逐条列出', () => {		const text = describeFailure({
 			ok: false,
 			code: 'CONTENT_INVALID',
 			message: '充数不对',
