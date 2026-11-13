@@ -167,9 +167,22 @@ export interface Taskboard {
 			readonly note?: string;
 			readonly content?: unknown;
 		},
+		/**
+		 * 谁改的。默认 `'user'`。
+		 *
+		 * ⚠ **每个入口都应显式传。** 默认值让「忘了传」和「故意传 user」
+		 * 变成同一件事 —— 两者都编译通过、都运行正常、都不报错。
+		 * 而后果是静默的：AI 忘了标 `'ai'` ⇒ 那些改动被记成用户改的。
+		 */
+		actor?: Actor,
 	): Promise<{ readonly ok: true; readonly card: Card } | Failure>;
 	/** 墓碑标记（只有草稿能删）。 */
-	remove(workspaceId: WorkspaceId, cardId: string): Promise<{ readonly ok: true; readonly card: Card } | Failure>;
+	remove(
+		workspaceId: WorkspaceId,
+		cardId: string,
+		/** 谁删的。默认 `'user'`。语义同 `update` 的 `actor`。 */
+		actor?: Actor,
+	): Promise<{ readonly ok: true; readonly card: Card } | Failure>;
 
 	/* ── 状态转移 ──
 	 *
