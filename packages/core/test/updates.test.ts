@@ -130,23 +130,102 @@ describe('更新计数', () => {
 		assert.equal(afterAiSeen.user.includes(id), false, 'AI 看过之后不再算未读');
 	});
 
-	it('markSeen 返回的 at = 卡历史里最新事件的 at（不是 now）', async () => {
+	it('markSeen 返回 seenUpTo = 卡历史条数（不是时间戳、不是 now）', async () => {
 		const id = await makeCard('时间');
 		const got = await tb.get(ws, id);
 		assert.ok(got.ok);
 
-		const expected = Math.max(...got.card.history.map((one) => one.at));
-
-		/* 先把时钟推远 —— 如果实现错误地用了 now()，返回值会跟着变大。 */
-		const clockBefore = clock;
-		clock += 10_000;
+		const expected = got.card.history.length;
 
 		const seen = await tb.markSeen(ws, id, 'user');
 		assert.ok(seen.ok);
-		assert.equal(seen.at, expected, '必须是最新事件的 at，不是时钟当前值');
-		assert.ok(seen.at < clockBefore + 10_000, '明确不是 now()');
+		assert.equal(seen.seenUpTo, expected, '写的是历史条数');
+		assert.equal(typeof seen.seenUpTo, 'number');
+	});
 
-		clock = clockBefore;
+	it('★ 同一毫秒内：标记已读之后再改，仍然算未读', async () => {
+		/*
+		 * 这是**真 bug 的回归测试**。
+		 *
+		 * 旧实现用时间戳做游标：`markSeen` 写 `latestEventAt`，
+		 * 判未读用 `lastChangeAt > cursor`。同一毫秒内
+		 * 「标记已读」与「又一次改动」时间相等 ⇒ `1000 > 1000` 为 false
+		 * ⇒ 那次改动**永久不可见**（表现为 flake：撞毫秒才失败）。
+		 *
+		 * 现在游标是历史下标，同毫秒完全不影响。
+		 *
+		 * ⚠ 这个用例里 `now` 恒返回同一个值 —— 每一毫秒都是"同一毫秒"。
+		 */
+		const fixedDir = mkdtempSync(join(tmpdir(), 'tb3-samems-'));
+		const fixed = createTaskboard({ dataDir: fixedDir, now: () => 1_000 });
+		fixed.templates().register(makeTemplate('t-work', 'work'));
+
+		const createdWs = await fixed.createWorkspace('同毫秒');
+		assert.ok(createdWs.ok);
+		const wsId = createdWs.workspace.id;
+
+		const created = await fixed.create({
+			workspaceId: wsId,
+			templateRef: 't-work',
+			title: '同毫秒',
+			actor: 'user',
+		});
+		assert.ok(created.ok);
+		const cardId = created.card.id;
+
+		/* ① 用户看过（此时没有任何 AI 改动）。 */
+		const seen = await fixed.markSeen(wsId, cardId, 'user');
+		assert.ok(seen.ok);
+
+		const before = await fixed.updates(wsId);
+		assert.equal(before.ai.includes(cardId), false, '还没 AI 改过');
+
+		/* ② AI 在这一"毫秒"改一次 —— 所有时间戳都等于 1000。 */
+		const updated = await fixed.update(wsId, cardId, { note: '同一毫秒改的' }, 'ai');
+		assert.ok(updated.ok);
+
+		/* ③ 必须仍然算未读 —— 旧实现这里会 false。 */
+		const after = await fixed.updates(wsId);
+		assert.ok(
+			after.ai.includes(cardId),
+			'同一毫秒内标记已读之后再改，仍然算未读（这是修掉的真 bug）',
+		);
+
+		await fixed.close();
+		rmSync(fixedDir, { recursive: true, force: true });
+	});
+
+	it('★ 同一毫秒内连续多次改动，下标仍然严格递增', async () => {
+		const fixedDir = mkdtempSync(join(tmpdir(), 'tb3-samems2-'));
+		const fixed = createTaskboard({ dataDir: fixedDir, now: () => 2_000 });
+		fixed.templates().register(makeTemplate('t-work', 'work'));
+		const createdWs = await fixed.createWorkspace('同毫秒2');
+		assert.ok(createdWs.ok);
+		const wsId = createdWs.workspace.id;
+
+		const created = await fixed.create({
+			workspaceId: wsId,
+			templateRef: 't-work',
+			title: '多次',
+			actor: 'user',
+		});
+		assert.ok(created.ok);
+		const cardId = created.card.id;
+
+		/* 用户看过 → AI 改 3 次（全部同一毫秒）→ 每次都应算未读。 */
+		await fixed.markSeen(wsId, cardId, 'user');
+
+		for (let i = 0; i < 3; i += 1) {
+			await fixed.update(wsId, cardId, { note: `第 ${i} 次` }, 'ai');
+			const now = await fixed.updates(wsId);
+			assert.ok(now.ai.includes(cardId), `第 ${i} 次改动后仍算未读`);
+			await fixed.markSeen(wsId, cardId, 'user');
+			const cleared = await fixed.updates(wsId);
+			assert.equal(cleared.ai.includes(cardId), false, `第 ${i} 次看过后已清`);
+		}
+
+		await fixed.close();
+		rmSync(fixedDir, { recursive: true, force: true });
 	});
 
 	it('markSeen：卡不存在 ⇒ Failure', async () => {

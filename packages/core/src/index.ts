@@ -151,19 +151,24 @@ export interface Taskboard {
 	 * - `user` —— 用户改过，**AI** 还没看过。
 	 *
 	 * 「看过」的游标存在 `CardStore` 的 kv 里（`read:<cardId>:<reader>`），
-	 * 截止时间是**卡历史里最新事件的 `at`**，不是当前时间。
+	 * 单位是**卡历史的下标（条数）**，不是时间戳 —— 见 `updates.ts` 顶部
+	 * 「游标是历史下标，不是时间戳」那一节（同毫秒 flake 的修复）。
 	 */
 	updates(workspaceId: WorkspaceId): Promise<UpdatesResult>;
 	/**
 	 * 标记一张卡被某个读者「看过」。
 	 *
-	 * @returns 写入的游标时间（= 卡历史里最新事件的 `at`，**不是 `now()`**）
+	 * @returns `seenUpTo` = 写入的游标（= 当时卡历史的**条数**）。
+	 *
+	 * ⚠ 字段名是 `seenUpTo` 不是 `at`：语义是「我看到第 N 条事件了」，
+	 *   不是「我看到某个时刻」。名字跟着语义走，免得下一个读代码的人
+	 *   又把它当时间戳用来排序（那正是这个 bug 的来源）。
 	 */
 	markSeen(
 		workspaceId: WorkspaceId,
 		cardId: string,
 		reader: UpdateReader,
-	): Promise<{ readonly ok: true; readonly at: number } | Failure>;
+	): Promise<{ readonly ok: true; readonly seenUpTo: number } | Failure>;
 
 	/* ── 写 ── */
 	create(input: CreateInput): Promise<CreateResult>;
@@ -772,8 +777,7 @@ export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
 /** 更新计数（读游标 + 事件作者）。 */
 export {
 	computeUpdates,
-	lastChangeBy,
-	latestEventAt,
+	lastChangeIndexBy,
 	markCardSeen,
 	readCursor,
 	readCursorKey,
