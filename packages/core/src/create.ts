@@ -28,7 +28,8 @@
 import type { Actor, Failure, LinkKindId } from '@taskboard/protocol';
 import { DRAFT, ErrorCode, LINK_KINDS, failure, isLinkKindId } from '@taskboard/protocol';
 
-import type { Card, CardSection, Relations, TemplateRef } from './card.js';
+import type { Card, CardSection, HistoryEntry, Relations, TemplateRef } from './card.js';
+import { UNREAD_NONE, unreadAfter } from './card.js';
 import { nextId, prefixOf } from './ids.js';
 import type { ContentSchemaCache } from './template/schema.js';
 import type { KindRegistry } from './template/kinds.js';
@@ -143,6 +144,19 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 		links: relationsChecked.links,
 	};
 
+	const createEntry: HistoryEntry = {
+		at: deps.now,
+		action: 'create',
+		/*
+		 * 谁建的卡。
+		 *
+		 * ⚠ **不能假设是 user** —— AI 工具也能建卡（`origin` 里就有 `'ai'` 语义）。
+		 * ⇒ 由调用方在 `CreateInput` 里显式给 `actor`。
+		 */
+		actor: input.actor ?? 'user',
+		detail: { origin: input.origin ?? 'panel', templateRef: template.ref },
+	};
+
 	const card: Card = {
 		id,
 		title,
@@ -154,23 +168,16 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 		/* 建卡时间 = 那一刻；采纳时间此时还是 `null`（采纳路径会盖）。 */
 		createdAt: deps.now,
 		adoptedAt: null,
-		history: [
-			{
-				at: deps.now,
-				action: 'create',
-				/*
-				 * 谁建的卡。
-				 *
-				 * ⚠ **不能假设是 user** —— AI 工具也能建卡（`origin` 里就有 `'ai'` 语义）。
-				 * ⇒ 由调用方在 `CreateInput` 里显式给 `actor`。
-				 */
-				actor: input.actor ?? 'user',
-				detail: { origin: input.origin ?? 'panel', templateRef: template.ref },
-			},
-		],
+		history: [createEntry],
 		deleted: false,
 		/* 新卡还没有人持有。持有者由 `claim` 追加，可以多个。 */
 		holders: [],
+		/*
+		 * 未读标记由 `unreadAfter` 从「建卡之前」（两个都没读）推出来 ——
+		 * **不在这里第二次手写规则**，否则 `withHistory` 那条 funnel 就绕过了，
+		 * 而这正是 drift 的开始。
+		 */
+		unread: unreadAfter(UNREAD_NONE, createEntry),
 	};
 
 	return { ok: true, card };

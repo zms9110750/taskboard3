@@ -22,8 +22,8 @@
 import type { Failure } from '@taskboard/protocol';
 import { DRAFT, ErrorCode, failure, type Actor, type TaskState } from '@taskboard/protocol';
 
-import type { Card, CardSection, WorkspaceId } from './card.js';
-import { findCard, withoutDeleted } from './card.js';
+import type { Card, CardSection, CardUnread, WorkspaceId } from './card.js';
+import { findCard, withHistory, withoutDeleted } from './card.js';
 /* ⚠ 原型期脚手架，整个文件可删 —— 见 `bus.ts` 顶部的拆解步骤。 */
 import type { Bus } from './bus.js';
 import { buildCard, type CreateInput, type CreateResult } from './create.js';
@@ -150,20 +150,29 @@ export interface Taskboard {
 	 * - `ai` —— AI 改过，**用户**还没看过；
 	 * - `user` —— 用户改过，**AI** 还没看过。
 	 *
-	 * 「看过」的游标存在 `CardStore` 的 kv 里（`read:<cardId>:<reader>`），
-	 * 截止时间是**卡历史里最新事件的 `at`**，不是当前时间。
+	 * ⚠ 未读现在是**卡上的字段**（`Card.unread`），不是从 `history` + kv 游标
+	 *   算出来的（用户 `2026-11-13`：「不能再用胶水代码了」）。
+	 *   ⇒ 本方法只是「挑出未读的 id」，纯读。
 	 */
 	updates(workspaceId: WorkspaceId): Promise<UpdatesResult>;
 	/**
-	 * 标记一张卡被某个读者「看过」。
+	 * 标记一张卡被某个读者「看过」—— **写卡**（清 `Card.unread` 的对应一位）。
 	 *
-	 * @returns 写入的游标时间（= 卡历史里最新事件的 `at`，**不是 `now()`**）
+	 * | `reader` | 清哪个 | 语义 |
+	 * |---|---|---|
+	 * | `'user'` | `unread.ai` | 用户读掉了「AI 改过」 |
+	 * | `'ai'` | `unread.user` | AI 读掉了「用户改过」 |
+	 *
+	 * 不清 history（历史是审计记录，读完不代表没发生过）。
+	 * 没有变化时不落库、不广播。
+	 *
+	 * @returns `unread` = 清完之后的那张卡上的标记
 	 */
 	markSeen(
 		workspaceId: WorkspaceId,
 		cardId: string,
 		reader: UpdateReader,
-	): Promise<{ readonly ok: true; readonly at: number } | Failure>;
+	): Promise<{ readonly ok: true; readonly unread: CardUnread } | Failure>;
 
 	/* ── 写 ── */
 	create(input: CreateInput): Promise<CreateResult>;
@@ -452,14 +461,11 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			const visible = withoutDeleted(load(workspaceId));
 
 			/*
-			 * `updatedBy` 是**事件维度**：搜索实现算不出（要已读游标）。
-			 * ⇒ 在这一层先算 `updates()`，把结果集塞进条件再交给搜索。
-			 *
-			 * `search` 本身仍是同步的 —— 游标读的是 kv（同步接口），
-			 * 所以这里不需要 async。
+			 * `updatedBy` 是**未读维度**。未读现在是卡上的字段 ⇒ 纯读取，
+			 * 不碰存储、不需要 async。
 			 */
 			if (condition.updatedBy !== undefined && condition.updatedBy.length > 0) {
-				const { ai, user } = computeUpdates(visible, store);
+				const { ai, user } = computeUpdates(visible);
 				const wanted = new Set<string>();
 				for (const reader of condition.updatedBy) {
 					if (reader === 'ai') for (const id of ai) wanted.add(id);
@@ -473,11 +479,21 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 
 		/* ── 更新计数 ── */
 		async updates(workspaceId) {
-			return computeUpdates(withoutDeleted(load(workspaceId)), store);
+			return computeUpdates(withoutDeleted(load(workspaceId)));
 		},
 		async markSeen(workspaceId, cardId, reader) {
 			const cards = load(workspaceId);
-			return markCardSeen(store, findCard(cards, cardId), cardId, reader);
+			const result = markCardSeen(findCard(cards, cardId), cardId, reader);
+			if (!result.ok) return result;
+
+			/*
+			 * 没有变化 ⇒ 不落库、不广播。
+			 * 这不是优化，是语义：重复「我已经看过了」不该产生一次写事件
+			 * （否则别人的「用户改过、AI 未读」角标会被无谓的事件搅动）。
+			 */
+			if (result.changed) await persist(workspaceId, result.card);
+
+			return { ok: true, unread: result.card.unread };
 		},
 
 		/* ── 写 ── */
@@ -532,13 +548,14 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			}
 
 			const at = now();
-			const next: Card = {
-				...existing,
-				title,
-				sections,
-				note: patch.note ?? existing.note,
-				history: [...existing.history, { at, action: 'update', actor }],
-			};
+			/*
+			 * ⚠ **不直接写 `history:`** —— 那会绕过 `withHistory` 里的 `unread` 维护，
+			 * 让未读标记漂掉（不报错，只表现为角标偶尔不对）。
+			 */
+			const next = withHistory(
+				{ ...existing, title, sections, note: patch.note ?? existing.note },
+				{ at, action: 'update', actor },
+			);
 			await persist(workspaceId, next);
 			return { ok: true, card: next };
 		},
@@ -557,11 +574,8 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				return failure(ErrorCode.TRANSITION_REJECTED, '只有草稿能删除；已采纳的卡不能删。');
 			}
 			const at = now();
-			const next: Card = {
-				...existing,
-				deleted: true,
-				history: [...existing.history, { at, action: 'delete', actor }],
-			};
+			/* 同上：走 `withHistory`，不手写 `history`。 */
+			const next = withHistory({ ...existing, deleted: true }, { at, action: 'delete', actor });
 			await persist(workspaceId, next);
 			return { ok: true, card: next };
 		},
@@ -769,14 +783,18 @@ export type {
 /** 持有者工具（多人协作）。 */
 export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
 
-/** 更新计数（读游标 + 事件作者）。 */
+/** 未读工具（卡上的字段 + 维护它的纯函数）。 */
+export {
+	UNREAD_NONE,
+	clearedUnread,
+	unreadAfter,
+	type CardUnread,
+} from './card.ts';
+
+/** 更新计数（未读是卡的字段，这里只做挑选）。 */
 export {
 	computeUpdates,
-	lastChangeBy,
-	latestEventAt,
 	markCardSeen,
-	readCursor,
-	readCursorKey,
 	type UpdateReader,
 	type UpdatesResult,
 } from './updates.ts';
