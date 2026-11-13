@@ -99,9 +99,57 @@ export const inject = ['webServer', 'connection', 'tools', 'commands'];
 | `taskboard_update_content` | 改章节内容 |
 | `taskboard_update_note` | 改备注 |
 | `taskboard_transition` | `to` 为空 ⇒ 查可转移目标；有值 ⇒ 执行 |
-| `taskboard_claim` | 领取工作卡 |
-| `taskboard_release` | 释放领取 |
+| `taskboard_claim` | 领取工作卡（holder = 当前 agent 的名字） |
+| `taskboard_release` | 释放领取（把自己从持有者里移除） |
 | `taskboard_registry` | 看模板 / action 注册内容 |
+
+### 领取 / 释放的 holder 从哪来
+
+`core.claim(ws, id, actor, holder)` 要一个 **holder 标识**。它的取法（`src/holder.ts`）：
+
+```ts
+holderOf(ctx.subagents, exec)   //  → 'lead' / 'reviewer/checker' / agent UUID / 'unknown'
+```
+
+依据 DSH 官方 Agent Teams 同款做法（`dsh-agent-team/src/task-board.ts:149-151`）：
+
+```ts
+const name = ctx.subagents.namesOf(caller).self;
+```
+
+**三条回落，每条对应一个真实场景**：
+
+| 情况 | 回落 | 场景 |
+|---|---|---|
+| `exec.agent` 缺席 | `'unknown'` | 工具被程序化调用（不经模型） |
+| `subagents` 服务不存在 | `agent.id` | 单 agent profile，没装 subagent |
+| `namesOf` 抛错 | `agent.id` | agent 不在 subagent 树里（官方实现就抛） |
+
+⚠ **三种回落都不编名字。** 猜名字会让两个不同 agent 撞到同一个 holder，
+那比报错坏 —— 判据：宁可炸得响，不要安静地错。
+
+⚠ `subagents` 是**可选**注入（`ctx.subagents` 判空），不是硬依赖：
+没有 subagent 环境的 profile 也该能用任务板。
+
+### 界面不能领 / 不能释放（409 CLAIM_REJECTED）
+
+HTTP 请求**没有 `exec.agent`** —— 浏览器不知道「是哪个 agent 在领」。
+而 claim 的语义是「指派某个 agent 去做」，持有者必须可信。
+
+⚠ 让前端传 `?holder=` 不可行：那是**自报**，任何页面脚本都能声称自己是任意 agent
+⇒「一次一张」这条约束会形同虚设。
+
+⇒ `POST /api/cards/:id/action` 的这两种转移被拒：
+
+| `(from → to)` | 原因码 |
+|---|---|
+| `任意 → WORKING` | `CLAIM_REQUIRES_AGENT` |
+| `WORKING → SUBMITTED` | `RELEASE_REQUIRES_AGENT` |
+
+两条都答 **409**。正确做法是让 AI 调 `taskboard_claim` / `taskboard_release` ——
+工具那边从 `exec.agent` 取真实身份。
+
+**状态转移本身不受影响**：采纳、成功、失败、取消、重开仍可从界面点。
 
 **校验在 core，不在工具**（用户裁定：「就在 core 里面验证就好了。因为用户从 ui 里面创建卡，也是走数据给 core 的。」）。
 
