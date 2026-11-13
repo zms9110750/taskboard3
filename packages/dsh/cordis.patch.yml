@@ -1,0 +1,3 @@
+- insert:
+    - id: taskboard3
+      name: '@taskboard/dsh'
