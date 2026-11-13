@@ -158,10 +158,10 @@ describe('状态转移执行', () => {
 	it('领取：通过（无依赖、无子任务、无占位）', async () => {
 		const id = await makeCard('work');
 		await tb.adopt(ws, id, 'user');
-		const result = await tb.claim(ws, id, 'user');
+		const result = await tb.claim(ws, id, 'user', 'loop-basic');
 		assert.ok(result.ok, JSON.stringify(result));
 		assert.equal(result.card.status, TaskState.WORKING);
-		assert.equal(result.card.claimedBy, 'user');
+		assert.equal(result.card.claimedBy, 'loop-basic', 'claimedBy 存的是 holder');
 		assert.equal(typeof result.card.claimedAt, 'number');
 	});
 
@@ -180,7 +180,7 @@ describe('状态转移执行', () => {
 		const adopted = await tb.adopt(ws, created.card.id, 'user');
 		assert.ok(adopted.ok, JSON.stringify(adopted));
 
-		const result = await tb.claim(ws, created.card.id, 'user');
+		const result = await tb.claim(ws, created.card.id, 'user', 'loop-dep');
 		assert.equal(result.ok, false);
 		assert.equal(result.code, 'CLAIM_REJECTED');
 		const detail = (result as { detail?: { reason?: string; blockers?: string[] } }).detail;
@@ -243,16 +243,36 @@ describe('状态转移执行', () => {
 		assert.deepEqual(detail?.blockers, [first]);
 	});
 
-	it('领取：用户领取不受「一次一张」限制', async () => {
+	it('★ 用户领取也受「一次一张」限制（用户代 AI 指派，不是用户自己做）', async () => {
+		/*
+		 * 用户裁定：
+		 * > 用户领取是「代」ai 领取，就是规定 ai 现在要做什么。**用户又不做事情。**
+		 * ⇒ 用户点按钮只影响 history 记谁点的，**不影响配额判定**。
+		 */
 		const first = await makeCard('work');
 		await tb.adopt(ws, first, 'user');
-		const claimedFirst = await tb.claim(ws, first, 'user');
+		const claimedFirst = await tb.claim(ws, first, 'user', 'loop-shared');
 		assert.ok(claimedFirst.ok, JSON.stringify(claimedFirst));
 
 		const second = await makeCard('work');
 		await tb.adopt(ws, second, 'user');
-		const result = await tb.claim(ws, second, 'user');
-		assert.ok(result.ok, '用户手上已有处理中的卡也应当能再领一张');
+		const result = await tb.claim(ws, second, 'user', 'loop-shared');
+		assert.equal(result.ok, false, '同一个 holder 名下已有处理中的卡 ⇒ 用户领取也要被拒');
+		const detail = (result as { detail?: { reason?: string; blockers?: string[] } }).detail;
+		assert.equal(detail?.reason, 'ALREADY_HOLDING_A_CARD');
+		assert.deepEqual(detail?.blockers, [first]);
+	});
+
+	it('holder === null 时跳过配额检查（唯一合法豁免：调用方没有循环身份）', async () => {
+		const first = await makeCard('work');
+		await tb.adopt(ws, first, 'user');
+		const claimedFirst = await tb.claim(ws, first, 'user', null);
+		assert.ok(claimedFirst.ok, JSON.stringify(claimedFirst));
+
+		const second = await makeCard('work');
+		await tb.adopt(ws, second, 'user');
+		const result = await tb.claim(ws, second, 'user', null);
+		assert.ok(result.ok, 'null 表示没有循环身份 ⇒ 无从比较，只能跳过配额检查');
 	});
 
 	it('领取：不同持有者互不影响', async () => {
@@ -267,7 +287,7 @@ describe('状态转移执行', () => {
 	it('释放：处理中 → 提交，清占位', async () => {
 		const id = await makeCard('work');
 		await tb.adopt(ws, id, 'user');
-		await tb.claim(ws, id, 'user');
+		await tb.claim(ws, id, 'user', 'loop-release');
 
 		const result = await tb.release(ws, id, 'user');
 		assert.ok(result.ok, JSON.stringify(result));
@@ -383,7 +403,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 	it('子任务处理中 ⇒ 父卡处理中', async () => {
 		const { parent, children } = await makeTree(1);
 		const child = children[0] as string;
-		const claimed = await tb.claim(ws, child, 'user');
+		const claimed = await tb.claim(ws, child, 'user', 'loop-tree');
 		assert.ok(claimed.ok, JSON.stringify(claimed));
 		assert.equal(claimed.card.status, TaskState.WORKING);
 		/* claim 会连带重算父卡 */
