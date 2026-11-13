@@ -42,7 +42,7 @@ export {
 	isTaskState,
 	labelOf,
 	type StatusGroup,
-} from './status.js';
+} from './status.ts';
 
 export {
 	LINK_KINDS,
@@ -57,7 +57,7 @@ export {
 	type BehaviorLinkKind,
 	type UndirectedLinkKind,
 	type RelationKindId,
-} from './relation.js';
+} from './relation.ts';
 
 export {
 	ErrorCode,
@@ -66,4 +66,4 @@ export {
 	isFailure,
 	type Failure,
 	type FieldIssue,
-} from './error.js';
+} from './error.ts';

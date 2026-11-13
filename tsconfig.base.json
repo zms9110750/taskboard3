@@ -4,7 +4,6 @@
     "lib": ["ES2023"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "types": ["node"],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -19,6 +18,26 @@
     "composite": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+
+    /*
+     * ── 相对导入写 `.ts` 而不是 `.js` ──────────────────────────────
+     *
+     * 理由：测试用 `node --test` **直接跑 .ts**（Node 24 的运行时类型剥离）。
+     * Node 不会把 `./foo.js` 映射到 `foo.ts`，所以源码写 `.js` 会让
+     * `import './foo.js'` 在测试时 `ERR_MODULE_NOT_FOUND`。
+     *
+     * 写 `.ts` 之后：
+     *   · `node --test` 能直接解析；
+     *   · `tsc` 在产物里自动改写成 `.js`（由下面两个选项控制），
+     *     所以发布出去的 `lib/` 仍是标准 ESM。
+     *
+     * 实测（TypeScript 5.9.3）：
+     *   源 `import { V } from "./a.ts"`  ⇒  产物 `import { V } from "./a.js"`
+     *
+     * ⇒ **全仓统一写 `.ts`。** 不要再出现 `from './x.js'`。
+     */
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
   }
 }
