@@ -3,13 +3,13 @@
   "version": "0.1.0-3.a.1",
   "private": true,
   "type": "module",
-  "description": "任务板：可替换持久化与搜索的 Cordis 插件 bundle。",
+  "description": "任务板：带状态机与关系的任务卡板，DSH 插件 bundle。",
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc -b packages/protocol packages/search packages/core packages/store packages/dsh",
-    "clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['protocol','search','core','store','dsh'])rmSync('packages/'+p+'/lib',{recursive:true,force:true})\"",
+    "build": "tsc -b packages/protocol packages/core packages/store packages/dsh packages/dsh-client",
+    "clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['protocol','core','store','dsh','dsh-client'])rmSync('packages/'+p+'/lib',{recursive:true,force:true})\"",
     "test": "node --test \"packages/*/test/**/*.test.ts\""
   },
   "devDependencies": {
