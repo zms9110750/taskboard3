@@ -67,7 +67,7 @@ packages/*/lib/**/*.js    ← tsc / tsdown 生成的产物
 
 ---
 
-## 三、⚠ 四条「动笔之前先想」
+## 三、⚠ 六条「动笔之前先想」
 
 ### 3.1 删掉断言会编译失败吗？
 
@@ -118,6 +118,36 @@ packages/*/lib/**/*.js    ← tsc / tsdown 生成的产物
 npm 发布时 `files` 决定打什么包。**漏了 `locale` 或 `icon.svg` ⇒ 装上去只显示包名和默认图。**
 
 本地 linked 安装时 `files` 不生效 ⇒ **本地看着正常、发布后坏了。**
+
+### 3.5 编译期断言必须用「裸字面量元组 + widen 导出」
+
+```ts
+// ✅ 正确
+const POLICY_TOOL_NAMES = ['a', 'b'] as const;
+export const POLICY_TOOLS: readonly string[] = Object.freeze(POLICY_TOOL_NAMES);
+// 断言用 POLICY_TOOL_NAMES（保留字面量类型）
+
+// ❌ 错误：元素 widen 成 string
+export const POLICY_TOOLS: readonly string[] = ['a', 'b'];
+type X = [Extract<(typeof POLICY_TOOLS)[number], ...>] extends [never] ? ... // 永远判不出来
+```
+
+**已踩两次**（`protocol/transition.ts` 的 `BUTTON_TABLE`、`core/permission.ts` 的 `POLICY_TOOL_NAMES`），两次都是 `tsc` 报 `TS2344` 才发现。
+
+**症状**：断言静默通过或静默失效。**静默失效比报错更坏** —— 你会以为有守护。
+
+### 3.6 临时绕行必须能被「编译失败」或「测试变红」找到
+
+绕之前先问：**这个绕的地方，将来能不能靠自动化被找到？**
+
+| 绕法 | 安全性 |
+|---|---|
+| 白名单 + 差集断言（core 补上时测试红） | ✅ 最安全 |
+| `as` 断言 + 注释「等 X 补上后删」 | ⚠️ 注释会被删 |
+| 点头绪都没有的硬编码 | ❌ |
+
+**真实案例**：`host-dev` 在 core 没导出 `READONLY_TOOLS` 时，绕法是「指向工具注册表 + 注释说明」。补上导出后它主动换了 —— **因为它报告了**，不是因为被抓住。
+另一次它用「白名单 + 差集断言」，core 补上后**测试自己变红**，逼着删白名单。后者更可靠。
 
 ---
 
@@ -185,7 +215,7 @@ pnpm install
 
 **这个仓库的每一条设计决定，最终都来自用户原话。**
 
-- `docs/设计.md` 第四节记了三条最关键的裁定（状态转移、claim 语义、未读标记）
+- `docs/设计.md` 第四节记了**四条**最关键的裁定（状态转移、claim 语义、未读标记、工具权限）
 - 代码注释里标 `用户 \`2026-11-13\`：` 的地方是**用户原话的时间锚**
 
 **⚠ 判据：用户原话 > 任何转写 / 文档 > 我们的推断。**
