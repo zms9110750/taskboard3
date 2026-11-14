@@ -234,20 +234,6 @@ export interface Taskboard {
 	/* ── 工具权限（模型见 `permission.ts` 顶部） ── */
 
 	/**
-	 * 打开 / 关闭一个 scope 的**权限编辑开关**。
-	 *
-	 * ## 纯内存
-	 *
-	 * 用户原话：「这个开关是**纯内存**的。重启以后他**默认关**的。」
-	 * ⇒ 不进 kv、不写卡。进程重启即清空 —— 这是安全边界，不是实现偷懒。
-	 *
-	 * 不做超时、不做 AI 主动关（用户明确否掉）—— 只有用户点 UI。
-	 */
-	setPolicyEdit(scope: string, on: boolean): void;
-	/** 这个 scope 的权限编辑开关是否开着。 */
-	isPolicyEditOn(scope: string): boolean;
-
-	/**
 	 * 读**完整四档策略**（通用 / 组 / 组成员 / 独立）。
 	 *
 	 * ⚠ 返回的是**增量**集合，不是生效集。生效集用 `effectiveToolsOf(ref)`。
@@ -346,8 +332,31 @@ export interface Taskboard {
 	 * 调用方需要刷新它们，否则界面会拿着旧状态。
 	 */
 
-	/** 采纳：草稿 → 按类别进「提交」或「需要授权」；同时写 `adoptedAt`。 */
-	adopt(workspaceId: WorkspaceId, cardId: string, actor: Actor): Promise<StatusWriteResult>;
+	/**
+	 * 采纳：草稿 → 按类别进「提交」或「需要授权」；同时写 `adoptedAt`。
+	 *
+	 * ## `allowAiAdopt` —— 「自动工作」模式的唯一差异
+	 *
+	 * 用户 `2026-11-14`：「自动工作和工作的区别就是 ai 自己采纳草稿。」
+	 *
+	 * | 情况 | 结果 |
+	 * |---|---|
+	 * | `actor === 'user'` | 照常放行（不管 `options`） |
+	 * | `actor === 'ai'` + `allowAiAdopt !== true` | 拒绝（`AI_CANNOT_ADOPT`） |
+	 * | `actor === 'ai'` + `allowAiAdopt === true` | 放行（auto 模式） |
+	 *
+	 * ⚠ **`allowAiAdopt` 由调用方按当前模式传**（`dsh` 侧：`{ allowAiAdopt: mode === 'auto' }`）。
+	 *   core 不认识「模式」，只认识这一个开关 —— 否则要把 `BoardMode` 灌进 core 的每个方法。
+	 *
+	 * ⚠ **`protocol` 的 `BUTTON_ACTIONS` 不改**：那张表是「谁可以点哪个按钮」的全局真值，
+	 *   在这里放开 AI 会让**所有场景**都允许 AI 采纳（包括 work 模式）。
+	 */
+	adopt(
+		workspaceId: WorkspaceId,
+		cardId: string,
+		actor: Actor,
+		options?: { readonly allowAiAdopt?: boolean },
+	): Promise<StatusWriteResult>;
 	/**
 	 * 领取：把「执行权限」发给一个 AI 身份。
 	 *
@@ -469,13 +478,6 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		new Set(kinds.list().filter((one) => one.needsClaim).map((one) => one.id));
 
 	/* ── 工具权限的状态（见 `permission.ts`） ── */
-
-	/**
-	 * 权限编辑开关 —— **纯内存**（用户原话：「重启以后他默认关的」）。
-	 *
-	 * ⚠ 不进 kv、不写卡。重启即清空是**安全边界**，不是偷懒。
-	 */
-	const policyEditScopes = new Set<string>();
 
 	/**
 	 * kv 里的键：**四档策略**（一张表存全部，改动频率极低）。
@@ -695,25 +697,6 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 
 		/* ── 工具权限（模型见 permission.ts 顶部） ── */
 
-		setPolicyEdit(scope, on) {
-			/*
-			 * ## 纯内存（用户原话）
-			 *
-			 * > 这个开关是**纯内存**的。重启以后他**默认关**的。
-			 *
-			 * ⇒ 不进 kv、不写卡、不落库。进程重启即清空 —— 这是**安全边界**，
-			 *   不是"实现偷懒"：一个被遗忘打开的开关不该跨重启继续放大权限。
-			 *
-			 * ⚠ 不做超时、不做 AI 主动关（用户明确否掉）—— 只有用户点 UI。
-			 */
-			if (on) policyEditScopes.add(scope);
-			else policyEditScopes.delete(scope);
-		},
-
-		isPolicyEditOn(scope) {
-			return policyEditScopes.has(scope);
-		},
-
 		getToolPolicies() {
 			return toolPolicies;
 		},
@@ -794,10 +777,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		judgeToolCall(input) {
-			return judgeToolCall(input, {
-				policies: toolPolicies,
-				policyEditOn: policyEditScopes,
-			});
+			return judgeToolCall(input, { policies: toolPolicies });
 		},
 
 		/* ── 写 ── */
@@ -886,7 +866,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 
 		/* ── 状态转移（判定在 protocol，改卡在 transition.ts） ── */
 
-		async adopt(workspaceId, cardId, actor) {
+		async adopt(workspaceId, cardId, actor, options) {
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -896,7 +876,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
 			}
 
-			const result = adoptCard(existing, actor, now());
+			const result = adoptCard(existing, actor, now(), options);
 			if (!result.ok) return result;
 
 			await persist(workspaceId, result.card);
@@ -1087,24 +1067,30 @@ export type {
 /** 持有者工具（多人协作）。 */
 export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
 
-/** 工具权限（BASE 常量 + 四档增量 + 纯内存开关 + 纯判定）。 */
+/** 工具权限（BASE 常量 + 四档增量 + 三种模式 + 纯判定）。 */
 export {
 	BASE_TOOLS,
 	POLICY_TOOLS,
 	EXECUTION_TOOLS,
 	READONLY_TOOLS,
+	BOARD_PRESETS,
+	PLAN_BLOCKED_TOOLS,
 	EMPTY_POLICY_STORE,
+	boardModeOf,
 	judgeToolCall,
 	isBaseTool,
 	isPolicyTool,
 	effectiveToolsOf,
 	extrasOf,
+	type BoardMode,
+	type BoardPreset,
+	type BoardSandbox,
 	type PermissionFacts,
 	type ToolCallJudgement,
 	type ToolCallVerdict,
-	type ToolPolicyStore,
 	type ToolPolicyDelta,
 	type ToolPolicyGroup,
+	type ToolPolicyStore,
 } from './permission.ts';
 
 /** 未读工具（卡上的字段 + 维护它的纯函数）。 */
