@@ -506,6 +506,49 @@ describe('POST /api/cards/:id/action', () => {
 		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_SUBMITTED');
 	});
 
+	it('⚠ 「采纳」走 adopt()，必须写 adoptedAt（走 transition 就不会写）', async () => {
+		/*
+		 * 采纳和普通转移在 core 里是**两个方法**：
+		 *   adopt()      → 改状态 **且** 写 adoptedAt
+		 *   transition() → 只改状态
+		 *
+		 * `Card.adoptedAt` 是 `search` 的排序键（`adoptedAt ?? createdAt`）。
+		 * 若这里走错了方法，状态对了、排序错了，**且不报错** —— 静默错误。
+		 *
+		 * ⇒ 这条断言钉住「HTTP 的采纳走的是 adopt()」。
+		 */
+		const created = await taskboard.createWorkspace('采纳写时戳');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const wsId = created.workspace.id;
+		const template = adoptToSubmittedTemplate();
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳' });
+		assert.equal(made.ok, true);
+		if (!made.ok) return;
+		assert.equal(made.card.adoptedAt, null, '草稿的 adoptedAt 应是 null');
+
+		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}/action`,
+			body: { to: 'TASK_STATE_SUBMITTED' },
+		});
+		assert.equal(out.status, 200, out.raw);
+
+		const after = taskboard.get(wsId, made.card.id);
+		assert.equal(after.ok, true);
+		if (!after.ok) return;
+		assert.notEqual(after.card.adoptedAt, null, '采纳必须写 adoptedAt');
+		assert.equal(typeof after.card.adoptedAt, 'number');
+
+		/* 与 history 里那条 adopt 用同一个 at（core 的约定）。 */
+		const adoptEntry = after.card.history.find((one) => one.action === 'adopt');
+		assert.notEqual(adoptEntry, undefined, 'history 里应有 adopt 事件');
+		assert.equal(adoptEntry?.at, after.card.adoptedAt, 'adoptedAt 必须与 history 的 adopt 事件同一时刻');
+		/* 人点的 ⇒ actor 是 user。 */
+		assert.equal(adoptEntry?.actor, 'user');
+	});
+
 	it('按钮表里没有的转移 ⇒ 409 + TRANSITION_REJECTED', async () => {
 		const created = await taskboard.createWorkspace('动作3');
 		assert.equal(created.ok, true);
@@ -821,133 +864,31 @@ describe('GET /api/events', () => {
 	});
 });
 
-/* ────────────────────────── 权限编辑开关端点 ──────────────────────────
+/* ────────────────────────── 权限编辑端点已删除 ──────────────────────────
  *
- * ⚠ 这两个端点是**用户点 UI** 用的，走 `actor: 'user'`。
- *   scope 是**会话 id**（UI 拿得到），不是 agent 名字（UI 拿不到）。
- *   见 `src/permission.ts` 文件头「两个身份不是一个东西」。
+ * 用户 `2026-11-14`：「没有必要为此就让我们再开一个新的权限。」
+ *
+ * ⇒ 「改权限」不再是任务板的一个开关/端点，而是 **DSH 自己的权限预设**：
+ *   切到「完全访问」时任务板 guard 一律放行（互斥语义），AI 在那里
+ *   自然能调 `taskboard_tool_policy_*`。
+ *
+ * 所以原来那两个端点连同它们的用例一起删了。这里只留一条**否定断言**，
+ * 防止有人把端点加回来时没人发现 —— 那个机制已经被用户否掉了。
  */
 
-describe('权限编辑开关', () => {
-	/** 造一份带开关的路由依赖（开关存在内存 Map 里）。 */
-	function depsWithSwitch(overrides: Partial<RouteDeps> = {}): {
-		readonly deps: RouteDeps;
-		readonly state: Map<string, boolean>;
-	} {
-		const state = new Map<string, boolean>();
-		const deps = depsOf({
-			policyEdit: {
-				isOn: (scope) => state.get(scope) === true,
-				set: (scope, on) => {
-					if (on) state.set(scope, true);
-					else state.delete(scope);
-				},
-			},
-			...overrides,
-		});
-		return { deps, state };
-	}
-
-	it('GET 读状态：默认关', async () => {
-		const { deps } = depsWithSwitch();
-		const out = await call(deps, { url: `${ROUTE_PREFIX}/api/policy-edit?scope=sess-1` });
-		assert.equal(out.status, 200);
-		const payload = out.json as { data: { unlocked: boolean } };
-		assert.equal(payload.data.unlocked, false);
+describe('权限编辑端点应不存在', () => {
+	it('GET /api/policy-edit ⇒ 404（该机制已被预设取代）', async () => {
+		const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/policy-edit?scope=sess-1` });
+		assert.equal(out.status, 404, out.raw);
 	});
 
-	it('POST toggle 打开 ⇒ 之后 GET 读到 true', async () => {
-		const { deps, state } = depsWithSwitch();
-		const out = await call(deps, {
-			method: 'POST',
-			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
-			body: { scope: 'sess-1', unlocked: true },
-		});
-		assert.equal(out.status, 200, out.raw);
-		const payload = out.json as { data: { unlocked: boolean } };
-		assert.equal(payload.data.unlocked, true);
-		assert.equal(state.get('sess-1'), true);
-
-		const read = await call(deps, { url: `${ROUTE_PREFIX}/api/policy-edit?scope=sess-1` });
-		const readPayload = read.json as { data: { unlocked: boolean } };
-		assert.equal(readPayload.data.unlocked, true);
-	});
-
-	it('POST toggle 关闭 ⇒ 从表里删掉', async () => {
-		const { deps, state } = depsWithSwitch();
-		await call(deps, {
-			method: 'POST',
-			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
-			body: { scope: 'sess-1', unlocked: true },
-		});
-		await call(deps, {
-			method: 'POST',
-			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
-			body: { scope: 'sess-1', unlocked: false },
-		});
-		assert.equal(state.has('sess-1'), false, '关闭应删键（不是存 false）');
-	});
-
-	it('⚠ scope 隔离：开 sess-1 不影响 sess-2', async () => {
-		const { deps } = depsWithSwitch();
-		await call(deps, {
-			method: 'POST',
-			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
-			body: { scope: 'sess-1', unlocked: true },
-		});
-		const other = await call(deps, { url: `${ROUTE_PREFIX}/api/policy-edit?scope=sess-2` });
-		const payload = other.json as { data: { unlocked: boolean } };
-		assert.equal(payload.data.unlocked, false, '别的会话不该被打开');
-	});
-
-	it('缺 scope ⇒ 400', async () => {
-		const { deps } = depsWithSwitch();
-		const out = await call(deps, {
-			method: 'POST',
-			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
-			body: { unlocked: true },
-		});
-		assert.equal(out.status, 400, out.raw);
-		const payload = out.json as { code: string };
-		assert.equal(payload.code, 'FIELD_REQUIRED');
-	});
-
-	it('缺 unlocked ⇒ 400', async () => {
-		const { deps } = depsWithSwitch();
-		const out = await call(deps, {
-			method: 'POST',
-			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
-			body: { scope: 'sess-1' },
-		});
-		assert.equal(out.status, 400, out.raw);
-	});
-
-	it('开关未装配 ⇒ POST 答 501', async () => {
+	it('POST /api/policy-edit/toggle ⇒ 404', async () => {
 		const out = await call(depsOf(), {
 			method: 'POST',
 			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
 			body: { scope: 'sess-1', unlocked: true },
 		});
-		assert.equal(out.status, 501, out.raw);
-	});
-
-	it('鉴权拒绝 ⇒ 401，且不改状态', async () => {
-		const { deps, state } = depsWithSwitch({ connection: { requestRejection: () => 401 } });
-		const out = await call(deps, {
-			method: 'POST',
-			url: `${ROUTE_PREFIX}/api/policy-edit/toggle`,
-			body: { scope: 'sess-1', unlocked: true },
-		});
-		assert.equal(out.status, 401);
-		assert.equal(state.size, 0, '鉴权失败不该改开关');
-	});
-
-	it('method 不对 ⇒ 405', async () => {
-		const { deps } = depsWithSwitch();
-		const read = await call(deps, { method: 'POST', url: `${ROUTE_PREFIX}/api/policy-edit?scope=s` });
-		assert.equal(read.status, 405);
-		const toggle = await call(deps, { url: `${ROUTE_PREFIX}/api/policy-edit/toggle` });
-		assert.equal(toggle.status, 405);
+		assert.equal(out.status, 404, out.raw);
 	});
 });
 

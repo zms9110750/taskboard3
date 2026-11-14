@@ -4,30 +4,36 @@
  * ## core 给什么、这里做什么
  *
  * `@taskboard/core` 的 `permission.ts` 是**纯判定**（`judgeToolCall`），
- * 它不认识 dsh、不知道 agent、不算持有卡。本文件做三件事：
+ * 它不认识 dsh、不知道 agent、不算持有卡、不读预设。本文件做四件事：
  *
  * ```
- * ① 从 exec 取身份（scope + holder）
- * ② 收集这个身份持有的工作卡（core 要的 heldCards）
- * ③ 调 core.judgeToolCall，把拒绝理由作为 guard 的返回值
+ * ① 从 exec 取 agent
+ * ② 读当前会话的权限预设名 → 映射成 core 的 BoardMode
+ * ③ 收集这个 agent 持有的工作卡（core 要的 heldCards）
+ * ④ 调 core.judgeToolCall，把拒绝理由作为 guard 的返回值
  * ```
  *
- * ## ⚠ 两个身份不是一个东西 —— 这是最容易搞错的地方
+ * ## ⚠ 核心语义：与 DSH 自己的权限**互斥**
  *
- * | 用途 | 取法 | 形态 |
- * |---|---|---|
- * | **权限编辑开关的 scope** | `subagents.rootOf(agent).id` | 根会话 **UUID** |
- * | **持有卡的持有者** | `subagents.namesOf(agent).self` | agent **名字**（`lead`） |
+ * 用户 `2026-11-14`：
  *
- * 为什么必须分开：
+ * > 我说的是和dsh自己的权限互斥。只要开的是他自己或者别的插件提供的权限。
+ * > 那么这个插件给的限制都不生效。
  *
- * - **卡上的 `holders` 存的是名字**（`claim` 时按 DSH 官方 Agent Teams 的做法存
- *   `namesOf().self`）⇒ 找「我持有的卡」只能比名字；
- * - **权限编辑开关是用户从界面点的**，而界面**拿不到 agent 名字**，
- *   只能拿到会话 id ⇒ 开关的 key 必须是 UUID。
+ * ⇒ 我们**只认** core 的 `BOARD_PRESETS` 那三个预设名。不是那三个
+ *   （含 `undefined` = 没装预设服务）⇒ `mode === undefined` ⇒ core 一律放行。
  *
- * ⇒ 两者都从同一个 `agent` 推出来，但**不是同一个值**。混用会导致
- *   「开关打开了但判定看不见」或「持有卡查不到」—— 两者都是静默错误。
+ * 这就是「开发者权限」的实现：切到 DSH 出厂的「完全访问」，我们什么都不管，
+ * AI 自然能改权限。**不新增第四个预设**（用户：「没有必要为此就让我们再开一个新的权限」）。
+ *
+ * ## ⚠ 一个身份，不是两个
+ *
+ * 上一版这里有 `scope`（根会话 UUID，给权限编辑开关用）和 `holder`
+ * （agent 名字，给持有卡用）两个身份。现在**开关没了** ——
+ * 改权限靠切预设，不靠内存开关 ⇒ `scope` 整个删除，只剩 `holder`。
+ *
+ * 这不是简化，是**删掉了一个已经不存在的概念**：
+ * 开关是「纯内存、重启即关」的临时机制，用户把它换成了预设表里的三个档。
  *
  * ## ⚠ guard 是同步的
  *
@@ -35,115 +41,75 @@
  * （`dsh-tools/src/contracts.ts:410`）
  *
  * ⇒ 里面**不能 await**。本文件的取法全部同步：
- * `taskboard.listWorkspaces()` / `taskboard.list()` / `taskboard.judgeToolCall()` 都是同步的。
+ * `permissionPresets.current(session)` / `taskboard.list()` / `judgeToolCall()` 都是同步的。
  *
  * ## ⚠ 已知限制：只看「第一个工作空间」
  *
  * guard 每次工具调用都跑，不能遍历所有空间（每个空间一次 `loadAll`，会拖慢）。
  * ⇒ 只查 `listWorkspaces(false)[0]`。
  *
- * **后果**：用户在第二个空间领的卡，guard 看不见 ⇒ 那些卡授予的 extra 不生效。
+ * **后果**：用户在第二个空间领的卡，guard 看不见 ⇒ 那些卡授予的增量不生效。
  * 这是**已知限制**，不是 bug。真要修得让 core 提供「按 holder 反查」的索引，
  * 或让调用方显式传 workspaceId。
  */
 
-import type { Taskboard, Card } from '@taskboard/core';
-import { isHeldBy } from '@taskboard/core';
+import type { BoardMode, Card, Taskboard } from '@taskboard/core';
+import { boardModeOf, isHeldBy } from '@taskboard/core';
 import { TaskState } from '@taskboard/protocol';
-
-/**
- * 本插件要求的权限预设名。
- *
- * 用户在这里点「任务板接管」之后，guard 才开始判权限；否则 dsh 自己的
- * 沙箱 / 审批机制照常。**这是「要不要让任务板管权限」的开关**，
- * 不是任务板自己的权限开关（那个是 `setPolicyEdit`）。
- *
- * ⚠ 需要在 profile 的 `permission-presets` 表里配出这个名字才生效 ——
- *   本插件**不替用户装配**（依赖语义）。配不出时 guard 对所有调用生效，
- *   见 `createPermissionGuard` 的 `presetName` 注释。
- */
-export const PERMISSION_PRESET = 'taskboard-guard';
 
 /* ────────────────────────── 身份 ────────────────────────── */
 
 /**
- * `ctx.subagents` 的最小形状 —— 本文件用到**两个**方法。
+ * `ctx.subagents` 的最小形状 —— 本文件只用到 `namesOf`。
  *
- * ⚠ 与 `holder.ts` 的 `SubagentsLike` 不同：那个只需要 `namesOf`（holder 用），
- *   这里还要 `rootOf`（scope 用）。**故意不合并** —— 两个文件用的能力不同，
- *   合并会让「只需要名字」的地方也假装需要 `rootOf`。
+ * ⚠ 与 `holder.ts` 的 `SubagentsLike` **故意不合并**：
+ *   两者现在字段相同，但用途不同（holder 用名字落库、guard 用名字找持有卡）。
+ *   合并会让「只是要个名字」的地方被迫接受更多方法。
  *
- * ⚠ 两个方法都**可能抛错**（agent 不在任何 subagent 树里，或服务未就绪）
- *   ⇒ 调用方必须 try/catch。
+ * ⚠ `namesOf` 会**抛错**（agent 不在任何 subagent 树里）⇒ 调用方必须 try/catch。
  */
 export interface PermissionSubagentsLike {
 	namesOf(agent: unknown): { readonly self: string };
-	rootOf(agent: unknown): { readonly id?: string };
-}
-
-/** 一次工具调用的身份。两个字段用途不同，见文件头。 */
-export interface CallerIdentity {
-	/** 权限编辑开关的 key —— 根会话 UUID。 */
-	readonly scope: string;
-	/** 卡片持有者 —— agent 名字（`lead` / `reviewer/checker`），或 UUID 兜底。 */
-	readonly holder: string;
 }
 
 /** 从 `exec` 取 agent（缺席时 `undefined`）。 */
-function agentOf(exec: unknown): { readonly id?: string } | undefined {
+function agentOf(exec: unknown): { readonly id?: string; readonly session?: unknown } | undefined {
 	if (typeof exec !== 'object' || exec === null) return undefined;
 	const agent = (exec as { agent?: unknown }).agent;
 	if (typeof agent !== 'object' || agent === null) return undefined;
-	return agent as { readonly id?: string };
+	return agent as { readonly id?: string; readonly session?: unknown };
 }
 
 /** 判断对象是否能当 `PermissionSubagentsLike` 用。 */
 function hasSubagents(value: unknown): value is PermissionSubagentsLike {
 	if (typeof value !== 'object' || value === null) return false;
-	const one = value as { namesOf?: unknown; rootOf?: unknown };
-	return typeof one.namesOf === 'function' && typeof one.rootOf === 'function';
+	return typeof (value as { namesOf?: unknown }).namesOf === 'function';
 }
 
 /**
- * 取本次调用的身份。
+ * 取本次调用的 holder（卡片持有者标识）。
+ *
+ * 三条回落与 `holder.ts` 完全一致 —— **必须一致**，否则
+ * 「claim 时存的 holder」和「guard 时找的 holder」会对不上，
+ * 表现是「领了卡但权限不生效」这种静默错误。
  *
  * @param subagents `ctx.subagents`；可缺席（无 subagent 的 profile）
  * @param exec 工具执行上下文
- * @returns 两个身份；`agent` 缺席时两者都是 `'unknown'`
  */
-export function identityOf(subagents: unknown, exec: unknown): CallerIdentity {
+export function holderOf(subagents: unknown, exec: unknown): string {
 	const agent = agentOf(exec);
-	if (agent === undefined) return { scope: 'unknown', holder: 'unknown' };
+	if (agent === undefined) return 'unknown';
 
 	const id = typeof agent.id === 'string' && agent.id !== '' ? agent.id : 'unknown';
+	if (!hasSubagents(subagents)) return id;
 
-	/* 没有 subagents 服务 ⇒ 两者都回落 UUID。
-	 * ⚠ 这时 scope 与 holder 相同 —— 是**唯一**能自洽的回落：
-	 *   卡上的 holder 会存成 UUID（见 holder.ts），开关的 key 也是 UUID，
-	 *   两边仍然对得上。 */
-	if (!hasSubagents(subagents)) return { scope: id, holder: id };
-
-	let scope = id;
-	let holder = id;
-
-	/* ① scope：根会话 UUID。取不到（agent 不在树里）⇒ 用自己。 */
-	try {
-		const root = subagents.rootOf(agent);
-		const rootId = typeof root.id === 'string' && root.id !== '' ? root.id : '';
-		if (rootId !== '') scope = rootId;
-	} catch {
-		/* 不在树里 ⇒ scope 保持自己的 UUID。子 agent 各自独立开关，可接受。 */
-	}
-
-	/* ② holder：agent 名字。取不到 ⇒ 用自己。 */
 	try {
 		const name = subagents.namesOf(agent).self;
-		if (typeof name === 'string' && name !== '') holder = name;
+		if (typeof name === 'string' && name !== '') return name;
 	} catch {
-		/* 同上。**不编名字** —— 猜名字会让两个 agent 撞到同一个 holder。 */
+		/* 不在树里 ⇒ 回落 UUID。**不编名字** —— 猜名字会让两个 agent 撞到同一个 holder。 */
 	}
-
-	return { scope, holder };
+	return id;
 }
 
 /* ────────────────────────── 持有卡 ────────────────────────── */
@@ -179,7 +145,45 @@ export function heldWorkCardsOf(
 	return { cards, workspaceId: workspace.id };
 }
 
+/* ────────────────────────── 模式 ────────────────────────── */
+
+/** 预设名解析器（由 `index.ts` 注入 —— 本文件不 import `@deepseek-ai/*`）。 */
+export type PresetNameOf = (agent: unknown) => string | undefined;
+
+/**
+ * 取当前会话的模式。
+ *
+ * @returns `undefined` = 不是任务板的预设（**含「没装预设服务」**）⇒ 一律放行
+ *
+ * ⚠ 任何一步失败都返回 `undefined`（放行方向）——
+ *   取不到预设名说明我们不知道现在是什么模式，而**不知道就不该拦**：
+ *   拦截错误的代价是用户完全不能用 dsh，放行的代价只是这一轮没设防。
+ */
+export function modeOf(presetNameOf: PresetNameOf | undefined, agent: unknown): BoardMode | undefined {
+	if (presetNameOf === undefined) return undefined;
+	try {
+		return boardModeOf(presetNameOf(agent));
+	} catch {
+		return undefined;
+	}
+}
+
 /* ────────────────────────── guard ────────────────────────── */
+
+/**
+ * 造一个「从 exec 读模式」的读取器。
+ *
+ * ⚠ 工具层（`tools.ts` 的 `taskboard_adopt`）也要读模式 ——
+ *   但工具拿到的是 `exec`，而 `modeOf` 要的是 `agent`。
+ *   本函数把这一层转换收口，避免两处各自拆 `exec.agent`。
+ *
+ * @returns 读取器；`presetNameOf` 缺席时恒返回 `undefined`（= 非任务板预设）
+ */
+export function execModeReader(
+	presetNameOf: PresetNameOf | undefined,
+): (exec: unknown) => BoardMode | undefined {
+	return (exec: unknown) => modeOf(presetNameOf, agentOf(exec));
+}
 
 /** guard 的依赖。 */
 export interface GuardDeps {
@@ -189,12 +193,9 @@ export interface GuardDeps {
 	/**
 	 * 读「当前会话的权限预设名」。
 	 *
-	 * ⚠ 由 `index.ts` 注入，本文件不 import `@deepseek-ai/*` 的类型。
-	 *   返回 `undefined` ⇒ 该会话没有预设服务 ⇒ **不归本 guard 管，放行**。
+	 * ⚠ 由 `index.ts` 注入。`undefined` ⇒ 没有预设服务 ⇒ 模式取不到 ⇒ 一律放行。
 	 */
-	readonly presetOf?: (agent: unknown) => string | undefined;
-	/** 本插件要求的预设名。省略 = 不按预设过滤（任何预设都管）。 */
-	readonly presetName?: string;
+	readonly presetNameOf?: PresetNameOf;
 }
 
 /** guard 的返回值（与 `dsh-tools` 的 `ToolGuard` 同形，但不 import 它的类型）。 */
@@ -206,11 +207,12 @@ export type GuardVerdict = string | undefined;
  * 判定顺序：
  *
  * ```
- * ① 预设不是本插件要的那个 ⇒ 放行（不归我们管）
- * ② 取身份（scope + holder）
- * ③ 收集持有卡
- * ④ 调 core.judgeToolCall
- * ⑤ 拒绝 ⇒ 返回理由（guard 的返回值即拒绝理由）
+ * ① 取 agent（缺席 ⇒ 放行：程序化调用不归我们管）
+ * ② 取工具名（空 ⇒ 放行）
+ * ③ 取模式（`undefined` ⇒ 放行：不是任务板的预设）
+ * ④ 收集持有卡
+ * ⑤ 调 core.judgeToolCall
+ * ⑥ 拒绝 ⇒ 返回理由（guard 的返回值即拒绝理由）
  * ```
  *
  * ⚠ **任何一步出错都不阻断**：guard 抛错会让整个工具调用失败，
@@ -219,42 +221,33 @@ export type GuardVerdict = string | undefined;
  *   **这里选放行** —— 理由：guard 是**加装**的（DSH 默认没有这个插件），
  *   我们坏了不该让用户完全不能用 dsh。**但会 `console.error`**，不是静默。
  *   （与 `core/bus.ts` 的 emit 同一个取舍：出错要看得见。）
+ *
+ *   注意这与「core 判定拒绝」是**两件事**：core 返回 `{ok:false}` 是**正常拒绝**
+ *   （语义上的「没权限」），不走这条；只有**代码抛异常**才放行。
  */
 export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => GuardVerdict {
-	const { taskboard, subagents, presetOf, presetName } = deps;
+	const { taskboard, subagents, presetNameOf } = deps;
 
 	return (exec: unknown): GuardVerdict => {
 		const agent = agentOf(exec);
 		if (agent === undefined) return undefined;
 
-		/* ① 预设过滤：不是我们的预设 ⇒ 不管。 */
-		if (presetName !== undefined && presetOf !== undefined) {
-			let current: string | undefined;
-			try {
-				current = presetOf(agent);
-			} catch {
-				current = undefined;
-			}
-			if (current !== presetName) return undefined;
-		}
-
 		const toolName = nameOf(exec);
 		if (toolName === '') return undefined;
 
 		try {
-			const identity = identityOf(subagents, exec);
-			const { cards } = heldWorkCardsOf(taskboard, identity.holder);
+			const mode = modeOf(presetNameOf, agent);
+			/* ③ 不是任务板的预设 ⇒ 一律放行（互斥语义）。 */
+			if (mode === undefined) return undefined;
+
+			const { cards } = heldWorkCardsOf(taskboard, holderOf(subagents, exec));
 			/*
 			 * ⚠ core 要的是**窄形状**（只有 `templateRef`），不是完整 Card。
 			 *   映射在这里做，而不是让 core 认识 Card —— 那是反向依赖。
 			 */
 			const heldCards = cards.map((card) => ({ templateRef: card.template.ref }));
 
-			const verdict = taskboard.judgeToolCall({
-				scope: identity.scope,
-				toolName,
-				heldCards,
-			});
+			const verdict = taskboard.judgeToolCall({ mode, toolName, heldCards });
 			return verdict.ok ? undefined : `[任务板权限] ${verdict.reason}`;
 		} catch (error) {
 			/* 见上面 JSDoc：加装模块坏了不该让用户完全不能用 dsh，但必须看得见。 */

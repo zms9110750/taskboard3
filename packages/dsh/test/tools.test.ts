@@ -70,6 +70,14 @@ async function closeTaskboard(): Promise<void> {
 /** 当前用例的工作空间 id。 */
 let workspaceId = '';
 
+/**
+ * 当前用例的「任务板模式」。
+ *
+ * ⚠ 只有 `taskboard_adopt` 用到（auto 模式下 AI 能不能自己采纳草稿）。
+ *   默认 `undefined` = 非任务板预设 ⇒ 按「不能自己采纳」处理（安全方向）。
+ */
+let currentMode: 'plan' | 'work' | 'auto' | undefined;
+
 beforeEach(async () => {
 	await closeTaskboard();
 	taskboard = createTaskboard({
@@ -82,11 +90,13 @@ beforeEach(async () => {
 	assert.equal(created.ok, true);
 	if (created.ok) workspaceId = created.workspace.id;
 
+	currentMode = undefined;
 	tools = createTools({
 		taskboard,
 		defineTool: fakeDefineTool,
 		defaultWorkspaceId: async () => workspaceId,
 		subagents: stubSubagents('测试agent'),
+		modeOf: () => currentMode,
 	});
 });
 
@@ -526,18 +536,18 @@ describe('四档权限工具', () => {
 
 		/* taskboard_transition 在 BASE ⇒ 任何时候都放行，不受 delta 影响。 */
 		const baseVerdict = taskboard.judgeToolCall({
-			scope: 's',
+			mode: 'work',
 			toolName: 'taskboard_transition',
 			heldCards,
 		});
 		assert.deepEqual(baseVerdict, { ok: true }, 'BASE 里的工具不该被 delta 影响');
 
 		/* 而 bash 因为在独立档里 ⇒ 也放行（证明 delta 生效了）。 */
-		const bashVerdict = taskboard.judgeToolCall({ scope: 's', toolName: 'bash', heldCards });
+		const bashVerdict = taskboard.judgeToolCall({ mode: 'work', toolName: 'bash', heldCards });
 		assert.deepEqual(bashVerdict, { ok: true }, '独立档里的 bash 该放行');
 
 		/* edit 既不在 BASE 也不在独立档 ⇒ 拒。 */
-		const editVerdict = taskboard.judgeToolCall({ scope: 's', toolName: 'edit', heldCards });
+		const editVerdict = taskboard.judgeToolCall({ mode: 'work', toolName: 'edit', heldCards });
 		assert.equal(editVerdict.ok, false, 'edit 没被授予 ⇒ 该拒');
 	});
 
@@ -866,6 +876,78 @@ describe('taskboard_transition', () => {
 	it('不存在的编号 ⇒ 失败文案', async () => {
 		const text = await run('taskboard_transition', { id: 'NOPE-99' });
 		assert.ok(text.includes('不存在'), text);
+	});
+
+	/* ── 采纳走 adopt()，且按模式决定 AI 能不能自己采 ── */
+
+	it('⚠ 采纳走 adopt()：AI 采纳后 adoptedAt 被写（走 transition 就不会写）', async () => {
+		/*
+		 * 采纳要同时写 `adoptedAt`（`search` 的排序键）。若 AI 的采纳走了
+		 * `transition()`，状态对了、排序错了、**且不报错** —— 静默错误。
+		 *
+		 * ⚠ 用 design 模板：它的采纳对 AI 本来就开放（`BUTTON_ACTIONS` 里是 BOTH），
+		 *   所以这条用例测的是「走对方法」，不是「auto 放行」。
+		 */
+		const template = taskboard.listTemplates().find((one) => one.kind === 'design');
+		assert.notEqual(template, undefined);
+		if (template === undefined) return;
+		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '设计草稿' });
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		assert.equal(created.card.adoptedAt, null);
+
+		const to = created.card.template.kind === 'design' ? 'TASK_STATE_AUTH_REQUIRED' : 'TASK_STATE_SUBMITTED';
+		const text = await run('taskboard_transition', { id: created.card.id, to });
+		assert.ok(text.includes('采纳'), text);
+
+		const after = taskboard.get(workspaceId, created.card.id);
+		assert.equal(after.ok, true);
+		if (!after.ok) return;
+		assert.notEqual(after.card.adoptedAt, null, '采纳必须写 adoptedAt');
+		const adoptEntry = after.card.history.find((one) => one.action === 'adopt');
+		assert.notEqual(adoptEntry, undefined, 'history 里应有 adopt 事件');
+		assert.equal(adoptEntry?.at, after.card.adoptedAt, 'adoptedAt 与 history 的 adopt 事件同一时刻');
+		assert.equal(adoptEntry?.actor, 'ai', 'AI 工具的采纳 ⇒ actor 是 ai');
+	});
+
+	it('⚠ work 模式下 AI 不能自己采纳 goal/work 草稿', async () => {
+		/*
+		 * 用户：「自动工作和工作的区别就是 ai 自己采纳草稿。」
+		 * ⇒ work 模式下 AI 采纳 goal/work 草稿必须失败。
+		 */
+		currentMode = 'work';
+		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
+		assert.notEqual(template, undefined);
+		if (template === undefined) return;
+		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '工作草稿' });
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+
+		const text = await run('taskboard_transition', { id: created.card.id, to: 'TASK_STATE_SUBMITTED' });
+		assert.ok(text.includes('失败'), `work 模式下 AI 不该能自己采纳：${text}`);
+
+		const after = taskboard.get(workspaceId, created.card.id);
+		assert.equal(after.ok, true);
+		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_UNSPECIFIED', '状态不该变');
+	});
+
+	it('⚠ auto 模式下 AI 可以自己采纳 goal/work 草稿', async () => {
+		currentMode = 'auto';
+		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
+		assert.notEqual(template, undefined);
+		if (template === undefined) return;
+		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '工作草稿' });
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+
+		const text = await run('taskboard_transition', { id: created.card.id, to: 'TASK_STATE_SUBMITTED' });
+		assert.ok(text.includes('采纳'), `auto 模式下 AI 该能自己采纳：${text}`);
+
+		const after = taskboard.get(workspaceId, created.card.id);
+		assert.equal(after.ok, true);
+		if (!after.ok) return;
+		assert.equal(after.card.status, 'TASK_STATE_SUBMITTED');
+		assert.notEqual(after.card.adoptedAt, null);
 	});
 });
 
