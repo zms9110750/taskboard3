@@ -18,10 +18,10 @@ import { after, before, describe, it } from 'node:test';
 
 import { TaskState } from '@taskboard/protocol';
 
-import { createTaskboard, type Taskboard } from '../lib/index.js';
-import { createBus, type TaskboardMessage } from '../lib/bus.js';
-import type { Card } from '../lib/card.js';
-import type { TemplateDef } from '../lib/template/types.js';
+import { createTaskboard, type Taskboard } from '../src/index.ts';
+import { createBus, type TaskboardMessage } from '../src/bus.ts';
+import type { Card } from '../src/card.ts';
+import type { TemplateDef } from '../src/template/types.ts';
 
 function makeTemplate(ref: string, kind: string): TemplateDef {
 	return {
@@ -478,3 +478,5 @@ describe('markSeen 触发 bus 广播', () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 });
+
+

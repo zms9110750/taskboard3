@@ -17,10 +17,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { z } from 'zod';
 
-import { ActionRegistry, BUILTIN_ACTIONS } from '../lib/template/actions.js';
-import { TemplateRegistry } from '../lib/template/registry.js';
-import { ContentSchemaCache } from '../lib/template/schema.js';
-import type { TemplateDef } from '../lib/template/types.js';
+import { ActionRegistry, BUILTIN_ACTIONS } from '../src/template/actions.ts';
+import { TemplateRegistry } from '../src/template/registry.ts';
+import { ContentSchemaCache } from '../src/template/schema.ts';
+import type { TemplateDef } from '../src/template/types.ts';
 
 /** 一个测试模板：两个章节，text 与 markdown。 */
 function makeTemplate(): TemplateDef {
@@ -288,3 +288,5 @@ describe('zod schema 复用（n + m）', () => {
 		assert.equal(z.custom !== undefined, true, 'zod 可用');
 	});
 });
+
+

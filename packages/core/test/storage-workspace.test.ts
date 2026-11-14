@@ -10,10 +10,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
-import { createSqliteStore } from '../lib/storage/sqlite.js';
-import { createTaskboard, type Taskboard } from '../lib/index.js';
-import type { CardStore } from '../lib/ports.js';
-import type { Card } from '../lib/card.js';
+import { createSqliteStore } from '../src/storage/sqlite.ts';
+import { createTaskboard, type Taskboard } from '../src/index.ts';
+import type { CardStore } from '../src/ports.ts';
+import type { Card } from '../src/card.ts';
 
 /** 造一张最小可用的卡。 */
 function makeCard(id: string): Card {
@@ -184,3 +184,5 @@ describe('ensureAnyWorkspace：空库时建「默认」', () => {
 		assert.equal(tb.listWorkspaces().length, before);
 	});
 });
+
+

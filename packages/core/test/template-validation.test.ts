@@ -15,8 +15,8 @@ import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { z } from 'zod';
 
-import { createTaskboard, type Taskboard } from '../lib/index.js';
-import type { TemplateDef } from '../lib/template/types.js';
+import { createTaskboard, type Taskboard } from '../src/index.ts';
+import type { TemplateDef } from '../src/template/types.ts';
 
 /** 一个最小的测试模板：一个 text 章节 + 一个 markdown 章节。 */
 function makeTemplate(ref = 'demo'): TemplateDef {
@@ -197,3 +197,5 @@ describe('core：模板注册 / 校验 / 注销', () => {
 		offTemplate();
 	});
 });
+
+

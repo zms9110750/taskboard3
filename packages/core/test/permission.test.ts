@@ -31,7 +31,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
-import { createTaskboard, type Taskboard } from '../lib/index.js';
+import { createTaskboard, type Taskboard } from '../src/index.ts';
 import {
 	BASE_TOOLS,
 	BOARD_PRESETS,
@@ -46,8 +46,8 @@ import {
 	type BoardMode,
 	type PermissionFacts,
 	type ToolPolicyStore,
-} from '../lib/permission.js';
-import type { TemplateDef } from '../lib/template/types.js';
+} from '../src/permission.ts';
+import type { TemplateDef } from '../src/template/types.ts';
 
 function makeTemplate(ref: string, kind: string): TemplateDef {
 	return {
@@ -719,3 +719,5 @@ describe('adopt：auto 模式放开 AI 采纳', () => {
 		assert.equal(refused.ok, false, 'goal 的 AI 采纳必须默认拒绝（按钮表没改）');
 	});
 });
+
+

@@ -11,8 +11,8 @@
  *   `CardStore` 是**端口**的价值：换一个实现不用动 core。
  */
 
-import type { Card } from '../lib/card.js';
-import type { CardStore } from '../lib/ports.js';
+import type { Card } from '../src/card.ts';
+import type { CardStore } from '../src/ports.ts';
 
 /** 造一个内存版 store。 */
 export function createMemoryStore(): CardStore {
@@ -49,3 +49,5 @@ export function createMemoryStore(): CardStore {
 		},
 	};
 }
+
+

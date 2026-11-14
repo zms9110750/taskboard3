@@ -20,9 +20,9 @@ import { after, before, describe, it } from 'node:test';
 
 import { TaskState } from '@taskboard/protocol';
 
-import { createTaskboard, type Taskboard } from '../lib/index.js';
-import { createBus, type Bus, type TaskboardMessage } from '../lib/bus.js';
-import type { TemplateDef } from '../lib/template/types.js';
+import { createTaskboard, type Taskboard } from '../src/index.ts';
+import { createBus, type Bus, type TaskboardMessage } from '../src/bus.ts';
+import type { TemplateDef } from '../src/template/types.ts';
 
 function makeTemplate(ref: string, kind: string): TemplateDef {
 	return {
@@ -325,3 +325,5 @@ describe('工作空间写路径', () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 });
+
+

@@ -26,8 +26,8 @@ import { after, before, describe, it } from 'node:test';
 
 import { TaskState } from '@taskboard/protocol';
 
-import { createTaskboard, type Taskboard } from '../lib/index.js';
-import type { TemplateDef } from '../lib/template/types.js';
+import { createTaskboard, type Taskboard } from '../src/index.ts';
+import type { TemplateDef } from '../src/template/types.ts';
 
 /** 造一个只有一个 text 章节的模板，类别可控。 */
 function makeTemplate(ref: string, kind: string): TemplateDef {
@@ -644,5 +644,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 		assert.ok(Array.isArray(changed));
 	});
 });
+
+
 
 

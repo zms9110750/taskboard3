@@ -16,14 +16,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { Card } from '../lib/card.js';
+import type { Card } from '../src/card.ts';
 import {
 	createSearch,
 	includesDrafts,
 	isStatusGroup,
 	titleMatches,
 	DEFAULT_DRAFT_STATE,
-} from '../lib/search.js';
+} from '../src/search.ts';
 
 const DRAFT = DEFAULT_DRAFT_STATE;
 
@@ -401,3 +401,5 @@ test('纯函数：返回新数组（不是入参本身）', () => {
 	const input = sample();
 	assert.notEqual(search(input, {}) as unknown, input);
 });
+
+

@@ -29,8 +29,8 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { ActionRegistry, BUILTIN_ACTIONS } from '../lib/template/actions.js';
-import { TemplateRegistry } from '../lib/template/registry.js';
+import { ActionRegistry, BUILTIN_ACTIONS } from '../src/template/actions.ts';
+import { TemplateRegistry } from '../src/template/registry.ts';
 
 /**
  * 模板目录 —— **从 `@taskboard/core` 包的位置推**，不走 cwd。
@@ -147,3 +147,5 @@ describe('全部模板', () => {
 		);
 	});
 });
+
+
