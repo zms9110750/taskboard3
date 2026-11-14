@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 
 import { parse as parseYaml } from 'yaml';
 
-import type { DeriveDef, SectionDef, TemplateDef } from './types.js';
+import type { DeriveDef, SectionDef, TemplateDef } from './types.ts';
 
 /** YAML 里 `sections` 的一项（原始形状，未校验）。 */
 interface RawSection {
@@ -164,3 +164,4 @@ export function loadFile(file: string, ref: string): { template: TemplateDef } |
 	}
 	return fromRaw(ref, parsed);
 }
+

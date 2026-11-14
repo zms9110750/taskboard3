@@ -52,7 +52,7 @@
  * | `status` 只含其它状态 | ❌ 不含 |
  */
 
-import type { Card } from './card.js';
+import type { Card } from './card.ts';
 import {
 	DRAFT,
 	STATUS_GROUP_OF,
@@ -267,5 +267,6 @@ export function createSearch(options: SearchOptions = {}): SearchStrategy {
 		return sortCards(matched);
 	};
 }
+
 
 

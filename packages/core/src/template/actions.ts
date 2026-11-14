@@ -20,7 +20,7 @@
 
 import { z } from 'zod';
 
-import type { ActionDef } from './types.js';
+import type { ActionDef } from './types.ts';
 
 /**
  * `text` —— 自由文本。
@@ -205,4 +205,5 @@ export class ActionRegistry {
 		return this.#actions.has($type);
 	}
 }
+
 

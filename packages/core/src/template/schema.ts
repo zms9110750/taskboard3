@@ -51,9 +51,9 @@ import type { z } from 'zod';
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, failure } from '@taskboard/protocol';
 
-import type { ActionRegistry } from './actions.js';
-import type { TemplateRegistry } from './registry.js';
-import type { SectionDef, TemplateDef } from './types.js';
+import type { ActionRegistry } from './actions.ts';
+import type { TemplateRegistry } from './registry.ts';
+import type { SectionDef, TemplateDef } from './types.ts';
 
 /** 一个模板的校验器。 */
 export interface TemplateValidator {
@@ -365,3 +365,4 @@ function defaultsOf(template: TemplateDef): ReadonlyMap<string, unknown> {
 	}
 	return payloads;
 }
+

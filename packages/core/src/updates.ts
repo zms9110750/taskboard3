@@ -34,8 +34,8 @@
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, failure } from '@taskboard/protocol';
 
-import type { Card, CardUnread } from './card.js';
-import { clearedUnread } from './card.js';
+import type { Card, CardUnread } from './card.ts';
+import { clearedUnread } from './card.ts';
 
 /** 读者。`user` = 人，`ai` = 模型 / MCP。 */
 export type UpdateReader = 'user' | 'ai';
@@ -109,3 +109,4 @@ export function markCardSeen(
 	if (unread === card.unread) return { ok: true, card, changed: false };
 	return { ok: true, card: { ...card, unread }, changed: true };
 }
+

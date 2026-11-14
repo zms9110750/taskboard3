@@ -35,8 +35,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import type { Card } from '../card.js';
-import type { CardStore } from '../ports.js';
+import type { Card } from '../card.ts';
+import type { CardStore } from '../ports.ts';
 
 /** 库文件名。 */
 const DB_FILE = 'taskboard3.db';
@@ -124,5 +124,6 @@ export function createSqliteStore(dataDir: string): CardStore {
 		},
 	};
 }
+
 
 

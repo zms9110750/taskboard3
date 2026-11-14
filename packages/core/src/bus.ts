@@ -20,7 +20,7 @@
  * ```
  * 1. 删 packages/core/src/bus.ts（本文件）
  * 2. packages/core/src/index.ts 里删三处：
- *      · `import { type Bus, createBus } from './bus.js';`
+ *      · `import { type Bus, createBus } from './bus.ts';`
  *      · `CommonOptions.bus?: Bus`
  *      · `persist` 里那行 `bus?.emit(...)`
  *    外加（见下面「工作空间」一节）`emitWorkspace` 与它的 4 个调用点
@@ -46,7 +46,7 @@
  * ---
  */
 
-import type { Card } from './card.js';
+import type { Card } from './card.ts';
 
 /**
  * 广播消息 —— **原型期专用脚手架**。
@@ -136,3 +136,4 @@ export function createBus(): Bus {
 		},
 	};
 }
+

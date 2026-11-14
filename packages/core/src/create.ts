@@ -28,12 +28,12 @@
 import type { Actor, Failure, LinkKindId } from '@taskboard/protocol';
 import { DRAFT, ErrorCode, LINK_KINDS, failure, isLinkKindId } from '@taskboard/protocol';
 
-import type { Card, CardSection, HistoryEntry, Relations, TemplateRef } from './card.js';
-import { UNREAD_NONE, unreadAfter } from './card.js';
-import { nextId, prefixOf } from './ids.js';
-import type { ContentSchemaCache } from './template/schema.js';
-import type { KindRegistry } from './template/kinds.js';
-import type { TemplateRegistry } from './template/registry.js';
+import type { Card, CardSection, HistoryEntry, Relations, TemplateRef } from './card.ts';
+import { UNREAD_NONE, unreadAfter } from './card.ts';
+import { nextId, prefixOf } from './ids.ts';
+import type { ContentSchemaCache } from './template/schema.ts';
+import type { KindRegistry } from './template/kinds.ts';
+import type { TemplateRegistry } from './template/registry.ts';
 
 /** 建卡来源。 */
 export type CreateOrigin = 'panel' | 'derive' | 'fork' | 'import';
@@ -256,3 +256,4 @@ function checkRelations(
 
 	return { ok: true, parent: parent === '' ? null : parent, links };
 }
+

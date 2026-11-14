@@ -24,8 +24,8 @@
  * ⇒ 归档只写一个标记，库不移动、不删除，归档后的空间照样可读写。
  */
 
-import type { WorkspaceId } from './card.js';
-import type { CardStore } from './ports.js';
+import type { WorkspaceId } from './card.ts';
+import type { CardStore } from './ports.ts';
 
 /** 一个工作空间。**容器，不关心内容。** */
 export interface Workspace {
@@ -170,4 +170,5 @@ export async function ensureAnyWorkspace(store: CardStore, at: number): Promise<
 	if (again !== undefined) return again;
 	throw new Error('建默认空间失败');
 }
+
 

@@ -22,12 +22,12 @@
 import type { Failure } from '@taskboard/protocol';
 import { DRAFT, ErrorCode, failure, type Actor, type TaskState } from '@taskboard/protocol';
 
-import type { Card, CardSection, CardUnread, WorkspaceId } from './card.js';
-import { findCard, withHistory, withoutDeleted } from './card.js';
+import type { Card, CardSection, CardUnread, WorkspaceId } from './card.ts';
+import { findCard, withHistory, withoutDeleted } from './card.ts';
 /* ⚠ 原型期脚手架，整个文件可删 —— 见 `bus.ts` 顶部的拆解步骤。 */
-import type { Bus } from './bus.js';
-import { buildCard, type CreateInput, type CreateResult } from './create.js';
-import { createSearch, type SearchCondition } from './search.js';
+import type { Bus } from './bus.ts';
+import { buildCard, type CreateInput, type CreateResult } from './create.ts';
+import { createSearch, type SearchCondition } from './search.ts';
 import {
 	effectiveToolsOf,
 	judgeToolCall,
@@ -35,14 +35,14 @@ import {
 	type ToolCallVerdict,
 	type ToolPolicyDelta,
 	type ToolPolicyStore,
-} from './permission.js';
-import { createSqliteStore } from './storage/sqlite.js';
+} from './permission.ts';
+import { createSqliteStore } from './storage/sqlite.ts';
 import {
 	computeUpdates,
 	markCardSeen,
 	type UpdateReader,
 	type UpdatesResult,
-} from './updates.js';
+} from './updates.ts';
 import {
 	adoptCard,
 	claimCard,
@@ -50,14 +50,14 @@ import {
 	recomputeChain,
 	releaseCard,
 	transitionCard,
-} from './transition.js';
-import type { CardStore } from './ports.js';
-import { ActionRegistry, BUILTIN_ACTIONS } from './template/actions.js';
-import { DomainRegistry, BUILTIN_DOMAINS } from './template/domains.js';
-import { KindRegistry, BUILTIN_KINDS } from './template/kinds.js';
-import { TemplateRegistry } from './template/registry.js';
-import { ContentSchemaCache } from './template/schema.js';
-import type { TemplateDef, TemplateMeta, TemplateSummary } from './template/types.js';
+} from './transition.ts';
+import type { CardStore } from './ports.ts';
+import { ActionRegistry, BUILTIN_ACTIONS } from './template/actions.ts';
+import { DomainRegistry, BUILTIN_DOMAINS } from './template/domains.ts';
+import { KindRegistry, BUILTIN_KINDS } from './template/kinds.ts';
+import { TemplateRegistry } from './template/registry.ts';
+import { ContentSchemaCache } from './template/schema.ts';
+import type { TemplateDef, TemplateMeta, TemplateSummary } from './template/types.ts';
 import {
 	createWorkspace,
 	ensureAnyWorkspace,
@@ -66,7 +66,7 @@ import {
 	renameWorkspace,
 	setArchived,
 	type Workspace,
-} from './workspace.js';
+} from './workspace.ts';
 
 /**
  * 工厂参数 —— **判别联合**。
@@ -1105,6 +1105,7 @@ export {
 
 /** 类别定义（`needsClaim` 由它声明）。 */
 export { BUILTIN_KINDS, KindRegistry, type KindDef } from './template/kinds.ts';
+
 
 
 

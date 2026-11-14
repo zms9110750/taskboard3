@@ -27,9 +27,9 @@
 import { readdirSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
 
-import { loadFile } from './loader.js';
-import type { TemplateDef, TemplateMeta, TemplateSummary } from './types.js';
-import { describe, summarize } from './types.js';
+import { loadFile } from './loader.ts';
+import type { TemplateDef, TemplateMeta, TemplateSummary } from './types.ts';
+import { describe, summarize } from './types.ts';
 
 /** 一个模板加载失败的原因。 */
 export interface TemplateLoadError {
@@ -192,3 +192,4 @@ export class TemplateRegistry {
 		}
 	}
 }
+

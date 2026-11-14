@@ -30,7 +30,7 @@
  * 换一个实现只要满足四个操作 + `close`，不需要实现一套查询引擎。
  */
 
-import type { Card } from './card.js';
+import type { Card } from './card.ts';
 
 /**
  * 卡的持久化端口 —— **core 唯一的可替换实现**。
@@ -66,3 +66,4 @@ export interface CardStore {
 	/** 关闭底层资源（进程退出 / 测试清理用）。 */
 	close(): Promise<void>;
 }
+

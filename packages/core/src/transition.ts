@@ -38,7 +38,7 @@ import {
 	type TransitionTrigger,
 } from '@taskboard/protocol';
 
-import type { Card, CardId } from './card.js';
+import type { Card, CardId } from './card.ts';
 import {
 	childIdsOf,
 	findCard,
@@ -48,7 +48,7 @@ import {
 	withHistory,
 	withHolder,
 	withoutHolder,
-} from './card.js';
+} from './card.ts';
 
 /* ────────────────────────────── 采纳 ────────────────────────────── */
 
@@ -610,3 +610,4 @@ export type _RECOMPUTE_ONLY_AUTO = AssertTrue<_AutoStatesAreFour>;
  * `groupOf` / `withPatch` 在本文件暂时用不到；显式标注「故意不用的 import」
  * 不如直接不 import —— 已按实际使用裁剪，见文件顶部的 import 列表。
  */
+
