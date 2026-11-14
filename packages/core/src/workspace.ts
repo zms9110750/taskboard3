@@ -87,12 +87,6 @@ export function getWorkspace(store: CardStore, id: WorkspaceId): Workspace | und
 	return readAll(store).find((one) => one.id === id);
 }
 
-/** 按显示名取空间（`AI 工具` 允许用名字指定空间）。 */
-export function getWorkspaceByName(store: CardStore, name: string): Workspace | undefined {
-	const wanted = sanitizeName(name);
-	return readAll(store).find((one) => one.displayName === wanted);
-}
-
 /**
  * 建一个空间。
  *
@@ -176,3 +170,4 @@ export async function ensureAnyWorkspace(store: CardStore, at: number): Promise<
 	if (again !== undefined) return again;
 	throw new Error('建默认空间失败');
 }
+

@@ -125,7 +125,4 @@ export function createSqliteStore(dataDir: string): CardStore {
 	};
 }
 
-/** 仅供测试：删一张卡（实现层的额外能力，不进 `CardStore` 接口）。 */
-export function deleteFromSqlite(db: DatabaseSync, cardId: string): void {
-	db.prepare('DELETE FROM cards WHERE id = ?').run(cardId);
-}
+

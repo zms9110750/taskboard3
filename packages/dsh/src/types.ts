@@ -21,13 +21,6 @@
 
 import type { TaskState } from '@taskboard/protocol';
 
-/** 卡上本包实际读到的部分（用于状态转移判定的入参）。 */
-export interface CardLike {
-	readonly id: string;
-	readonly status: TaskState;
-	readonly template: { readonly kind: string };
-}
-
 /** node `IncomingMessage` 的最小形状（够本包用，且测试可造）。 */
 export interface IncomingLike {
 	readonly method?: string | undefined;
@@ -97,3 +90,4 @@ export interface PermissionPresetsLike {
 	/** 预设表：键是预设名，值是 sandbox/approval/name/description。**可变**（就是要改它）。 */
 	presets: Record<string, { sandbox: string; approval: string; name: string; description: string }>;
 }
+

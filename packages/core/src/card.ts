@@ -18,7 +18,7 @@
  */
 
 import type { Actor, LinkKindId, StatusGroup, TaskState } from '@taskboard/protocol';
-import { DRAFT, STATUS_GROUP_OF as STATUS_GROUP } from '@taskboard/protocol';
+import { STATUS_GROUP_OF as STATUS_GROUP } from '@taskboard/protocol';
 
 /** 卡编号。不透明字符串 —— 本模块不解析格式、不从它反推任何东西。 */
 export type CardId = string;
@@ -238,16 +238,6 @@ export function clearedUnread(unread: CardUnread, reader: 'user' | 'ai'): CardUn
 	return unread.user ? { ...unread, user: false } : unread;
 }
 
-/** 是否是草稿。 */
-export function isDraft(card: Card): boolean {
-	return card.status === DRAFT;
-}
-
-/** 是否已被墓碑标记。 */
-export function isDeleted(card: Card): boolean {
-	return card.deleted;
-}
-
 /** 卡当前属于哪个状态组。 */
 export function groupOfCard(card: Card): StatusGroup {
 	return STATUS_GROUP[card.status];
@@ -276,39 +266,9 @@ export function withHistory(card: Card, entry: HistoryEntry): Card {
 	};
 }
 
-/** 改状态并记一条历史（纯函数）。 */
-export function withStatus(
-	card: Card,
-	status: TaskState,
-	action: string,
-	at: number,
-	actor: Actor,
-	detail?: unknown,
-): Card {
-	return withHistory({ ...card, status }, {
-		at,
-		action,
-		actor,
-		...(detail === undefined ? {} : { detail }),
-	});
-}
-
 /** 改任意字段（纯函数）。用于编辑路径，调用方保证不改 `id`。 */
 export function withPatch(card: Card, patch: Partial<Omit<Card, 'id'>>): Card {
 	return { ...card, ...patch, id: card.id };
-}
-
-/**
- * 卡是否"有效"（参与推导计算）。
- *
- * 用户 `2026-11-01 06:55`：「占位算的是"工作"且为"处理中"。目标的处理中是不算的。」
- * 用户 `2026-11-02 13:15`：「这里的计算都要是有效卡，就是进行，或者搁置。草稿是不算的。」
- *
- * ⇒ 有效 = 处于 `active` 或 `shelved` 组。
- */
-export function isValidCard(card: Card): boolean {
-	const group = groupOfCard(card);
-	return group === 'active' || group === 'shelved';
 }
 
 /** 卡是否处于终结态。 */
@@ -334,11 +294,6 @@ export function findCard(cards: readonly Card[], id: CardId): Card | undefined {
  */
 export function childIdsOf(cards: readonly Card[], parentId: CardId): readonly CardId[] {
 	return cards.filter((card) => card.relations.parent === parentId).map((card) => card.id);
-}
-
-/** 沿 `label` 找指向 `card` 的边（有向边反查用）。 */
-export function incomingLinks(cards: readonly Card[], to: CardId, label: LinkKindId): readonly Card[] {
-	return cards.filter((card) => card.relations.links.some((link) => link.label === label && link.to === to));
 }
 
 /* ────────────────────────── 持有者（多人协作） ────────────────────────── */
@@ -376,3 +331,5 @@ export function withoutHolder(card: Card, holder: string): { card: Card; removed
 	if (next.length === card.holders.length) return { card, removed: false };
 	return { card: { ...card, holders: next }, removed: true };
 }
+
+

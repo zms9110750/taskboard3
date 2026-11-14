@@ -58,7 +58,6 @@ import {
 	STATUS_GROUP_OF,
 	isTaskState,
 	type StatusGroup,
-	type TaskState,
 } from '@taskboard/protocol';
 
 /**
@@ -269,8 +268,4 @@ export function createSearch(options: SearchOptions = {}): SearchStrategy {
 	};
 }
 
-/*
- * ⚠ `TaskState` 在这里被 import 但只在类型位置使用（`DEFAULT_DRAFT_STATE` 取的是
- * `DRAFT`）。显式 re-export 一个常量类型标记，避免「未使用 import」告警。
- */
-export type DraftStateId = TaskState;
+

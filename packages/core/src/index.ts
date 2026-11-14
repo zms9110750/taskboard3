@@ -1000,12 +1000,6 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	};
 }
 
-/** 从一个目录加载模板（便捷函数）。 */
-export function loadTemplatesFrom(tb: Taskboard, dir: string): { readonly loaded: number } {
-	const result = tb.templates().loadDirectory(dir);
-	return { loaded: result.loaded };
-}
-
 /* ────────────────────────── 对外契约（下游 import 这些） ──────────────────────────
  *
  * ## 为什么在这里再导出一次
@@ -1111,6 +1105,7 @@ export {
 
 /** 类别定义（`needsClaim` 由它声明）。 */
 export { BUILTIN_KINDS, KindRegistry, type KindDef } from './template/kinds.ts';
+
 
 
 
