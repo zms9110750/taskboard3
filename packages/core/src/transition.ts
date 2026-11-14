@@ -90,6 +90,7 @@ export function adoptCard(
 	card: Card,
 	actor: Actor,
 	at: number,
+	options?: { readonly allowAiAdopt?: boolean },
 ): { readonly ok: true; readonly card: Card } | Failure {
 	if (card.status !== DRAFT) {
 		return failure(ErrorCode.TRANSITION_REJECTED, `只有草稿能采纳；这张卡现在是「${labelOf(card.status)}」。`, {
@@ -104,15 +105,32 @@ export function adoptCard(
 		});
 	}
 
-	/* 判定层也要过（它才知道 actors 里有没有这个主体）。 */
-	const verdict = judgeTransition({
-		kind: card.template.kind,
-		from: card.status,
-		to,
-		trigger: actor === 'ai' ? 'ai' : 'button',
-	});
-	if (!verdict.ok) {
-		return rejectFailure(card, to, verdict.reason);
+	/*
+	 * 「自动工作」模式：AI 可以自己采纳。
+	 *
+	 * 用户 `2026-11-14`：「自动工作和工作的区别就是 ai 自己采纳草稿。」
+	 *
+	 * ⚠ `BUTTON_ACTIONS` 里 design / record 的采纳本来就对 ai 开放
+	 *   （见 protocol 的 BOTH），但 goal / work 只有 user。
+	 *   这里**不改那张表** —— 它问的是「谁可以点哪个按钮」，是全局真值；
+	 *   改它会让 work 模式也放开 AI。⇒ 只在本函数里按入参放行。
+	 *
+	 * 判定顺序：先看这个开关，过了就不再问 `judgeTransition` 的 actors
+	 * （否则表里 actors 仍然只有 user，永远过不去）。
+	 */
+	const aiAdoptAllowed = actor === 'ai' && options?.allowAiAdopt === true;
+
+	if (!aiAdoptAllowed) {
+		/* 判定层也要过（它才知道 actors 里有没有这个主体）。 */
+		const verdict = judgeTransition({
+			kind: card.template.kind,
+			from: card.status,
+			to,
+			trigger: actor === 'ai' ? 'ai' : 'button',
+		});
+		if (!verdict.ok) {
+			return rejectFailure(card, to, verdict.reason);
+		}
 	}
 
 	return {

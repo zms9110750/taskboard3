@@ -1,21 +1,28 @@
 /**
  * 工具权限测试。
  *
- * ## 模型（`2026-11-14` 四档）
+ * ## 两层模型
+ *
+ * ### ① 模式（互斥）
+ *
+ * | 模式 | 谁选的 | 我们管不管 |
+ * |---|---|---|
+ * | `undefined` | DSH 自己的 / 别的插件的预设 | **完全不管**（一律放行） |
+ * | `plan` / `work` / `auto` | 用户选任务板的三个预设 | 我们管 |
+ *
+ * 用户原话：「只要开的是他自己或者别的插件提供的权限，那么这个插件给的限制都不生效。」
+ *
+ * ### ② 四档并集（只在我们的模式下生效）
  *
  * ```
- * effective(templateRef) =
- *     BASE_TOOLS                         ← 11 个 taskboard_*，常量
- *   ∪ common                             ← 通用：所有工作卡都吃
- *   ∪ ⋃{ groups[g] | ref ∈ groupMembers[g] }   ← 组：批量设置
- *   ∪ templates[ref]                      ← 独立：只对该模板
+ * effective(ref) = BASE_TOOLS ∪ common ∪ 命中的组 ∪ 独立档
  * ```
  *
- * ## 最关键的两条
+ * ## 最关键的三条
  *
- * 1. **超集不变量**：任何 BASE 工具、任何持有状态，都必须放行。
- * 2. **卡死回归**：`taskboard_transition` / `taskboard_release` 永远放行 ——
- *    否则 AI 领了卡却转不了状态 / 松不了手 ⇒ 永久卡在「处理中」+ 占配额 ⇒ 锁死。
+ * 1. **互斥守卫**：`mode === undefined` ⇒ 任意工具都放行（包括 `bash`）
+ * 2. **超集不变量**：任何 BASE 工具（plan 禁的两个除外）永远放行
+ * 3. **卡死回归**：`taskboard_transition` / `taskboard_release` 永远放行
  */
 
 import assert from 'node:assert/strict';
@@ -27,12 +34,16 @@ import { after, before, describe, it } from 'node:test';
 import { createTaskboard, type Taskboard } from '../lib/index.js';
 import {
 	BASE_TOOLS,
+	BOARD_PRESETS,
 	EMPTY_POLICY_STORE,
 	EXECUTION_TOOLS,
+	PLAN_BLOCKED_TOOLS,
 	POLICY_TOOLS,
 	READONLY_TOOLS,
+	boardModeOf,
 	effectiveToolsOf,
 	judgeToolCall,
+	type BoardMode,
 	type PermissionFacts,
 	type ToolPolicyStore,
 } from '../lib/permission.js';
@@ -54,10 +65,8 @@ function makeTemplate(ref: string, kind: string): TemplateDef {
 	};
 }
 
-/** 空事实（四档全空、开关全关）。 */
-function noFacts(): PermissionFacts {
-	return { policies: EMPTY_POLICY_STORE, policyEditOn: new Set() };
-}
+/** 空策略。 */
+const NO_POLICIES: PermissionFacts = { policies: EMPTY_POLICY_STORE };
 
 /** 造一份策略（各档可选）。 */
 function makeStore(over: Partial<ToolPolicyStore> = {}): ToolPolicyStore {
@@ -68,6 +77,109 @@ function makeStore(over: Partial<ToolPolicyStore> = {}): ToolPolicyStore {
 		templates: over.templates ?? {},
 	};
 }
+
+/** 在一个模式下判一次。 */
+function judge(
+	mode: BoardMode | undefined,
+	toolName: string,
+	heldCards: readonly { readonly templateRef: string }[] = [],
+	policies: ToolPolicyStore = EMPTY_POLICY_STORE,
+): boolean {
+	return judgeToolCall({ mode, toolName, heldCards }, { policies }).ok;
+}
+
+/* ────────────────────────── ① 互斥语义 ────────────────────────── */
+
+describe('★ 互斥：mode === undefined ⇒ 一律放行', () => {
+	it('任意工具都放行（包括执行类、权限管理工具）', () => {
+		const all = [...BASE_TOOLS, ...EXECUTION_TOOLS, ...READONLY_TOOLS, ...POLICY_TOOLS, 'any_unknown_tool'];
+		for (const toolName of all) {
+			assert.ok(judge(undefined, toolName), `mode=undefined 时 ${toolName} 必须放行`);
+		}
+	});
+
+	it('就算有工作卡也不改变结论（我们完全不介入）', () => {
+		for (const toolName of ['bash', 'write', 'taskboard_tool_policy_set']) {
+			assert.ok(judge(undefined, toolName, [{ templateRef: 'writeCode' }]));
+			assert.ok(judge(undefined, toolName, []));
+			assert.ok(judge(undefined, toolName, [{ templateRef: 'a' }, { templateRef: 'b' }]));
+		}
+	});
+
+	it('就算四档策略是空/脏也不改变结论', () => {
+		const dirty = makeStore({
+			common: [],
+			templates: { writeCode: [] },
+		});
+		assert.ok(judge(undefined, 'bash', [{ templateRef: 'writeCode' }], dirty));
+	});
+});
+
+/* ────────────────────────── 预设表 ────────────────────────── */
+
+describe('BOARD_PRESETS：三个预设', () => {
+	it('恰好三个', () => {
+		assert.equal(BOARD_PRESETS.length, 3);
+	});
+
+	it('key / mode / label / sandbox 都对', () => {
+		assert.deepEqual(
+			BOARD_PRESETS.map((one) => ({
+				name: one.name,
+				mode: one.mode,
+				label: one.label,
+				sandbox: one.sandbox,
+				approval: one.approval,
+			})),
+			[
+				{
+					name: 'taskboard-plan',
+					mode: 'plan',
+					label: '任务版（计划）',
+					sandbox: 'read-only',
+					approval: 'ask',
+				},
+				{
+					name: 'taskboard-work',
+					mode: 'work',
+					label: '任务版（工作）',
+					sandbox: 'workspace-write',
+					approval: 'ask',
+				},
+				{
+					name: 'taskboard-auto',
+					mode: 'auto',
+					label: '任务版（自动工作）',
+					sandbox: 'workspace-write',
+					approval: 'ask',
+				},
+			],
+		);
+	});
+
+	it('没有第四个「开发者」预设（用 DSH 自己的完全权限）', () => {
+		assert.equal(
+			BOARD_PRESETS.some((one) => one.mode === ('developer' as never)),
+			false,
+		);
+		assert.equal(BOARD_PRESETS.length, 3, '开发者权限不新增 —— 用 dsh 的 danger-full-access');
+	});
+
+	it('boardModeOf：认我们的三个', () => {
+		assert.equal(boardModeOf('taskboard-plan'), 'plan');
+		assert.equal(boardModeOf('taskboard-work'), 'work');
+		assert.equal(boardModeOf('taskboard-auto'), 'auto');
+	});
+
+	it('boardModeOf：不是我们的 ⇒ undefined', () => {
+		assert.equal(boardModeOf(undefined), undefined);
+		assert.equal(boardModeOf(''), undefined);
+		assert.equal(boardModeOf('workspace-write'), undefined);
+		assert.equal(boardModeOf('danger-full-access'), undefined);
+		assert.equal(boardModeOf('no-tools'), undefined);
+		assert.equal(boardModeOf('taskboard-plan-typo'), undefined);
+	});
+});
 
 /* ────────────────────────── BASE 清单 ────────────────────────── */
 
@@ -112,10 +224,9 @@ describe('BASE_TOOLS：11 个，全部 taskboard_*', () => {
 		}
 	});
 
-	it('只读类被拒的理由：会「获得不知道的信息」', () => {
+	it('只读类在工作模式下被拒（无卡时）', () => {
 		for (const tool of READONLY_TOOLS) {
-			const verdict = judgeToolCall({ scope: 's', toolName: tool, heldCards: [] }, noFacts());
-			assert.equal(verdict.ok, false, `${tool} 在无卡时必须被拒`);
+			assert.equal(judge('work', tool), false, `${tool} 无卡时必须被拒`);
 		}
 	});
 
@@ -125,24 +236,23 @@ describe('BASE_TOOLS：11 个，全部 taskboard_*', () => {
 });
 
 describe('POLICY_TOOLS', () => {
-	it('不在 BASE 里', () => {
+	it('不在 BASE / 执行类 / 只读类里', () => {
 		for (const tool of POLICY_TOOLS) {
 			assert.equal(BASE_TOOLS.includes(tool), false, `${tool} 不该在 BASE 里`);
-		}
-	});
-
-	it('也不在 EXECUTION_TOOLS / READONLY_TOOLS 里', () => {
-		for (const tool of POLICY_TOOLS) {
 			assert.equal(EXECUTION_TOOLS.includes(tool), false);
 			assert.equal(READONLY_TOOLS.includes(tool), false);
 		}
 	});
 
-	it('★ 就算有人把 POLICY_TOOLS 写进四档增量，也必须靠开关（不靠领卡）', () => {
-		/*
-		 * `judgeToolCall` 第 ① 步就判 POLICY_TOOLS，早于 BASE / 四档。
-		 * ⇒ 领一百张卡也没用，开关关着就是关着。
-		 */
+	it('★ 三个模式下都拒绝（不再有内存开关）', () => {
+		for (const mode of ['plan', 'work', 'auto'] as const) {
+			for (const tool of POLICY_TOOLS) {
+				assert.equal(judge(mode, tool), false, `${mode} 下 ${tool} 必须拒绝`);
+			}
+		}
+	});
+
+	it('★ 就算把 POLICY_TOOLS 写进四档增量，我们的模式下仍拒绝', () => {
 		const policies = makeStore({
 			common: POLICY_TOOLS,
 			groups: { g: POLICY_TOOLS },
@@ -150,74 +260,99 @@ describe('POLICY_TOOLS', () => {
 			templates: { writeCode: POLICY_TOOLS },
 		});
 		for (const tool of POLICY_TOOLS) {
-			const verdict = judgeToolCall(
-				{ scope: 's', toolName: tool, heldCards: [{ templateRef: 'writeCode' }] },
-				{ policies, policyEditOn: new Set() },
+			assert.equal(
+				judge('work', tool, [{ templateRef: 'writeCode' }], policies),
+				false,
+				`${tool} 靠领卡不该获得`,
 			);
-			assert.equal(verdict.ok, false, `${tool} 靠领卡不该获得，只能靠开关`);
+		}
+	});
+
+	it('但 mode === undefined 时放行（切到完全权限即可改权限）', () => {
+		for (const tool of POLICY_TOOLS) {
+			assert.ok(judge(undefined, tool), `${tool} 在完全权限下必须放行`);
 		}
 	});
 });
 
-/* ────────────────────────── 判定顺序 ────────────────────────── */
+/* ────────────────────────── plan 模式 ────────────────────────── */
 
-describe('判定顺序', () => {
-	it('① 权限管理工具：开关关 ⇒ 拒绝，开着 ⇒ 放行', () => {
-		const off = judgeToolCall(
-			{ scope: 's1', toolName: 'taskboard_tool_policy_set', heldCards: [] },
-			noFacts(),
-		);
-		assert.equal(off.ok, false);
-
-		const on = judgeToolCall(
-			{ scope: 's1', toolName: 'taskboard_tool_policy_set', heldCards: [] },
-			{ policies: EMPTY_POLICY_STORE, policyEditOn: new Set(['s1']) },
-		);
-		assert.ok(on.ok);
+describe('plan 模式', () => {
+	it('禁的恰好是 create / claim', () => {
+		assert.deepEqual([...PLAN_BLOCKED_TOOLS].sort(), ['taskboard_claim', 'taskboard_create']);
 	});
 
-	it('① 开关按 scope 隔离', () => {
-		const verdict = judgeToolCall(
-			{ scope: 's-mine', toolName: 'taskboard_tool_policies', heldCards: [] },
-			{ policies: EMPTY_POLICY_STORE, policyEditOn: new Set(['s-other']) },
-		);
-		assert.equal(verdict.ok, false);
-	});
-
-	it('② BASE 工具：无卡也放行', () => {
-		for (const toolName of BASE_TOOLS) {
-			const verdict = judgeToolCall({ scope: 's', toolName, heldCards: [] }, noFacts());
-			assert.ok(verdict.ok, `${toolName} 无卡也应放行`);
+	it('★ taskboard_create / taskboard_claim 被拒', () => {
+		for (const tool of PLAN_BLOCKED_TOOLS) {
+			assert.equal(judge('plan', tool), false, `plan 下 ${tool} 必须拒绝`);
 		}
 	});
 
+	it('★ 其它写操作照常放行（update_content / update_note / transition / release）', () => {
+		for (const tool of [
+			'taskboard_update_content',
+			'taskboard_update_note',
+			'taskboard_transition',
+			'taskboard_release',
+		]) {
+			assert.ok(judge('plan', tool), `plan 下 ${tool} 应当放行（用户只说了不能创建和领取）`);
+		}
+	});
+
+	it('只读任务板工具照常放行', () => {
+		for (const tool of ['taskboard_workspaces', 'taskboard_cards', 'taskboard_card', 'taskboard_registry']) {
+			assert.ok(judge('plan', tool));
+		}
+	});
+
+	it('★ 因为不能领卡 ⇒ 拿不到文件 / 网络工具', () => {
+		for (const tool of [...READONLY_TOOLS, ...EXECUTION_TOOLS]) {
+			assert.equal(judge('plan', tool), false, `plan 下 ${tool} 必须拒绝`);
+		}
+	});
+
+	it('★ 就算强行持有工作卡也拿不到（plan 模式不给执行权限）', () => {
+		const policies = makeStore({ templates: { writeCode: ['bash', 'read_file'] } });
+		assert.equal(judge('plan', 'bash', [{ templateRef: 'writeCode' }], policies), false);
+		assert.equal(judge('plan', 'read_file', [{ templateRef: 'writeCode' }], policies), false);
+	});
+});
+
+/* ────────────────────────── work / auto 的四档 ────────────────────────── */
+
+describe('work / auto：四档并集', () => {
 	it('③ 无工作卡 + BASE 外 ⇒ 拒绝', () => {
-		const verdict = judgeToolCall({ scope: 's', toolName: 'bash', heldCards: [] }, noFacts());
-		assert.equal(verdict.ok, false);
-		if (!verdict.ok) assert.ok(verdict.reason.includes('工作卡'), verdict.reason);
+		for (const mode of ['work', 'auto'] as const) {
+			const verdict = judgeToolCall({ mode, toolName: 'bash', heldCards: [] }, NO_POLICIES);
+			assert.equal(verdict.ok, false);
+			if (!verdict.ok) assert.ok(verdict.reason.includes('工作卡'), verdict.reason);
+		}
 	});
 
 	it('④ 持有两张工作卡 ⇒ 拒绝（不猜用哪份权限）', () => {
-		const verdict = judgeToolCall(
-			{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'a' }, { templateRef: 'b' }] },
-			{ policies: makeStore({ templates: { a: ['bash'], b: ['bash'] } }), policyEditOn: new Set() },
-		);
-		assert.equal(verdict.ok, false);
-		if (!verdict.ok) assert.ok(verdict.reason.includes('多张'), verdict.reason);
+		const policies = makeStore({ templates: { a: ['bash'], b: ['bash'] } });
+		for (const mode of ['work', 'auto'] as const) {
+			const verdict = judgeToolCall(
+				{ mode, toolName: 'bash', heldCards: [{ templateRef: 'a' }, { templateRef: 'b' }] },
+				{ policies },
+			);
+			assert.equal(verdict.ok, false);
+			if (!verdict.ok) assert.ok(verdict.reason.includes('多张'), verdict.reason);
+		}
 	});
 
-	it('⑤ 独立档命中 ⇒ 放行', () => {
-		const verdict = judgeToolCall(
-			{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'writeCode' }] },
-			{ policies: makeStore({ templates: { writeCode: ['bash', 'write'] } }), policyEditOn: new Set() },
-		);
-		assert.ok(verdict.ok);
+	it('⑥ 独立档命中 ⇒ 放行', () => {
+		const policies = makeStore({ templates: { writeCode: ['bash'] } });
+		for (const mode of ['work', 'auto'] as const) {
+			assert.ok(judge(mode, 'bash', [{ templateRef: 'writeCode' }], policies));
+		}
 	});
 
 	it('⑥ 独立档未命中 ⇒ 拒绝，且说清该卡有哪些额外权限', () => {
+		const policies = makeStore({ templates: { writeCode: ['write'] } });
 		const verdict = judgeToolCall(
-			{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'writeCode' }] },
-			{ policies: makeStore({ templates: { writeCode: ['write'] } }), policyEditOn: new Set() },
+			{ mode: 'work', toolName: 'bash', heldCards: [{ templateRef: 'writeCode' }] },
+			{ policies },
 		);
 		assert.equal(verdict.ok, false);
 		if (!verdict.ok) {
@@ -226,52 +361,24 @@ describe('判定顺序', () => {
 		}
 	});
 
-	it('⑥ 任何档都没配 ⇒ 除 BASE 外全拒', () => {
-		const verdict = judgeToolCall(
-			{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'noPolicy' }] },
-			noFacts(),
-		);
-		assert.equal(verdict.ok, false);
-		if (!verdict.ok) assert.ok(verdict.reason.includes('没有额外权限'), verdict.reason);
-	});
-});
-
-/* ────────────────────────── 四档并集 ────────────────────────── */
-
-describe('四档并集', () => {
-	it('通用档：设了 common ⇒ 任意工作模板都生效', () => {
+	it('通用档：任何工作模板都吃', () => {
 		const policies = makeStore({ common: ['bash'] });
-		for (const ref of ['writeCode', 'research', 'anything', '']) {
-			const verdict = judgeToolCall(
-				{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: ref }] },
-				{ policies, policyEditOn: new Set() },
-			);
-			assert.ok(verdict.ok, ref === '' ? '空 ref 也该吃 common' : `${ref} 应吃 common`);
+		for (const ref of ['writeCode', 'research', 'whatever']) {
+			assert.ok(judge('work', 'bash', [{ templateRef: ref }], policies), `${ref} 应吃 common`);
 		}
 	});
 
-	it('组档：组内模板生效，组外不生效', () => {
+	it('组档：组内生效、组外不生效', () => {
 		const policies = makeStore({
-			groups: { 代码类: ['bash', 'write'] },
+			groups: { 代码类: ['bash'] },
 			groupMembers: { 代码类: ['writeCode', 'refactor'] },
 		});
-
-		for (const ref of ['writeCode', 'refactor']) {
-			const verdict = judgeToolCall(
-				{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: ref }] },
-				{ policies, policyEditOn: new Set() },
-			);
-			assert.ok(verdict.ok, `${ref} 在组里应当生效`);
-		}
-
-		const outside = judgeToolCall(
-			{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'research' }] },
-			{ policies, policyEditOn: new Set() },
-		);
-		assert.equal(outside.ok, false, '组外模板不该吃到组权限');
+		assert.ok(judge('work', 'bash', [{ templateRef: 'writeCode' }], policies));
+		assert.ok(judge('auto', 'bash', [{ templateRef: 'refactor' }], policies));
+		assert.equal(judge('work', 'bash', [{ templateRef: 'research' }], policies), false);
 	});
 
-	it('组档：多个组同时命中 ⇒ 全部叠加', () => {
+	it('多组叠加', () => {
 		const policies = makeStore({
 			groups: { 一组: ['bash'], 二组: ['write'] },
 			groupMembers: { 一组: ['both'], 二组: ['both'] },
@@ -281,33 +388,6 @@ describe('四档并集', () => {
 		assert.ok(effective.includes('write'));
 	});
 
-	it('组档：组名存在但没有成员 ⇒ 谁都不生效（合法状态）', () => {
-		const policies = makeStore({ groups: { 空组: ['bash'] }, groupMembers: {} });
-		const verdict = judgeToolCall(
-			{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'writeCode' }] },
-			{ policies, policyEditOn: new Set() },
-		);
-		assert.equal(verdict.ok, false);
-	});
-
-	it('独立档：只对该模板生效', () => {
-		const policies = makeStore({ templates: { writeCode: ['bash'] } });
-
-		assert.ok(
-			judgeToolCall(
-				{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'writeCode' }] },
-				{ policies, policyEditOn: new Set() },
-			).ok,
-		);
-		assert.equal(
-			judgeToolCall(
-				{ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'other' }] },
-				{ policies, policyEditOn: new Set() },
-			).ok,
-			false,
-		);
-	});
-
 	it('★ 四档叠加：同一模板命中通用 + 组 + 独立，三者都生效', () => {
 		const policies = makeStore({
 			common: ['commonTool'],
@@ -315,54 +395,40 @@ describe('四档并集', () => {
 			groupMembers: { g: ['writeCode'] },
 			templates: { writeCode: ['ownTool'] },
 		});
-
 		for (const toolName of ['commonTool', 'groupTool', 'ownTool']) {
-			const verdict = judgeToolCall(
-				{ scope: 's', toolName, heldCards: [{ templateRef: 'writeCode' }] },
-				{ policies, policyEditOn: new Set() },
-			);
-			assert.ok(verdict.ok, `${toolName} 应当生效（四档之一）`);
+			assert.ok(judge('work', toolName, [{ templateRef: 'writeCode' }], policies), `${toolName} 应当生效`);
 		}
 	});
 
-	it('effectiveToolsOf：去重、稳定顺序（BASE 在前）', () => {
+	it('effectiveToolsOf：去重、BASE 在前、稳定顺序', () => {
 		const policies = makeStore({
-			common: ['bash', 'taskboard_card'], /* 故意重复一个 BASE 工具 */
-			templates: { x: ['bash', 'write'] }, /* bash 与 common 重复 */
+			common: ['bash', 'taskboard_card'],
+			templates: { x: ['bash', 'write'] },
 		});
 		const effective = effectiveToolsOf(policies, 'x');
-
-		/* 去重 */
 		assert.equal(new Set(effective).size, effective.length);
-		/* 前 11 个恰好是 BASE（稳定顺序：BASE 原序） */
 		assert.deepEqual(effective.slice(0, BASE_TOOLS.length), [...BASE_TOOLS]);
-		/* 额外项按叠加顺序：common 先，独立档后 */
 		assert.deepEqual(effective.slice(BASE_TOOLS.length), ['bash', 'write']);
 	});
 
-	it('effectiveToolsOf：空策略 ⇒ 恰好是 BASE', () => {
-		assert.deepEqual(effectiveToolsOf(EMPTY_POLICY_STORE, 'whatever'), [...BASE_TOOLS]);
+	it('effectiveToolsOf：空策略 ⇒ 恰好 BASE', () => {
+		assert.deepEqual(effectiveToolsOf(EMPTY_POLICY_STORE, 'x'), [...BASE_TOOLS]);
 	});
 
-	it('组里包含不存在的模板名 ⇒ 不报错，只是永不命中', () => {
+	it('组里含不存在的模板名 ⇒ 不抛', () => {
 		const policies = makeStore({
 			groups: { g: ['bash'] },
-			groupMembers: { g: ['不存在的模板', 'writeCode'] },
+			groupMembers: { g: ['幽灵模板', 'writeCode'] },
 		});
-		/* 存在的那个命中 */
 		assert.ok(effectiveToolsOf(policies, 'writeCode').includes('bash'));
-		/* 组里的幽灵名本身也能算（它就是成员名）—— 但永远不会有卡用它，所以静默无害 */
-		assert.ok(effectiveToolsOf(policies, '不存在的模板').includes('bash'));
-		/* 完全不在任何成员名单里的模板 ⇒ 不命中，且不抛 */
-		assert.equal(effectiveToolsOf(policies, '别的模板').includes('bash'), false);
+		assert.equal(effectiveToolsOf(policies, '别的').includes('bash'), false);
 	});
 });
 
 /* ────────────────────────── ★ 超集不变量 ────────────────────────── */
 
 describe('★ 超集不变量：BASE 永远放行', () => {
-	it('对任意 templateRef × 任意 BASE 工具 × 任意四档组合，都放行', () => {
-		const refs = ['', 'writeCode', 'research', '不存在的模板', 'hit'];
+	it('三个模式下，BASE 里除 plan 禁的两个之外都放行', () => {
 		const stores: readonly ToolPolicyStore[] = [
 			EMPTY_POLICY_STORE,
 			makeStore({ common: ['bash'] }),
@@ -375,31 +441,25 @@ describe('★ 超集不变量：BASE 永远放行', () => {
 				templates: { hit: READONLY_TOOLS },
 			}),
 		];
+		const modes: readonly BoardMode[] = ['plan', 'work', 'auto'];
 
-		for (const templateRef of refs) {
+		for (const mode of modes) {
 			for (const policies of stores) {
 				for (const toolName of BASE_TOOLS) {
+					/* plan 模式刻意禁掉 create / claim —— 那两个不适用超集不变量。 */
+					if (mode === 'plan' && PLAN_BLOCKED_TOOLS.includes(toolName)) continue;
+
 					/* a) 无卡 */
+					assert.ok(judge(mode, toolName, [], policies), `${mode} 无卡 + ${toolName} 应放行`);
+					/* b) 一张卡 */
 					assert.ok(
-						judgeToolCall({ scope: 's', toolName, heldCards: [] }, { policies, policyEditOn: new Set() })
-							.ok,
-						`无卡 + ${toolName} 应放行`,
+						judge(mode, toolName, [{ templateRef: 'hit' }], policies),
+						`${mode} 一卡 + ${toolName} 应放行`,
 					);
-					/* b) 持有一张 */
+					/* c) 两张卡（异常态）—— BASE 仍放行（③ 在 ④⑤ 之前） */
 					assert.ok(
-						judgeToolCall(
-							{ scope: 's', toolName, heldCards: [{ templateRef }] },
-							{ policies, policyEditOn: new Set() },
-						).ok,
-						`持有 ${templateRef} + ${toolName} 应放行`,
-					);
-					/* c) 持有两张（异常态）—— BASE 仍放行（①② 在 ③④ 之前） */
-					assert.ok(
-						judgeToolCall(
-							{ scope: 's', toolName, heldCards: [{ templateRef }, { templateRef: 'other' }] },
-							{ policies, policyEditOn: new Set() },
-						).ok,
-						`两卡 + ${toolName} 仍应放行`,
+						judge(mode, toolName, [{ templateRef: 'hit' }, { templateRef: 'other' }], policies),
+						`${mode} 两卡 + ${toolName} 仍应放行`,
 					);
 				}
 			}
@@ -410,23 +470,16 @@ describe('★ 超集不变量：BASE 永远放行', () => {
 /* ────────────────────────── ★ 卡死回归 ────────────────────────── */
 
 describe('★ 卡死回归：transition / release 永远放行', () => {
-	it('任意配置下都必须放行（否则卡永久卡在「处理中」→ AI 锁死）', () => {
+	it('任意模式 + 任意四档配置都必须放行', () => {
 		/*
-		 * 这是「四档都是增量」这个结构决定的**唯一理由**：
-		 *
+		 * 「四档都是增量」这个结构的唯一理由：
 		 * AI 领了工作卡 → 卡是 WORKING → 占着「一次一张」配额。
-		 * 如果此时 taskboard_transition / release 被拒：
-		 *   · 转不了态 → 卡出不去 WORKING
-		 *   · 放不了手 → 配额一直占着
-		 * ⇒ **AI 彻底锁死**，而且没有任何操作能解开。
+		 * 若此时 transition / release 被拒 → 转不了态 + 放不了手 → AI 彻底锁死。
 		 */
 		const configs: readonly ToolPolicyStore[] = [
 			EMPTY_POLICY_STORE,
-			makeStore({ common: [] }),
 			makeStore({ templates: { writeCode: [] } }),
-			makeStore({ templates: { writeCode: ['bash'] } }), /* 故意不含任何 taskboard_* */
-			makeStore({ common: ['bash'], groups: { g: ['write'] }, groupMembers: { g: ['writeCode'] } }),
-			/* 最恶劣：所有档位都塞满执行类，一个 taskboard_* 都没有 */
+			makeStore({ templates: { writeCode: ['bash'] } }),
 			makeStore({
 				common: EXECUTION_TOOLS,
 				groups: { g: EXECUTION_TOOLS },
@@ -435,13 +488,14 @@ describe('★ 卡死回归：transition / release 永远放行', () => {
 			}),
 		];
 
-		for (const policies of configs) {
-			for (const toolName of ['taskboard_transition', 'taskboard_release']) {
-				const verdict = judgeToolCall(
-					{ scope: 's', toolName, heldCards: [{ templateRef: 'writeCode' }] },
-					{ policies, policyEditOn: new Set() },
-				);
-				assert.ok(verdict.ok, `${toolName} 在任何配置下都必须放行 —— 否则 AI 锁死`);
+		for (const mode of ['plan', 'work', 'auto'] as const) {
+			for (const policies of configs) {
+				for (const toolName of ['taskboard_transition', 'taskboard_release']) {
+					assert.ok(
+						judge(mode, toolName, [{ templateRef: 'writeCode' }], policies),
+						`${mode} 模式下 ${toolName} 必须放行 —— 否则 AI 锁死`,
+					);
+				}
 			}
 		}
 	});
@@ -449,7 +503,7 @@ describe('★ 卡死回归：transition / release 永远放行', () => {
 
 /* ────────────────────────── Taskboard 集成 ────────────────────────── */
 
-describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
+describe('Taskboard：四档持久化 + 判定接模式', () => {
 	let dir: string;
 	let tb: Taskboard;
 
@@ -466,19 +520,6 @@ describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
 		rmSync(dir, { recursive: true, force: true });
 	});
 
-	it('开关默认关', () => {
-		assert.equal(tb.isPolicyEditOn('any-scope'), false);
-	});
-
-	it('开关按 scope 独立；可开关', () => {
-		tb.setPolicyEdit('a', true);
-		tb.setPolicyEdit('b', false);
-		assert.equal(tb.isPolicyEditOn('a'), true);
-		assert.equal(tb.isPolicyEditOn('b'), false);
-		tb.setPolicyEdit('a', false);
-		assert.equal(tb.isPolicyEditOn('a'), false);
-	});
-
 	it('初始策略是空的四档', () => {
 		const store = tb.getToolPolicies();
 		assert.deepEqual(store.common, []);
@@ -488,9 +529,7 @@ describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
 	});
 
 	it('独立档落 kv，重新打开后仍在', async () => {
-		const result = await tb.setTemplatePolicy('writeCode', ['bash', 'write']);
-		assert.ok(result.ok, JSON.stringify(result));
-
+		assert.ok((await tb.setTemplatePolicy('writeCode', ['bash', 'write'])).ok);
 		assert.deepEqual(tb.getToolPolicies().templates['writeCode'], ['bash', 'write']);
 
 		const reopened = createTaskboard({ dataDir: dir });
@@ -498,26 +537,16 @@ describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
 		await reopened.close();
 	});
 
-	it('★ 但开关不持久化（重启即关）', async () => {
-		tb.setPolicyEdit('scope-x', true);
-		const reopened = createTaskboard({ dataDir: dir });
-		assert.equal(reopened.isPolicyEditOn('scope-x'), false, '权限编辑开关必须重启即关');
-		await reopened.close();
-	});
-
-	it('通用档：落库 + 对所有模板生效', async () => {
+	it('通用档落库 + 生效', async () => {
 		assert.ok((await tb.setCommonPolicy(['commonTool'])).ok);
-		assert.deepEqual(tb.getToolPolicies().common, ['commonTool']);
-
-		for (const ref of ['writeCode', 'research', 'refactor']) {
+		for (const ref of ['writeCode', 'research']) {
 			assert.ok(
-				tb.judgeToolCall({ scope: 's', toolName: 'commonTool', heldCards: [{ templateRef: ref }] }).ok,
-				`${ref} 应当吃通用档`,
+				tb.judgeToolCall({ mode: 'work', toolName: 'commonTool', heldCards: [{ templateRef: ref }] }).ok,
 			);
 		}
 	});
 
-	it('组档：setGroupMembers + setGroupPolicy 后组内生效', async () => {
+	it('组档 + 成员 + 组内生效', async () => {
 		assert.ok((await tb.setGroupMembers('代码类', ['writeCode', 'refactor'])).ok);
 		assert.ok((await tb.setGroupPolicy('代码类', ['groupTool'])).ok);
 
@@ -525,22 +554,17 @@ describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
 		assert.deepEqual(store.groupMembers['代码类'], ['writeCode', 'refactor']);
 		assert.deepEqual(store.groups['代码类'], ['groupTool']);
 
-		for (const ref of ['writeCode', 'refactor']) {
-			assert.ok(
-				tb.judgeToolCall({ scope: 's', toolName: 'groupTool', heldCards: [{ templateRef: ref }] }).ok,
-			);
-		}
-		/* 组外 */
+		assert.ok(
+			tb.judgeToolCall({ mode: 'work', toolName: 'groupTool', heldCards: [{ templateRef: 'writeCode' }] }).ok,
+		);
 		assert.equal(
-			tb.judgeToolCall({ scope: 's', toolName: 'groupTool', heldCards: [{ templateRef: 'research' }] })
-				.ok,
+			tb.judgeToolCall({ mode: 'work', toolName: 'groupTool', heldCards: [{ templateRef: 'research' }] }).ok,
 			false,
 		);
 	});
 
-	it('setGroupMembers 不校验模板是否存在（无所谓是否存在）', async () => {
-		const result = await tb.setGroupMembers('含幽灵', ['writeCode', '根本不存在的模板']);
-		assert.ok(result.ok, '不该因为模板不存在而拒');
+	it('setGroupMembers 不校验模板是否存在', async () => {
+		assert.ok((await tb.setGroupMembers('含幽灵', ['writeCode', '根本不存在的模板'])).ok);
 		assert.deepEqual(tb.getToolPolicies().groupMembers['含幽灵'], ['writeCode', '根本不存在的模板']);
 	});
 
@@ -550,17 +574,14 @@ describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
 		assert.equal(result.code, 'FIELD_REQUIRED');
 	});
 
-	it('removeGroup 删掉策略与成员；幂等', async () => {
+	it('removeGroup 删策略与成员；幂等', async () => {
 		await tb.setGroupMembers('临时的', ['writeCode']);
 		await tb.setGroupPolicy('临时的', ['tmpTool']);
-
 		assert.ok((await tb.removeGroup('临时的')).ok);
 		const store = tb.getToolPolicies();
 		assert.equal(store.groups['临时的'], undefined);
 		assert.equal(store.groupMembers['临时的'], undefined);
-
-		/* 再删一次也算成功（幂等）。 */
-		assert.ok((await tb.removeGroup('临时的')).ok);
+		assert.ok((await tb.removeGroup('临时的')).ok, '幂等');
 	});
 
 	it('setTemplatePolicy 去重、丢空串', async () => {
@@ -568,14 +589,7 @@ describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
 		assert.deepEqual(tb.getToolPolicies().templates['research'], ['bash', 'write']);
 	});
 
-	it('setTemplatePolicy 空数组 = 清掉该模板的独立档（不是删 key，是存空）', async () => {
-		await tb.setTemplatePolicy('research', ['bash']);
-		await tb.setTemplatePolicy('research', []);
-		const own = tb.getToolPolicies().templates['research'];
-		assert.deepEqual(own, [], '空数组是合法值（该模板没有额外权限）');
-	});
-
-	it('setTemplatePolicy 模板不存在 ⇒ TEMPLATE_NOT_FOUND（唯一的粒度校验）', async () => {
+	it('setTemplatePolicy 模板不存在 ⇒ TEMPLATE_NOT_FOUND', async () => {
 		const result = await tb.setTemplatePolicy('no-such-template', ['bash']);
 		assert.equal(result.ok, false);
 		assert.equal(result.code, 'TEMPLATE_NOT_FOUND');
@@ -588,9 +602,24 @@ describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
 	});
 
 	it('不校验工具名是否存在', async () => {
-		const result = await tb.setTemplatePolicy('writeCode', ['totally_made_up_tool']);
-		assert.ok(result.ok, '名字不存在也该能存 —— 没注册的工具本来就不会生效');
-		assert.deepEqual(tb.getToolPolicies().templates['writeCode'], ['totally_made_up_tool']);
+		assert.ok((await tb.setTemplatePolicy('writeCode', ['totally_made_up_tool'])).ok);
+	});
+
+	it('★ 实例的 judgeToolCall 认模式（不再有开关）', () => {
+		/* 不是我们的预设 ⇒ 一律放行 */
+		assert.ok(tb.judgeToolCall({ mode: undefined, toolName: 'bash', heldCards: [] }).ok);
+
+		/* 我们的模式 + 无卡 ⇒ 拒 */
+		assert.equal(tb.judgeToolCall({ mode: 'work', toolName: 'bash', heldCards: [] }).ok, false);
+
+		/* 权限管理工具：我们的模式下永远拒（没有开关可开） */
+		assert.equal(
+			tb.judgeToolCall({ mode: 'auto', toolName: 'taskboard_tool_policy_set', heldCards: [] }).ok,
+			false,
+		);
+		assert.ok(
+			tb.judgeToolCall({ mode: undefined, toolName: 'taskboard_tool_policy_set', heldCards: [] }).ok,
+		);
 	});
 
 	it('effectiveToolsOf 走实例的策略', async () => {
@@ -599,48 +628,94 @@ describe('Taskboard：开关纯内存、策略持久化、四档入口', () => {
 		assert.deepEqual(effective.slice(0, BASE_TOOLS.length), [...BASE_TOOLS]);
 		assert.ok(effective.includes('myTool'));
 	});
-
-	it('judgeToolCall 走实例的四档 + 开关', async () => {
-		await tb.setTemplatePolicy('writeCode', ['bash']);
-
-		assert.equal(tb.judgeToolCall({ scope: 's', toolName: 'bash', heldCards: [] }).ok, false);
-		assert.ok(
-			tb.judgeToolCall({ scope: 's', toolName: 'bash', heldCards: [{ templateRef: 'writeCode' }] }).ok,
-		);
-
-		assert.equal(
-			tb.judgeToolCall({ scope: 's', toolName: 'taskboard_tool_policy_set', heldCards: [] }).ok,
-			false,
-		);
-		tb.setPolicyEdit('s', true);
-		assert.ok(
-			tb.judgeToolCall({ scope: 's', toolName: 'taskboard_tool_policy_set', heldCards: [] }).ok,
-		);
-		tb.setPolicyEdit('s', false);
-	});
-
-	it('★ 清空所有档位后 BASE 仍全部放行', async () => {
-		await tb.setCommonPolicy([]);
-		await tb.setTemplatePolicy('writeCode', []);
-		for (const toolName of BASE_TOOLS) {
-			assert.ok(
-				tb.judgeToolCall({ scope: 's', toolName, heldCards: [{ templateRef: 'writeCode' }] }).ok,
-				`清空后 ${toolName} 仍应放行`,
-			);
-		}
-	});
 });
 
-describe('★ 旧 v1 结构不读不迁移', () => {
-	it('kv 里只有 v1 ⇒ 读出来是空四档（不迁移、不报错）', async () => {
-		const dir = mkdtempSync(join(tmpdir(), 'tb3-perm-v1-'));
-		/* 直接往 kv 塞旧格式。 */
-		const tb1 = createTaskboard({ dataDir: dir });
-		/* 用任意写路径拿到底层 store 不现实 ⇒ 用 v2 空表 + 手工断言即可。 */
-		const store = tb1.getToolPolicies();
-		assert.deepEqual(store.common, [], 'v2 键不存在 ⇒ 空四档');
+/* ────────────────────────── adopt：auto 放开 AI ────────────────────────── */
 
-		await tb1.close();
+describe('adopt：auto 模式放开 AI 采纳', () => {
+	let dir: string;
+	let tb: Taskboard;
+	let ws: string;
+
+	before(async () => {
+		dir = mkdtempSync(join(tmpdir(), 'tb3-adopt-'));
+		tb = createTaskboard({ dataDir: dir });
+		tb.templates().register(makeTemplate('t-goal', 'goal'));
+		tb.templates().register(makeTemplate('t-design', 'design'));
+		tb.templates().register(makeTemplate('t-work', 'work'));
+		const created = await tb.createWorkspace('采纳');
+		assert.ok(created.ok);
+		ws = created.workspace.id;
+	});
+
+	after(async () => {
+		await tb.close();
 		rmSync(dir, { recursive: true, force: true });
+	});
+
+	async function makeCard(kind: 't-goal' | 't-design' | 't-work'): Promise<string> {
+		const result = await tb.create({
+			workspaceId: ws,
+			templateRef: kind,
+			title: `卡-${Math.random().toString(36).slice(2, 7)}`,
+		});
+		assert.ok(result.ok, JSON.stringify(result));
+		return result.card.id;
+	}
+
+	it('★ AI 采纳 goal：默认拒绝（work 模式的行为）', async () => {
+		const id = await makeCard('t-goal');
+		const result = await tb.adopt(ws, id, 'ai');
+		assert.equal(result.ok, false, 'goal 的采纳按钮只有 user');
+	});
+
+	it('★ AI 采纳 goal：allowAiAdopt: true ⇒ 成功（auto 模式）', async () => {
+		const id = await makeCard('t-goal');
+		const result = await tb.adopt(ws, id, 'ai', { allowAiAdopt: true });
+		assert.ok(result.ok, JSON.stringify(result));
+		assert.equal(result.card.status, 'TASK_STATE_SUBMITTED');
+		/* history 里那条 adopt 必须记 actor='ai' */
+		const adoptEntry = result.card.history.find((one) => one.action === 'adopt');
+		assert.equal(adoptEntry?.actor, 'ai');
+	});
+
+	it('AI 采纳 work：allowAiAdopt: true ⇒ 成功', async () => {
+		const id = await makeCard('t-work');
+		const result = await tb.adopt(ws, id, 'ai', { allowAiAdopt: true });
+		assert.ok(result.ok, JSON.stringify(result));
+	});
+
+	it('AI 采纳 design：本来就在按钮表里对 ai 开放 ⇒ 不需要开关', async () => {
+		const id = await makeCard('t-design');
+		const result = await tb.adopt(ws, id, 'ai');
+		assert.ok(result.ok, JSON.stringify(result));
+	});
+
+	it('user 采纳不受 allowAiAdopt 影响', async () => {
+		const a = await makeCard('t-goal');
+		const r1 = await tb.adopt(ws, a, 'user', { allowAiAdopt: true });
+		assert.ok(r1.ok);
+
+		const b = await makeCard('t-goal');
+		const r2 = await tb.adopt(ws, b, 'user');
+		assert.ok(r2.ok);
+	});
+
+	it('allowAiAdopt 不会让非草稿卡也能采纳', async () => {
+		const id = await makeCard('t-goal');
+		await tb.adopt(ws, id, 'user');
+		const again = await tb.adopt(ws, id, 'ai', { allowAiAdopt: true });
+		assert.equal(again.ok, false, '只有草稿能采纳');
+	});
+
+	it('★ 不改 protocol 的 BUTTON_ACTIONS：AI 采纳后 history 记 ai，但按钮表仍是 user', async () => {
+		/*
+		 * 这一条锁住「不要改 protocol」这个决定：
+		 * 若有人把 goal 的采纳按钮 actors 改成 BOTH，
+		 * 上一轮那条「AI 采纳 goal：默认拒绝」就会变绿 —— 那是错的。
+		 */
+		const id = await makeCard('t-goal');
+		const refused = await tb.adopt(ws, id, 'ai');
+		assert.equal(refused.ok, false, 'goal 的 AI 采纳必须默认拒绝（按钮表没改）');
 	});
 });
