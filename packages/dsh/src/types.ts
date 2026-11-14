@@ -83,10 +83,17 @@ export interface CommandsLike {
 /**
  * `ctx.permissionPresets` 的最小面。
  *
- * ⚠ 只用到 `current(session)` —— 读「这个会话当前选的是哪个权限预设」。
- *   真实接口见 `dsh-permission-presets/src/index.ts:343`：
- *   `current(session: Session): string`（可能返回 `'custom'`）。
+ * ⚠ 用到两个成员：
+ *
+ * | 成员 | 用途 |
+ * |---|---|
+ * | `current(session)` | 读「这个会话当前选的是哪个权限预设」（`dsh-permission-presets/src/index.ts:343`） |
+ * | `presets` | **就地改表**注册任务板的三个预设（官方没有注册 API，见 `src/presets.ts`） |
+ *
+ * `current` 可能返回 `'custom'`（配置的档位都对不上时）。
  */
 export interface PermissionPresetsLike {
 	current(session: unknown): string;
+	/** 预设表：键是预设名，值是 sandbox/approval/name/description。**可变**（就是要改它）。 */
+	presets: Record<string, { sandbox: string; approval: string; name: string; description: string }>;
 }

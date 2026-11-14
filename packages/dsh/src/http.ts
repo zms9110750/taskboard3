@@ -31,6 +31,7 @@ import type { SearchCondition, Taskboard } from '@taskboard/core';
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
+import { isAdoptTransition } from './actions.ts';
 import type { SseHub, SseResponseLike } from './sse.ts';
 import type { ConnectionLike, IncomingLike, OutgoingLike, ReadableIncoming, WebServerLike } from './types.ts';
 
@@ -159,13 +160,6 @@ function str(body: unknown, key: string): string | undefined {
 	return typeof value === 'string' ? value : undefined;
 }
 
-/** 读参数里的布尔值（严格：只认 `true` / `false`）。 */
-function bool(body: unknown, key: string): boolean | undefined {
-	if (typeof body !== 'object' || body === null) return undefined;
-	const value = (body as Record<string, unknown>)[key];
-	return typeof value === 'boolean' ? value : undefined;
-}
-
 /** 从已解析的 body 里取任意字段。 */
 function raw(body: unknown, key: string): unknown {
 	if (typeof body !== 'object' || body === null) return undefined;
@@ -192,19 +186,6 @@ export interface RouteDeps {
 	 *   `GET /api/events` 那一段。见 `src/sse.ts` 文件头。
 	 */
 	readonly events?: SseHub;
-	/**
-	 * 权限编辑开关（**纯内存**）。
-	 *
-	 * ⚠ 这两个端点是**用户在 UI 上点的**，不是 AI 工具。
-	 *   scope 用**会话 id**（UI 拿得到），不是 agent 名字（UI 拿不到）。
-	 *   见 `src/permission.ts` 文件头「两个身份不是一个东西」。
-	 */
-	readonly policyEdit?: {
-		/** 读开关状态。 */
-		isOn(scope: string): boolean;
-		/** 设置开关。 */
-		set(scope: string, on: boolean): void;
-	};
 }
 
 /**
@@ -352,49 +333,20 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		return;
 	}
 
-	/* ── 权限编辑开关（用户点 UI） ──
+	/* ── 权限编辑开关已删除 ──
 	 *
-	 * ⚠ **scope 由前端传 `?scope=<sessionId>`** —— 这是**自报**。
+	 * 用户 `2026-11-14`：
 	 *
-	 *   为什么不安全但可接受：这个开关是「用户给自己开权限」。
-	 *   自报别人的 sessionId 最多是**给别人开权限**（放大他人权限），
-	 *   不是自己越权。真正的越权得靠用户在 UI 上主动点，攻击者拿不到那个按钮。
+	 * > 能不能只留三个权限。开发者权限由dsh自己的完全权限去操作？
+	 * > 没有必要为此就让我们再开一个新的权限。
 	 *
-	 *   对比：`POST /api/cards/:id/action` 的 claim 必须拒绝，因为那里
-	 *   「谁在领」决定的是**执行者身份**，自报就等于冒充。
+	 * ⇒ 「改权限」不再是任务板的一个开关，而是 **DSH 自己的权限预设**：
+	 *   切到「完全访问」时任务板 guard 一律放行（互斥语义），
+	 *   AI 在那里自然能调 `taskboard_tool_policy_*`。
 	 *
-	 * ⚠ **AI 工具不能调这两个端点** —— 它们不在 `POLICY_TOOLS` 里，
-	 *   AI 走 `taskboard_tool_policy_*` 三个工具，那些受这个开关控制。
+	 * 所以原来的 `GET /api/policy-edit` 与 `POST /api/policy-edit/toggle`
+	 * 两个端点连同 core 的内存开关一起删掉了。
 	 */
-	if (tail === '/policy-edit') {
-		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
-		const scope = query.get('scope') ?? '';
-		const on = scope === '' ? false : (deps.policyEdit?.isOn(scope) ?? false);
-		sendOk(res, { unlocked: on });
-		return;
-	}
-
-	if (tail === '/policy-edit/toggle') {
-		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
-		const body = await readJson(req);
-		const scope = str(body, 'scope') ?? query.get('scope') ?? '';
-		const unlocked = bool(body, 'unlocked');
-		if (scope === '') {
-			sendFailure(res, failure(ErrorCode.FIELD_REQUIRED, '缺 scope（会话 id）。'), 400);
-			return;
-		}
-		if (unlocked === undefined) {
-			sendFailure(res, failure(ErrorCode.FIELD_REQUIRED, '缺 unlocked（true / false）。'), 400);
-			return;
-		}
-		if (deps.policyEdit === undefined) {
-			sendFailure(res, failure(ErrorCode.PORT_UNAVAILABLE, '权限编辑开关未装配。'), 501);
-			return;
-		}
-		deps.policyEdit.set(scope, unlocked);
-		sendOk(res, { unlocked: deps.policyEdit.isOn(scope) });
-		return;
-	}
 
 	/* ── GET /api/updates ── */
 	if (tail === '/updates') {
@@ -582,6 +534,28 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 				}),
 				409,
 			);
+			return;
+		}
+
+		/*
+		 * ── 采纳走 `adopt()`，不走 `transition()` ──
+		 *
+		 * 用户点的「采纳」按钮在表里的 `method` 是 `'adopt'`。它和普通转移的
+		 * 区别是**要同时写 `adoptedAt`**（`core/src/transition.ts:138`：
+		 * 时间必须与 history 里那条 `action:'adopt'` 用同一个 `at`）。
+		 *
+		 * ⚠ 如果这里走 `transition()`，状态会变但 `adoptedAt` 仍是 `null` ——
+		 *   而 `search` 的排序键是 `adoptedAt ?? createdAt` ⇒ **排序错乱**，
+		 *   且不报错。这是静默错误，所以必须分开走。
+		 *
+		 * ⚠ 人点按钮 ⇒ `actor: 'user'`，**不传 `allowAiAdopt`**：
+		 *   那个开关只对 AI 有意义（用户本来就有这个按钮）。
+		 */
+		const adopt = isAdoptTransition(card.template.kind, card.status, to);
+		if (adopt) {
+			const adopted = await taskboard.adopt(workspaceId, cardId, 'user');
+			if (!adopted.ok) return sendFailure(res, adopted);
+			sendOk(res, { card: adopted.card });
 			return;
 		}
 

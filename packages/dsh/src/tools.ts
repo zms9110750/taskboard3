@@ -32,7 +32,7 @@
  *   `defineTool` 由调用方注入。好处：本模块可以**纯本地测试**，不需要 DSH 运行时。
  */
 
-import type { Card, Taskboard } from '@taskboard/core';
+import type { BoardMode, Card, Taskboard } from '@taskboard/core';
 import { BASE_TOOLS, EXECUTION_TOOLS, READONLY_TOOLS } from '@taskboard/core';
 import type { Failure, TaskState } from '@taskboard/protocol';
 import {
@@ -47,6 +47,7 @@ import {
 	labelOf,
 } from '@taskboard/protocol';
 
+import { isAdoptTransition } from './actions.ts';
 import { holderOf } from './holder.ts';
 
 /** 一个已定义工具的最小形状（对齐 DSH `ToolDefinition` 的字段子集）。 */
@@ -86,6 +87,17 @@ export interface ToolDeps {
 	 *   那时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
 	 */
 	readonly subagents?: unknown;
+	/**
+	 * 读当前调用的**任务板模式**（`plan` / `work` / `auto` / `undefined`）。
+	 *
+	 * ⚠ 用途只有一个：`taskboard_adopt` 要知道 **auto 模式下 AI 能不能自己采纳草稿**
+	 *   （用户：「自动工作和工作的区别就是 ai 自己采纳草稿」）。
+	 *   其余工具的模式判定全在 guard 里（core 的 `judgeToolCall`）。
+	 *
+	 * ⚠ 省略 ⇒ 恒 `undefined` ⇒ 采纳按「非 auto」处理（AI 不能采纳）——
+	 *   那是**安全**的默认方向。
+	 */
+	readonly modeOf?: (exec: unknown) => BoardMode | undefined;
 }
 
 /*
@@ -551,7 +563,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			to: { type: 'string', description: '目标状态 id。省略 = 只查询不执行。' },
 		},
 		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
+		async execute(args: unknown, exec: unknown): Promise<unknown> {
 			const workspaceId = await resolveWorkspace(args);
 			const cardId = str(args, 'id') ?? '';
 
@@ -617,6 +629,26 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			}
 
 			/* ── 执行转移：AI 触发 ── */
+			/*
+			 * ⚠ **采纳走 `adopt()`，不走 `transition()`** —— 理由同 HTTP 路由：
+			 *   采纳要同时写 `adoptedAt`（与 history 那条用同一个 `at`），
+			 *   否则 `search` 的排序键 `adoptedAt ?? createdAt` 会错乱且不报错。
+			 *
+			 * ⚠ **`allowAiAdopt` 只在 auto 模式为 true**（用户：
+			 *   「自动工作和工作的区别就是 ai 自己采纳草稿」）。
+			 *   work / plan 模式下 AI 不能自己采纳，得用户点。
+			 */
+			if (isAdoptTransition(kind, one.status, to)) {
+				const mode = deps.modeOf?.(exec);
+				const adopted = await taskboard.adopt(workspaceId, cardId, 'ai', {
+					allowAiAdopt: mode === 'auto',
+				});
+				if (!adopted.ok) return { text: `采纳失败：\n${describeFailure(adopted)}` };
+				return {
+					text: `已把 ${adopted.card.id}「${adopted.card.title}」从草稿采纳为「${labelOf(adopted.card.status)}」。`,
+				};
+			}
+
 			const applied = await taskboard.transition(workspaceId, cardId, to, 'ai');
 			if (!applied.ok) return { text: `转移失败：\n${describeFailure(applied)}` };
 			return {
