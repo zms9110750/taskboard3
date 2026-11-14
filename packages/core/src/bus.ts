@@ -23,7 +23,6 @@
  *      · `import { type Bus, createBus } from './bus.ts';`
  *      · `CommonOptions.bus?: Bus`
  *      · `persist` 里那行 `bus?.emit(...)`
- *    外加（见下面「工作空间」一节）`emitWorkspace` 与它的 4 个调用点
  * 3. 删 packages/core/test/bus.test.ts
  * 4. dsh：删 SSE 端点（如果加了）
  * 5. dsh-client：改成直接读接口，不订阅
@@ -32,7 +31,7 @@
  * ### 为什么只有一个消息类型，而且故意粗糙
  *
  * ```ts
- * { type: 'card:written' | 'workspace:written', workspaceId, cards }
+ * { type: 'card:written', workspaceId, cards }
  * ```
  *
  * **它只说「有事发生」，不说「发生了什么细节」。** 消费方收到就重新拉全量。
@@ -60,14 +59,15 @@ export interface TaskboardMessage {
 	 * 原型期**随便加、随便改** —— 消费方不应该 switch 它，
 	 * 只应该「收到就重拉」。
 	 */
-	readonly type: 'card:written' | 'workspace:written';
+	readonly type: 'card:written';
 	/** 哪个空间变了（消费方据此决定要不要重拉）。 */
 	readonly workspaceId: string;
 	/**
 	 * 被写的卡。
 	 *
-	 * **可能不止一张**：沿树重算会把父卡一起带上。
-	 * 也可能为空数组（工作空间变更时）。
+	 * **当前恒为单元素数组** —— 唯一的 emit 点是 `persist`，一次只写一张卡。
+	 * 沿树重算会**多次** `persist`（每张父卡一次），所以消费方会收到多条消息
+	 * 而不是一条带多张卡的消息（那是刻意接受的原型期浪费）。
 	 */
 	readonly cards: readonly Card[];
 }
@@ -136,4 +136,5 @@ export function createBus(): Bus {
 		},
 	};
 }
+
 

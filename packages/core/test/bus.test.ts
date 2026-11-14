@@ -303,7 +303,7 @@ describe('接线：只在 persist 一处 emit', () => {
 });
 
 describe('工作空间写路径', () => {
-	it('工作空间变更不经过 persist ⇒ 当前不发 card:written', async () => {
+	it('工作空间变更不经过 persist ⇒ 不广播', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-bus-ws-'));
 		const bus = createBus();
 		const tb = makeBoard(dir, bus);
@@ -314,12 +314,14 @@ describe('工作空间写路径', () => {
 
 		seen.off();
 		/*
-		 * ⚠ 这是**已报给 lead 的功能缺口**：工作空间写的是 kv，
-		 * 不经过 `persist`。接它要多 5 处调用点，超出「拆解 = 3 处」的预算，
-		 * 所以当前故意不接。这条断言把这个决定固定下来 ——
-		 * 将来补上时它会失败，提醒把那处注释一起改。
+		 * 工作空间写的是 kv（`workspace.ts` 的 `writeAll`），不经过 `persist`
+		 * ⇒ 不广播。`TaskboardMessage.type` 里那个 `'workspace:written'` 成员
+		 * 已删（永远发不出去的死类型）。
+		 *
+		 * 这条断言固定住「改空间不推事件」这个决定 ——
+		 * 将来若要补空间广播，它会让这条变红，提醒一起改注释与类型。
 		 */
-		assert.equal(seen.messages.length, 0, '工作空间变更当前不广播（已知缺口）');
+		assert.equal(seen.messages.length, 0, '工作空间变更不广播');
 
 		await tb.close();
 		rmSync(dir, { recursive: true, force: true });

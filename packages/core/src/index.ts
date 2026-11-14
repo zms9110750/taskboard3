@@ -560,24 +560,18 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		return card;
 	};
 
-	/**
-	 * 工作空间变更的广播 —— **当前故意不接**（见下）。	 *
-	 * ## 发现：工作空间写路径完全绕开 `persist`
+	/*
+	 * ── 工作空间变更**不广播** ──
 	 *
-	 * 工作空间 CRUD 写的是 `store.kvSet`（`workspace.ts` 的 `writeAll`），
-	 * **不经过 `persist`**。所以卡片广播对空间变更是无效的。
+	 * 工作空间 CRUD 写的是 `store.kvSet`（见 `workspace.ts` 的 `writeAll`），
+	 * **不经过 `persist`**（那是写卡专用）。
 	 *
-	 * ## 为什么现在不接
+	 * 早期 `TaskboardMessage.type` 里有一个 `'workspace:written'` 成员，
+	 * 但**没有任何路径会发出它** —— 消费方写了处理分支也永远收不到。
+	 * 已删掉那个类型成员（`2026-11-15` 清理），只留 `'card:written'`。
 	 *
-	 * 接它有两种做法，都超出「可拆 = 3 处」的预算：
-	 *
-	 * 1. 在 4 个空间方法里各加一行 `emit` ⇒ 删除成本从 3 处变成 8 处；
-	 * 2. 加一个 `emitWorkspace()` 收口 + 5 处调用 ⇒ 仍是多一处必须删的东西。
-	 *
-	 * ⇒ **宁可让 `workspace:written` 类型暂时空着**，保持「删 3 处就能拆干净」。
-	 *   这是原型期的功能缺口，已报给 lead 决策 —— 要补的时候按上面 2 做。
-	 *
-	 * ⚠ 别在这里留一行注释掉的 `emit` 假装接了。
+	 * ⇒ 要补空间广播，先给这里加一个收口函数，再往 `TaskboardMessage.type` 里加成员。
+	 *   在当前（原型期）不需要：UI 改空间后自己重拉即可。
 	 */
 
 	/**
