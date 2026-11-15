@@ -1,0 +1,88 @@
+/*
+ * 组件预览页的样式。
+ *
+ * ⚠ 为什么是 `.css` 而不是 `.ts` 里的模板字符串：
+ *   第一版写成 `export const PREVIEW_CSS = \`…\``，结果 CSS 里的
+ *   `transition:width` 和反引号互相干扰，Node 的 TS 剥离器直接语法报错。
+ *   ⇒ 用真 `.css` 文件，预览脚本 `readFileSync` 读它。简单、没有转义问题。
+ *
+ * ⚠ 这个文件只服务预览页；方框本身的正式样式最终要进 `src/styles.ts`。
+ *   现在两边内容一样，改的时候**两边都要改** —— 等组件定稿后合并。
+ */
+
+:root{
+  --bg:#f6f7f9; --bg-card:#fff; --border:#e7e9ee; --text:#16181d;
+  --text-secondary:#5f6673; --accent:#2563eb;
+  --gap-2:8px; --gap-4:14px; --gap-5:20px;
+  --mono:ui-monospace,Consolas,'Courier New',monospace;
+}
+*{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;
+  background:var(--bg);color:var(--text);font-size:13px;line-height:1.6}
+#root{min-height:100%}
+
+.preview{max-width:1080px;margin:0 auto;padding:28px 26px 60px}
+.pv-head h1{margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:-.01em}
+.pv-head p{margin:0;color:var(--text-secondary);font-size:12px}
+.pv-block{background:var(--bg-card);border-radius:11px;padding:18px 20px;margin-top:18px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.05)}
+.pv-block h2{margin:0 0 14px;font-size:13px;font-weight:600;color:var(--text-secondary)}
+.pv-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:40px}
+.pv-state{margin-top:16px;padding-top:14px;border-top:1px solid #f2f4f7;
+  display:flex;gap:22px;flex-wrap:wrap;font-size:11px}
+.pv-state>div{display:flex;align-items:center;gap:7px}
+.pv-k{font-family:var(--mono);font-size:10px;color:#9aa1ad;background:#f1f3f6;
+  padding:2px 7px;border-radius:5px}
+.pv-state code{font-family:var(--mono);font-size:10.5px;color:var(--accent)}
+.pv-list{margin:0;padding-left:20px;font-size:12px;line-height:2;color:#3f4652}
+.pv-list code{font-family:var(--mono);font-size:10.5px;background:#f1f3f6;
+  padding:1px 6px;border-radius:4px;color:#16181d}
+.pv-note{margin:0 0 12px;font-size:11px;color:#9aa1ad;line-height:1.8}
+.pv-note code{font-family:var(--mono);font-size:10.5px;background:#f1f3f6;
+  padding:1px 6px;border-radius:4px;color:#16181d}
+
+/* ══════════════════════════════════════════════════════════
+   筛选方框 —— 逐条对应旧版 styles.css:396-519
+   ══════════════════════════════════════════════════════════ */
+
+.filter-row{display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap}
+
+/*
+ * 方框本身。overflow:hidden + transition:width 是宽度动画的基础；
+ * 两套脸都 absolute ⇒ 不参与盒宽 ⇒ JS 量出来多少就是多少。
+ */
+.filter-box{
+  position:relative;height:32px;border:1px solid var(--border);border-radius:6px;
+  background:var(--bg-card);overflow:hidden;flex:0 0 auto;cursor:pointer;
+  user-select:none;transition:width 180ms ease;
+}
+.filter-box.is-open{border-color:#93c5fd}
+
+.filter-box__face{
+  position:absolute;top:0;bottom:0;left:12px;display:inline-flex;align-items:center;
+  white-space:nowrap;transition:opacity 120ms ease;
+}
+.filter-box__face--expanded{opacity:0;pointer-events:none}
+.filter-box.is-open .filter-box__face--collapsed{opacity:0;pointer-events:none}
+.filter-box.is-open .filter-box__face--expanded{opacity:1;pointer-events:auto}
+
+.filter-box__title,.filter-box__colon{font-size:12.5px;color:var(--text-secondary)}
+.filter-box__value{font-size:12.5px;font-weight:600;color:var(--accent)}
+.filter-box__zone{display:inline-flex;align-items:center}
+.filter-box__caret{padding-left:5px;font-size:10px;color:#9aa1ad}
+
+.filter-box__items{display:inline-flex;align-items:center}
+
+/* 可点的文字（不是胶囊 / 按钮外观） */
+.filter-box__item{
+  padding:2px 4px;border:0;border-radius:4px;font-size:12.5px;color:var(--text);
+  background:none;cursor:pointer;font-family:inherit;
+}
+.filter-box__item:hover{background:#f3f4f6}
+.filter-box__item.is-picked{color:var(--accent);font-weight:700}
+
+/* 文字分隔：一级 |，二级 / */
+.filter-box__sep{padding:0 2px;font-size:12px;color:#cbd5e1;user-select:none}
+
+/* 一级 / 二级之间的结构竖线：贯通上下内边 */
+.filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
