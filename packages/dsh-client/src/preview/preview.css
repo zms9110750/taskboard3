@@ -66,6 +66,14 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .filter-box__zone{display:inline-flex;align-items:center}
 .filter-box__caret{padding-left:5px;font-size:10px;color:#9aa1ad}
 
+/* 清空：独立的小按钮（只在有值时出现）。不是「点主体就清空」。 */
+.filter-box__clear{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;margin-left:6px;border-radius:4px;
+  font-size:9px;color:#9aa1ad;cursor:pointer;user-select:none;
+}
+.filter-box__clear:hover{background:#f1f3f6;color:#dc2626}
+
 .filter-box__items{display:inline-flex;align-items:center}
 
 /* 可点的文字（不是胶囊 / 按钮外观） */

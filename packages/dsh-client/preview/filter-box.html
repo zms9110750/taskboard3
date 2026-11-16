@@ -72,6 +72,14 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .filter-box__zone{display:inline-flex;align-items:center}
 .filter-box__caret{padding-left:5px;font-size:10px;color:#9aa1ad}
 
+/* 清空：独立的小按钮（只在有值时出现）。不是「点主体就清空」。 */
+.filter-box__clear{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;margin-left:6px;border-radius:4px;
+  font-size:9px;color:#9aa1ad;cursor:pointer;user-select:none;
+}
+.filter-box__clear:hover{background:#f1f3f6;color:#dc2626}
+
 .filter-box__items{display:inline-flex;align-items:center}
 
 /* 可点的文字（不是胶囊 / 按钮外观） */
@@ -17012,18 +17020,23 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	*
 	* | 状态 | 显示 |
 	* |---|---|
-	* | 没进入组 / 没选值 | `''`（组件只画标题）|
+	* | 什么都没进、没选 | `''`（组件只画标题）|
+	* | **只进了组、没选值** | **组名**（`完成`）|
 	* | 选了 `[失败]`，组是 `完成` | `完成/失败` |
 	* | 选了 `[成功, 变体]`，组是 `完成` | `完成/成功/变体` |
 	*
-	* ⚠ 组名只是**路径前缀**，不是筛选值 —— 但显示出来用户才知道自己筛的是哪一支。
+	* ⚠ **只进组也要显示组名。** 用户 `2026-11-16`：
+	* > 「这个状态收回去的时候，这个『完成』不会作为子显示。」
+	*
+	* 语义上「点组 = 选中第 0 级」，所以第 0 级也是一个「选中的东西」，
+	* 收起态必须显示它 —— 否则用户不知道这个方框当前停在哪一支。
 	*
 	* @param nodes 根节点
 	* @param state 当前状态
 	*/
 	function selectionText(nodes, state) {
-		if (state.picked.length === 0) return "";
 		if (!hasGroups(nodes)) {
+			if (state.picked.length === 0) return "";
 			const labels = [];
 			let level = nodes;
 			for (const value of state.picked) {
@@ -17037,12 +17050,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			}
 			return labels.join("/");
 		}
-		const labels = [];
-		let level = nodes;
-		const groupNode = level.find((one) => one.value === state.group);
-		if (groupNode === void 0) return state.picked.join("/");
-		labels.push(groupNode.label);
-		level = groupNode.children ?? [];
+		const groupNode = nodes.find((one) => one.value === state.group);
+		if (groupNode === void 0) return state.picked.length === 0 ? "" : state.picked.join("/");
+		if (state.picked.length === 0) return groupNode.label;
+		const labels = [groupNode.label];
+		let level = groupNode.children ?? [];
 		for (const value of state.picked) {
 			const hit = level.find((one) => one.value === value);
 			if (hit === void 0) {
@@ -17055,32 +17067,29 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		return labels.join("/");
 	}
 	/**
-	* 收起态要不要拆成两个可点区。
+	* 当前有没有任何选择（含第 0 级的组）。
 	*
-	* 旧版用户指令（仍然有效）：
-	* > 「筛选选中以后，左边和右边至少要有一个是点击取消并展开，一个是单纯展开。……
-	* >  取消筛选是很常规的用法。」
+	* 用来决定收起态要不要显示值、要不要出现清空按钮。
 	*
-	* ⇒ 有选中时：**左**（标题＋已选值）＝ 清空选择并展开；**右 ▾** ＝ 只展开。
+	* ⚠ **不要用它决定「点方框主体干什么」。** 那件事与有没有值无关：
+	*   点方框主体永远是「展开并保持当前选择」。
+	*   上一版把它错当成「有值 ⇒ 点主体 = 清空」，结果用户点开一个已筛选的方框
+	*   时值被清掉了（用户 `2026-11-16` 报的 bug 就是这个的变体）。
 	*
 	* @param state 当前状态
 	*/
-	function collapsedSplit(state) {
-		return state.picked.length > 0;
+	function hasSelection(state) {
+		return state.group !== "" || state.picked.length > 0;
 	}
 	/**
-	* 清空选择但**保留当前组**（用于收起态的「取消筛选」区）。
+	* 清空**全部**选择（含组）。
 	*
-	* 为什么不直接 `EMPTY_FILTER`：用户点「取消」是**只想去掉筛选**，
-	* 不是想退出这个组 —— 退出组会让方框整个收成一行，反而要多点一次。
+	* 只由收起态那个**独立的 ✕ 按钮**调用 —— 不是点方框主体。
 	*
-	* @param state 当前状态
+	* @param _state 当前状态（保留参数为了调用点对称）
 	*/
-	function clearPicked(state) {
-		return {
-			group: state.group,
-			picked: []
-		};
+	function clearPicked(_state) {
+		return EMPTY_FILTER;
 	}
 	// ../../node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.development.js
 	/**
@@ -17295,47 +17304,49 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	}));
 	// src/components/FilterBox.tsx
 	/**
-	* 筛选方框 —— **内联展开**的一个方框控件（不是下拉弹窗）。
+	* 筛选方框 —— **一个按钮为一个单位**的组件（不是「一排按钮」为单位）。
 	*
-	* ## 语义（用户 `2026-11-16` 重新定义）
+	* ## 它自己管什么、不管什么
+	*
+	* | 管 | 不管 |
+	* |---|---|
+	* | 收起态 / 展开态怎么画 | **开合状态本身**（由 `FilterRow` 通过 `open` 传入）|
+	* | 宽度动画 | 「同时只开一个」（那是 `FilterRow` 的 `openId` 保证的）|
+	* | 把点击翻译成 `onChange` / `onOpenChange` | 「点外面收起」（`FilterRow` 挂 document 监听）|
+	*
+	* ⇒ **受控组件**。开合是从外面灌进来的 —— 这样「点 B 时 A 收起」
+	*   是 `openId` 只有一个值的构造性结果，不依赖任何副作用时序。
+	*
+	* 用户 `2026-11-16`：
+	* > 「组件应该是以一个按钮为单位的。而不是这一坨按钮组为单位。」
+	*
+	* ## 语义（用户 `2026-11-16` 定义）
 	*
 	* > 在有东西选中时，点击那个选中的状态：展开到选中他（例如以后如果有4级，5级，
 	* > 在点击第3级的时候，就展开3的子，并选中3）。点击最左边的组名时，展开并取消所有
 	* > 选择（换句话说，组等于第0级，语义和点击第x级时选择第x级并展开第x的子是一样的逻辑）
 	*
-	* ⇒ **统一规则**：点第 N 级的节点 = 选中它 + 展开它的子（第 N+1 级）。
+	* ⇒ 统一规则：点第 N 级 = 选中它 + 展开它的子（第 N+1 级）。
 	*
 	* | 点哪里 | 结果 |
 	* |---|---|
-	* | 组（第 0 级） | 清空选择，进入这个组（展开它的子）|
-	* | 任何有子节点的节点 | 选中它，并展开它的子 |
+	* | 组（第 0 级） | 清空选择，进入这个组 |
+	* | 有子节点的节点 | 选中它，并展开它的子 |
 	* | 叶子 | 选中它 |
 	* | 已选中的节点 | 幂等 —— 仍选中，子照常展开 |
 	*
-	* ⚠ **没有「再点一次取消」。** 取消只有两个入口：点组名、点收起态的「✕」区。
+	* ⚠ **没有「再点一次取消」。** 取消入口只有：点组名、点收起态的「清空」区。
 	*
-	* ## 全部判决在 `pure/filter-box.ts`（已单测）
+	* ## 判决全部在 `pure/filter-box.ts`（已单测）
 	*
-	* 组件只做三件事：**画行**、**画分隔符**、**把 `next` 交给 `onChange`**。
-	* 「点一下会变成什么」不在这里判断 —— 逻辑层已经算好放在 `item.next` 里。
+	* 组件只做三件事：画行、画分隔符、把 `next` 交给 `onChange`。
+	* 「点一下会变成什么」不在这里判断 —— 逻辑层已算好放在 `item.next` 里。
 	*
 	* ## 宽度动画
 	*
-	* 两套「脸」（收起态 / 展开态）**都 `position: absolute`** ⇒ 都不参与盒宽。
+	* 两套「脸」（收起 / 展开）都 `position: absolute` ⇒ 都不参与盒宽。
 	* `useLayoutEffect` 量**当前那张脸**的宽度写到方框上，CSS 对 `width` 做 180ms 过渡。
 	* ⇒ 视觉上是「方块按钮变宽露出内容」，不是「内容把布局挤开」。
-	*
-	* ## 点「外面」= 点**这个按钮外面**
-	*
-	* 用户 `2026-11-16`：
-	* > 「外面」说的是按钮外面，不是放按钮的这一行。
-	*
-	* ⇒ 三个方框各自独立判断：点 A 之外任何地方（**包括同一行的空白处、另一个方框**）
-	*   A 就收起。所以「点第二个时第一个自动收」是这条规则的推论，不是额外逻辑。
-	*
-	* ⚠ **不能用 `contains()` 判里外。** 点方框里某一项时 React 会重渲染换掉那个节点
-	* ⇒ 冒泡到 `document` 时 `box.contains(target)` 已是 `false` ⇒ 误判成「点在外面」。
-	* `event.composedPath()` 是事件派发那一刻的祖先快照，不受重渲染影响。
 	*/
 	var import_jsx_runtime = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_jsx_runtime_development();
@@ -17343,90 +17354,77 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	/**
 	* 一个筛选方框。
 	*
-	* @param props 标题、节点、状态、变化回调
+	* @param props 见 `FilterBoxProps`
 	*/
 	function FilterBox(props) {
-		const [open, setOpen] = (0, import_react.useState)(false);
 		const boxRef = (0, import_react.useRef)(null);
 		const collapsedRef = (0, import_react.useRef)(null);
 		const expandedRef = (0, import_react.useRef)(null);
 		const text = selectionText(props.nodes, props.value);
-		const split = collapsedSplit(props.value);
+		const hasValue = hasSelection(props.value);
 		const rows = rowsOf(props.nodes, props.value);
 		const rowsKey = JSON.stringify(rows.map((row) => row.items.map((one) => one.label)));
 		(0, import_react.useLayoutEffect)(() => {
 			const box = boxRef.current;
-			const face = open ? expandedRef.current : collapsedRef.current;
+			const face = props.open ? expandedRef.current : collapsedRef.current;
 			if (box === null || face === null) return;
 			const width = Math.ceil(face.getBoundingClientRect().width) + 24;
 			box.style.width = `${width}px`;
 		}, [
-			open,
+			props.open,
 			text,
 			rowsKey
 		]);
-		(0, import_react.useEffect)(() => {
-			if (!open) return;
-			const onDocClick = (event) => {
-				const box = boxRef.current;
-				if (box === null) return;
-				if (event.composedPath().includes(box)) return;
-				setOpen(false);
-			};
-			document.addEventListener("click", onDocClick);
-			return () => {
-				document.removeEventListener("click", onDocClick);
-			};
-		}, [open]);
 		const pick = (next) => {
 			props.onChange(next);
 		};
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			ref: boxRef,
-			className: open ? "filter-box is-open" : "filter-box",
+			"data-box-id": props.boxId,
+			className: props.open ? "filter-box is-open" : "filter-box",
 			onClick: () => {
-				if (!open) setOpen(true);
+				if (!props.open) props.onOpenChange(true);
 			},
-			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				ref: collapsedRef,
 				className: "filter-box__face filter-box__face--collapsed",
-				children: split ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 					className: "filter-box__zone",
-					title: "点一下清空筛选并展开",
-					onClick: (event) => {
-						event.stopPropagation();
-						pick(clearPicked(props.value));
-						setOpen(true);
-					},
+					title: "展开（不改筛选）",
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 							className: "filter-box__title",
 							children: props.title
 						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 							className: "filter-box__colon",
 							children: "："
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 							className: "filter-box__value",
 							children: text
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "filter-box__caret",
+							children: "▾"
 						})
 					]
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "filter-box__zone filter-box__caret",
-					title: "只展开（不改筛选）",
+				}), hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "filter-box__clear",
+					title: "清空筛选",
+					role: "button",
+					tabIndex: 0,
 					onClick: (event) => {
 						event.stopPropagation();
-						setOpen(true);
+						pick(clearPicked(props.value));
 					},
-					children: "▾"
-				})] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "filter-box__zone",
-					children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__title",
-						children: props.title
-					})
-				})
+					onKeyDown: (event) => {
+						if (event.key !== "Enter" && event.key !== " ") return;
+						event.preventDefault();
+						event.stopPropagation();
+						pick(clearPicked(props.value));
+					},
+					children: "✕"
+				})]
 			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				ref: expandedRef,
 				className: "filter-box__face filter-box__face--expanded",
@@ -17439,11 +17437,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						className: "filter-box__colon",
 						children: "："
 					}),
-					rows.map((row, rowIndex) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, {
+					rows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, {
 						level: row.level,
 						items: row.items,
 						sep: row.level === 0 ? "|" : "/",
-						showVline: rowIndex > 0,
+						showVline: row.level > 0,
 						onPick: pick
 					}, `row-${row.level}`))
 				]
@@ -17457,21 +17455,23 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	*
 	* ⚠ 层级是无限的 —— 三级就画两条竖线。横排而不是换行，
 	*   因为方框的隐喻是「按钮变宽」，换行会破坏它。
-	*   （若三级以后宽度不可接受，改成纵排只动这里 + CSS。）
 	*/
 	function Row(props) {
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [props.showVline && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-box__vline" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 			className: "filter-box__items",
-			children: props.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-				className: "filter-box__sep",
-				children: props.sep
-			}, `sep-${item.value}`), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Item, {
-				label: item.label,
-				picked: item.picked,
-				branch: item.branch,
-				hasChildren: item.hasChildren,
-				onClick: () => props.onPick(item.next)
-			}, `${props.level}-${item.value}`)] }))
+			children: props.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+				style: { display: "contents" },
+				children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "filter-box__sep",
+					children: props.sep
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Item, {
+					label: item.label,
+					picked: item.picked,
+					branch: item.branch,
+					hasChildren: item.hasChildren,
+					onClick: () => props.onPick(item.next)
+				})]
+			}, `cell-${item.value}`))
 		})] });
 	}
 	/**
@@ -17503,12 +17503,99 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			})]
 		});
 	}
+	// src/components/FilterRow.tsx
+	/**
+	* 筛选行 —— **协调「同时只有一个方框展开」** 的地方。
+	*
+	* ## 为什么「只开一个」不能靠每个方框各挂一个 document 监听
+	*
+	* 上一版就是这个写法：每个 `FilterBox` 自己 `addEventListener('click')`，
+	* 互相靠「点到我在外面 ⇒ 收起」来收敛。
+	*
+	* **它错了。** 用户 `2026-11-16`：
+	* > 「点开一个按钮的时候点开另一个按钮，之前的不会收回去。」
+	* > 「组件应该是以一个按钮为单位的。而不是这一坨按钮组为单位。」
+	*
+	* 那种「靠副作用互相通知」的收敛是**涌现行为**，不是保证 ——
+	* 顺序、事件传播、重渲染任一处变动就可能失效，而且没法用单元测试证明。
+	*
+	* ## 正确做法：把「谁开着」变成一个显式的值
+	*
+	* ```ts
+	* const [openId, setOpenId] = useState<string | null>(null);
+	* ```
+	*
+	* · 点某个方框 ⇒ `setOpenId(那个 id)` ⇒ **其它方框自动变 `open=false`**（构造上互斥）
+	* · 点「当前开着的那个」外面 ⇒ `setOpenId(null)`
+	*
+	* ⇒ 「点 B 时 A 收起」不需要任何额外逻辑，它是 `openId` 只有一个值的直接结果。
+	*
+	* ## 「外面」= 按钮外面，不是这一行
+	*
+	* 用户 `2026-11-16`：
+	* > 「『外面』说的是按钮外面，不是放按钮的这一行。」
+	*
+	* ⇒ 判断依据是「点击路径里有没有**当前那个方框的 DOM 节点**」，
+	*   而不是「在不在这一行里」。点行内空白 ⇒ 收起。
+	*
+	* ⚠ 用 `composedPath()`，不用 `contains()`：点方框里的项时 React 会换掉那个节点，
+	*   冒泡到 document 时 `box.contains(target)` 已是 `false`（旧版注释记过这个坑）。
+	*/
+	/**
+	* 一行筛选方框。
+	*
+	* @param props 方框清单、变化回调、行尾内容
+	*/
+	function FilterRow(props) {
+		const [openId, setOpenId] = (0, import_react.useState)(null);
+		const rowRef = (0, import_react.useRef)(null);
+		const handleOpenChange = (0, import_react.useCallback)((id, next) => {
+			setOpenId(next ? id : null);
+		}, []);
+		(0, import_react.useEffect)(() => {
+			if (openId === null) return;
+			const onDocClick = (event) => {
+				const row = rowRef.current;
+				if (row === null) return;
+				const openBox = row.querySelector(`[data-box-id="${openId}"]`);
+				if (openBox === null) return;
+				if (event.composedPath().includes(openBox)) return;
+				setOpenId(null);
+			};
+			document.addEventListener("click", onDocClick);
+			return () => {
+				document.removeEventListener("click", onDocClick);
+			};
+		}, [openId]);
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			ref: rowRef,
+			className: "filter-row",
+			children: [
+				props.filters.map((spec) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
+					boxId: spec.id,
+					title: spec.title,
+					nodes: spec.nodes,
+					value: spec.value,
+					onChange: (next) => props.onChange(spec.id, next),
+					open: openId === spec.id,
+					onOpenChange: (next) => handleOpenChange(spec.id, next)
+				}, spec.id)),
+				props.trailing !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-row__spacer" }),
+				props.trailing
+			]
+		});
+	}
 	// src/preview/main.tsx
 	/**
 	* 组件预览入口 —— **只用于给用户看组件，不进产物、不进插件**。
 	*
-	* 由 `scripts/build-preview.mjs` 用 rolldown 打成一个**自包含 HTML**
-	* （React 和自己写的组件全打进去），双击即可打开。
+	* 由 `scripts/build-preview.mjs` 用 rolldown 打成一个**自包含 HTML**，双击即可打开。
+	*
+	* ⚠ 预览页**分别演示**两层：
+	*   · `FilterBox` 单个组件（受控：`open` 从外面给）
+	*   · `FilterRow` 一排（互斥在这里保证）
+	*
+	* 这样用户能看出「一个按钮为单位」是什么意思 —— 单个盒子自己不知道别的盒子存不存在。
 	*/
 	const STATUS = [
 		{
@@ -17627,114 +17714,108 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	}];
 	/** 预览页。 */
 	function App() {
-		const [status, setStatus] = (0, import_react.useState)(EMPTY_FILTER);
-		const [kind, setKind] = (0, import_react.useState)(EMPTY_FILTER);
-		const [domain, setDomain] = (0, import_react.useState)(EMPTY_FILTER);
+		const [solo, setSolo] = (0, import_react.useState)(EMPTY_FILTER);
+		const [soloOpen, setSoloOpen] = (0, import_react.useState)(false);
+		const [values, setValues] = (0, import_react.useState)({
+			status: EMPTY_FILTER,
+			kind: EMPTY_FILTER,
+			domain: EMPTY_FILTER
+		});
 		const [deep, setDeep] = (0, import_react.useState)(EMPTY_FILTER);
+		const specs = [
+			{
+				id: "status",
+				title: "状态",
+				nodes: STATUS,
+				value: values["status"] ?? EMPTY_FILTER
+			},
+			{
+				id: "kind",
+				title: "类别",
+				nodes: KINDS,
+				value: values["kind"] ?? EMPTY_FILTER
+			},
+			{
+				id: "domain",
+				title: "领域",
+				nodes: DOMAINS,
+				value: values["domain"] ?? EMPTY_FILTER
+			}
+		];
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			className: "preview",
 			children: [
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 					className: "pv-head",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "FilterBox" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "筛选方框 · 内联展开 · 层级不限 · 宽度动画" })]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "FilterBox / FilterRow" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "筛选方框 · 内联展开 · 层级不限 · 宽度动画 · 一个按钮为一个单位" })]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "三个筛选按钮（点开一个，另一个自动收起）" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "pv-row",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									title: "状态",
-									nodes: STATUS,
-									value: status,
-									onChange: setStatus
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									title: "类别",
-									nodes: KINDS,
-									value: kind,
-									onChange: setKind
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									title: "领域",
-									nodes: DOMAINS,
-									value: domain,
-									onChange: setDomain
-								})
-							]
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "① 真实用法：一排三个（互斥在这一层保证）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterRow, {
+							filters: specs,
+							onChange: (id, next) => {
+								setValues((prev) => ({
+									...prev,
+									[id]: next
+								}));
+							},
+							trailing: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								style: {
+									fontSize: 11,
+									color: "#9aa1ad"
+								},
+								children: "← 右边这里以后放搜索框"
+							})
 						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "pv-state",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "pv-k",
-									children: "status"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: JSON.stringify(status) })] }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "pv-k",
-									children: "kind"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: JSON.stringify(kind) })] }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "pv-k",
-									children: "domain"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: JSON.stringify(domain) })] })
-							]
+							children: specs.map((spec) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "pv-k",
+								children: spec.id
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: JSON.stringify(spec.value) })] }, spec.id))
 						})
 					]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "规则（按这个核对）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ol", {
-						className: "pv-list",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"点「状态」→ 方框变宽，出现 ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "草稿 | 进行 | 搁置 | 完成" }),
-								"（",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "这些是组，不是筛选值" }),
-								"）"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"点组「完成」→ ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "清空选择" }),
-								"，并展开它的子：",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "│ 成功 / 失败 / 取消 / 拒绝" })
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: ["再点「失败」→ 选中失败，收起态显示 ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成/失败" })] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "再点「失败」不会取消" }), " —— 它仍然是选中态（只保证子级展开着）"] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"点最左边的组名（如「进行」）→ ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "清空所有选择" }),
-								"，展开「进行」的子"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "已选中时收起态拆两个区：左边「清空并展开」，右边 ▾「只展开」" }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"点",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "这个按钮之外" }),
-								"任何地方（含同一行的空白、别的按钮）→ 收起"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "类别 / 领域没有组 → 只有一行" })
-						]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 单个组件（开合由外部灌入 —— 它不知道别的盒子存不存在）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "filter-row",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
+							boxId: "solo",
+							title: "状态",
+							nodes: STATUS,
+							value: solo,
+							open: soloOpen,
+							onChange: setSolo,
+							onOpenChange: setSoloOpen
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+							style: {
+								fontSize: 11,
+								color: "#9aa1ad",
+								marginLeft: 6
+							},
+							children: ["open = ", String(soloOpen)]
+						})]
 					})]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "三级（层级不写死）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 三级（层级不写死）" }),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 							className: "pv-note",
-							children: "点「组一」→ 出「甲 / 乙」；点「甲」→ 它既是选中、又展开「甲一 / 甲二」。 用户的规则：「点第3级时，就展开3的子，并选中3」。"
+							children: "点「组一」→ 出「甲 / 乙」；点「甲」→ 它既是选中、又展开「甲一 / 甲二」。"
 						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "pv-row",
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterRow, {
+							filters: [{
+								id: "deep",
 								title: "深层",
 								nodes: DEEP,
-								value: deep,
-								onChange: setDeep
-							})
+								value: deep
+							}],
+							onChange: (_id, next) => setDeep(next)
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "pv-state",
@@ -17747,46 +17828,97 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 核对清单" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ol", {
+						className: "pv-list",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"点「状态」→ 变宽出现 ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "草稿 | 进行 | 搁置 | 完成" }),
+								"（这些是组，第 0 级）"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"点组「完成」→ ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "清空选择" }),
+								"，展开它的子 ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "│ 成功 / 失败 / 取消 / 拒绝" })
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "不选叶子直接点外面" }),
+								" → 收起态必须显示 ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成" }),
+								"（组是第 0 级，也是选中的东西）"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: ["再点「失败」→ 收起态 ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成/失败" })] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "再点「失败」不会取消" }), " —— 它仍是选中（用户：点选中的就是展开到他）"] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"点最左边的组名（如「进行」）→ ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "清空所有选择" }),
+								"，展开「进行」的子"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "点开「类别」时「状态」必须自动收起" }), "（一个按钮为单位）"] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"点",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "这个按钮之外" }),
+								"任何地方（含同一行的空白）→ 收起"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "类别 / 领域没有组 → 只有一行" })
+						]
+					})]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "已选态（看收起态显示对不对，不用点开）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "⑤ 已选态（看收起态显示对不对，不用点开）" }),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "pv-row",
+							className: "filter-row",
 							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									title: "状态",
-									nodes: STATUS,
-									value: {
-										group: "ended",
-										picked: ["failed"]
-									},
-									onChange: () => void 0
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									title: "类别",
-									nodes: KINDS,
-									value: {
-										group: "",
-										picked: ["work"]
-									},
-									onChange: () => void 0
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									title: "深层",
-									nodes: DEEP,
-									value: {
-										group: "g1",
-										picked: ["a", "a2"]
-									},
-									onChange: () => void 0
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
+									boxId: "a",
 									title: "状态",
 									nodes: STATUS,
 									value: {
 										group: "ended",
 										picked: []
 									},
-									onChange: () => void 0
+									open: false,
+									onChange: () => void 0,
+									onOpenChange: () => void 0
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
+									boxId: "b",
+									title: "状态",
+									nodes: STATUS,
+									value: {
+										group: "ended",
+										picked: ["failed"]
+									},
+									open: false,
+									onChange: () => void 0,
+									onOpenChange: () => void 0
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
+									boxId: "c",
+									title: "类别",
+									nodes: KINDS,
+									value: {
+										group: "",
+										picked: ["work"]
+									},
+									open: false,
+									onChange: () => void 0,
+									onOpenChange: () => void 0
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
+									boxId: "d",
+									title: "深层",
+									nodes: DEEP,
+									value: {
+										group: "g1",
+										picked: ["a", "a2"]
+									},
+									open: false,
+									onChange: () => void 0,
+									onOpenChange: () => void 0
 								})
 							]
 						}),
@@ -17794,51 +17926,16 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 							className: "pv-note",
 							children: [
 								"期望：",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成" }),
+								" · ",
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成/失败" }),
-								" · ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "类别：工作" }),
 								" ·",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "深层：组一/甲/甲二" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "类别：工作" }),
 								" · ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态" }),
-								"（只进组没选值 = 只画标题）"
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "深层：组一/甲/甲二" })
 							]
 						})
 					]
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-					className: "pv-block",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "平铺行（就是真实放进工具栏的样子）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "filter-row",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-								title: "状态",
-								nodes: STATUS,
-								value: status,
-								onChange: setStatus
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-								title: "类别",
-								nodes: KINDS,
-								value: kind,
-								onChange: setKind
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-								title: "领域",
-								nodes: DOMAINS,
-								value: domain,
-								onChange: setDomain
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1 } }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								style: {
-									fontSize: 11,
-									color: "#9aa1ad"
-								},
-								children: "← 右边这里以后放搜索框"
-							})
-						]
-					})]
 				})
 			]
 		});

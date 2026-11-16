@@ -216,11 +216,16 @@ export function rowsOf(
  *
  * | 状态 | 显示 |
  * |---|---|
- * | 没进入组 / 没选值 | `''`（组件只画标题）|
+ * | 什么都没进、没选 | `''`（组件只画标题）|
+ * | **只进了组、没选值** | **组名**（`完成`）|
  * | 选了 `[失败]`，组是 `完成` | `完成/失败` |
  * | 选了 `[成功, 变体]`，组是 `完成` | `完成/成功/变体` |
  *
- * ⚠ 组名只是**路径前缀**，不是筛选值 —— 但显示出来用户才知道自己筛的是哪一支。
+ * ⚠ **只进组也要显示组名。** 用户 `2026-11-16`：
+ * > 「这个状态收回去的时候，这个『完成』不会作为子显示。」
+ *
+ * 语义上「点组 = 选中第 0 级」，所以第 0 级也是一个「选中的东西」，
+ * 收起态必须显示它 —— 否则用户不知道这个方框当前停在哪一支。
  *
  * @param nodes 根节点
  * @param state 当前状态
@@ -229,13 +234,9 @@ export function selectionText(
 	nodes: readonly FilterNode[],
 	state: FilterState,
 ): string {
-	if (state.picked.length === 0) return '';
-
-	/*
-	 * 无组方框（类别 / 领域）：没有第 0 级，`picked` 直接从根开始。
-	 * ⇒ 逐级查根节点即可。
-	 */
+	/* 无组方框（类别 / 领域）：没有第 0 级，`picked` 直接从根开始。 */
 	if (!hasGroups(nodes)) {
+		if (state.picked.length === 0) return '';
 		const labels: string[] = [];
 		let level: readonly FilterNode[] = nodes;
 		for (const value of state.picked) {
@@ -251,17 +252,18 @@ export function selectionText(
 	}
 
 	/*
-	 * 有组方框：显示的是**从组开始的路径** —— 用户要知道自己筛的是哪一支。
-	 * `state.group` 是根上的一级，之后每一段都在上一段的 children 里。
+	 * 有组方框：路径从组开始。
+	 * 组名本身就是第 0 级的选择 —— **没选叶子时也要显示**。
 	 */
-	const labels: string[] = [];
-	let level: readonly FilterNode[] = nodes;
+	const groupNode = nodes.find((one) => one.value === state.group);
+	if (groupNode === undefined) {
+		return state.picked.length === 0 ? '' : state.picked.join('/');
+	}
 
-	const groupNode = level.find((one) => one.value === state.group);
-	if (groupNode === undefined) return state.picked.join('/');
+	if (state.picked.length === 0) return groupNode.label;
 
-	labels.push(groupNode.label);
-	level = groupNode.children ?? [];
+	const labels: string[] = [groupNode.label];
+	let level: readonly FilterNode[] = groupNode.children ?? [];
 
 	for (const value of state.picked) {
 		const hit = level.find((one) => one.value === value);
@@ -277,30 +279,30 @@ export function selectionText(
 }
 
 /**
- * 收起态要不要拆成两个可点区。
+ * 当前有没有任何选择（含第 0 级的组）。
  *
- * 旧版用户指令（仍然有效）：
- * > 「筛选选中以后，左边和右边至少要有一个是点击取消并展开，一个是单纯展开。……
- * >  取消筛选是很常规的用法。」
+ * 用来决定收起态要不要显示值、要不要出现清空按钮。
  *
- * ⇒ 有选中时：**左**（标题＋已选值）＝ 清空选择并展开；**右 ▾** ＝ 只展开。
+ * ⚠ **不要用它决定「点方框主体干什么」。** 那件事与有没有值无关：
+ *   点方框主体永远是「展开并保持当前选择」。
+ *   上一版把它错当成「有值 ⇒ 点主体 = 清空」，结果用户点开一个已筛选的方框
+ *   时值被清掉了（用户 `2026-11-16` 报的 bug 就是这个的变体）。
  *
  * @param state 当前状态
  */
-export function collapsedSplit(state: FilterState): boolean {
-	return state.picked.length > 0;
+export function hasSelection(state: FilterState): boolean {
+	return state.group !== '' || state.picked.length > 0;
 }
 
 /**
- * 清空选择但**保留当前组**（用于收起态的「取消筛选」区）。
+ * 清空**全部**选择（含组）。
  *
- * 为什么不直接 `EMPTY_FILTER`：用户点「取消」是**只想去掉筛选**，
- * 不是想退出这个组 —— 退出组会让方框整个收成一行，反而要多点一次。
+ * 只由收起态那个**独立的 ✕ 按钮**调用 —— 不是点方框主体。
  *
- * @param state 当前状态
+ * @param _state 当前状态（保留参数为了调用点对称）
  */
-export function clearPicked(state: FilterState): FilterState {
-	return { group: state.group, picked: [] };
+export function clearPicked(_state: FilterState): FilterState {
+	return EMPTY_FILTER;
 }
 
 /**

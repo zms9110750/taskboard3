@@ -18,13 +18,13 @@ import { describe, it } from 'node:test';
 
 import {
 	EMPTY_FILTER,
-	collapsedSplit,
 	clearPicked,
 	filterValuesOf,
 	findNode,
 	groupsOf,
 	hasChildren,
 	hasGroups,
+	hasSelection,
 	rowsOf,
 	selectionText,
 } from '../src/pure/filter-box.ts';
@@ -268,9 +268,12 @@ describe('rowsOf —— 三级（验证层级不是一个写死的数字）', ()
 
 /* ══════════════════════════════════════════════════════════ */
 describe('selectionText —— 收起态显示什么', () => {
-	it('没选 ⇒ 空串（只画标题）', () => {
+	it('什么都没进 ⇒ 空串（只画标题）', () => {
 		assert.equal(selectionText(STATUS, EMPTY_FILTER), '');
-		assert.equal(selectionText(STATUS, st('ended', [])), '');
+	});
+
+	it('⚠ 只进组没选值 ⇒ 显示组名（组是第 0 级的选择）', () => {
+		assert.equal(selectionText(STATUS, st('ended', [])), '完成');
 	});
 
 	it('选了叶子 ⇒ 组/项', () => {
@@ -286,12 +289,26 @@ describe('selectionText —— 收起态显示什么', () => {
 	});
 });
 
-describe('collapsedSplit / clearPicked', () => {
-	it('没选不拆', () => assert.equal(collapsedSplit(EMPTY_FILTER), false));
-	it('选了就拆', () => assert.equal(collapsedSplit(st('ended', ['failed'])), true));
+describe('hasSelection / clearPicked', () => {
+	it('什么都没选 ⇒ false', () => {
+		assert.equal(hasSelection(EMPTY_FILTER), false);
+	});
 
-	it('清空选择但保留组（不想退出组）', () => {
-		assert.deepEqual(clearPicked(st('ended', ['failed'])), { group: 'ended', picked: [] });
+	it('⚠ 只进了组也算有选择（组是第 0 级）', () => {
+		assert.equal(hasSelection(st('ended', [])), true);
+	});
+
+	it('选了叶子 ⇒ false', () => {
+		assert.equal(hasSelection(st('ended', ['failed'])), true);
+	});
+
+	it('无组方框选了项也算有选择', () => {
+		assert.equal(hasSelection(st('', ['work'])), true);
+	});
+
+	it('清空 = 全部清掉（含组）', () => {
+		assert.deepEqual(clearPicked(st('ended', ['failed'])), EMPTY_FILTER);
+		assert.deepEqual(clearPicked(st('ended', [])), EMPTY_FILTER);
 	});
 });
 

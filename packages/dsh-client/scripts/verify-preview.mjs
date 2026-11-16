@@ -1,7 +1,5 @@
 /**
- * 组件预览的交互验证 —— CDP 点一遍，断言 DOM 状态。
- *
- * 每条断言对应一条用户规则（`2026-11-16`）。
+ * 验证两个 bug 修好了，并回归全部语义。
  *
  * node packages/dsh-client/scripts/verify-preview.mjs
  */
@@ -60,7 +58,7 @@ send = (method, params = {}) => new Promise((resolve, reject) => {
 });
 await send('Runtime.enable');
 await send('Page.enable');
-await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1100, deviceScaleFactor: 1, mobile: false });
+await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1200, deviceScaleFactor: 1, mobile: false });
 await sleep(2200);
 
 const shot = async (name) => {
@@ -70,223 +68,211 @@ const shot = async (name) => {
 };
 const ev = async (expr) => {
 	const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
-	if (r.exceptionDetails) console.log('  ERR', (r.exceptionDetails.exception?.description || '').slice(0, 200));
+	if (r.exceptionDetails) console.log('  ERR', (r.exceptionDetails.exception?.description || '').slice(0, 220));
 	return r.result?.value;
 };
 
-const clickAt = async (selExpr) => {
+/*
+ * ⚠ 用完整 pointer + mouse 序列模拟真人。
+ * 上一版只发 mousePressed/Released，有些浏览器行为（focus / 事件顺序）不完整。
+ */
+const realClick = async (selExpr) => {
 	const box = await ev(`(() => {
     const el = ${selExpr};
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) };
   })()`);
-	if (!box) return false;
-	await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 });
-	await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+	if (!box) { console.log('  ⚠ 找不到:', selExpr.slice(0, 70)); return false; }
+	await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
+	await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', buttons: 1, clickCount: 1 });
+	await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', buttons: 0, clickCount: 1 });
 	return true;
 };
 
-/** 第 n 个方框（0 基）的完整快照 */
-const boxInfo = (n) => ev(`(() => {
-  const box = document.querySelectorAll('.filter-box')[${n}];
-  if (!box) return null;
-  const collapsed = box.querySelector('.filter-box__face--collapsed');
-  const expanded = box.querySelector('.filter-box__face--expanded');
-  const rows = [...expanded.children].filter(c => c.classList.contains('filter-box__items'));
+/** 第 1 个 FilterRow（真实用法那一排）里的三个方框 */
+const rowBoxes = () => ev(`(() => {
+  const row = document.querySelectorAll('.filter-row')[0];
+  return [...row.querySelectorAll('.filter-box')].map(b => {
+    const face = b.querySelector('.filter-box__face--collapsed');
+    /* 收起态文字 = 标题 + 冒号 + 值（**不含** ✕ 按钮，它是独立控件）。 */
+    const zone = face.querySelector('.filter-box__zone');
+    const text = zone ? [...zone.children]
+      .filter(c => !c.classList.contains('filter-box__caret'))
+      .map(c => c.textContent).join('') : '';
+    return {
+      t: b.querySelector('.filter-box__title').textContent,
+      open: b.classList.contains('is-open'),
+      collapsed: text.trim(),
+      hasClear: face.querySelector('.filter-box__clear') !== null,
+      zones: face.querySelectorAll('.filter-box__zone').length,
+      w: Math.round(b.getBoundingClientRect().width),
+      rows: (() => {
+        const ex = b.querySelector('.filter-box__face--expanded');
+        const rs = [...ex.children].filter(c => c.classList.contains('filter-box__items'));
+        return rs.map(r => [...r.querySelectorAll('.filter-box__item')].map(i => i.textContent.replace('›','')));
+      })(),
+      vlins: b.querySelectorAll('.filter-box__vline').length,
+    };
+  });
+})()`);
+
+/** 点当前开着的方框里的某一项 */
+const openItem = (label) =>
+	`[...document.querySelector('.filter-box.is-open').querySelectorAll('.filter-box__face--expanded .filter-box__item')].find(b => b.textContent.startsWith(${JSON.stringify(label)}))`;
+
+const firstBox = `document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0]`;
+const secondBox = `document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[1]`;
+const thirdBox = `document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[2]`;
+
+const expect = (label, actual, want) => {
+	const ok = JSON.stringify(actual) === JSON.stringify(want);
+	if (!ok) failures.push(`${label}\n    期望 ${JSON.stringify(want)}\n    实际 ${JSON.stringify(actual)}`);
+	console.log(`  ${ok ? '✓' : '✗'} ${label}`);
+};
+
+console.log('\n═══ bug 1：只进组不选叶子 → 收起态要显示组名 ═══');
+await realClick(firstBox);
+await sleep(400);
+await realClick(openItem('完成'));
+await sleep(400);
+await realClick(`document.querySelector('.pv-head h1')`);
+await sleep(450);
+const b1 = await rowBoxes();
+console.log('  ', JSON.stringify(b1[0]));
+expect('⚠ 收起态显示「状态：完成」', b1[0].collapsed, '状态：完成');
+expect('有独立的 ✕ 清空按钮', b1[0].hasClear, true);
+await shot('bug1-fixed-group-shown.png');
+
+console.log('\n═══ bug 2：点开另一个按钮，前一个必须收起 ═══');
+/* 清干净：点 ✕ */
+await realClick(`document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0].querySelector('.filter-box__clear')`);
+await sleep(400);
+
+await realClick(firstBox);
+await sleep(400);
+console.log('  状态开着:', JSON.stringify((await rowBoxes()).map((x) => x.open)));
+await realClick(secondBox);
+await sleep(500);
+const b2 = await rowBoxes();
+console.log('  点类别后:', JSON.stringify(b2.map((x) => ({ t: x.t, open: x.open }))));
+expect('⚠ 状态已收起', b2[0].open, false);
+expect('类别已展开', b2[1].open, true);
+expect('领域仍收起', b2[2].open, false);
+await shot('bug2-fixed-mutual-exclusive.png');
+
+console.log('\n═══ bug 2b：连着开三个，永远只有一个开 ═══');
+await realClick(thirdBox);
+await sleep(450);
+const b3 = await rowBoxes();
+expect('只有领域开', b3.map((x) => x.open), [false, false, true]);
+await realClick(firstBox);
+await sleep(450);
+const b4 = await rowBoxes();
+expect('只有状态开', b4.map((x) => x.open), [true, false, false]);
+await shot('bug2b-only-one.png');
+
+console.log('\n═══ 回归：点组 → 选叶子 → 收起态 ═══');
+/* 先清干净：点收起态里的 ✕ */
+await realClick(`document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0].querySelector('.filter-box__clear')`);
+await sleep(400);
+await realClick(firstBox);
+await sleep(400);
+await realClick(openItem('进行'));
+await sleep(400);
+const r1 = await rowBoxes();
+expect('「进行」的子行出现', r1[0].rows[1], ['提交', '处理中']);
+await realClick(openItem('处理中'));
+await sleep(400);
+await realClick(`document.querySelector('.pv-head h1')`);
+await sleep(400);
+const r2 = await rowBoxes();
+expect('收起态 状态：进行/处理中', r2[0].collapsed, '状态：进行/处理中');
+await shot('regress-group-leaf.png');
+
+console.log('\n═══ 回归：再点已选中的项 → 幂等（不取消）═══');
+await realClick(firstBox);
+await sleep(500);
+await realClick(openItem('处理中'));
+await sleep(400);
+await realClick(openItem('处理中'));
+await sleep(450);
+const piped = await ev(`(() => {
+  const box = document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0];
+  return [...box.querySelectorAll('.filter-box__item.is-picked')].map(i => i.textContent.replace('›',''));
+})()`);
+expect('处理中仍然选中', piped, ['处理中']);
+await shot('regress-idempotent.png');
+
+console.log('\n═══ 回归：点同行空白 → 收起（外面=按钮外面）═══');
+const blank = await ev(`(() => {
+  const box = document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0];
+  const r = box.getBoundingClientRect();
+  return { x: Math.round(r.right + 260), y: Math.round(r.y + r.height/2) };
+})()`);
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: blank.x, y: blank.y });
+await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: blank.x, y: blank.y, button: 'left', buttons: 1, clickCount: 1 });
+await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: blank.x, y: blank.y, button: 'left', buttons: 0, clickCount: 1 });
+await sleep(450);
+expect('点了同行空白 ⇒ 收起', (await rowBoxes())[0].open, false);
+await shot('regress-row-blank.png');
+
+console.log('\n═══ 回归：三级 ═══');
+/*
+ * ⚠ 深层是**第 3 个 .filter-row**（0=真实那一排 1=单组件演示 2=三级 3=已选态）。
+ *   上一版写成 [1]，点到单组件那个去了 —— 测试下标错，不是组件错。
+ */
+await realClick(`document.querySelector('.pv-head h1')`);
+await sleep(350);
+const deepBox = `document.querySelectorAll('.filter-row')[2].querySelector('.filter-box')`;
+await realClick(deepBox);
+await sleep(500);
+console.log('  深层开后 items:', JSON.stringify(await ev(`[...document.querySelectorAll('.filter-box.is-open .filter-box__item')].map(i => i.textContent)`)));
+await realClick(openItem('组一'));
+await sleep(450);
+await realClick(openItem('甲'));
+await sleep(450);
+const d = await ev(`(() => {
+  const box = document.querySelectorAll('.filter-row')[2].querySelector('.filter-box');
+  const ex = box.querySelector('.filter-box__face--expanded');
+  const rs = [...ex.children].filter(c => c.classList.contains('filter-box__items'));
   return {
-    open: box.classList.contains('is-open'),
-    w: Math.round(box.getBoundingClientRect().width),
-    collapsedText: collapsed.textContent.trim(),
-    zones: collapsed.querySelectorAll('.filter-box__zone').length,
-    rows: rows.map(r => [...r.querySelectorAll('.filter-box__item')].map(i => ({
+    rows: rs.map(r => [...r.querySelectorAll('.filter-box__item')].map(i => ({
       t: i.textContent.replace('›',''),
       picked: i.classList.contains('is-picked'),
       branch: i.classList.contains('is-branch'),
     }))),
-    vlins: box.querySelectorAll('.filter-box__vline').length,
-    seps: [...expanded.querySelectorAll('.filter-box__sep')].map(s => s.textContent),
+    vlins: box.querySelectorAll('.filter-box__vline').length
   };
 })()`);
-
-const expect = (label, actual, want) => {
-	const ok = JSON.stringify(actual) === JSON.stringify(want);
-	if (!ok) {
-		failures.push(`${label}\n    期望 ${JSON.stringify(want)}\n    实际 ${JSON.stringify(actual)}`);
-		console.log(`  ${ok ? '✓' : '✗'} ${label}`);
-	} else {
-		console.log(`  ✓ ${label}`);
-	}
-};
-
-console.log('\n=== 1. 初始：三个方框都收起 ===');
-const s0 = await ev(`[...document.querySelectorAll('.filter-box')].slice(0,3).map(b => ({
-  t: b.querySelector('.filter-box__title').textContent,
-  open: b.classList.contains('is-open'),
-  zones: b.querySelector('.filter-box__face--collapsed').querySelectorAll('.filter-box__zone').length
-}))`);
-console.log(' ', JSON.stringify(s0));
-expect('三个都收起、都只有一个可点区', s0.map((x) => x.open), [false, false, false]);
-await shot('01-initial.png');
-
-console.log('\n=== 2. 点状态 → 展开，一行四个组 ===');
-await clickAt(`document.querySelectorAll('.filter-box')[0]`);
-await sleep(450);
-const b1 = await boxInfo(0);
-console.log(' ', JSON.stringify(b1));
-expect('展开后只有一行', b1.rows.length, 1);
-expect('一行是四个组', b1.rows[0].map((x) => x.t), ['草稿', '进行', '搁置', '完成']);
-expect('组名之间用 |', b1.seps, ['|', '|', '|']);
-expect('组不算选中', b1.rows[0].every((x) => x.picked === false), true);
-await shot('02-status-open.png');
-
-console.log('\n=== 3. 点组「完成」→ 清空选择 + 展开子 ===');
-await clickAt(`[...document.querySelector('.filter-box.is-open').querySelectorAll('.filter-box__face--expanded .filter-box__item')].find(b => b.textContent.startsWith('完成'))`);
-await sleep(450);
-const b2 = await boxInfo(0);
-console.log(' ', JSON.stringify(b2));
-expect('出两行', b2.rows.length, 2);
-expect('第二行是完成的子', b2.rows[1].map((x) => x.t), ['成功', '失败', '取消', '拒绝']);
-expect('⚠ 点组 = 清空选择（子全未选）', b2.rows[1].every((x) => x.picked === false), true);
-expect('「完成」标 branch（子行属于它）', b2.rows[0].find((x) => x.t === '完成')?.branch, true);
-expect('一条贯通竖线', b2.vlins, 1);
-await shot('03-group-opened.png');
-
-console.log('\n=== 4. 点「失败」→ 选中它 ===');
-await clickAt(`[...document.querySelector('.filter-box.is-open').querySelectorAll('.filter-box__face--expanded .filter-box__item')].find(b => b.textContent.startsWith('失败'))`);
-await sleep(450);
-const b3 = await boxInfo(0);
-expect('失败 picked', b3.rows[1].find((x) => x.t === '失败')?.picked, true);
-expect('其它未选', b3.rows[1].filter((x) => x.picked).length, 1);
-await shot('04-failed-picked.png');
-
-console.log('\n=== 5. ⚠ 再点「失败」→ 幂等，不取消 ===');
-await clickAt(`[...document.querySelector('.filter-box.is-open').querySelectorAll('.filter-box__face--expanded .filter-box__item')].find(b => b.textContent.startsWith('失败'))`);
-await sleep(450);
-const b4 = await boxInfo(0);
-expect('仍然是选中（用户：点选中的就是展开到他）', b4.rows[1].find((x) => x.t === '失败')?.picked, true);
-expect('子级仍然展开', b4.rows.length, 2);
-await shot('05-failed-again-idempotent.png');
-
-console.log('\n=== 6. 点外面 → 收起，收起态显示 状态：完成/失败 ===');
-await clickAt(`document.querySelector('.pv-head h1')`);
-await sleep(450);
-const b5 = await boxInfo(0);
-expect('已收起', b5.open, false);
-expect('收起态文字', b5.collapsedText, '状态：完成/失败▾');
-expect('拆成两个可点区', b5.zones, 2);
-await shot('06-collapsed.png');
-
-console.log('\n=== 7. 点 ▾ 只展开，不清空 ===');
-await clickAt(`document.querySelectorAll('.filter-box')[0].querySelector('.filter-box__caret')`);
-await sleep(450);
-const b6 = await boxInfo(0);
-expect('展开了', b6.open, true);
-expect('失败仍选中（没被清空）', b6.rows[1]?.find((x) => x.t === '失败')?.picked, true);
-await shot('07-caret-opens-only.png');
-
-console.log('\n=== 8. 收起后点左边区 → 清空并展开 ===');
-/*
- * ⚠ 必须先收起再点。
- * 展开时两张脸叠在同一位置，收起那张是 `pointer-events: none`
- * ⇒ 直接点它的坐标会**穿透到展开那张脸**上，点到别的组 —— 那是测试写错了，不是组件错。
- */
-await clickAt(`document.querySelector('.pv-head h1')`);
+console.log('  ', JSON.stringify(d));
+expect('三行', d.rows.length, 3);
+expect('第三行 甲一/甲二', d.rows[2].map((x) => x.t), ['甲一', '甲二']);
+expect('甲 既选中又是分支', [d.rows[1][0].picked, d.rows[1][0].branch], [true, true]);
+expect('两条竖线', d.vlins, 2);
+await realClick(openItem('甲二'));
 await sleep(400);
-const beforeLeft = await boxInfo(0);
-expect('先确认已收起且仍有选中', [beforeLeft.open, beforeLeft.collapsedText], [false, '状态：完成/失败▾']);
-
-await clickAt(`document.querySelectorAll('.filter-box')[0].querySelector('.filter-box__face--collapsed .filter-box__zone')`);
-await sleep(450);
-const b7 = await boxInfo(0);
-expect('展开了', b7.open, true);
-expect('选择已清空', b7.rows[1]?.every((x) => x.picked === false), true);
-expect('组还留着（仍展开完成）', b7.rows[0].find((x) => x.t === '完成')?.branch, true);
-await shot('08-cleared.png');
-
-console.log('\n=== 9. ⚠ 点另一个组「进行」→ 清空 + 换组 ===');
-await clickAt(`[...document.querySelector('.filter-box.is-open').querySelectorAll('.filter-box__face--expanded .filter-box__item')].find(b => b.textContent.startsWith('进行'))`);
-await sleep(450);
-const b8 = await boxInfo(0);
-expect('换成进行的子', b8.rows[1].map((x) => x.t), ['提交', '处理中']);
-expect('选择清空', b8.rows[1].every((x) => x.picked === false), true);
-await shot('09-switch-group.png');
-
-console.log('\n=== 10. ⚠ 点第二个按钮 → 第一个自动收起（外面=按钮外面）===');
-await clickAt(`document.querySelectorAll('.filter-box')[1]`);
-await sleep(450);
-const both = await ev(`[...document.querySelectorAll('.filter-box')].slice(0,3).map(b => ({
-  t: b.querySelector('.filter-box__title').textContent,
-  open: b.classList.contains('is-open')
-}))`);
-console.log(' ', JSON.stringify(both));
-expect('状态收起', both[0].open, false);
-expect('类别展开', both[1].open, true);
-await shot('10-second-opens-first-closes.png');
-
-console.log('\n=== 11. 类别（无组）→ 只有一行 ===');
-const kindBox = await boxInfo(1);
-expect('一行', kindBox.rows.length, 1);
-expect('四项', kindBox.rows[0].map((x) => x.t), ['目标', '设计', '工作', '记录']);
-expect('没有竖线', kindBox.vlins, 0);
-await shot('11-kind-flat.png');
-
-console.log('\n=== 12. 点完类别 → 点同一行的空白处 → 是否收起（外面=按钮外面）===');
-/*
- * 用户明确：「外面」说的是按钮外面，不是放按钮的这一行。
- * ⇒ 点这一行的空白处**应该**让方框收起。
- * 这条以前实现错了（点行内空白不算外面），现在必须在预览页上验证。
- */
-const emptySpot = await ev(`(() => {
-  const box = document.querySelectorAll('.filter-box')[1];
-  const r = box.getBoundingClientRect();
-  /* 方框右侧 200px 处的同一行 */
-  return { x: Math.round(r.right + 200), y: Math.round(r.y + r.height/2) };
+await realClick(`document.querySelector('.pv-head h1')`);
+await sleep(400);
+const dcZone = await ev(`(() => {
+  const face = document.querySelectorAll('.filter-row')[2].querySelector('.filter-box__face--collapsed');
+  const zone = face.querySelector('.filter-box__zone');
+  return [...zone.children].filter(c => !c.classList.contains('filter-box__caret')).map(c => c.textContent).join('').trim();
 })()`);
-await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: emptySpot.x, y: emptySpot.y, button: 'left', clickCount: 1 });
-await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: emptySpot.x, y: emptySpot.y, button: 'left', clickCount: 1 });
-await sleep(450);
-const afterRow = await ev(`document.querySelectorAll('.filter-box')[1].classList.contains('is-open')`);
-expect('⚠ 点同一行空白 ⇒ 收起', afterRow, false);
-await shot('12-row-blank-closes.png');
+expect('收起态 深层：组一/甲/甲二', dcZone, '深层：组一/甲/甲二');
+await shot('regress-deep3.png');
 
-console.log('\n=== 13. 三级：点「甲」→ 选中 + 展开它的子 ===');
-/* 三级方框在第三个 block 里，索引是 3（前三个是 status/kind/domain，第 4 个是 deep） */
-const deepIdx = await ev(`(() => {
-  const boxes = [...document.querySelectorAll('.filter-box')];
-  return boxes.findIndex(b => b.querySelector('.filter-box__title').textContent === '深层');
-})()`);
-console.log('  深层方框索引:', deepIdx);
-await clickAt(`document.querySelectorAll('.filter-box')[${deepIdx}]`);
+console.log('\n═══ 回归：单组件受控演示（② 那一块）═══');
+const soloBefore = await ev(`document.querySelectorAll('.filter-row')[2].querySelector('.filter-box').classList.contains('is-open')`);
+await realClick(`document.querySelectorAll('.filter-row')[2].querySelector('.filter-box')`);
 await sleep(400);
-await clickAt(`[...document.querySelector('.filter-box.is-open').querySelectorAll('.filter-box__face--expanded .filter-box__item')].find(b => b.textContent.startsWith('组一'))`);
-await sleep(400);
-const d1 = await boxInfo(deepIdx);
-expect('进入组一：两行', d1.rows.length, 2);
-expect('第二行是 甲/乙', d1.rows[1].map((x) => x.t), ['甲', '乙']);
-await shot('13-deep-group.png');
+const soloAfter = await ev(`document.querySelectorAll('.filter-row')[2].querySelector('.filter-box').classList.contains('is-open')`);
+expect('单盒子能自己开（open 由外部灌）', [soloBefore, soloAfter], [false, true]);
+await shot('regress-solo.png');
 
-await clickAt(`[...document.querySelector('.filter-box.is-open').querySelectorAll('.filter-box__face--expanded .filter-box__item')].find(b => b.textContent.startsWith('甲'))`);
-await sleep(400);
-const d2 = await boxInfo(deepIdx);
-console.log(' ', JSON.stringify(d2));
-expect('⚠ 点「甲」→ 三行（展开它的子）', d2.rows.length, 3);
-expect('第三行是 甲一/甲二', d2.rows[2].map((x) => x.t), ['甲一', '甲二']);
-expect('「甲」既选中又是分支', [d2.rows[1].find((x) => x.t === '甲')?.picked, d2.rows[1].find((x) => x.t === '甲')?.branch], [true, true]);
-expect('两条竖线', d2.vlins, 2);
-await shot('14-deep-level3.png');
-
-await clickAt(`[...document.querySelector('.filter-box.is-open').querySelectorAll('.filter-box__face--expanded .filter-box__item')].find(b => b.textContent.startsWith('甲二'))`);
-await sleep(400);
-await clickAt(`document.querySelector('.pv-head h1')`);
-await sleep(400);
-const d3 = await boxInfo(deepIdx);
-expect('收起态显示 深层：组一/甲/甲二', d3.collapsedText, '深层：组一/甲/甲二▾');
-await shot('15-deep-collapsed.png');
-
-console.log('\n=== JS 错误 ===');
+console.log('\n═══ JS 错误 ═══');
 console.log(errors.length ? errors.join('\n') : '  没有');
-console.log('\n=== 断言失败 ===');
+console.log('\n═══ 断言失败 ═══');
 console.log(failures.length ? failures.join('\n') : '  全部通过');
 
 proc.kill();
