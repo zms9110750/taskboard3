@@ -1,43 +1,35 @@
 /**
  * `pure/filter-box.ts` 的测试 —— **纯函数，零 DOM、零 mock**。
  *
- * ## 语义来源（用户 `2026-11-16`）
+ * ## 语义来源（用户 `2026-11-16`，第三版定义）
  *
- * > 在有东西选中时，点击那个选中的状态：展开到选中他（例如以后如果有4级，5级，
- * > 在点击第3级的时候，就展开3的子，并选中3）。点击最左边的组名时，展开并取消所有
- * > 选择（换句话说，组等于第0级，语义和点击第x级时选择第x级并展开第x的子是一样的逻辑）
+ * > 「你不知道面包屑导航吗？我说的是点到谁就选中谁。点到完成，就选中完成。
+ * >  那么完成的子级的选中就要取消掉。列出『完成』的子项。」
+ * > 「除此以外，只展示两个层级。」
+ * > 「比如选中了 1/2/3/2/4，那么就要这样列出
+ * >  1/2/3/2 | 1 / 2 / 3 / 4 | 1 / 2 / 3」
  *
- * ⇒ 统一规则：点第 N 级 = 选中它 + 展开它的子。
- *   点组（第 0 级）= 清空选择 + 进入这个组。
- *
- * **旧版的「再点同一项 = 取消」已被这条指令推翻** —— 取消只有「点组名」一个入口。
+ * ⇒ 三段：①面包屑（祖先）②当前层兄弟（含选中）③选中项的子
+ *   ②③是可点的，①只用于「跳回上层」。
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-	EMPTY_FILTER,
-	clearPicked,
-	filterValuesOf,
-	findNode,
-	groupsOf,
 	hasChildren,
-	hasGroups,
 	hasSelection,
-	rowsOf,
+	pickOf,
+	resolvePath,
 	selectionText,
+	viewOf,
 } from '../src/pure/filter-box.ts';
-import type { FilterNode, FilterState } from '../src/pure/filter-box.ts';
+import type { FilterNode } from '../src/pure/filter-box.ts';
 
-/* ── 夹具一：状态（两级，有组） ── */
+/* ── 夹具一：状态（两级：组 + 状态） ── */
 
 const STATUS: readonly FilterNode[] = [
-	{
-		value: 'draft',
-		label: '草稿',
-		children: [{ value: 'unspecified', label: '未指定' }],
-	},
+	{ value: 'draft', label: '草稿', children: [{ value: 'unspecified', label: '未指定' }] },
 	{
 		value: 'active',
 		label: '进行',
@@ -66,7 +58,7 @@ const STATUS: readonly FilterNode[] = [
 	},
 ];
 
-/* ── 夹具二：类别（一层平铺，无组） ── */
+/* ── 夹具二：类别（一层平铺） ── */
 
 const KINDS: readonly FilterNode[] = [
 	{ value: 'goal', label: '目标' },
@@ -75,254 +67,223 @@ const KINDS: readonly FilterNode[] = [
 	{ value: 'record', label: '记录' },
 ];
 
-/* ── 夹具三：三级（验证「无限层级」） ── */
+/* ── 夹具三：深四层（对应用户举的 1/2/3/2/4） ── */
+
+const N: FilterNode = (v: string, kids?: readonly FilterNode[]): FilterNode =>
+	kids === undefined
+		? { value: v, label: v }
+		: { value: v, label: v, children: kids };
 
 const DEEP: readonly FilterNode[] = [
-	{
-		value: 'g',
-		label: '组',
-		children: [
-			{
-				value: 'a',
-				label: '甲',
-				children: [
-					{ value: 'a1', label: '甲一' },
-					{ value: 'a2', label: '甲二' },
-				],
-			},
-			{
-				value: 'b',
-				label: '乙',
-				children: [{ value: 'b1', label: '乙一' }],
-			},
-		],
-	},
+	N('1', [
+		N('2', [N('3', [N('2', [N('4'), N('5')]), N('6')]), N('7')]),
+		N('8'),
+	]),
+	N('9'),
 ];
 
-const st = (group: string, picked: readonly string[]): FilterState => ({ group, picked });
-
 /* ══════════════════════════════════════════════════════════ */
-describe('hasChildren / groupsOf / hasGroups', () => {
-	it('有 children 才算有下一级', () => {
+
+describe('hasChildren / resolvePath', () => {
+	it('有 children 才算能下探', () => {
 		assert.equal(hasChildren(STATUS[0] as FilterNode), true);
-		assert.equal(hasChildren({ value: 'x', label: 'X' }), false);
-		assert.equal(hasChildren({ value: 'x', label: 'X', children: [] }), false);
+		assert.equal(hasChildren(N('x')), false);
+		assert.equal(hasChildren(N('x', [])), false);
 	});
 
-	it('groupsOf 只挑有子的', () => {
-		assert.deepEqual(
-			groupsOf(STATUS).map((one) => one.label),
-			['草稿', '进行', '搁置', '完成'],
-		);
-	});
-
-	it('状态方框有组', () => assert.equal(hasGroups(STATUS), true));
-	it('类别方框没组', () => assert.equal(hasGroups(KINDS), false));
-});
-
-describe('findNode', () => {
-	it('按路径找到叶子', () => {
-		assert.equal(findNode(STATUS, ['ended', 'failed'])?.label, '失败');
+	it('按路径取出每层节点', () => {
+		const nodes = resolvePath(STATUS, ['ended', 'failed']);
+		assert.deepEqual(nodes?.map((one) => one.label), ['完成', '失败']);
 	});
 
 	it('路径断了返回 undefined（不抛）', () => {
-		assert.equal(findNode(STATUS, ['ended', 'ghost']), undefined);
-		assert.equal(findNode(STATUS, ['ghost']), undefined);
+		assert.equal(resolvePath(STATUS, ['ended', 'ghost']), undefined);
+		assert.equal(resolvePath(STATUS, ['ghost']), undefined);
 	});
 
-	it('三级也能找到', () => {
-		assert.equal(findNode(DEEP, ['g', 'a', 'a2'])?.label, '甲二');
+	it('空路径返回空数组（不是 undefined）', () => {
+		assert.deepEqual(resolvePath(STATUS, []), []);
+	});
+
+	it('四层也能取', () => {
+		assert.deepEqual(
+			resolvePath(DEEP, ['1', '2', '3', '2'])?.map((one) => one.label),
+			['1', '2', '3', '2'],
+		);
 	});
 });
 
 /* ══════════════════════════════════════════════════════════ */
-describe('rowsOf —— 要画几行、每行什么', () => {
-	it('空状态：只有一行（组）', () => {
-		const rows = rowsOf(STATUS, EMPTY_FILTER);
-		assert.equal(rows.length, 1);
-		assert.equal(rows[0]?.level, 0);
+describe('viewOf —— 三段分别是什么', () => {
+	it('没选：当前层 = 全部根，无面包屑、无子层', () => {
+		const v = viewOf(STATUS, []);
+		assert.deepEqual(v.crumbs, []);
 		assert.deepEqual(
-			rows[0]?.items.map((one) => one.label),
+			v.currentLevel.map((one) => one.label),
 			['草稿', '进行', '搁置', '完成'],
 		);
+		assert.deepEqual(v.childLevel, []);
 	});
 
-	it('空状态：组不算 picked（组不是筛选值）', () => {
-		const rows = rowsOf(STATUS, EMPTY_FILTER);
-		assert.equal(rows[0]?.items.every((one) => one.picked === false), true);
-	});
-
-	it('进入组、没选值：两行（组 + 子），子全未选', () => {
-		const rows = rowsOf(STATUS, st('ended', []));
-		assert.equal(rows.length, 2);
+	it('⚠ 选中第 1 级「完成」：没有面包屑，当前层是整个根，子层是它的子', () => {
+		const v = viewOf(STATUS, ['ended']);
+		assert.deepEqual(v.crumbs, []);
 		assert.deepEqual(
-			rows[1]?.items.map((one) => one.label),
+			v.currentLevel.map((one) => one.label),
+			['草稿', '进行', '搁置', '完成'],
+		);
+		assert.equal(v.currentLevel.find((one) => one.label === '完成')?.picked, true);
+		assert.deepEqual(
+			v.childLevel.map((one) => one.label),
 			['成功', '失败', '取消', '拒绝'],
 		);
-		assert.equal(rows[1]?.items.every((one) => one.picked === false), true);
+		assert.equal(v.childLevel.every((one) => one.picked === false), true);
 	});
 
-	it('选了叶子：子行里它 picked', () => {
-		const rows = rowsOf(STATUS, st('ended', ['failed']));
-		const line = rows[1];
-		assert.equal(line?.items.find((one) => one.label === '失败')?.picked, true);
-		assert.equal(line?.items.find((one) => one.label === '成功')?.picked, false);
+	it('⚠ 选中第 2 级「失败」：面包屑 = 完成，当前层 = 完成的子，子层 = 空', () => {
+		const v = viewOf(STATUS, ['ended', 'failed']);
+		assert.deepEqual(v.crumbs.map((one) => one.label), ['完成']);
+		assert.deepEqual(
+			v.currentLevel.map((one) => one.label),
+			['成功', '失败', '取消', '拒绝'],
+		);
+		assert.equal(v.currentLevel.find((one) => one.label === '失败')?.picked, true);
+		assert.deepEqual(v.childLevel, []);
 	});
 
-	it('进入的组标 branch（视觉上知道子行属于谁）', () => {
-		const rows = rowsOf(STATUS, st('ended', ['failed']));
-		assert.equal(rows[0]?.items.find((one) => one.label === '完成')?.branch, true);
-		assert.equal(rows[0]?.items.find((one) => one.label === '进行')?.branch, false);
+	it('无组方框：选一个项后当前层仍是全部项', () => {
+		const v = viewOf(KINDS, ['work']);
+		assert.deepEqual(v.crumbs, []);
+		assert.deepEqual(
+			v.currentLevel.map((one) => one.label),
+			['目标', '设计', '工作', '记录'],
+		);
+		assert.equal(v.currentLevel.find((one) => one.label === '工作')?.picked, true);
+		assert.deepEqual(v.childLevel, []);
 	});
 
-	it('⚠ 点组 ⇒ 清空选择（next.picked 一定是空）', () => {
-		const rows = rowsOf(STATUS, st('ended', ['failed']));
-		const endedGroup = rows[0]?.items.find((one) => one.label === '完成');
-		assert.deepEqual(endedGroup?.next, { group: 'ended', picked: [] });
-	});
-
-	it('⚠ 点另一个组 ⇒ 也是清空（换组即换筛选）', () => {
-		const rows = rowsOf(STATUS, st('ended', ['failed']));
-		const activeGroup = rows[0]?.items.find((one) => one.label === '进行');
-		assert.deepEqual(activeGroup?.next, { group: 'active', picked: [] });
-	});
-
-	it('点叶子 ⇒ 选中它（next.picked 是含它的路径）', () => {
-		const rows = rowsOf(STATUS, st('ended', ['failed']));
-		const completed = rows[1]?.items.find((one) => one.label === '成功');
-		assert.deepEqual(completed?.next, { group: 'ended', picked: ['completed'] });
-	});
-
-	it('⚠ 点已选中的那个 ⇒ 幂等（不会取消）', () => {
-		const rows = rowsOf(STATUS, st('ended', ['failed']));
-		const failed = rows[1]?.items.find((one) => one.label === '失败');
-		assert.equal(failed?.picked, true);
-		assert.deepEqual(failed?.next, { group: 'ended', picked: ['failed'] });
-	});
-
-	it('无组方框：只有一行，选中就是选中', () => {
-		const rows = rowsOf(KINDS, EMPTY_FILTER);
-		assert.equal(rows.length, 1);
-		const work = rows[0]?.items.find((one) => one.label === '工作');
-		assert.deepEqual(work?.next, { group: '', picked: ['work'] });
-	});
-
-	it('无组方框：切换选中是替换', () => {
-		const rows = rowsOf(KINDS, st('', ['work']));
-		const goal = rows[0]?.items.find((one) => one.label === '目标');
-		assert.equal(goal?.picked, false);
-		assert.deepEqual(goal?.next, { group: '', picked: ['goal'] });
+	it('脏路径 ⇒ 三段都空（不炸）', () => {
+		const v = viewOf(STATUS, ['nope']);
+		assert.deepEqual(v.crumbs, []);
+		assert.deepEqual(v.currentLevel, []);
+		assert.deepEqual(v.childLevel, []);
 	});
 });
 
 /* ══════════════════════════════════════════════════════════ */
-describe('rowsOf —— 三级（验证层级不是一个写死的数字）', () => {
-	it('空状态：一行', () => {
-		assert.equal(rowsOf(DEEP, EMPTY_FILTER).length, 1);
+describe('viewOf —— 用户的例子 1/2/3/2/4', () => {
+	/*
+	 * 树：
+	 *   1 ─ 2 ─ 3 ─ 2 ─ 4 / 5
+	 *             └ 6
+	 *       └ 8
+	 *   9
+	 *
+	 * 选中路径 1/2/3/2/4 ⇒
+	 *   ①面包屑 1/2/3/2
+	 *   ②当前层 1 / 2 / 3 / 4   ← wait，当前层应是「2」的兄弟？
+	 */
+	it('选中 1/2/3/2/4：面包屑 = 1/2/3/2（不含自己）', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2', '4']);
+		assert.deepEqual(v.crumbs.map((one) => one.label), ['1', '2', '3', '2']);
 	});
 
-	it('进入组：两行', () => {
-		const rows = rowsOf(DEEP, st('g', []));
-		assert.equal(rows.length, 2);
-		assert.deepEqual(
-			rows[1]?.items.map((one) => one.label),
-			['甲', '乙'],
-		);
+	it('选中 1/2/3/2/4：当前层 = 父节点(2)的子 = 4/5，4 被选中', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2', '4']);
+		assert.deepEqual(v.currentLevel.map((one) => one.label), ['4', '5']);
+		assert.equal(v.currentLevel.find((one) => one.label === '4')?.picked, true);
 	});
 
-	it('⚠ 选中第 1 级「甲」⇒ 自动展开第 2 级（三级）', () => {
-		const rows = rowsOf(DEEP, st('g', ['a']));
-		assert.equal(rows.length, 3);
-		assert.deepEqual(
-			rows[2]?.items.map((one) => one.label),
-			['甲一', '甲二'],
-		);
+	it('选中 1/2/3/2/4：子层 = 4 的子 = 空', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2', '4']);
+		assert.deepEqual(v.childLevel, []);
 	});
 
-	it('⚠「甲」既是选中，也是分支（它有子 ⇒ 展开）', () => {
-		const rows = rowsOf(DEEP, st('g', ['a']));
-		const a = rows[1]?.items.find((one) => one.label === '甲');
-		assert.equal(a?.picked, true);
-		assert.equal(a?.branch, true);
-		assert.equal(a?.hasChildren, true);
+	it('⭐ 选中 1/2/3/2（中间层）：面包屑 = 1/2/3，当前层 = 2/6，子层 = 4/5', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2']);
+		assert.deepEqual(v.crumbs.map((one) => one.label), ['1', '2', '3']);
+		assert.deepEqual(v.currentLevel.map((one) => one.label), ['2', '6']);
+		assert.equal(v.currentLevel.find((one) => one.label === '2')?.picked, true);
+		assert.deepEqual(v.childLevel.map((one) => one.label), ['4', '5']);
 	});
 
-	it('选中叶子「甲一」⇒ 三级行里它 picked', () => {
-		const rows = rowsOf(DEEP, st('g', ['a', 'a1']));
-		const a1 = rows[2]?.items.find((one) => one.label === '甲一');
-		assert.equal(a1?.picked, true);
-		assert.equal(a1?.hasChildren, false);
+	it('⭐ 这就是用户要的三段：1/2/3 | 2 / 6 | 4 / 5', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2']);
+		const crumbs = v.crumbs.map((one) => one.label).join('/');
+		const current = v.currentLevel.map((one) => one.label).join(' / ');
+		const child = v.childLevel.map((one) => one.label).join(' / ');
+		assert.equal(`${crumbs} | ${current} | ${child}`, '1/2/3 | 2 / 6 | 4 / 5');
 	});
 
-	it('选中叶子后不再多出第 4 行', () => {
-		const rows = rowsOf(DEEP, st('g', ['a', 'a1']));
-		assert.equal(rows.length, 3);
+	it('点②里的兄弟「6」⇒ 丢掉它下面那层（路径变 1/2/3/6）', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2']);
+		const six = v.currentLevel.find((one) => one.label === '6');
+		assert.deepEqual(six?.next, ['1', '2', '3', '6']);
 	});
 
-	it('点第 1 级「乙」⇒ 带上一级的路径（只换这一级）', () => {
-		const rows = rowsOf(DEEP, st('g', ['a']));
-		const b = rows[1]?.items.find((one) => one.label === '乙');
-		assert.deepEqual(b?.next, { group: 'g', picked: ['b'] });
+	it('点③里的子「5」⇒ 下探一层（路径变 1/2/3/2/5）', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2']);
+		const five = v.childLevel.find((one) => one.label === '5');
+		assert.deepEqual(five?.next, ['1', '2', '3', '2', '5']);
+	});
+
+	it('点①里第一段「1」⇒ 跳回根（路径变 1）', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2']);
+		assert.deepEqual(v.crumbs[0]?.next, ['1']);
+	});
+
+	it('点①里第三段「3」⇒ 跳回那层（路径变 1/2/3）', () => {
+		const v = viewOf(DEEP, ['1', '2', '3', '2']);
+		assert.deepEqual(v.crumbs[2]?.next, ['1', '2', '3']);
+	});
+
+	it('跳回后再算一次 ⇒ 面包屑变短、子层变成刚离开的那支', () => {
+		const before = viewOf(DEEP, ['1', '2', '3', '2']);
+		const jumped = viewOf(DEEP, before.crumbs[2]?.next ?? []);
+		assert.deepEqual(jumped.crumbs.map((one) => one.label), ['1', '2']);
+		assert.deepEqual(jumped.childLevel.map((one) => one.label), ['2', '6']);
 	});
 });
 
 /* ══════════════════════════════════════════════════════════ */
-describe('selectionText —— 收起态显示什么', () => {
-	it('什么都没进 ⇒ 空串（只画标题）', () => {
-		assert.equal(selectionText(STATUS, EMPTY_FILTER), '');
+describe('selectionText —— 收起态显示完整路径', () => {
+	it('没选 ⇒ 空串', () => {
+		assert.equal(selectionText(STATUS, []), '');
 	});
 
-	it('⚠ 只进组没选值 ⇒ 显示组名（组是第 0 级的选择）', () => {
-		assert.equal(selectionText(STATUS, st('ended', [])), '完成');
+	it('选第 1 级 ⇒ 只有它', () => {
+		assert.equal(selectionText(STATUS, ['ended']), '完成');
 	});
 
-	it('选了叶子 ⇒ 组/项', () => {
-		assert.equal(selectionText(STATUS, st('ended', ['failed'])), '完成/失败');
+	it('选第 2 级 ⇒ 完整路径', () => {
+		assert.equal(selectionText(STATUS, ['ended', 'failed']), '完成/失败');
 	});
 
-	it('无组方框 ⇒ 只有项名', () => {
-		assert.equal(selectionText(KINDS, st('', ['work'])), '工作');
+	it('四层 ⇒ 四段', () => {
+		assert.equal(selectionText(DEEP, ['1', '2', '3', '2', '4']), '1/2/3/2/4');
 	});
 
-	it('三级 ⇒ 组/一级/二级/叶子', () => {
-		assert.equal(selectionText(DEEP, st('g', ['a', 'a1'])), '组/甲/甲一');
-	});
-});
-
-describe('hasSelection / clearPicked', () => {
-	it('什么都没选 ⇒ false', () => {
-		assert.equal(hasSelection(EMPTY_FILTER), false);
-	});
-
-	it('⚠ 只进了组也算有选择（组是第 0 级）', () => {
-		assert.equal(hasSelection(st('ended', [])), true);
-	});
-
-	it('选了叶子 ⇒ false', () => {
-		assert.equal(hasSelection(st('ended', ['failed'])), true);
-	});
-
-	it('无组方框选了项也算有选择', () => {
-		assert.equal(hasSelection(st('', ['work'])), true);
-	});
-
-	it('清空 = 全部清掉（含组）', () => {
-		assert.deepEqual(clearPicked(st('ended', ['failed'])), EMPTY_FILTER);
-		assert.deepEqual(clearPicked(st('ended', [])), EMPTY_FILTER);
+	it('无组方框 ⇒ 项名', () => {
+		assert.equal(selectionText(KINDS, ['work']), '工作');
 	});
 });
 
-describe('filterValuesOf —— 交给 API 的筛选值', () => {
-	it('没选 ⇒ 空数组', () => {
-		assert.deepEqual(filterValuesOf(STATUS, EMPTY_FILTER), []);
-		assert.deepEqual(filterValuesOf(STATUS, st('ended', [])), []);
+describe('hasSelection / pickOf', () => {
+	it('没选 false', () => assert.equal(hasSelection([]), false));
+	it('选了 true', () => assert.equal(hasSelection(['ended']), true));
+
+	it('pickOf 从当前层找得到', () => {
+		const v = viewOf(STATUS, ['ended']);
+		assert.deepEqual(pickOf(v, 'active'), ['active']);
 	});
 
-	it('选了叶子 ⇒ 那个值', () => {
-		assert.deepEqual(filterValuesOf(STATUS, st('ended', ['failed'])), ['failed']);
+	it('pickOf 从子层找得到', () => {
+		const v = viewOf(STATUS, ['ended']);
+		assert.deepEqual(pickOf(v, 'failed'), ['ended', 'failed']);
 	});
 
-	it('选了中间层 ⇒ 那个值（将来要展开成子树就在这里改）', () => {
-		assert.deepEqual(filterValuesOf(DEEP, st('g', ['a'])), ['a']);
+	it('pickOf 找不到 ⇒ 空路径（清空）', () => {
+		const v = viewOf(STATUS, ['ended']);
+		assert.deepEqual(pickOf(v, 'ghost'), []);
 	});
 });
