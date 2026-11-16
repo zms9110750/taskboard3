@@ -15,7 +15,7 @@
 
 ---
 
-## 二、⚠ 六条绝对规则
+## 二、⚠ 七条绝对规则
 
 ### 规则 1：相对导入写 `.ts`，不写 `.js`
 
@@ -85,6 +85,30 @@ node --test packages/core/test/*.test.ts   # 必须全绿
 所以「全仓测试」仍需先构建；只有**本包自己的测试**必须能脱钩。
 
 **真实案例**（`2026-11-15` 清理）：`core` 的 26 处测试导入全是 `../lib/`，删掉 `lib/` 后直接 `ERR_MODULE_NOT_FOUND`，而**其他四个包都是从 `../src/` 导入的** —— 规则一直写在文档里，但没人执行过。
+
+### 规则 7：`dev/` 不在任何 tsconfig 的 include 里 ⇒ 「tsc 过了」不算验收
+
+`packages/dsh-client/dev/` 是**开发中组件**的暂存区（见 `dev/README.md`），
+`tsconfig.json` 的 `include` 只有 `src/**`，所以：
+
+```
+tsc -b packages/dsh-client   ← 完全不检查 dev/ 下的任何 .ts / .tsx
+```
+
+⇒ **说「dev 里的组件类型检查过了」是假的**，除非另跑一次手写参数的检查：
+
+```powershell
+node node_modules/typescript/bin/tsc --noEmit \
+  --jsx react-jsx --target ES2022 --module NodeNext --moduleResolution NodeNext \
+  --strict --skipLibCheck --allowImportingTsExtensions --verbatimModuleSyntax \
+  packages/dsh-client/dev/components/Xxx.tsx
+```
+
+**真实案例**（`2026-11-17`）：`space-dev` 主动报告了这一点，并自己补跑了检查。
+若不是它报告，我们会拿着一个假的「tsc 通过」继续往下做。
+
+**这条的根治办法**：给 `dev/` 单独一个 `tsconfig.dev.json`，
+让 `pnpm run check:dev` 成为验收的一部分。**现在没有，所以必须手跑。**
 
 ---
 
@@ -259,3 +283,4 @@ pnpm install
 
 **⚠ 不要在这里写「当前状态」**（比如「现在有 149 个测试」）—— 那是事实，会漂。
 **状态在 `docs/设计.md`。**
+
