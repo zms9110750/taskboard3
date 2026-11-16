@@ -116,9 +116,39 @@ export function FilterBox(props: FilterBoxProps): ReactNode {
 				if (!props.open) props.onOpenChange(true);
 			}}
 		>
-			{/* ── 收起态：面包屑，每一段独立可点 ── */}
+			{/*
+			 * ── 收起态：标题 + 面包屑 ──
+			 *
+			 * ## 「标题 = 第 0 级」——用户 `2026-11-16` 定的
+			 *
+			 * > 「这个标题本身就是第0级。选中第0级，展开第1级，这个意思就是清空。」
+			 *
+			 * ⇒ 点标题 = **清空所有选择**并展开（= 选中第 0 级）。
+			 *   这是**唯一**的全清入口，所以不再需要独立的 ✕ 按钮，
+			 *   也不再需要 `▾`（它没有独立语义）。
+			 *
+			 * 层级图：
+			 *
+			 * ```
+			 *   状态：  [进行] / [提交]
+			 *   └第0级   └第1级  └第2级
+			 *    点它
+			 *    =清空
+			 * ```
+			 */}
 			<div ref={collapsedRef} className="filter-box__face filter-box__face--collapsed">
-				<span className="filter-box__title">{props.title}</span>
+				<button
+					type="button"
+					className="filter-box__title filter-box__title--clickable"
+					title={hasValue ? '清空筛选（选中第 0 级）' : '展开'}
+					onClick={(event) => {
+						event.stopPropagation();
+						if (hasValue) pick([]);
+						props.onOpenChange(true);
+					}}
+				>
+					{props.title}
+				</button>
 				{hasValue && (
 					<>
 						<span className="filter-box__colon">：</span>
@@ -144,27 +174,8 @@ export function FilterBox(props: FilterBoxProps): ReactNode {
 						</span>
 					</>
 				)}
-				<span className="filter-box__caret">▾</span>
-				{hasValue && (
-					<span
-						className="filter-box__clear"
-						title="清空筛选"
-						role="button"
-						tabIndex={0}
-						onClick={(event) => {
-							event.stopPropagation();
-							pick([]);
-						}}
-						onKeyDown={(event) => {
-							if (event.key !== 'Enter' && event.key !== ' ') return;
-							event.preventDefault();
-							event.stopPropagation();
-							pick([]);
-						}}
-					>
-						✕
-					</span>
-				)}
+				{/* 没值时点空白处也能展开（标题已经是按钮了，这里只是兜住右侧留白）。 */}
+				{!hasValue && <span className="filter-box__caret" />}
 			</div>
 
 			{/* ── 展开态：三段 ── */}

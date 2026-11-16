@@ -83,13 +83,19 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .filter-box__zone{display:inline-flex;align-items:center}
 .filter-box__caret{padding-left:5px;font-size:10px;color:#9aa1ad}
 
-/* 清空：独立的小按钮（只在有值时出现）。不是「点主体就清空」。 */
-.filter-box__clear{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:16px;height:16px;margin-left:6px;border-radius:4px;
-  font-size:9px;color:#9aa1ad;cursor:pointer;user-select:none;
+/*
+ * ⚠ 收起态标题是一个按钮（= 第 0 级）。**不要**继承上一条的 caret 样式。
+ *   它是全清入口，用户要能看出它可点。
+ */
+.filter-box__title--clickable{
+  border:0;background:none;padding:0;font-family:inherit;font-size:12.5px;
+  color:var(--text-secondary);cursor:pointer;border-radius:4px;
 }
-.filter-box__clear:hover{background:#f1f3f6;color:#dc2626}
+.filter-box__title--clickable:hover{background:#f3f4f6;color:var(--text)}
+
+/*
+ * ⚠ 清空不再是独立按钮（点标题就行），这条留作历史说明，样式已删。
+ */
 
 /* ① 面包屑：祖先链，紧斜杠 */
 .filter-box__crumbs{display:inline-flex;align-items:center}
@@ -17375,8 +17381,15 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				ref: collapsedRef,
 				className: "filter-box__face filter-box__face--collapsed",
 				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__title",
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: "filter-box__title filter-box__title--clickable",
+						title: hasValue ? "清空筛选（选中第 0 级）" : "展开",
+						onClick: (event) => {
+							event.stopPropagation();
+							if (hasValue) pick([]);
+							props.onOpenChange(true);
+						},
 						children: props.title
 					}),
 					hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
@@ -17401,27 +17414,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 							})]
 						}, `cc-${crumb.value}`))
 					})] }),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__caret",
-						children: "▾"
-					}),
-					hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__clear",
-						title: "清空筛选",
-						role: "button",
-						tabIndex: 0,
-						onClick: (event) => {
-							event.stopPropagation();
-							pick([]);
-						},
-						onKeyDown: (event) => {
-							if (event.key !== "Enter" && event.key !== " ") return;
-							event.preventDefault();
-							event.stopPropagation();
-							pick([]);
-						},
-						children: "✕"
-					})
+					!hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-box__caret" })
 				]
 			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				ref: expandedRef,
@@ -17943,13 +17936,16 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 							},
 							children: [
 								"期望：",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态 ▾" }),
-								" · ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成 ✕" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态" }),
+								"（无值，点它展开）· ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成" }),
 								" ·",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成/失败 ✕" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成 / 失败" }),
 								" · ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "类别：工作 ✕" })
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "类别：工作" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "没有 ▾、没有 ✕" }),
+								" —— 全清靠点标题（标题 = 第 0 级）。"
 							]
 						})
 					]
@@ -17971,18 +17967,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 								"（③ 段）"
 							] }),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "只展示两个可点层" }), "：②当前层兄弟 + ③选中项的子。爷爷辈只在面包屑里"] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"点面包屑里某一段 ⇒ ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "跳回那一层" }),
-								"（路径截断）"
-							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "点标题 = 清空" }), "（标题本身就是第 0 级；选中第 0 级 = 展开第 1 级）"] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "点面包屑里某一段" }), " ⇒ 选中那一段，取消比它深的"] }),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "点开一个方框，另一个自动收起" }), "（一个按钮为单位）"] }),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "点按钮之外任何地方（含同一行空白）⇒ 收起" }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"点标题只是展开，",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "不清值" }),
-								"；清值靠右边独立的 ✕"
-							] })
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "没有 ▾、没有 ✕ —— 这两个符号都没有独立语义，删掉" })
 						]
 					})]
 				})

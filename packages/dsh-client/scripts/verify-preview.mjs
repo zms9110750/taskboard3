@@ -113,7 +113,11 @@ const readBox = (idx, row = 0) => ev(`(() => {
     child: segs[1] ? txt(segs[1]) : [],
     vlines: ex.querySelectorAll('.filter-box__vline').length,
     collapsedCrumbs: citems.map(b => b.textContent ?? ''),
-    collapsedPicked: citems.filter(b => b.classList.contains('is-picked')).map(b => b.textContent),
+    collapsedPicked: citems.filter(b => b.classList.contains('is-picked')).map(b => b.textContent ?? ''),
+    /* 标题是第 0 级（可点 = 清空）。 */
+    hasTitleButton: face.querySelector('.filter-box__title--clickable') !== null,
+    /* ⚠ 这两个**必须不存在**（用户 2026-11-16 要求删掉）。 */
+    hasCaret: face.querySelector('.filter-box__caret') !== null,
     hasClear: face.querySelector('.filter-box__clear') !== null,
   };
 })()`);
@@ -227,9 +231,11 @@ await clickOutside();
 await sleep(450);
 const a5 = await readBox(0);
 expect('已收起', a5.open, false);
+expect('⚠ 没有 ▾（用户要求删）', a5.hasCaret, false);
+expect('⚠ 没有 ✕（清空靠点标题）', a5.hasClear, false);
+expect('标题是按钮（第 0 级）', a5.hasTitleButton, true);
 expect('收起态拆成 2 段', a5.collapsedCrumbs, ['进行', '处理中']);
-expect('最后一段是选中态（蓝字加粗）', a5.collapsedPicked, ['处理中']);
-expect('有独立 ✕', a5.hasClear, true);
+expect('最后一段是选中态', a5.collapsedPicked, ['处理中']);
 await shot('06-collapsed-crumbs.png');
 
 console.log('\n═══ ⑥b ⚠ 点收起态第一段「进行」→ 取消「处理中」的选中 ═══');
@@ -243,13 +249,16 @@ expect('路径截断成只剩「进行」', a5b.collapsedCrumbs, ['进行']);
 console.log('  → 用户要的：「进行」点了就选中进行，取消「处理中」的选中');
 await shot('06b-collapsed-crumb-click.png');
 
-console.log('\n═══ ⑦ 点 ✕ → 全清 ═══');
-await click(`document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0].querySelector('.filter-box__clear')`);
+console.log('\n═══ ⑦ ⚠ 点标题 → 清空（选中第 0 级）═══');
+await click(`document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0].querySelector('.filter-box__title--clickable')`);
 await sleep(450);
 const a6 = await readBox(0);
 expect('清空后没有面包屑', a6.collapsedCrumbs, []);
-expect('没有 ✕ 了', a6.hasClear, false);
-await shot('07-cleared.png');
+expect('展开了（选中第 0 级 = 展开第 1 级）', a6.open, true);
+expect('当前层是四个组，都没选中', pickedLabels(a6.current), []);
+await shot('07-title-clears.png');
+await clickOutside();
+await sleep(350);
 
 console.log('\n═══ ⑧ 互斥：开第二个，第一个收起 ═══');
 await click(firstBox);

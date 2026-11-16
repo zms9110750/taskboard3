@@ -212,8 +212,10 @@ function App(): React.ReactNode {
 					/>
 				</div>
 				<p className="pv-note" style={{ marginTop: 12, marginBottom: 0 }}>
-					期望：<code>状态 ▾</code> · <code>状态：完成 ✕</code> ·
-					<code>状态：完成/失败 ✕</code> · <code>类别：工作 ✕</code>
+					期望：<code>状态</code>（无值，点它展开）· <code>状态：完成</code> ·
+					<code>状态：完成 / 失败</code> · <code>类别：工作</code>
+					<br />
+					<b>没有 ▾、没有 ✕</b> —— 全清靠点标题（标题 = 第 0 级）。
 				</p>
 			</section>
 
@@ -233,13 +235,16 @@ function App(): React.ReactNode {
 						<b>只展示两个可点层</b>：②当前层兄弟 + ③选中项的子。爷爷辈只在面包屑里
 					</li>
 					<li>
-						点面包屑里某一段 ⇒ <b>跳回那一层</b>（路径截断）
+						<b>点标题 = 清空</b>（标题本身就是第 0 级；选中第 0 级 = 展开第 1 级）
+					</li>
+					<li>
+						<b>点面包屑里某一段</b> ⇒ 选中那一段，取消比它深的
 					</li>
 					<li>
 						<b>点开一个方框，另一个自动收起</b>（一个按钮为单位）
 					</li>
 					<li>点按钮之外任何地方（含同一行空白）⇒ 收起</li>
-					<li>点标题只是展开，<b>不清值</b>；清值靠右边独立的 ✕</li>
+					<li>没有 ▾、没有 ✕ —— 这两个符号都没有独立语义，删掉</li>
 				</ol>
 			</section>
 		</div>
