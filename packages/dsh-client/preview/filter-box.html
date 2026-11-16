@@ -41,17 +41,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .pv-note code{font-family:var(--mono);font-size:10.5px;background:#f1f3f6;
   padding:1px 6px;border-radius:4px;color:#16181d}
 
-/* 三段示意（④ 那块的静态图） */
-.pv-anatomy{display:flex;align-items:center;gap:0;border:1px solid var(--border);
-  border-radius:6px;height:34px;padding:0 12px;background:var(--bg-card);
-  font-size:12.5px;width:fit-content}
-.pv-anatomy .a1{color:#9aa1ad}
-.pv-anatomy .a2{color:var(--accent);font-weight:700}
-.pv-anatomy .a3{color:var(--text)}
-.pv-anatomy .av{width:1px;align-self:stretch;margin:0 10px;background:#d1d5db}
-.pv-anatomy .as{color:#cbd5e1;padding:0 2px}
-.pv-tag{display:inline-block;font-size:10px;color:#9aa1ad;background:#f1f3f6;
-  padding:1px 6px;border-radius:4px;margin-right:6px;font-family:var(--mono)}
+/* 操作表（③ 那块） */
+.pv-table{border-collapse:collapse;font-size:11.5px;width:100%}
+.pv-table th,.pv-table td{border:1px solid #eef0f4;padding:6px 10px;text-align:left}
+.pv-table th{background:#fbfcfd;font-weight:600;color:var(--text-secondary);font-size:11px}
+.pv-table code{font-family:var(--mono);font-size:10.5px;color:var(--accent)}
 
 /* ══════════════════════════════════════════════════════════
    筛选方框
@@ -78,34 +72,23 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .filter-box.is-open .filter-box__face--collapsed{opacity:0;pointer-events:none}
 .filter-box.is-open .filter-box__face--expanded{opacity:1;pointer-events:auto}
 
-.filter-box__title,.filter-box__colon{font-size:12.5px;color:var(--text-secondary)}
-.filter-box__value{font-size:12.5px;font-weight:600;color:var(--accent)}
-.filter-box__zone{display:inline-flex;align-items:center}
-.filter-box__caret{padding-left:5px;font-size:10px;color:#9aa1ad}
-
-/*
- * ⚠ 收起态标题是一个按钮（= 第 0 级）。**不要**继承上一条的 caret 样式。
- *   它是全清入口，用户要能看出它可点。
- */
-.filter-box__title--clickable{
-  border:0;background:none;padding:0;font-family:inherit;font-size:12.5px;
+/* 标题 = 第 0 级，永远可点（点了清空） */
+.filter-box__title{
+  border:0;background:none;padding:0 2px;font-family:inherit;font-size:12.5px;
   color:var(--text-secondary);cursor:pointer;border-radius:4px;
 }
-.filter-box__title--clickable:hover{background:#f3f4f6;color:var(--text)}
+.filter-box__title:hover{background:#f3f4f6;color:var(--text)}
+.filter-box__colon{font-size:12.5px;color:var(--text-secondary)}
 
-/*
- * ⚠ 清空不再是独立按钮（点标题就行），这条留作历史说明，样式已删。
- */
-
-/* ① 面包屑：祖先链，紧斜杠 */
+/* 收起态面包屑 */
 .filter-box__crumbs{display:inline-flex;align-items:center}
 /*
- * ⚠ 分隔斜杠要看得见。第一版用 #cbd5e1，截图里几乎看不见，
+ * ⚠ 分隔斜杠要看得见。用过 #cbd5e1，截图里几乎看不见，
  *   看起来像「进行 处理中」两个词挨着 —— 用户会以为还是一个整体。
  */
 .filter-box__csep{padding:0 1px;font-size:12px;color:#9aa1ad;user-select:none}
 
-/* ②③ 当前层 / 子层 */
+/* 展开态各段 */
 .filter-box__items{display:inline-flex;align-items:center}
 
 /* 可点的文字（不是胶囊 / 按钮外观） */
@@ -118,24 +101,19 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 /* 选中的那个：蓝字加粗（无底色） */
 .filter-box__item.is-picked{color:var(--accent);font-weight:700}
 
-/*
- * 收起态面包屑里的**非最后一段**：加一条虚线下划线，表示「点它能跳回这一层」。
- *
- * 用户 `2026-11-16`：「每一层，虽然他写的是文字。但是文字都是可以单独点击的。」
- * ⇒ 必须让人**看得出**这一段能点，不能只靠 hover。
- */
-.filter-box__face--collapsed .filter-box__crumbs .filter-box__item:not(.is-picked){
+/* 收起态面包屑里**非选中**的段：虚线下划线，表示「点它能跳回这一层」 */
+.filter-box__item--crumb:not(.is-picked){
   text-decoration:underline dotted #b6bec9;
   text-underline-offset:3px;
 }
-.filter-box__face--collapsed .filter-box__crumbs .filter-box__item:not(.is-picked):hover{
+.filter-box__item--crumb:not(.is-picked):hover{
   color:var(--accent);text-decoration-color:var(--accent);
 }
 
 /* 「还有下一级」的提示 */
 .filter-box__more{font-size:9px;opacity:.5;margin-left:1px}
 
-/* ②③ 的兄弟分隔：空格斜杠 */
+/* 兄弟分隔：空格斜杠 */
 .filter-box__sep{padding:0 2px;font-size:12px;color:#cbd5e1;user-select:none}
 
 /* 段与段之间的结构竖线：贯通上下内边 */
@@ -16989,103 +16967,85 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		}
 		return out;
 	}
+	/** 一组兄弟 → 可点项。`prefix` 是它们共同的祖先路径。 */
+	function optionsOf(siblings, prefix, selected) {
+		return siblings.map((node) => ({
+			value: node.value,
+			label: node.label,
+			picked: node.value === selected,
+			hasChildren: hasChildren(node),
+			next: [...prefix, node.value]
+		}));
+	}
 	/**
-	* 算出这三段。
+	* 展开态该画哪几段。
 	*
 	* @param nodes 根
 	* @param picked 当前路径
 	*/
-	function viewOf(nodes, picked) {
-		if (picked.length === 0) return {
-			crumbs: [],
-			currentLevel: nodes.map((node) => ({
-				value: node.value,
-				label: node.label,
-				picked: false,
-				hasChildren: hasChildren(node),
-				next: [node.value]
-			})),
-			childLevel: []
-		};
+	function segmentsOf(nodes, picked) {
+		if (picked.length === 0) return [{
+			kind: "level",
+			sep: " / ",
+			items: optionsOf(nodes, [], void 0)
+		}];
 		const resolved = resolvePath(nodes, picked);
-		if (resolved === void 0) return {
-			crumbs: [],
-			currentLevel: [],
-			childLevel: []
-		};
-		const lastIndex = picked.length - 1;
-		const crumbs = [];
-		for (let index = 0; index < lastIndex; index += 1) {
-			const node = resolved[index];
-			const value = picked[index];
-			if (node === void 0 || value === void 0) continue;
-			crumbs.push({
-				value,
-				label: node.label,
-				next: picked.slice(0, index + 1)
-			});
-		}
-		const parentNode = lastIndex === 0 ? void 0 : resolved[lastIndex - 1];
-		const siblings = parentNode === void 0 ? nodes : parentNode.children ?? [];
-		const prefix = picked.slice(0, lastIndex);
-		return {
-			crumbs,
-			currentLevel: siblings.map((node) => ({
-				value: node.value,
-				label: node.label,
-				picked: node.value === picked[lastIndex],
-				hasChildren: hasChildren(node),
-				next: [...prefix, node.value]
-			})),
-			childLevel: (resolved[lastIndex]?.children ?? []).map((node) => ({
-				value: node.value,
+		if (resolved === void 0) return [];
+		const last = picked.length - 1;
+		const segments = [];
+		if (last > 0) segments.push({
+			kind: "crumbs",
+			sep: "/",
+			items: resolved.slice(0, last).map((node, index) => ({
+				value: picked[index],
 				label: node.label,
 				picked: false,
-				hasChildren: hasChildren(node),
-				next: [...picked, node.value]
+				hasChildren: true,
+				next: picked.slice(0, index + 1)
 			}))
-		};
+		});
+		const parent = last === 0 ? void 0 : resolved[last - 1];
+		const siblings = parent === void 0 ? nodes : parent.children ?? [];
+		segments.push({
+			kind: "level",
+			sep: " / ",
+			items: optionsOf(siblings, picked.slice(0, last), picked[last])
+		});
+		const children = resolved[last]?.children ?? [];
+		if (children.length > 0) segments.push({
+			kind: "level",
+			sep: " / ",
+			items: optionsOf(children, picked, void 0)
+		});
+		return segments;
 	}
 	/**
-	* 收起态显示什么 —— **完整路径，拆成一段一段可点**。
+	* 收起态是一条**可点的面包屑** —— 整条路径，每段独立。
 	*
-	* ## 用户 `2026-11-16`（第四次纠正）
-	*
+	* 用户 `2026-11-16`：
 	* > 「我要的是，『进行』，可以点。『提交』，可以点。
-	* >  不是『进行/提交』这一个按钮。明白没。面包屑导航。
-	* >  每一层，虽然他写的是文字。但是文字都是可以单独点击的。」
-	* > 「『进行』点了，就会变成选中『进行』，取消选择『提交』，列出进行的子项目。
-	* >  点了『提交』，就会变成选中『提交』，列出提交的子项目。」
+	* >  不是『进行/提交』这一个按钮。……每一层，虽然他写的是文字。
+	* >  但是文字都是可以单独点击的。」
 	*
-	* ⇒ **收起态不是一串字符串，是一条面包屑**：每一段都是独立可点的，
-	*   点第 i 段 = 把路径截断到第 i 段（＝选中它，丢掉它下面的）。
-	*
-	* ## 与展开态 ① 段的关系
-	*
-	* 展开态的 ① 只放**祖先**（因为当前层在 ② 里已经画了）；
-	* 收起态没有 ②③，所以**整条路径全都要可点** —— 包括最后一段。
+	* 注意：这里**包含最后一段**（它才是当前选中项）。
+	* 展开态的 ① 不含它 —— 因为 ② 里已经画了。
 	*
 	* @param nodes 根
 	* @param picked 路径
-	* @returns 每段一个 `{ value, label, next }`；`next` = 截断到这里的路径
 	*/
 	function collapsedCrumbs(nodes, picked) {
 		if (picked.length === 0) return [];
 		const resolved = resolvePath(nodes, picked);
-		if (resolved === void 0) return picked.map((value, index) => ({
-			value,
-			label: value,
-			next: picked.slice(0, index + 1)
-		}));
-		return resolved.map((node, index) => ({
-			value: picked[index],
-			label: node.label,
-			next: picked.slice(0, index + 1)
-		}));
-	}
-	/** 有没有任何选中。 */
-	function hasSelection(picked) {
-		return picked.length > 0;
+		return picked.map((value, index) => {
+			const node = resolved?.[index];
+			return {
+				value,
+				label: node?.label ?? value,
+				picked: index === picked.length - 1,
+				hasChildren: node === void 0 ? false : hasChildren(node),
+				next: picked.slice(0, index + 1)
+			};
+		});
 	}
 	// ../../node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.development.js
 	/**
@@ -17300,45 +17260,51 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	}));
 	// src/components/FilterBox.tsx
 	/**
-	* 筛选方框 —— **面包屑导航**控件。
+	* 筛选方框 —— **一个按钮为一个单位**的面包屑筛选控件。
 	*
-	* ## 用户 `2026-11-16`（第三版，最终定义）
+	* ## 唯一的操作
 	*
-	* > 「你不知道面包屑导航吗？我说的是点到谁就选中谁。点到完成，就选中完成。
-	* >  那么完成的子级的选中就要取消掉。列出『完成』的子项。」
-	* > 「除此以外，只展示两个层级。」
-	* > 「比如选中了 1/2/3/2/4，那么就要这样列出
-	* >  1/2/3/2 | 1 / 2 / 3 / 4 | 1 / 2 / 3」
+	* 用户 `2026-11-16`：
+	* > 「点他的效果是选中他。既然选中了他，那他就应该展开。」
+	* > 「我要的逻辑是完全具有一致性的。你套了多少if」
 	*
-	* ## 一个方框永远是三段
+	* ⇒ 这个组件**只有一个动作**：
 	*
+	* ```ts
+	* const select = (next: Picked): void => {
+	*     props.onChange(next);      // 选中
+	*     props.onOpenChange(true);  // 既然选中了，就展开
+	* };
 	* ```
-	*   ①面包屑          ②当前层兄弟         ③选中项的子
-	*   1/2/3/2     |    1 / 2 / 3 / 4   |   1 / 2 / 3
-	*   紧斜杠             空格斜杠             空格斜杠
-	* ```
 	*
-	* | 段 | 内容 | 可点 | 点了之后 |
-	* |---|---|---|---|
-	* | ① | 路径上**除自己外**的祖先 | ✅ | 跳回那一层（截断路径）|
-	* | ② | **当前层的全部兄弟**（选中的高亮）| ✅ | 选中它 + 丢掉它下面那层 |
-	* | ③ | **选中项的子** | ✅ | 下探一层 |
+	* 所有可点的地方（标题、面包屑每一段、当前层每一项、子层每一项）
+	* **都调这一个函数**，区别只是传进去的 `next` 路径不同 ——
+	* 而路径是 `pure/filter-box.ts` 算好的，写在每一项的 `next` 字段里。
 	*
-	* ⚠ **只有 ②③ 是可点层**（「只展示两个层级」）。爷爷辈只以面包屑形式存在，
-	*   不再展开成选项 —— 否则四级就是四排文字，方框会失控。
+	* | 点哪里 | next |
+	* |---|---|
+	* | 标题（第 0 级）| `[]`（清空）|
+	* | 面包屑第 i 段 | `picked.slice(0, i+1)` |
+	* | 当前层 / 子层的项 | 该项的路径 |
 	*
-	* ## 区别靠什么表达
+	* **没有任何 `if (点的是标题) … else if (点的是面包屑) …`。**
 	*
-	* 用户问：「你让他就一个按钮，那你怎么区分点到了谁身上？」
+	* ## 渲染：只 map 一遍
 	*
-	* ⇒ **靠三个视觉信号**，不用边框或色块：
-	* 1. **分隔符不同**：① 用紧斜杠 `/`，②③ 用空格斜杠 ` / `；
-	* 2. **一条竖线**把 ① 和 ②③ 分开（结构分隔，比颜色可靠）；
-	* 3. **选中项蓝字加粗**，其余黑字。
+	* 展开态是**若干段**（0–3 个），段之间一条竖线。段由 `segmentsOf()` 给出，
+	* 组件只 `map`，**竖线规则写一次**（`index > 0` 就画）。
 	*
-	* ## 全部判决在 `pure/filter-box.ts`（30 条单测）
+	* 收起态是一条面包屑，由 `collapsedCrumbs()` 给出，同样只 `map`。
 	*
-	* 组件只做四件事：画三段、画分隔符、量宽度、把 `next` 交给 `onChange`。
+	* 组件里剩下的 `if` 只有两类，都是**渲染必需**、不含语义的：
+	* 1. `if (face === null) return` —— ref 还没挂上；
+	* 2. `hasValue && …` / `picked ? cls : cls` —— 决定画什么、加哪个 class。
+	*
+	* ## 宽度动画
+	*
+	* 两套「脸」（收起 / 展开）都 `position: absolute` ⇒ 不参与盒宽。
+	* `useLayoutEffect` 量**当前那张脸**的宽度写到方框上，CSS 对 `width` 做 180ms 过渡。
+	* ⇒ 视觉上是「方块按钮变宽露出内容」，不是「内容把布局挤开」。
 	*/
 	var import_jsx_runtime = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_jsx_runtime_development();
@@ -17352,155 +17318,130 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		const boxRef = (0, import_react.useRef)(null);
 		const collapsedRef = (0, import_react.useRef)(null);
 		const expandedRef = (0, import_react.useRef)(null);
-		const hasValue = hasSelection(props.picked);
-		const view = viewOf(props.nodes, props.picked);
-		const crumbsCollapsed = collapsedCrumbs(props.nodes, props.picked);
-		const key = JSON.stringify([
-			crumbsCollapsed.map((one) => one.label),
-			view.crumbs.map((one) => one.label),
-			view.currentLevel.map((one) => one.label),
-			view.childLevel.map((one) => one.label)
-		]);
+		const crumbs = collapsedCrumbs(props.nodes, props.picked);
+		const segments = segmentsOf(props.nodes, props.picked);
+		const hasValue = crumbs.length > 0;
+		/**
+		* **唯一的动作**：选中一条路径，并展开。
+		*
+		* ⚠ 不要在这里加分支。任何「点的是哪一类东西」的区分都已经体现在 `next` 里了。
+		*/
+		const select = (next) => {
+			props.onChange(next);
+			props.onOpenChange(true);
+		};
+		const signature = JSON.stringify([crumbs.map((one) => one.label), segments.map((seg) => seg.items.map((one) => one.label))]);
 		(0, import_react.useLayoutEffect)(() => {
 			const box = boxRef.current;
 			const face = props.open ? expandedRef.current : collapsedRef.current;
 			if (box === null || face === null) return;
 			box.style.width = `${Math.ceil(face.getBoundingClientRect().width) + 24}px`;
-		}, [props.open, key]);
-		const pick = (next) => {
-			props.onChange(next);
-		};
+		}, [props.open, signature]);
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			ref: boxRef,
 			"data-box-id": props.boxId,
 			className: props.open ? "filter-box is-open" : "filter-box",
-			onClick: () => {
-				if (!props.open) props.onOpenChange(true);
-			},
+			onClick: () => props.onOpenChange(true),
 			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				ref: collapsedRef,
 				className: "filter-box__face filter-box__face--collapsed",
-				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-						type: "button",
-						className: "filter-box__title filter-box__title--clickable",
-						title: hasValue ? "清空筛选（选中第 0 级）" : "展开",
-						onClick: (event) => {
-							event.stopPropagation();
-							if (hasValue) pick([]);
-							props.onOpenChange(true);
-						},
-						children: props.title
-					}),
-					hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__colon",
-						children: "："
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__crumbs",
-						children: crumbsCollapsed.map((crumb, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-							style: { display: "contents" },
-							children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "filter-box__csep",
-								children: "/"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								type: "button",
-								className: index === crumbsCollapsed.length - 1 ? "filter-box__item is-picked" : "filter-box__item",
-								title: `选中 ${crumb.label}（丢弃它下面的）`,
-								onClick: (event) => {
-									event.stopPropagation();
-									pick(crumb.next);
-								},
-								children: crumb.label
-							})]
-						}, `cc-${crumb.value}`))
-					})] }),
-					!hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-box__caret" })
-				]
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					type: "button",
+					className: "filter-box__title",
+					title: hasValue ? "清空筛选" : props.title,
+					onClick: (event) => {
+						event.stopPropagation();
+						select([]);
+					},
+					children: props.title
+				}), hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "filter-box__colon",
+					children: "："
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Crumbs, {
+					items: crumbs,
+					onPick: select
+				})] })]
 			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				ref: expandedRef,
 				className: "filter-box__face filter-box__face--expanded",
 				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
 						className: "filter-box__title",
+						title: "清空筛选",
+						onClick: (event) => {
+							event.stopPropagation();
+							select([]);
+						},
 						children: props.title
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 						className: "filter-box__colon",
 						children: "："
 					}),
-					view.crumbs.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__crumbs",
-						children: view.crumbs.map((crumb, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-							style: { display: "contents" },
-							children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "filter-box__csep",
-								children: "/"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								type: "button",
-								className: "filter-box__item",
-								title: `跳回 ${crumb.label}`,
-								onClick: (event) => {
-									event.stopPropagation();
-									pick(crumb.next);
-								},
-								children: crumb.label
-							})]
-						}, `crumb-${crumb.value}`))
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-box__vline" })] }),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__items",
-						children: view.currentLevel.map((option, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-							style: { display: "contents" },
-							children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "filter-box__sep",
-								children: " / "
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Option, {
-								label: option.label,
-								picked: option.picked,
-								hasChildren: option.hasChildren,
-								onClick: () => pick(option.next)
-							})]
-						}, `cur-${option.value}`))
-					}),
-					view.childLevel.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-box__vline" }),
-					view.childLevel.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__items",
-						children: view.childLevel.map((option, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-							style: { display: "contents" },
-							children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "filter-box__sep",
-								children: " / "
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Option, {
-								label: option.label,
-								picked: option.picked,
-								hasChildren: option.hasChildren,
-								onClick: () => pick(option.next)
-							})]
-						}, `child-${option.value}`))
-					})
+					segments.map((seg, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.Fragment, { children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-box__vline" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Items, {
+						items: seg.items,
+						sep: seg.sep,
+						onPick: select
+					})] }, `seg-${index}`))
 				]
 			})]
 		});
 	}
+	/** 收起态面包屑。 */
+	function Crumbs(props) {
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+			className: "filter-box__crumbs",
+			children: props.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+				style: { display: "contents" },
+				children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "filter-box__csep",
+					children: "/"
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pick, {
+					item,
+					variant: "crumb",
+					onPick: props.onPick
+				})]
+			}, `c-${item.value}`))
+		});
+	}
+	/** 一段（当前层 / 子层）。 */
+	function Items(props) {
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+			className: "filter-box__items",
+			children: props.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+				style: { display: "contents" },
+				children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "filter-box__sep",
+					children: props.sep
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pick, {
+					item,
+					variant: "option",
+					onPick: props.onPick
+				})]
+			}, `i-${item.value}`))
+		});
+	}
 	/**
-	* 一个可点的文字。
+	* 一个可点的项。
 	*
 	* ⚠ **不是胶囊、不是按钮外观** —— 无边框、无底色，hover 才有淡底。
 	* 用户原话：「里面不是纸片，他们都在方框里面，不是一个可以点击的按钮，
 	* 而是可以点击的内容」。
 	*
-	* · `picked` —— 蓝字 + 加粗
-	* · 有子节点 —— 名字后面一个小 `›`
+	* `variant` 只影响样式 class，**不影响行为** —— 行为永远是 `onPick(item.next)`。
 	*/
-	function Option(props) {
+	function Pick(props) {
+		const cls = ["filter-box__item", `filter-box__item--${props.variant}`];
+		if (props.item.picked) cls.push("is-picked");
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 			type: "button",
-			className: props.picked ? "filter-box__item is-picked" : "filter-box__item",
+			className: cls.join(" "),
 			onClick: (event) => {
 				event.stopPropagation();
-				props.onClick();
+				props.onPick(props.item.next);
 			},
-			children: [props.label, props.hasChildren && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+			children: [props.item.label, props.item.hasChildren && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 				className: "filter-box__more",
 				children: "›"
 			})]
@@ -17686,13 +17627,13 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		children: kids
 	};
 	const DEEP = [n("1", [n("2", [n("3", [n("2", [n("4"), n("5")]), n("6")]), n("7")]), n("8")]), n("9")];
-	/** 一个方框的受控演示（自己管 open）。 */
+	/** 受控单盒子。 */
 	function SoloBox(props) {
 		const [picked, setPicked] = (0, import_react.useState)(props.initial ?? []);
 		const [open, setOpen] = (0, import_react.useState)(true);
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			className: "filter-row",
-			style: { width: props.width ?? 420 },
+			style: { gap: 10 },
 			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
 				boxId: "solo",
 				title: props.title,
@@ -17701,14 +17642,13 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				open,
 				onChange: setPicked,
 				onOpenChange: setOpen
-			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", {
 				style: {
-					marginTop: 8,
 					fontSize: 10.5,
 					color: "#9aa1ad",
 					fontFamily: "var(--mono)"
 				},
-				children: ["picked = ", JSON.stringify(picked)]
+				children: JSON.stringify(picked)
 			})]
 		});
 	}
@@ -17744,7 +17684,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			children: [
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 					className: "pv-head",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "FilterBox" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "面包屑导航 · 点到谁就选中谁 · 只展示两个可点层" })]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "FilterBox" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "面包屑筛选 · 一个操作 · 一个按钮为单位" })]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
@@ -17761,7 +17701,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 									fontSize: 11,
 									color: "#9aa1ad"
 								},
-								children: "← 右边这里以后放搜索框"
+								children: "← 右边以后放搜索框"
 							})
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
@@ -17776,68 +17716,30 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 结构：一个方框永远是三段" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "pv-anatomy",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-									className: "a1",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-										className: "pv-tag",
-										children: "①"
-									}), "1/2/3/2"]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "av" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-									className: "a3",
-									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "pv-tag",
-											children: "②"
-										}),
-										"1",
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "as",
-											children: " / "
-										}),
-										"2",
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "as",
-											children: " / "
-										}),
-										"3",
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "as",
-											children: " / "
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "a2",
-											children: "4"
-										})
-									]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "av" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-									className: "a3",
-									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "pv-tag",
-											children: "③"
-										}),
-										"1",
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "as",
-											children: " / "
-										}),
-										"2",
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "as",
-											children: " / "
-										}),
-										"3"
-									]
-								})
-							]
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 只有一个操作" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+							className: "pv-table",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "点哪里" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "next" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "之后" })
+							] }) }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tbody", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "标题「状态」（第 0 级）" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "[]" }) }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "清空 + 展开" })
+								] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "面包屑第 i 段" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "picked.slice(0, i+1)" }) }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "选中它 + 展开" })
+								] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "当前层 / 子层任一项" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "它的路径" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "选中它 + 展开" })
+								] })
+							] })]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 							className: "pv-note",
@@ -17846,20 +17748,21 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 								marginBottom: 0
 							},
 							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "①面包屑" }),
-								"= 路径上除自己外的祖先，紧斜杠 ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "/" }),
-								"，",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "可点跳回" }),
-								"；",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "②当前层" }),
-								"= 同层的全部兄弟（选中的蓝字加粗），空格斜杠 ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: " / " }),
-								"；",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "③子层" }),
-								"= 选中项的子，空格斜杠 ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: " / " }),
-								"。 竖线把 ① 和 ②③ 分开 —— 这就是「怎么区分点到了谁身上」的答案。"
+								"组件里**只有一个函数**：",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("code", { children: [
+									"select(next) ",
+									"=> {",
+									" onChange(next); onOpenChange(true) ",
+									"}"
+								] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+								"没有任何 ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "if (点的是标题) … else if (点的是面包屑) …" }),
+								"。 区别只在 ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "next" }),
+								"，而 ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "next" }),
+								" 是纯函数算好的。"
 							]
 						})
 					]
@@ -17867,26 +17770,34 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 四级实例（用户举的 1/2/3/2/4）" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 四级实例（1/2/3/2/4）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 							className: "pv-note",
-							children: [
-								"点「1」→ 列出 2/8；点「2」→ 面包屑 1，列出 3/7 和子 2/8； 点「3」→ 面包屑 1/2，列出 2/6 和子 3/7 ……",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "每一层都能看到「同层兄弟」和「下一步该往哪下探」" }),
-								"，不会越点越长。"
-							]
+							children: "点「1」→ 选中 1 并展开 2/8；点「2」→ 选中 2 并展开 3/7； 面包屑里每段都能点，点了就跳回那一层。"
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SoloBox, {
 							title: "编号",
-							nodes: DEEP,
-							width: 460
+							nodes: DEEP
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							style: { marginTop: 14 },
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SoloBox, {
+								title: "编号",
+								nodes: DEEP,
+								initial: [
+									"1",
+									"2",
+									"3",
+									"2"
+								]
+							})
 						})
 					]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 各层选中态（看收起态显示对不对）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 各层收起态（看面包屑）" }),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "filter-row",
 							children: [
@@ -17935,43 +17846,45 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 								marginBottom: 0
 							},
 							children: [
-								"期望：",
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态" }),
-								"（无值，点它展开）· ",
+								" · ",
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成" }),
 								" ·",
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成 / 失败" }),
 								" · ",
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "类别：工作" }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+								"标题是第 0 级（点了清空）；面包屑每段都能点；",
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "没有 ▾、没有 ✕" }),
-								" —— 全清靠点标题（标题 = 第 0 级）。"
+								"。"
 							]
 						})
 					]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "⑤ 规则清单" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ol", {
-						className: "pv-list",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "⑤ 展开态结构（点开①的第一个方框看）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						className: "pv-note",
+						style: { marginBottom: 0 },
 						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "点到谁就选中谁" }), " —— 点「完成」就是选中「完成」，不是「清空选择」"] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"选中某个节点 ⇒ ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "它下面那层的选中被丢掉" }),
-								"（子级的选中取消掉）"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"选中之后 ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "列出它的子项" }),
-								"（③ 段）"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "只展示两个可点层" }), "：②当前层兄弟 + ③选中项的子。爷爷辈只在面包屑里"] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "点标题 = 清空" }), "（标题本身就是第 0 级；选中第 0 级 = 展开第 1 级）"] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "点面包屑里某一段" }), " ⇒ 选中那一段，取消比它深的"] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "点开一个方框，另一个自动收起" }), "（一个按钮为单位）"] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "点按钮之外任何地方（含同一行空白）⇒ 收起" }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { children: "没有 ▾、没有 ✕ —— 这两个符号都没有独立语义，删掉" })
+							"永远是若干段，段间一条竖线：",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "①面包屑" }),
+							"（祖先，紧斜杠 ",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "/" }),
+							"，可点跳回）│",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "②当前层兄弟" }),
+							"（空格斜杠 ",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: " / " }),
+							"，选中的蓝字加粗）│",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "③选中项的子" }),
+							"（空格斜杠 ",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: " / " }),
+							"）",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+							"① 只在选中项不是第 1 级时出现；③ 只在选中项有子时出现；",
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "②永远有" }),
+							"。"
 						]
 					})]
 				})

@@ -35,17 +35,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .pv-note code{font-family:var(--mono);font-size:10.5px;background:#f1f3f6;
   padding:1px 6px;border-radius:4px;color:#16181d}
 
-/* 三段示意（④ 那块的静态图） */
-.pv-anatomy{display:flex;align-items:center;gap:0;border:1px solid var(--border);
-  border-radius:6px;height:34px;padding:0 12px;background:var(--bg-card);
-  font-size:12.5px;width:fit-content}
-.pv-anatomy .a1{color:#9aa1ad}
-.pv-anatomy .a2{color:var(--accent);font-weight:700}
-.pv-anatomy .a3{color:var(--text)}
-.pv-anatomy .av{width:1px;align-self:stretch;margin:0 10px;background:#d1d5db}
-.pv-anatomy .as{color:#cbd5e1;padding:0 2px}
-.pv-tag{display:inline-block;font-size:10px;color:#9aa1ad;background:#f1f3f6;
-  padding:1px 6px;border-radius:4px;margin-right:6px;font-family:var(--mono)}
+/* 操作表（③ 那块） */
+.pv-table{border-collapse:collapse;font-size:11.5px;width:100%}
+.pv-table th,.pv-table td{border:1px solid #eef0f4;padding:6px 10px;text-align:left}
+.pv-table th{background:#fbfcfd;font-weight:600;color:var(--text-secondary);font-size:11px}
+.pv-table code{font-family:var(--mono);font-size:10.5px;color:var(--accent)}
 
 /* ══════════════════════════════════════════════════════════
    筛选方框
@@ -72,34 +66,23 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .filter-box.is-open .filter-box__face--collapsed{opacity:0;pointer-events:none}
 .filter-box.is-open .filter-box__face--expanded{opacity:1;pointer-events:auto}
 
-.filter-box__title,.filter-box__colon{font-size:12.5px;color:var(--text-secondary)}
-.filter-box__value{font-size:12.5px;font-weight:600;color:var(--accent)}
-.filter-box__zone{display:inline-flex;align-items:center}
-.filter-box__caret{padding-left:5px;font-size:10px;color:#9aa1ad}
-
-/*
- * ⚠ 收起态标题是一个按钮（= 第 0 级）。**不要**继承上一条的 caret 样式。
- *   它是全清入口，用户要能看出它可点。
- */
-.filter-box__title--clickable{
-  border:0;background:none;padding:0;font-family:inherit;font-size:12.5px;
+/* 标题 = 第 0 级，永远可点（点了清空） */
+.filter-box__title{
+  border:0;background:none;padding:0 2px;font-family:inherit;font-size:12.5px;
   color:var(--text-secondary);cursor:pointer;border-radius:4px;
 }
-.filter-box__title--clickable:hover{background:#f3f4f6;color:var(--text)}
+.filter-box__title:hover{background:#f3f4f6;color:var(--text)}
+.filter-box__colon{font-size:12.5px;color:var(--text-secondary)}
 
-/*
- * ⚠ 清空不再是独立按钮（点标题就行），这条留作历史说明，样式已删。
- */
-
-/* ① 面包屑：祖先链，紧斜杠 */
+/* 收起态面包屑 */
 .filter-box__crumbs{display:inline-flex;align-items:center}
 /*
- * ⚠ 分隔斜杠要看得见。第一版用 #cbd5e1，截图里几乎看不见，
+ * ⚠ 分隔斜杠要看得见。用过 #cbd5e1，截图里几乎看不见，
  *   看起来像「进行 处理中」两个词挨着 —— 用户会以为还是一个整体。
  */
 .filter-box__csep{padding:0 1px;font-size:12px;color:#9aa1ad;user-select:none}
 
-/* ②③ 当前层 / 子层 */
+/* 展开态各段 */
 .filter-box__items{display:inline-flex;align-items:center}
 
 /* 可点的文字（不是胶囊 / 按钮外观） */
@@ -112,24 +95,19 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 /* 选中的那个：蓝字加粗（无底色） */
 .filter-box__item.is-picked{color:var(--accent);font-weight:700}
 
-/*
- * 收起态面包屑里的**非最后一段**：加一条虚线下划线，表示「点它能跳回这一层」。
- *
- * 用户 `2026-11-16`：「每一层，虽然他写的是文字。但是文字都是可以单独点击的。」
- * ⇒ 必须让人**看得出**这一段能点，不能只靠 hover。
- */
-.filter-box__face--collapsed .filter-box__crumbs .filter-box__item:not(.is-picked){
+/* 收起态面包屑里**非选中**的段：虚线下划线，表示「点它能跳回这一层」 */
+.filter-box__item--crumb:not(.is-picked){
   text-decoration:underline dotted #b6bec9;
   text-underline-offset:3px;
 }
-.filter-box__face--collapsed .filter-box__crumbs .filter-box__item:not(.is-picked):hover{
+.filter-box__item--crumb:not(.is-picked):hover{
   color:var(--accent);text-decoration-color:var(--accent);
 }
 
 /* 「还有下一级」的提示 */
 .filter-box__more{font-size:9px;opacity:.5;margin-left:1px}
 
-/* ②③ 的兄弟分隔：空格斜杠 */
+/* 兄弟分隔：空格斜杠 */
 .filter-box__sep{padding:0 2px;font-size:12px;color:#cbd5e1;user-select:none}
 
 /* 段与段之间的结构竖线：贯通上下内边 */

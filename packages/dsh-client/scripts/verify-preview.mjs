@@ -1,11 +1,5 @@
 /**
- * 面包屑版验证 —— 一次跑完，不中途改断言。
- *
- * 用户 `2026-11-16` 的语义：
- *   · 点到谁就选中谁（点组 = 选中组，不是清空）
- *   · 选中某节点 ⇒ 它下面的选中全丢掉
- *   · 列出选中项的子
- *   · 只展示两个可点层（②当前层 ③子层），①面包屑只用于跳回
+ * 验证：**点任何东西 = 选中它 + 展开**，一个操作，无分支。
  *
  * node packages/dsh-client/scripts/verify-preview.mjs
  */
@@ -25,8 +19,8 @@ mkdirSync(OUT, { recursive: true });
 const PAGE = nodePath.join(PKG, 'preview', 'filter-box.html');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const port = 9270;
-const ud = mkdtempSync(nodePath.join(tmpdir(), 'bc-'));
+const port = 9290;
+const ud = mkdtempSync(nodePath.join(tmpdir(), 'v5-'));
 const proc = spawn(EDGE, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${ud}`,
 	'--no-first-run', '--no-default-browser-check', '--disable-gpu', 'about:blank'], { stdio: 'ignore' });
 
@@ -71,11 +65,9 @@ const shot = async (name) => {
 };
 const ev = async (x) => {
 	const r = await send('Runtime.evaluate', { expression: x, awaitPromise: true, returnByValue: true });
-	if (r.exceptionDetails) console.log('  ERR', (r.exceptionDetails.exception?.description || '').slice(0, 220));
+	if (r.exceptionDetails) console.log('  ERR', (r.exceptionDetails.exception?.description || '').slice(0, 200));
 	return r.result?.value;
 };
-
-/** 真人点击：完整 mouse 序列。 */
 const click = async (sel) => {
 	const b = await ev(`(() => { const el = ${sel}; if (!el) return null;
     const r = el.getBoundingClientRect();
@@ -88,16 +80,14 @@ const click = async (sel) => {
 };
 
 /**
- * 读一个方框的三段（第 `row` 个 .filter-row 的第 `idx` 个方框）。
+ * 读第一个方框。
  *
- * ⚠ 段用 `:scope > .filter-box__items`（直接子元素）取，
- *   不能用「全框 querySelectorAll」—— 否则面包屑里的项会混进当前层。
+ * 段用 `:scope > .filter-box__items` 取直接子容器；竖线用直接子 `.filter-box__vline` 数。
  */
-const readBox = (idx, row = 0) => ev(`(() => {
-  const box = document.querySelectorAll('.filter-row')[${row}].querySelectorAll('.filter-box')[${idx}];
+const readBox = () => ev(`(() => {
+  const box = document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0];
   if (!box) return null;
   const ex = box.querySelector('.filter-box__face--expanded');
-  const crumbs = ex.querySelector('.filter-box__crumbs');
   const segs = [...ex.querySelectorAll(':scope > .filter-box__items')];
   const txt = (el) => [...el.querySelectorAll('.filter-box__item')].map(b => ({
     t: b.textContent.replace('›',''),
@@ -108,17 +98,12 @@ const readBox = (idx, row = 0) => ev(`(() => {
   const citems = cwrap ? [...cwrap.querySelectorAll('.filter-box__item')] : [];
   return {
     open: box.classList.contains('is-open'),
-    crumbs: crumbs ? txt(crumbs) : [],
-    current: segs[0] ? txt(segs[0]) : [],
-    child: segs[1] ? txt(segs[1]) : [],
-    vlines: ex.querySelectorAll('.filter-box__vline').length,
-    collapsedCrumbs: citems.map(b => b.textContent ?? ''),
-    collapsedPicked: citems.filter(b => b.classList.contains('is-picked')).map(b => b.textContent ?? ''),
-    /* 标题是第 0 级（可点 = 清空）。 */
-    hasTitleButton: face.querySelector('.filter-box__title--clickable') !== null,
-    /* ⚠ 这两个**必须不存在**（用户 2026-11-16 要求删掉）。 */
+    segments: segs.map(txt),
+    vlines: [...ex.children].filter(c => c.classList.contains('filter-box__vline')).length,
+    collapsed: citems.map(b => b.textContent ?? ''),
     hasCaret: face.querySelector('.filter-box__caret') !== null,
     hasClear: face.querySelector('.filter-box__clear') !== null,
+    hasTitleBtn: box.querySelector('.filter-box__title')?.tagName === 'BUTTON',
   };
 })()`);
 
@@ -127,215 +112,181 @@ const expect = (label, actual, want) => {
 	if (!ok) failures.push(`${label}\n      期望 ${JSON.stringify(want)}\n      实际 ${JSON.stringify(actual)}`);
 	console.log(`  ${ok ? '✓' : '✗'} ${label}`);
 };
-
 const labels = (arr) => (arr ?? []).map((x) => x.t);
-const pickedLabels = (arr) => (arr ?? []).filter((x) => x.picked).map((x) => x.t);
+const picked = (arr) => (arr ?? []).filter((x) => x.picked).map((x) => x.t);
 
-/* ── 定位器：永远走「当前开着的那个方框」 ── */
-
-/**
- * 点某一「段」里的项。
- *
- * ⚠ 段索引：0 = 当前层，1 = 子层。
- * ⚠ 必须用 `:scope >` 直接子选择器，否则面包屑里的同名项会被误选中。
- * ⚠ 表达式整体是 IIFE 并且返回**元素本身** —— 不要在外面拼 `.find(...)`，
- *   上一版就是括号拼错，`NodeList.find` 不存在 ⇒ 静默返回 undefined ⇒ 点击没发生。
- */
-const clickSegment = (segIndex, label) =>
-	click(`(() => {
-    const box = document.querySelector('.filter-box.is-open');
-    if (!box) return null;
-    const segs = box.querySelectorAll('.filter-box__face--expanded > .filter-box__items');
-    const seg = segs[${segIndex}];
-    if (!seg) return null;
-    return [...seg.querySelectorAll('.filter-box__item')]
-      .find(b => b.textContent.replace('›','') === ${JSON.stringify(label)}) ?? null;
-  })()`);
-
-const clickCurrent = (label) => clickSegment(0, label);
-const clickChild = (label) => clickSegment(1, label);
-
-/** 点面包屑里的段。 */
-const clickCrumb = (label) =>
-	click(`(() => {
-    const box = document.querySelector('.filter-box.is-open');
-    if (!box) return null;
-    return [...box.querySelectorAll('.filter-box__crumbs .filter-box__item')]
-      .find(b => b.textContent === ${JSON.stringify(label)}) ?? null;
-  })()`);
-
-/** 点标题（= 外面），收起所有。 */
+/* 段内点击器 */
+const clickSeg = (si, label) => click(`(() => {
+  const box = document.querySelector('.filter-box.is-open');
+  if (!box) return null;
+  const segs = box.querySelectorAll('.filter-box__face--expanded > .filter-box__items');
+  const seg = segs[${si}];
+  if (!seg) return null;
+  return [...seg.querySelectorAll('.filter-box__item')].find(b => b.textContent.replace('›','') === ${JSON.stringify(label)}) ?? null;
+})()`);
+const clickCrumb = (label) => click(`(() => {
+  const box = document.querySelector('.filter-box.is-open');
+  const cw = box?.querySelector('.filter-box__crumbs');
+  if (!cw) return null;
+  return [...cw.querySelectorAll('.filter-box__item')].find(b => b.textContent === ${JSON.stringify(label)}) ?? null;
+})()`);
+const clickTitle = () => click(`document.querySelector('.filter-box.is-open .filter-box__title')`);
 const clickOutside = () => click(`document.querySelector('.pv-head h1')`);
-
 const firstBox = `document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0]`;
-const secondBox = `document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[1]`;
 
-/* ═══════════════════════════════════════════════════════════ */
-console.log('\n═══ ① 未选中：一段，列出根 ═══');
+/* ══════════════════════════════════════════════════════════ */
+console.log('\n═══ ① 没选：一段，没 ▾ 没 ✕，标题是按钮 ═══');
 await click(firstBox);
-await sleep(350);
-const a0 = await readBox(0);
-expect('没有面包屑', a0.crumbs.length, 0);
-expect('当前层是四个状态组', labels(a0.current), ['草稿', '进行', '搁置', '完成']);
-expect('没有子层', a0.child.length, 0);
-expect('0 条竖线', a0.vlines, 0);
-await shot('01-no-selection.png');
-
-console.log('\n═══ ② 点「完成」→ 选中完成，列出它的子 ═══');
-await clickCurrent('完成');
 await sleep(400);
-const a1 = await readBox(0);
-expect('没有面包屑（完成是第 1 级）', a1.crumbs.length, 0);
-expect('当前层不变，完成被选中', pickedLabels(a1.current), ['完成']);
-expect('子层是完成的四个子', labels(a1.child), ['成功', '失败', '取消', '拒绝']);
-expect('一条竖线（当前层 | 子层）', a1.vlines, 1);
-console.log('  → 「点到完成就选中完成，列出完成的子项」✅');
-await shot('02-pick-ended.png');
+const a0 = await readBox();
+expect('展开', a0.open, true);
+expect('一段（根）', labels(a0.segments[0]), ['草稿', '进行', '搁置', '完成']);
+expect('没有竖线', a0.vlines, 0);
+expect('没有 ▾', a0.hasCaret, false);
+expect('没有 ✕', a0.hasClear, false);
+expect('标题是 button', a0.hasTitleBtn, true);
+await shot('01-empty-open.png');
 
-console.log('\n═══ ③ 点子层「失败」→ 下探一层，面包屑出现 ═══');
-await clickChild('失败');
-await sleep(400);
-const a2 = await readBox(0);
-expect('面包屑 = 完成', labels(a2.crumbs), ['完成']);
-expect(
-	'当前层 = 完成的四个子，失败被选中',
-	[labels(a2.current), pickedLabels(a2.current)],
-	[['成功', '失败', '取消', '拒绝'], ['失败']],
-);
-expect('子层空（失败没子）', a2.child.length, 0);
-expect('一条竖线', a2.vlines, 1);
-await shot('03-pick-failed.png');
-
-console.log('\n═══ ④ 点面包屑「完成」→ 跳回上层 ═══');
-await clickCrumb('完成');
-await sleep(400);
-const a3 = await readBox(0);
-expect('面包屑消失', a3.crumbs.length, 0);
-expect('当前层完成被选中', pickedLabels(a3.current), ['完成']);
-expect('子层又出现', labels(a3.child), ['成功', '失败', '取消', '拒绝']);
-console.log('  → 跳回后「失败」的选中被取消了 ✅');
-await shot('04-crumb-back.png');
-
-console.log('\n═══ ⑤ ⚠ 点另一个组「进行」→ 替换，不叠加 ═══');
-await clickCurrent('进行');
-await sleep(400);
-const a4 = await readBox(0);
-expect('当前层进行被选中', pickedLabels(a4.current), ['进行']);
-expect('子层换成进行的子', labels(a4.child), ['提交', '处理中']);
-await shot('05-switch-group.png');
-
-console.log('\n═══ ⑥ 收起态是面包屑（每段独立可点）═══');
-await clickChild('处理中');
-await sleep(400);
-await clickOutside();
+console.log('\n═══ ② 点「进行」→ 选中它 + 展开它的子（两段）═══');
+await clickSeg(0, '进行');
 await sleep(450);
-const a5 = await readBox(0);
-expect('已收起', a5.open, false);
-expect('⚠ 没有 ▾（用户要求删）', a5.hasCaret, false);
-expect('⚠ 没有 ✕（清空靠点标题）', a5.hasClear, false);
-expect('标题是按钮（第 0 级）', a5.hasTitleButton, true);
-expect('收起态拆成 2 段', a5.collapsedCrumbs, ['进行', '处理中']);
-expect('最后一段是选中态', a5.collapsedPicked, ['处理中']);
-await shot('06-collapsed-crumbs.png');
+const a1 = await readBox();
+expect('两段', a1.segments.length, 2);
+expect('②当前层里「进行」选中', picked(a1.segments[0]), ['进行']);
+expect('③子层是进行的子', labels(a1.segments[1]), ['提交', '处理中']);
+expect('一条竖线', a1.vlines, 1);
+console.log('  → 点它的效果就是选中它，既然选中了它就展开 ✅');
+await shot('02-pick-active.png');
 
-console.log('\n═══ ⑥b ⚠ 点收起态第一段「进行」→ 取消「处理中」的选中 ═══');
+console.log('\n═══ ③ 点子层「提交」→ 选中它 + 展开（三段）═══');
+await clickSeg(1, '提交');
+await sleep(450);
+const a2 = await readBox();
+expect('两段（提交没子，所以没有第三段）', a2.segments.length, 2);
+expect('①面包屑 = 进行', labels(a2.segments[0]), ['进行']);
+expect('②当前层里「提交」选中', picked(a2.segments[1]), ['提交']);
+await shot('03-pick-submitted.png');
+
+console.log('\n═══ ④ 收起态面包屑：进行 / 提交（两段，独立可点）═══');
+await clickOutside();
+await sleep(500);
+const a3 = await readBox();
+expect('收起', a3.open, false);
+/*
+ * ⚠ 面包屑的 textContent 是「进行/提交」连起来的（斜杠是独立 span），
+ *   要按**每个 button** 取，不能整块取 textContent。
+ */
+const crumbLabels = await ev(`(() => {
+  const box = document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0];
+  const cw = box.querySelector('.filter-box__face--collapsed .filter-box__crumbs');
+  return cw ? [...cw.querySelectorAll('.filter-box__item')].map(b => (b.textContent ?? '').replace('›','')) : [];
+})()`);
+expect('面包屑两段（每个是独立 button）', crumbLabels, ['进行', '提交']);
+await shot('04-collapsed.png');
+
+console.log('\n═══ ⑤ ⚠ 点收起态第一段「进行」→ 选中进行 + 展开（提交被取消）═══');
 await click(`(() => {
   const box = document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0];
-  return box.querySelectorAll('.filter-box__face--collapsed .filter-box__crumbs .filter-box__item')[0] ?? null;
+  const cw = box.querySelector('.filter-box__face--collapsed .filter-box__crumbs');
+  return cw ? cw.querySelectorAll('.filter-box__item')[0] : null;
 })()`);
-await sleep(450);
-const a5b = await readBox(0);
-expect('路径截断成只剩「进行」', a5b.collapsedCrumbs, ['进行']);
-console.log('  → 用户要的：「进行」点了就选中进行，取消「处理中」的选中');
-await shot('06b-collapsed-crumb-click.png');
+await sleep(500);
+const a4 = await readBox();
+expect('⚠ 点了就展开', a4.open, true);
+const crumbAfter = await ev(`(() => {
+  const box = document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0];
+  const cw = box.querySelector('.filter-box__face--collapsed .filter-box__crumbs');
+  return cw ? [...cw.querySelectorAll('.filter-box__item')].map(b => (b.textContent ?? '').replace('›','')) : [];
+})()`);
+expect('面包屑只剩「进行」', crumbAfter, ['进行']);
+expect('当前层「进行」选中', picked(a4.segments[0]), ['进行']);
+expect('子层是进行的子', labels(a4.segments[1]), ['提交', '处理中']);
+console.log('  → 用户要的：「进行」点了就选中进行，取消「提交」✅');
+await shot('05-crumb-click-opens.png');
 
-console.log('\n═══ ⑦ ⚠ 点标题 → 清空（选中第 0 级）═══');
-await click(`document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0].querySelector('.filter-box__title--clickable')`);
-await sleep(450);
-const a6 = await readBox(0);
-expect('清空后没有面包屑', a6.collapsedCrumbs, []);
-expect('展开了（选中第 0 级 = 展开第 1 级）', a6.open, true);
-expect('当前层是四个组，都没选中', pickedLabels(a6.current), []);
-await shot('07-title-clears.png');
-await clickOutside();
-await sleep(350);
+console.log('\n═══ ⑥ ⚠ 点标题 → 清空 + 展开（选中第 0 级）═══');
+await clickTitle();
+await sleep(500);
+const a5 = await readBox();
+const crumbCleared = await ev(`(() => {
+  const box = document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0];
+  const cw = box.querySelector('.filter-box__face--collapsed .filter-box__crumbs');
+  return cw ? [...cw.querySelectorAll('.filter-box__item')].map(b => (b.textContent ?? '').replace('›','')) : [];
+})()`);
+expect('清空面包屑', crumbCleared, []);
+expect('展开', a5.open, true);
+expect('一段（根），都没选中', picked(a5.segments[0]), []);
+console.log('  → 标题 = 第 0 级，点了就是清空并展开第 1 级 ✅');
+await shot('06-title-clears.png');
 
-console.log('\n═══ ⑧ 互斥：开第二个，第一个收起 ═══');
-await click(firstBox);
-await sleep(350);
-await click(secondBox);
+console.log('\n═══ ⑦ 互斥 ═══');
+await click(`document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[1]`);
 await sleep(450);
 const both = await ev(`[...document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')].map(b => b.classList.contains('is-open'))`);
 expect('只有第二个开着', both, [false, true, false]);
-await shot('08-mutex.png');
+await clickOutside();
+await sleep(350);
 
-/* ═══════════════════════════════════════════════════════════ */
-console.log('\n═══ ⑨ 四级树：逐层下探（用户举的 1/2/3/2/4）═══');
+/* ══════════════════════════════════════════════════════════ */
+console.log('\n═══ ⑧ 四级：逐层点，每层都是「选中 + 展开」═══');
 const deepRow = await ev(`(() => {
   const rows = [...document.querySelectorAll('.filter-row')];
   return rows.findIndex(r => r.querySelector('.filter-box__title')?.textContent === '编号');
 })()`);
-console.log('  四级方框所在 row:', deepRow);
-const deepBox = `document.querySelectorAll('.filter-row')[${deepRow}].querySelector('.filter-box')`;
-const readDeep = () => readBox(0, deepRow);
+console.log('  四级方框 row:', deepRow);
+const deepBox = `document.querySelectorAll('.filter-row')[${deepRow}].querySelectorAll('.filter-box')[0]`;
+const readDeep = () => ev(`(() => {
+  const box = document.querySelectorAll('.filter-row')[${deepRow}].querySelectorAll('.filter-box')[0];
+  const ex = box.querySelector('.filter-box__face--expanded');
+  const segs = [...ex.querySelectorAll(':scope > .filter-box__items')];
+  const txt = (el) => [...el.querySelectorAll('.filter-box__item')].map(b => ({
+    t: b.textContent.replace('›',''),
+    picked: b.classList.contains('is-picked'),
+  }));
+  return { segments: segs.map(txt), vlines: [...ex.children].filter(c => c.classList.contains('filter-box__vline')).length };
+})()`);
 
-await clickOutside();
-await sleep(350);
 await click(deepBox);
 await sleep(450);
-
 const d0 = await readDeep();
-expect('L0 未选：列出 1/9', labels(d0.current), ['1', '9']);
-await clickCurrent('1');
-await sleep(400);
-const d1 = await readDeep();
-expect('点 1：当前层仍 1/9（1 选中），子层 2/8',
-	[pickedLabels(d1.current), labels(d1.child)], [['1'], ['2', '8']]);
+expect('L0：一段 1/9', labels(d0.segments[0]), ['1', '9']);
 
-await clickChild('2');
-await sleep(400);
-const d2 = await readDeep();
-expect('点 2：面包屑 1 | 当前层 2/8（2 选中）| 子层 3/7',
-	[labels(d2.crumbs), pickedLabels(d2.current), labels(d2.child)],
-	[['1'], ['2'], ['3', '7']]);
-await shot('09-deep-level2.png');
-
-await clickChild('3');
-await sleep(400);
-const d3 = await readDeep();
-expect('点 3：面包屑 1/2 | 当前层 3/7（3 选中）| 子层 2/6',
-	[labels(d3.crumbs), pickedLabels(d3.current), labels(d3.child)],
-	[['1', '2'], ['3'], ['2', '6']]);
-expect('两条竖线（面包屑|当前层|子层）', d3.vlines, 2);
-await shot('10-deep-level3.png');
-
-await clickChild('2');
-await sleep(400);
-const d4 = await readDeep();
-expect('点子层的 2：面包屑 1/2/3 | 当前层 2/6（2 选中）| 子层 4/5',
-	[labels(d4.crumbs), pickedLabels(d4.current), labels(d4.child)],
-	[['1', '2', '3'], ['2'], ['4', '5']]);
-await shot('11-deep-level4.png');
-
-console.log('\n═══ ⑩ ⚠ 关键：永远只有两个可点层 ═══');
-expect('面包屑有 3 段（但不可展开，只用于跳回）', d4.crumbs.length, 3);
-expect('可点层只有 2 个', [d4.current.length > 0, d4.child.length > 0], [true, true]);
-
-console.log('\n═══ ⑪ 点面包屑第 1 段「1」→ 跳回根 ═══');
-await clickCrumb('1');
-await sleep(400);
-const d5 = await readDeep();
-expect('跳回 1：无面包屑，当前层 1/9，子 2/8',
-	[labels(d5.crumbs), pickedLabels(d5.current), labels(d5.child)],
-	[[], ['1'], ['2', '8']]);
-await shot('12-crumb-jump.png');
-
-console.log('\n═══ ⑫ 收起态路径：深层 ═══');
-await clickOutside();
+await clickSeg(0, '1');
 await sleep(450);
-const d6 = await readDeep();
-expect('收起态 = 编号：1（一段）', d6.collapsedCrumbs, ['1']);
-await shot('13-deep-collapsed.png');
+const d1 = await readDeep();
+expect('点 1：两段（1/9 中 1 选中 | 2/8）', [
+	labels(d1.segments[0]), picked(d1.segments[0]), labels(d1.segments[1]),
+], [['1', '9'], ['1'], ['2', '8']]);
+
+await clickSeg(1, '2');
+await sleep(450);
+const d2 = await readDeep();
+expect('点 2：三段（面包屑1 | 2/8 中 2 选中 | 3/7）', [
+	labels(d2.segments[0]), labels(d2.segments[1]), picked(d2.segments[1]), labels(d2.segments[2]),
+], [['1'], ['2', '8'], ['2'], ['3', '7']]);
+expect('两条竖线', d2.vlines, 2);
+await shot('07-deep-2.png');
+
+await clickSeg(2, '3');
+await sleep(450);
+const d3 = await readDeep();
+expect('点 3：三段（面包屑1/2 | 3/7 中 3 选中 | 2/6）', [
+	labels(d3.segments[0]), labels(d3.segments[1]), picked(d3.segments[1]), labels(d3.segments[2]),
+], [['1', '2'], ['3', '7'], ['3'], ['2', '6']]);
+await shot('08-deep-3.png');
+
+console.log('\n═══ ⑨ ⚠「只展示两个可点层」═══');
+expect('面包屑 2 段（只用于跳回）', d3.segments[0].length, 2);
+expect('可点层 = 当前层 + 子层', d3.segments.length, 3);
+
+console.log('\n═══ ⑩ 点面包屑第 1 段「1」→ 选中 1 + 展开 ═══');
+await clickSeg(0, '1');
+await sleep(450);
+const d4 = await readDeep();
+expect('回到 1：两段（1/9 中 1 选中 | 2/8）', [
+	labels(d4.segments[0]), picked(d4.segments[0]), labels(d4.segments[1]),
+], [['1', '9'], ['1'], ['2', '8']]);
+await shot('09-back-to-1.png');
 
 console.log('\n═══ JS 错误 ═══');
 console.log(errors.length ? errors.join('\n') : '  没有');
@@ -344,3 +295,4 @@ console.log(failures.length ? failures.join('\n') : '  全部通过');
 
 proc.kill();
 process.exit(failures.length > 0 || errors.length > 0 ? 1 : 0);
+

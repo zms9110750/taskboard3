@@ -1,47 +1,39 @@
 /**
  * 筛选方框的**纯逻辑** —— 零 React、零 DOM、零网络。
  *
- * ## 这是一个**面包屑导航**
+ * ## 只有一个操作
  *
  * 用户 `2026-11-16`：
- * > 「你不知道面包屑导航吗？我说的是点到谁就选中谁。点到完成，就选中完成。
- * >  那么完成的子级的选中就要取消掉。列出『完成』的子项。」
- * > 「除此以外，只展示两个层级。」
- * > 「比如选中了 1/2/3/2/4，那么就要这样列出 1/2/3/2 | 1 / 2 / 3 / 4 | 1 / 2 / 3」
+ * > 「点他的效果是选中他。既然选中了他，那他就应该展开。」
+ * > 「我要的逻辑是完全具有一致性的。你套了多少if」
  *
- * ⇒ 一个方框里永远是**三段**：
+ * ⇒ **选中 = 改路径 + 展开。两者不是两件事。**
+ *
+ * | 点哪里 | next | 之后 |
+ * |---|---|---|
+ * | 标题（第 0 级）| `[]` | 清空并展开 |
+ * | 面包屑第 i 段 | `picked.slice(0, i+1)` | 选中它并展开 |
+ * | 当前层 / 子层的项 | 它的路径 | 选中它并展开 |
+ *
+ * **它们全是同一个操作**：给出新路径。组件对所有点击都做同一件事
+ * （`onChange(next)` + `onOpenChange(true)`），没有分支。
+ *
+ * ## 三层渲染结构
+ *
+ * 展开态永远是**若干段**（0–3 个），段之间一条结构竖线：
  *
  * ```
- *   ①面包屑（祖先）   ②当前层的兄弟（含选中）   ③选中项的children
- *   1/2/3/2      |    1 / 2 / 3 / 4       |    1 / 2 / 3
- *   紧斜杠               空格斜杠                空格斜杠
+ *   ①面包屑          ②当前层兄弟         ③选中项的子
+ *   1/2/3/2     |    1 / 2 / 3 / 4   |   1 / 2 / 3
+ *   紧斜杠             空格斜杠             空格斜杠
  * ```
  *
- * · ① 是 `path` 去掉最后一项的祖先链（紧斜杠 `/`，**每一段可点**，点了就跳回那层）；
- * · ② 是**当前选中项所在层的全部兄弟**（空格斜杠 ` / `，选中的那个高亮）；
- * · ③ 是**当前选中项的子节点**（空格斜杠 ` / `，一个都没选 —— 选了就下探）；
- * · **只画这两个可点层**（②③）。爷爷辈不再展开成选项，只以面包屑形式存在。
+ * · ① 只有「选中项不是第 1 级」时才有；
+ * · ③ 只有「选中项有子」时才有；
+ * · **②永远有**（没选时它就是根）。
  *
- * ## 选中 = 一条路径
- *
- * `picked` 是**从根往下的完整路径**（不是「组 + 叶子」两段）。
- *
- * | 操作 | 结果 |
- * |---|---|
- * | 点②里某个兄弟 | `picked` = 它的祖先 + 它自己（**兄弟下面那层全丢掉**）|
- * | 点③里某个子 | `picked` = 当前路径 + 它（下探一层）|
- * | 点①里某个面包屑段 | `picked` 截断到那一段（跳回上层）|
- * | 点标题 | `picked` = 空（全部清空）|
- *
- * ⇒ **统一规则：点谁 = 选中谁，并把比它深的全丢掉。** 没有第二种语义。
- *
- * ## 为什么「点组也要选中」
- *
- * 上一版把第 0 级当成「不是一个值」，点它只清空选择。
- * 用户明确否定了：
- * > 「点到完成，就选中完成。那么完成的子级的选中就要取消掉。列出『完成』的子项。」
- *
- * ⇒ 组就是一个普通节点。点它就是选中它（于是它的子级被丢掉、它的子级被列出来）。
+ * 组件不在 JSX 里判断这些 —— `segmentsOf()` 直接返回该画几段，
+ * 组件只 `map` 一遍，竖线规则写一次。
  */
 
 /** 一个可选节点。有 `children` 的就是能下探的节点。 */
@@ -52,23 +44,11 @@ export interface FilterNode {
 	readonly children?: readonly FilterNode[];
 }
 
-/**
- * 选中路径 —— 从根往下的 value 序列。
- *
- * ⚠ 空数组 = 什么都没选。**不要用 `undefined` 表示没选**（调用方要多一支分支）。
- */
+/** 选中路径 —— 从根往下的 value 序列。空数组 = 什么都没选。 */
 export type Picked = readonly string[];
 
-/** 一条面包屑：祖先链上的一段。 */
-export interface Crumb {
-	readonly value: string;
-	readonly label: string;
-	/** 点它之后应该变成的路径（= 截断到这里的路径）。 */
-	readonly next: Picked;
-}
-
-/** 一个可点的选项。 */
-export interface OptionView {
+/** 一个可点的项（面包屑段和选项形状相同：都是「点了就去某条路径」）。 */
+export interface PickItem {
 	readonly value: string;
 	readonly label: string;
 	/** 是不是当前选中的那个。 */
@@ -79,18 +59,14 @@ export interface OptionView {
 	readonly next: Picked;
 }
 
-/**
- * 一个方框要画的东西。
- *
- * 永远是这三段 —— 但 `crumbs` / `childLevel` 可能是空的。
- */
-export interface FilterView {
-	/** ① 祖先面包屑（不含当前选中项本身）。 */
-	readonly crumbs: readonly Crumb[];
-	/** ② 当前层的全部兄弟（含选中的那个）。 */
-	readonly currentLevel: readonly OptionView[];
-	/** ③ 当前选中项的 children（一个都没选）。 */
-	readonly childLevel: readonly OptionView[];
+/** 一段。 */
+export interface Segment {
+	/** `crumbs` = ①祖先，`level` = ②当前层 / ③子层。 */
+	readonly kind: 'crumbs' | 'level';
+	/** 段内各项之间的分隔符：①用紧斜杠，②③用空格斜杠。 */
+	readonly sep: string;
+	/** 段内各项。 */
+	readonly items: readonly PickItem[];
 }
 
 /** 有没有子节点。 */
@@ -122,122 +98,112 @@ export function resolvePath(
 	return out;
 }
 
+/** 一组兄弟 → 可点项。`prefix` 是它们共同的祖先路径。 */
+function optionsOf(
+	siblings: readonly FilterNode[],
+	prefix: Picked,
+	selected: string | undefined,
+): readonly PickItem[] {
+	return siblings.map((node) => ({
+		value: node.value,
+		label: node.label,
+		picked: node.value === selected,
+		hasChildren: hasChildren(node),
+		next: [...prefix, node.value],
+	}));
+}
+
 /**
- * 算出这三段。
+ * 展开态该画哪几段。
  *
  * @param nodes 根
  * @param picked 当前路径
  */
-export function viewOf(nodes: readonly FilterNode[], picked: Picked): FilterView {
-	/* 没选：当前层就是根，没有面包屑、没有子层。 */
+export function segmentsOf(nodes: readonly FilterNode[], picked: Picked): readonly Segment[] {
+	/* 第 0 级：没有面包屑，只有根这一层。 */
 	if (picked.length === 0) {
-		return {
-			crumbs: [],
-			currentLevel: nodes.map((node) => ({
-				value: node.value,
-				label: node.label,
-				picked: false,
-				hasChildren: hasChildren(node),
-				next: [node.value],
-			})),
-			childLevel: [],
-		};
+		return [{ kind: 'level', sep: ' / ', items: optionsOf(nodes, [], undefined) }];
 	}
 
 	const resolved = resolvePath(nodes, picked);
-	if (resolved === undefined) {
-		/* 路径脏了（数据变了）：当成没选，别让界面炸。 */
-		return { crumbs: [], currentLevel: [], childLevel: [] };
-	}
+	/* 路径脏了（数据变了）：什么都不画，别让界面炸。 */
+	if (resolved === undefined) return [];
 
-	const lastIndex = picked.length - 1;
+	const last = picked.length - 1;
+	const segments: Segment[] = [];
 
-	/* ① 面包屑：路径上除最后一项外的每一段，`next` = 截断到它。 */
-	const crumbs: Crumb[] = [];
-	for (let index = 0; index < lastIndex; index += 1) {
-		const node = resolved[index];
-		const value = picked[index];
-		if (node === undefined || value === undefined) continue;
-		crumbs.push({
-			value,
-			label: node.label,
-			next: picked.slice(0, index + 1),
+	/* ① 祖先（不含选中项自己）。 */
+	if (last > 0) {
+		segments.push({
+			kind: 'crumbs',
+			sep: '/',
+			items: resolved.slice(0, last).map((node, index) => ({
+				value: picked[index] as string,
+				label: node.label,
+				/* 祖先不是「选中」，只是路径上的一段。 */
+				picked: false,
+				hasChildren: true,
+				next: picked.slice(0, index + 1),
+			})),
 		});
 	}
 
-	/* ② 当前层的兄弟：选中项的父节点的 children（选中项在根时就是根）。 */
-	const parentNode = lastIndex === 0 ? undefined : resolved[lastIndex - 1];
-	const siblings: readonly FilterNode[] =
-		parentNode === undefined ? nodes : (parentNode.children ?? []);
-	const prefix = picked.slice(0, lastIndex);
-
-	const currentLevel = siblings.map((node) => ({
-		value: node.value,
-		label: node.label,
-		picked: node.value === picked[lastIndex],
-		hasChildren: hasChildren(node),
-		next: [...prefix, node.value],
-	}));
+	/* ② 选中项所在层的全部兄弟。 */
+	const parent = last === 0 ? undefined : resolved[last - 1];
+	const siblings = parent === undefined ? nodes : (parent.children ?? []);
+	segments.push({
+		kind: 'level',
+		sep: ' / ',
+		items: optionsOf(siblings, picked.slice(0, last), picked[last]),
+	});
 
 	/* ③ 选中项的子。 */
-	const selected = resolved[lastIndex];
-	const childLevel = (selected?.children ?? []).map((node) => ({
-		value: node.value,
-		label: node.label,
-		picked: false,
-		hasChildren: hasChildren(node),
-		next: [...picked, node.value],
-	}));
+	const selected = resolved[last];
+	const children = selected?.children ?? [];
+	if (children.length > 0) {
+		segments.push({
+			kind: 'level',
+			sep: ' / ',
+			items: optionsOf(children, picked, undefined),
+		});
+	}
 
-	return { crumbs, currentLevel, childLevel };
+	return segments;
 }
 
 /**
- * 收起态显示什么 —— **完整路径，拆成一段一段可点**。
+ * 收起态是一条**可点的面包屑** —— 整条路径，每段独立。
  *
- * ## 用户 `2026-11-16`（第四次纠正）
- *
+ * 用户 `2026-11-16`：
  * > 「我要的是，『进行』，可以点。『提交』，可以点。
- * >  不是『进行/提交』这一个按钮。明白没。面包屑导航。
- * >  每一层，虽然他写的是文字。但是文字都是可以单独点击的。」
- * > 「『进行』点了，就会变成选中『进行』，取消选择『提交』，列出进行的子项目。
- * >  点了『提交』，就会变成选中『提交』，列出提交的子项目。」
+ * >  不是『进行/提交』这一个按钮。……每一层，虽然他写的是文字。
+ * >  但是文字都是可以单独点击的。」
  *
- * ⇒ **收起态不是一串字符串，是一条面包屑**：每一段都是独立可点的，
- *   点第 i 段 = 把路径截断到第 i 段（＝选中它，丢掉它下面的）。
- *
- * ## 与展开态 ① 段的关系
- *
- * 展开态的 ① 只放**祖先**（因为当前层在 ② 里已经画了）；
- * 收起态没有 ②③，所以**整条路径全都要可点** —— 包括最后一段。
+ * 注意：这里**包含最后一段**（它才是当前选中项）。
+ * 展开态的 ① 不含它 —— 因为 ② 里已经画了。
  *
  * @param nodes 根
  * @param picked 路径
- * @returns 每段一个 `{ value, label, next }`；`next` = 截断到这里的路径
  */
-export function collapsedCrumbs(nodes: readonly FilterNode[], picked: Picked): readonly Crumb[] {
+export function collapsedCrumbs(nodes: readonly FilterNode[], picked: Picked): readonly PickItem[] {
 	if (picked.length === 0) return [];
 
 	const resolved = resolvePath(nodes, picked);
 
-	/* 路径脏了：用 value 当标签，保证「至少还能点」而不是显示空白。 */
-	if (resolved === undefined) {
-		return picked.map((value, index) => ({
+	return picked.map((value, index) => {
+		const node = resolved?.[index];
+		return {
 			value,
-			label: value,
+			label: node?.label ?? value,
+			picked: index === picked.length - 1,
+			hasChildren: node === undefined ? false : hasChildren(node),
 			next: picked.slice(0, index + 1),
-		}));
-	}
-
-	return resolved.map((node, index) => ({
-		value: picked[index] as string,
-		label: node.label,
-		next: picked.slice(0, index + 1),
-	}));
+		};
+	});
 }
 
 /**
- * 没有「选中」时的收起态文字（空串）。
+ * 收起态的一行纯文字（用于 `title` / 无障碍）。
  *
  * @param nodes 根
  * @param picked 路径
@@ -246,26 +212,4 @@ export function selectionText(nodes: readonly FilterNode[], picked: Picked): str
 	return collapsedCrumbs(nodes, picked)
 		.map((one) => one.label)
 		.join('/');
-}
-
-/** 有没有任何选中。 */
-export function hasSelection(picked: Picked): boolean {
-	return picked.length > 0;
-}
-
-/**
- * 点②里的某个兄弟 / ③里的某个子 —— 统一就是「用 option 算好的 next」。
- *
- * 这个函数存在的意义是**给调用点一个明确的入口**，
- * 以及提醒：选中永远是一条路径，不是单个值。
- *
- * @param view 当前视图
- * @param value 被点的值（在 currentLevel 或 childLevel 里）
- * @returns 新路径；找不到返回原路径
- */
-export function pickOf(view: FilterView, value: string): Picked {
-	const hit =
-		view.currentLevel.find((one) => one.value === value) ??
-		view.childLevel.find((one) => one.value === value);
-	return hit === undefined ? [] : hit.next;
 }

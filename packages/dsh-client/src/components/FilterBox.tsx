@@ -1,56 +1,62 @@
 /**
- * 筛选方框 —— **面包屑导航**控件。
+ * 筛选方框 —— **一个按钮为一个单位**的面包屑筛选控件。
  *
- * ## 用户 `2026-11-16`（第三版，最终定义）
+ * ## 唯一的操作
  *
- * > 「你不知道面包屑导航吗？我说的是点到谁就选中谁。点到完成，就选中完成。
- * >  那么完成的子级的选中就要取消掉。列出『完成』的子项。」
- * > 「除此以外，只展示两个层级。」
- * > 「比如选中了 1/2/3/2/4，那么就要这样列出
- * >  1/2/3/2 | 1 / 2 / 3 / 4 | 1 / 2 / 3」
+ * 用户 `2026-11-16`：
+ * > 「点他的效果是选中他。既然选中了他，那他就应该展开。」
+ * > 「我要的逻辑是完全具有一致性的。你套了多少if」
  *
- * ## 一个方框永远是三段
+ * ⇒ 这个组件**只有一个动作**：
  *
+ * ```ts
+ * const select = (next: Picked): void => {
+ *     props.onChange(next);      // 选中
+ *     props.onOpenChange(true);  // 既然选中了，就展开
+ * };
  * ```
- *   ①面包屑          ②当前层兄弟         ③选中项的子
- *   1/2/3/2     |    1 / 2 / 3 / 4   |   1 / 2 / 3
- *   紧斜杠             空格斜杠             空格斜杠
- * ```
  *
- * | 段 | 内容 | 可点 | 点了之后 |
- * |---|---|---|---|
- * | ① | 路径上**除自己外**的祖先 | ✅ | 跳回那一层（截断路径）|
- * | ② | **当前层的全部兄弟**（选中的高亮）| ✅ | 选中它 + 丢掉它下面那层 |
- * | ③ | **选中项的子** | ✅ | 下探一层 |
+ * 所有可点的地方（标题、面包屑每一段、当前层每一项、子层每一项）
+ * **都调这一个函数**，区别只是传进去的 `next` 路径不同 ——
+ * 而路径是 `pure/filter-box.ts` 算好的，写在每一项的 `next` 字段里。
  *
- * ⚠ **只有 ②③ 是可点层**（「只展示两个层级」）。爷爷辈只以面包屑形式存在，
- *   不再展开成选项 —— 否则四级就是四排文字，方框会失控。
+ * | 点哪里 | next |
+ * |---|---|
+ * | 标题（第 0 级）| `[]`（清空）|
+ * | 面包屑第 i 段 | `picked.slice(0, i+1)` |
+ * | 当前层 / 子层的项 | 该项的路径 |
  *
- * ## 区别靠什么表达
+ * **没有任何 `if (点的是标题) … else if (点的是面包屑) …`。**
  *
- * 用户问：「你让他就一个按钮，那你怎么区分点到了谁身上？」
+ * ## 渲染：只 map 一遍
  *
- * ⇒ **靠三个视觉信号**，不用边框或色块：
- * 1. **分隔符不同**：① 用紧斜杠 `/`，②③ 用空格斜杠 ` / `；
- * 2. **一条竖线**把 ① 和 ②③ 分开（结构分隔，比颜色可靠）；
- * 3. **选中项蓝字加粗**，其余黑字。
+ * 展开态是**若干段**（0–3 个），段之间一条竖线。段由 `segmentsOf()` 给出，
+ * 组件只 `map`，**竖线规则写一次**（`index > 0` 就画）。
  *
- * ## 全部判决在 `pure/filter-box.ts`（30 条单测）
+ * 收起态是一条面包屑，由 `collapsedCrumbs()` 给出，同样只 `map`。
  *
- * 组件只做四件事：画三段、画分隔符、量宽度、把 `next` 交给 `onChange`。
+ * 组件里剩下的 `if` 只有两类，都是**渲染必需**、不含语义的：
+ * 1. `if (face === null) return` —— ref 还没挂上；
+ * 2. `hasValue && …` / `picked ? cls : cls` —— 决定画什么、加哪个 class。
+ *
+ * ## 宽度动画
+ *
+ * 两套「脸」（收起 / 展开）都 `position: absolute` ⇒ 不参与盒宽。
+ * `useLayoutEffect` 量**当前那张脸**的宽度写到方框上，CSS 对 `width` 做 180ms 过渡。
+ * ⇒ 视觉上是「方块按钮变宽露出内容」，不是「内容把布局挤开」。
  */
 
-import { useLayoutEffect, useRef } from 'react';
+import { Fragment, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-import { collapsedCrumbs, hasSelection, viewOf } from '../pure/filter-box.ts';
-import type { FilterNode, Picked } from '../pure/filter-box.ts';
+import { collapsedCrumbs, segmentsOf } from '../pure/filter-box.ts';
+import type { FilterNode, PickItem, Picked } from '../pure/filter-box.ts';
 
 /** 组件属性。 */
 export interface FilterBoxProps {
 	/** 稳定 id（`FilterRow` 用它做互斥；同时写到 DOM 的 `data-box-id`）。 */
 	readonly boxId: string;
-	/** 方框标题（`状态` / `类别` / `领域`）。 */
+	/** 方框标题（`状态` / `类别` / `领域`）。它本身就是第 0 级。 */
 	readonly title: string;
 	/** 全部节点。有 `children` 的就是能下探的。 */
 	readonly nodes: readonly FilterNode[];
@@ -60,7 +66,7 @@ export interface FilterBoxProps {
 	readonly open: boolean;
 	/** 选中变化。 */
 	readonly onChange: (next: Picked) => void;
-	/** 请求开 / 合。组件从不自己改 `open`。 */
+	/** 请求开 / 合。 */
 	readonly onOpenChange: (next: boolean) => void;
 }
 
@@ -74,77 +80,50 @@ export function FilterBox(props: FilterBoxProps): ReactNode {
 	const collapsedRef = useRef<HTMLDivElement>(null);
 	const expandedRef = useRef<HTMLDivElement>(null);
 
-	const hasValue = hasSelection(props.picked);
-	const view = viewOf(props.nodes, props.picked);
+	const crumbs = collapsedCrumbs(props.nodes, props.picked);
+	const segments = segmentsOf(props.nodes, props.picked);
+	const hasValue = crumbs.length > 0;
 
-	/*
-	 * 收起态是**面包屑**，不是一串字符串。
+	/**
+	 * **唯一的动作**：选中一条路径，并展开。
 	 *
-	 * 用户 `2026-11-16`：
-	 * > 「我要的是，『进行』，可以点。『提交』，可以点。
-	 * >  不是『进行/提交』这一个按钮。……每一层，虽然他写的是文字。
-	 * >  但是文字都是可以单独点击的。」
+	 * ⚠ 不要在这里加分支。任何「点的是哪一类东西」的区分都已经体现在 `next` 里了。
 	 */
-	const crumbsCollapsed = collapsedCrumbs(props.nodes, props.picked);
+	const select = (next: Picked): void => {
+		props.onChange(next);
+		props.onOpenChange(true);
+	};
 
-	const key = JSON.stringify([
-		crumbsCollapsed.map((one) => one.label),
-		view.crumbs.map((one) => one.label),
-		view.currentLevel.map((one) => one.label),
-		view.childLevel.map((one) => one.label),
+	/* 量当前那张脸，把宽度写到方框上。 */
+	const signature = JSON.stringify([
+		crumbs.map((one) => one.label),
+		segments.map((seg) => seg.items.map((one) => one.label)),
 	]);
-
-	/* 量当前那张脸，把宽度写到方框上（两套脸都 absolute，不参与盒宽）。 */
 	useLayoutEffect(() => {
 		const box = boxRef.current;
 		const face = props.open ? expandedRef.current : collapsedRef.current;
 		if (box === null || face === null) return;
 		/* +24 = 左右各 12px 内边距。 */
 		box.style.width = `${Math.ceil(face.getBoundingClientRect().width) + 24}px`;
-	}, [props.open, key]);
-
-	const pick = (next: Picked): void => {
-		props.onChange(next);
-	};
+	}, [props.open, signature]);
 
 	return (
 		<div
 			ref={boxRef}
 			data-box-id={props.boxId}
 			className={props.open ? 'filter-box is-open' : 'filter-box'}
-			onClick={() => {
-				if (!props.open) props.onOpenChange(true);
-			}}
+			onClick={() => props.onOpenChange(true)}
 		>
-			{/*
-			 * ── 收起态：标题 + 面包屑 ──
-			 *
-			 * ## 「标题 = 第 0 级」——用户 `2026-11-16` 定的
-			 *
-			 * > 「这个标题本身就是第0级。选中第0级，展开第1级，这个意思就是清空。」
-			 *
-			 * ⇒ 点标题 = **清空所有选择**并展开（= 选中第 0 级）。
-			 *   这是**唯一**的全清入口，所以不再需要独立的 ✕ 按钮，
-			 *   也不再需要 `▾`（它没有独立语义）。
-			 *
-			 * 层级图：
-			 *
-			 * ```
-			 *   状态：  [进行] / [提交]
-			 *   └第0级   └第1级  └第2级
-			 *    点它
-			 *    =清空
-			 * ```
-			 */}
+			{/* ══ 收起态：标题 + 面包屑 ══ */}
 			<div ref={collapsedRef} className="filter-box__face filter-box__face--collapsed">
+				{/* 标题 = 第 0 级。点它 = 选中第 0 级 = 清空。 */}
 				<button
 					type="button"
-					className="filter-box__title filter-box__title--clickable"
-					title={hasValue ? '清空筛选（选中第 0 级）' : '展开'}
+					className="filter-box__title"
+					title={hasValue ? '清空筛选' : props.title}
 					onClick={(event) => {
 						event.stopPropagation();
-						if (hasValue) pick([]);
-						props.onOpenChange(true);
+						select([]);
 					}}
 				>
 					{props.title}
@@ -152,130 +131,111 @@ export function FilterBox(props: FilterBoxProps): ReactNode {
 				{hasValue && (
 					<>
 						<span className="filter-box__colon">：</span>
-						<span className="filter-box__crumbs">
-							{crumbsCollapsed.map((crumb, index) => (
-								<span key={`cc-${crumb.value}`} style={{ display: 'contents' }}>
-									{index > 0 && <span className="filter-box__csep">/</span>}
-									<button
-										type="button"
-										className={index === crumbsCollapsed.length - 1
-											? 'filter-box__item is-picked'
-											: 'filter-box__item'}
-										title={`选中 ${crumb.label}（丢弃它下面的）`}
-										onClick={(event) => {
-											event.stopPropagation();
-											pick(crumb.next);
-										}}
-									>
-										{crumb.label}
-									</button>
-								</span>
-							))}
-						</span>
+						<Crumbs items={crumbs} onPick={select} />
 					</>
 				)}
-				{/* 没值时点空白处也能展开（标题已经是按钮了，这里只是兜住右侧留白）。 */}
-				{!hasValue && <span className="filter-box__caret" />}
 			</div>
 
-			{/* ── 展开态：三段 ── */}
+			{/* ══ 展开态：若干段 ══ */}
 			<div ref={expandedRef} className="filter-box__face filter-box__face--expanded">
-				<span className="filter-box__title">{props.title}</span>
+				<button
+					type="button"
+					className="filter-box__title"
+					title="清空筛选"
+					onClick={(event) => {
+						event.stopPropagation();
+						select([]);
+					}}
+				>
+					{props.title}
+				</button>
 				<span className="filter-box__colon">：</span>
-
-				{/* ① 面包屑（祖先，紧斜杠） */}
-				{view.crumbs.length > 0 && (
-					<>
-						<span className="filter-box__crumbs">
-							{view.crumbs.map((crumb, index) => (
-								<span key={`crumb-${crumb.value}`} style={{ display: 'contents' }}>
-									{index > 0 && <span className="filter-box__csep">/</span>}
-									<button
-										type="button"
-										className="filter-box__item"
-										title={`跳回 ${crumb.label}`}
-										onClick={(event) => {
-											event.stopPropagation();
-											pick(crumb.next);
-										}}
-									>
-										{crumb.label}
-									</button>
-								</span>
-							))}
-						</span>
-						{/* ① 与 ②③ 之间的结构竖线 */}
-						<span className="filter-box__vline" />
-					</>
-				)}
-
-				{/* ② 当前层兄弟（空格斜杠） */}
-				<span className="filter-box__items">
-					{view.currentLevel.map((option, index) => (
-						<span key={`cur-${option.value}`} style={{ display: 'contents' }}>
-							{index > 0 && <span className="filter-box__sep"> / </span>}
-							<Option
-								label={option.label}
-								picked={option.picked}
-								hasChildren={option.hasChildren}
-								onClick={() => pick(option.next)}
-							/>
-						</span>
-					))}
-				</span>
-
-				{/* ② 与 ③ 之间的结构竖线（只在有子层时画） */}
-				{view.childLevel.length > 0 && <span className="filter-box__vline" />}
-
-				{/* ③ 选中项的子（空格斜杠） */}
-				{view.childLevel.length > 0 && (
-					<span className="filter-box__items">
-						{view.childLevel.map((option, index) => (
-							<span key={`child-${option.value}`} style={{ display: 'contents' }}>
-								{index > 0 && <span className="filter-box__sep"> / </span>}
-								<Option
-									label={option.label}
-									picked={option.picked}
-									hasChildren={option.hasChildren}
-									onClick={() => pick(option.next)}
-								/>
-							</span>
-						))}
-					</span>
-				)}
+				{segments.map((seg, index) => (
+					/*
+					 * ⚠ 必须用 `Fragment`，不能用 `<span style={{display:'contents'}}>` 包一层。
+					 *   包了之后 `.filter-box__items` 就不是 expanded 的直接子元素 ——
+					 *   竖线 `:scope > .filter-box__vline` 和段选择器都会取不到，
+					 *   而且「段」和「竖线」的兄弟关系会变形。
+					 *   （这个坑我踩过两次，写在这里当警示。）
+					 */
+					<Fragment key={`seg-${index}`}>
+						{index > 0 && <span className="filter-box__vline" />}
+						<Items items={seg.items} sep={seg.sep} onPick={select} />
+					</Fragment>
+				))}
 			</div>
 		</div>
 	);
 }
 
+/** 收起态面包屑。 */
+function Crumbs(props: {
+	readonly items: readonly PickItem[];
+	readonly onPick: (next: Picked) => void;
+}): ReactNode {
+	return (
+		<span className="filter-box__crumbs">
+			{props.items.map((item, index) => (
+				<span key={`c-${item.value}`} style={{ display: 'contents' }}>
+					{index > 0 && <span className="filter-box__csep">/</span>}
+					<Pick
+						item={item}
+						variant="crumb"
+						onPick={props.onPick}
+					/>
+				</span>
+			))}
+		</span>
+	);
+}
+
+/** 一段（当前层 / 子层）。 */
+function Items(props: {
+	readonly items: readonly PickItem[];
+	readonly sep: string;
+	readonly onPick: (next: Picked) => void;
+}): ReactNode {
+	return (
+		<span className="filter-box__items">
+			{props.items.map((item, index) => (
+				<span key={`i-${item.value}`} style={{ display: 'contents' }}>
+					{index > 0 && <span className="filter-box__sep">{props.sep}</span>}
+					<Pick item={item} variant="option" onPick={props.onPick} />
+				</span>
+			))}
+		</span>
+	);
+}
+
 /**
- * 一个可点的文字。
+ * 一个可点的项。
  *
  * ⚠ **不是胶囊、不是按钮外观** —— 无边框、无底色，hover 才有淡底。
  * 用户原话：「里面不是纸片，他们都在方框里面，不是一个可以点击的按钮，
  * 而是可以点击的内容」。
  *
- * · `picked` —— 蓝字 + 加粗
- * · 有子节点 —— 名字后面一个小 `›`
+ * `variant` 只影响样式 class，**不影响行为** —— 行为永远是 `onPick(item.next)`。
  */
-function Option(props: {
-	readonly label: string;
-	readonly picked: boolean;
-	readonly hasChildren: boolean;
-	readonly onClick: () => void;
+function Pick(props: {
+	readonly item: PickItem;
+	readonly variant: 'crumb' | 'option';
+	readonly onPick: (next: Picked) => void;
 }): ReactNode {
+	const cls = ['filter-box__item', `filter-box__item--${props.variant}`];
+	if (props.item.picked) cls.push('is-picked');
+
 	return (
 		<button
 			type="button"
-			className={props.picked ? 'filter-box__item is-picked' : 'filter-box__item'}
+			className={cls.join(' ')}
 			onClick={(event) => {
 				/* 别让冒泡触到方框的 onClick（那会重复请求展开）。 */
 				event.stopPropagation();
-				props.onClick();
+				props.onPick(props.item.next);
 			}}
 		>
-			{props.label}
-			{props.hasChildren && <span className="filter-box__more">›</span>}
+			{props.item.label}
+			{props.item.hasChildren && <span className="filter-box__more">›</span>}
 		</button>
 	);
 }
