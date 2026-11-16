@@ -93,7 +93,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 /* ① 面包屑：祖先链，紧斜杠 */
 .filter-box__crumbs{display:inline-flex;align-items:center}
-.filter-box__csep{padding:0 1px;font-size:12px;color:#cbd5e1;user-select:none}
+/*
+ * ⚠ 分隔斜杠要看得见。第一版用 #cbd5e1，截图里几乎看不见，
+ *   看起来像「进行 处理中」两个词挨着 —— 用户会以为还是一个整体。
+ */
+.filter-box__csep{padding:0 1px;font-size:12px;color:#9aa1ad;user-select:none}
 
 /* ②③ 当前层 / 子层 */
 .filter-box__items{display:inline-flex;align-items:center}
@@ -107,6 +111,20 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 /* 选中的那个：蓝字加粗（无底色） */
 .filter-box__item.is-picked{color:var(--accent);font-weight:700}
+
+/*
+ * 收起态面包屑里的**非最后一段**：加一条虚线下划线，表示「点它能跳回这一层」。
+ *
+ * 用户 `2026-11-16`：「每一层，虽然他写的是文字。但是文字都是可以单独点击的。」
+ * ⇒ 必须让人**看得出**这一段能点，不能只靠 hover。
+ */
+.filter-box__face--collapsed .filter-box__crumbs .filter-box__item:not(.is-picked){
+  text-decoration:underline dotted #b6bec9;
+  text-underline-offset:3px;
+}
+.filter-box__face--collapsed .filter-box__crumbs .filter-box__item:not(.is-picked):hover{
+  color:var(--accent);text-decoration-color:var(--accent);
+}
 
 /* 「还有下一级」的提示 */
 .filter-box__more{font-size:9px;opacity:.5;margin-left:1px}
@@ -17023,23 +17041,41 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		};
 	}
 	/**
-	* 收起态显示什么 —— 完整路径，用 `/` 连。
+	* 收起态显示什么 —— **完整路径，拆成一段一段可点**。
 	*
-	* | 路径 | 显示 |
-	* |---|---|
-	* | `[]` | `''`（只画标题）|
-	* | `['ended']` | `完成` |
-	* | `['ended','failed']` | `完成/失败` |
-	* | `['g','a','a1']` | `组/甲/甲一` |
+	* ## 用户 `2026-11-16`（第四次纠正）
+	*
+	* > 「我要的是，『进行』，可以点。『提交』，可以点。
+	* >  不是『进行/提交』这一个按钮。明白没。面包屑导航。
+	* >  每一层，虽然他写的是文字。但是文字都是可以单独点击的。」
+	* > 「『进行』点了，就会变成选中『进行』，取消选择『提交』，列出进行的子项目。
+	* >  点了『提交』，就会变成选中『提交』，列出提交的子项目。」
+	*
+	* ⇒ **收起态不是一串字符串，是一条面包屑**：每一段都是独立可点的，
+	*   点第 i 段 = 把路径截断到第 i 段（＝选中它，丢掉它下面的）。
+	*
+	* ## 与展开态 ① 段的关系
+	*
+	* 展开态的 ① 只放**祖先**（因为当前层在 ② 里已经画了）；
+	* 收起态没有 ②③，所以**整条路径全都要可点** —— 包括最后一段。
 	*
 	* @param nodes 根
 	* @param picked 路径
+	* @returns 每段一个 `{ value, label, next }`；`next` = 截断到这里的路径
 	*/
-	function selectionText(nodes, picked) {
-		if (picked.length === 0) return "";
+	function collapsedCrumbs(nodes, picked) {
+		if (picked.length === 0) return [];
 		const resolved = resolvePath(nodes, picked);
-		if (resolved === void 0) return picked.join("/");
-		return resolved.map((node) => node.label).join("/");
+		if (resolved === void 0) return picked.map((value, index) => ({
+			value,
+			label: value,
+			next: picked.slice(0, index + 1)
+		}));
+		return resolved.map((node, index) => ({
+			value: picked[index],
+			label: node.label,
+			next: picked.slice(0, index + 1)
+		}));
 	}
 	/** 有没有任何选中。 */
 	function hasSelection(picked) {
@@ -17310,10 +17346,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		const boxRef = (0, import_react.useRef)(null);
 		const collapsedRef = (0, import_react.useRef)(null);
 		const expandedRef = (0, import_react.useRef)(null);
-		const text = selectionText(props.nodes, props.picked);
 		const hasValue = hasSelection(props.picked);
 		const view = viewOf(props.nodes, props.picked);
+		const crumbsCollapsed = collapsedCrumbs(props.nodes, props.picked);
 		const key = JSON.stringify([
+			crumbsCollapsed.map((one) => one.label),
 			view.crumbs.map((one) => one.label),
 			view.currentLevel.map((one) => one.label),
 			view.childLevel.map((one) => one.label)
@@ -17323,11 +17360,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			const face = props.open ? expandedRef.current : collapsedRef.current;
 			if (box === null || face === null) return;
 			box.style.width = `${Math.ceil(face.getBoundingClientRect().width) + 24}px`;
-		}, [
-			props.open,
-			text,
-			key
-		]);
+		}, [props.open, key]);
 		const pick = (next) => {
 			props.onChange(next);
 		};
@@ -17341,43 +17374,55 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				ref: collapsedRef,
 				className: "filter-box__face filter-box__face--collapsed",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-					className: "filter-box__zone",
-					title: "展开（不改筛选）",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: "filter-box__title",
-							children: props.title
-						}),
-						hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: "filter-box__colon",
-							children: "："
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: "filter-box__value",
-							children: text
-						})] }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: "filter-box__caret",
-							children: "▾"
-						})
-					]
-				}), hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "filter-box__clear",
-					title: "清空筛选",
-					role: "button",
-					tabIndex: 0,
-					onClick: (event) => {
-						event.stopPropagation();
-						pick([]);
-					},
-					onKeyDown: (event) => {
-						if (event.key !== "Enter" && event.key !== " ") return;
-						event.preventDefault();
-						event.stopPropagation();
-						pick([]);
-					},
-					children: "✕"
-				})]
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "filter-box__title",
+						children: props.title
+					}),
+					hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "filter-box__colon",
+						children: "："
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "filter-box__crumbs",
+						children: crumbsCollapsed.map((crumb, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+							style: { display: "contents" },
+							children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "filter-box__csep",
+								children: "/"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								className: index === crumbsCollapsed.length - 1 ? "filter-box__item is-picked" : "filter-box__item",
+								title: `选中 ${crumb.label}（丢弃它下面的）`,
+								onClick: (event) => {
+									event.stopPropagation();
+									pick(crumb.next);
+								},
+								children: crumb.label
+							})]
+						}, `cc-${crumb.value}`))
+					})] }),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "filter-box__caret",
+						children: "▾"
+					}),
+					hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "filter-box__clear",
+						title: "清空筛选",
+						role: "button",
+						tabIndex: 0,
+						onClick: (event) => {
+							event.stopPropagation();
+							pick([]);
+						},
+						onKeyDown: (event) => {
+							if (event.key !== "Enter" && event.key !== " ") return;
+							event.preventDefault();
+							event.stopPropagation();
+							pick([]);
+						},
+						children: "✕"
+					})
+				]
 			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				ref: expandedRef,
 				className: "filter-box__face filter-box__face--expanded",

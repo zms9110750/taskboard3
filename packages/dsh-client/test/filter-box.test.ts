@@ -21,6 +21,7 @@ import {
 	hasSelection,
 	pickOf,
 	resolvePath,
+	collapsedCrumbs,
 	selectionText,
 	viewOf,
 } from '../src/pure/filter-box.ts';
@@ -246,7 +247,59 @@ describe('viewOf —— 用户的例子 1/2/3/2/4', () => {
 });
 
 /* ══════════════════════════════════════════════════════════ */
-describe('selectionText —— 收起态显示完整路径', () => {
+describe('collapsedCrumbs —— 收起态是一条可点的面包屑', () => {
+	/*
+	 * 用户 `2026-11-16`：
+	 * > 「我要的是，『进行』，可以点。『提交』，可以点。
+	 * >  不是『进行/提交』这一个按钮。……每一层，虽然他写的是文字。
+	 * >  但是文字都是可以单独点击的。」
+	 */
+
+	it('没选 ⇒ 空数组', () => {
+		assert.deepEqual(collapsedCrumbs(STATUS, []), []);
+	});
+
+	it('选一层 ⇒ 一段', () => {
+		const c = collapsedCrumbs(STATUS, ['ended']);
+		assert.deepEqual(c.map((one) => one.label), ['完成']);
+		assert.deepEqual(c[0]?.next, ['ended']);
+	});
+
+	it('⚠ 选两层 ⇒ 两段，各自可点', () => {
+		const c = collapsedCrumbs(STATUS, ['active', 'submitted']);
+		assert.deepEqual(c.map((one) => one.label), ['进行', '提交']);
+	});
+
+	it('⚠ 点第一段「进行」⇒ 路径截断成只有它（取消「提交」的选中）', () => {
+		const c = collapsedCrumbs(STATUS, ['active', 'submitted']);
+		assert.deepEqual(c[0]?.next, ['active']);
+	});
+
+	it('⚠ 点最后一段「提交」⇒ 路径不变（它已经是选中项）', () => {
+		const c = collapsedCrumbs(STATUS, ['active', 'submitted']);
+		assert.deepEqual(c[1]?.next, ['active', 'submitted']);
+	});
+
+	it('四层 ⇒ 四段，next 逐级截断', () => {
+		const c = collapsedCrumbs(DEEP, ['1', '2', '3', '2', '4']);
+		assert.deepEqual(c.map((one) => one.label), ['1', '2', '3', '2', '4']);
+		assert.deepEqual(c.map((one) => one.next), [
+			['1'],
+			['1', '2'],
+			['1', '2', '3'],
+			['1', '2', '3', '2'],
+			['1', '2', '3', '2', '4'],
+		]);
+	});
+
+	it('无组方框：一层就是一段', () => {
+		const c = collapsedCrumbs(KINDS, ['work']);
+		assert.deepEqual(c.map((one) => one.label), ['工作']);
+	});
+});
+
+/* ══════════════════════════════════════════════════════════ */
+describe('selectionText —— 收起态的文字形式（用于 aria / 日志）', () => {
 	it('没选 ⇒ 空串', () => {
 		assert.equal(selectionText(STATUS, []), '');
 	});

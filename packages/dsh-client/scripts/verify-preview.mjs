@@ -104,16 +104,16 @@ const readBox = (idx, row = 0) => ev(`(() => {
     picked: b.classList.contains('is-picked'),
   }));
   const face = box.querySelector('.filter-box__face--collapsed');
-  const zone = face.querySelector('.filter-box__zone');
+  const cwrap = face.querySelector('.filter-box__crumbs');
+  const citems = cwrap ? [...cwrap.querySelectorAll('.filter-box__item')] : [];
   return {
     open: box.classList.contains('is-open'),
     crumbs: crumbs ? txt(crumbs) : [],
     current: segs[0] ? txt(segs[0]) : [],
     child: segs[1] ? txt(segs[1]) : [],
     vlines: ex.querySelectorAll('.filter-box__vline').length,
-    collapsed: zone ? [...zone.children]
-      .filter(c => !c.classList.contains('filter-box__caret'))
-      .map(c => c.textContent).join('') : '',
+    collapsedCrumbs: citems.map(b => b.textContent ?? ''),
+    collapsedPicked: citems.filter(b => b.classList.contains('is-picked')).map(b => b.textContent),
     hasClear: face.querySelector('.filter-box__clear') !== null,
   };
 })()`);
@@ -220,22 +220,34 @@ expect('当前层进行被选中', pickedLabels(a4.current), ['进行']);
 expect('子层换成进行的子', labels(a4.child), ['提交', '处理中']);
 await shot('05-switch-group.png');
 
-console.log('\n═══ ⑥ 收起态显示完整路径 ═══');
+console.log('\n═══ ⑥ 收起态是面包屑（每段独立可点）═══');
 await clickChild('处理中');
 await sleep(400);
 await clickOutside();
 await sleep(450);
 const a5 = await readBox(0);
 expect('已收起', a5.open, false);
-expect('收起态 = 状态：进行/处理中', a5.collapsed, '状态：进行/处理中');
+expect('收起态拆成 2 段', a5.collapsedCrumbs, ['进行', '处理中']);
+expect('最后一段是选中态（蓝字加粗）', a5.collapsedPicked, ['处理中']);
 expect('有独立 ✕', a5.hasClear, true);
-await shot('06-collapsed-path.png');
+await shot('06-collapsed-crumbs.png');
+
+console.log('\n═══ ⑥b ⚠ 点收起态第一段「进行」→ 取消「处理中」的选中 ═══');
+await click(`(() => {
+  const box = document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0];
+  return box.querySelectorAll('.filter-box__face--collapsed .filter-box__crumbs .filter-box__item')[0] ?? null;
+})()`);
+await sleep(450);
+const a5b = await readBox(0);
+expect('路径截断成只剩「进行」', a5b.collapsedCrumbs, ['进行']);
+console.log('  → 用户要的：「进行」点了就选中进行，取消「处理中」的选中');
+await shot('06b-collapsed-crumb-click.png');
 
 console.log('\n═══ ⑦ 点 ✕ → 全清 ═══');
 await click(`document.querySelectorAll('.filter-row')[0].querySelectorAll('.filter-box')[0].querySelector('.filter-box__clear')`);
 await sleep(450);
 const a6 = await readBox(0);
-expect('清空后只剩标题', a6.collapsed, '状态');
+expect('清空后没有面包屑', a6.collapsedCrumbs, []);
 expect('没有 ✕ 了', a6.hasClear, false);
 await shot('07-cleared.png');
 
@@ -313,7 +325,7 @@ console.log('\n═══ ⑫ 收起态路径：深层 ═══');
 await clickOutside();
 await sleep(450);
 const d6 = await readDeep();
-expect('收起态 = 编号：1', d6.collapsed, '编号：1');
+expect('收起态 = 编号：1（一段）', d6.collapsedCrumbs, ['1']);
 await shot('13-deep-collapsed.png');
 
 console.log('\n═══ JS 错误 ═══');

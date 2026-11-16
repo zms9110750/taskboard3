@@ -193,23 +193,59 @@ export function viewOf(nodes: readonly FilterNode[], picked: Picked): FilterView
 }
 
 /**
- * 收起态显示什么 —— 完整路径，用 `/` 连。
+ * 收起态显示什么 —— **完整路径，拆成一段一段可点**。
  *
- * | 路径 | 显示 |
- * |---|---|
- * | `[]` | `''`（只画标题）|
- * | `['ended']` | `完成` |
- * | `['ended','failed']` | `完成/失败` |
- * | `['g','a','a1']` | `组/甲/甲一` |
+ * ## 用户 `2026-11-16`（第四次纠正）
+ *
+ * > 「我要的是，『进行』，可以点。『提交』，可以点。
+ * >  不是『进行/提交』这一个按钮。明白没。面包屑导航。
+ * >  每一层，虽然他写的是文字。但是文字都是可以单独点击的。」
+ * > 「『进行』点了，就会变成选中『进行』，取消选择『提交』，列出进行的子项目。
+ * >  点了『提交』，就会变成选中『提交』，列出提交的子项目。」
+ *
+ * ⇒ **收起态不是一串字符串，是一条面包屑**：每一段都是独立可点的，
+ *   点第 i 段 = 把路径截断到第 i 段（＝选中它，丢掉它下面的）。
+ *
+ * ## 与展开态 ① 段的关系
+ *
+ * 展开态的 ① 只放**祖先**（因为当前层在 ② 里已经画了）；
+ * 收起态没有 ②③，所以**整条路径全都要可点** —— 包括最后一段。
+ *
+ * @param nodes 根
+ * @param picked 路径
+ * @returns 每段一个 `{ value, label, next }`；`next` = 截断到这里的路径
+ */
+export function collapsedCrumbs(nodes: readonly FilterNode[], picked: Picked): readonly Crumb[] {
+	if (picked.length === 0) return [];
+
+	const resolved = resolvePath(nodes, picked);
+
+	/* 路径脏了：用 value 当标签，保证「至少还能点」而不是显示空白。 */
+	if (resolved === undefined) {
+		return picked.map((value, index) => ({
+			value,
+			label: value,
+			next: picked.slice(0, index + 1),
+		}));
+	}
+
+	return resolved.map((node, index) => ({
+		value: picked[index] as string,
+		label: node.label,
+		next: picked.slice(0, index + 1),
+	}));
+}
+
+/**
+ * 没有「选中」时的收起态文字（空串）。
  *
  * @param nodes 根
  * @param picked 路径
  */
 export function selectionText(nodes: readonly FilterNode[], picked: Picked): string {
-	if (picked.length === 0) return '';
-	const resolved = resolvePath(nodes, picked);
-	if (resolved === undefined) return picked.join('/');
-	return resolved.map((node) => node.label).join('/');
+	return collapsedCrumbs(nodes, picked)
+		.map((one) => one.label)
+		.join('/');
 }
 
 /** 有没有任何选中。 */

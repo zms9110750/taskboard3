@@ -87,7 +87,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 /* ① 面包屑：祖先链，紧斜杠 */
 .filter-box__crumbs{display:inline-flex;align-items:center}
-.filter-box__csep{padding:0 1px;font-size:12px;color:#cbd5e1;user-select:none}
+/*
+ * ⚠ 分隔斜杠要看得见。第一版用 #cbd5e1，截图里几乎看不见，
+ *   看起来像「进行 处理中」两个词挨着 —— 用户会以为还是一个整体。
+ */
+.filter-box__csep{padding:0 1px;font-size:12px;color:#9aa1ad;user-select:none}
 
 /* ②③ 当前层 / 子层 */
 .filter-box__items{display:inline-flex;align-items:center}
@@ -101,6 +105,20 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 /* 选中的那个：蓝字加粗（无底色） */
 .filter-box__item.is-picked{color:var(--accent);font-weight:700}
+
+/*
+ * 收起态面包屑里的**非最后一段**：加一条虚线下划线，表示「点它能跳回这一层」。
+ *
+ * 用户 `2026-11-16`：「每一层，虽然他写的是文字。但是文字都是可以单独点击的。」
+ * ⇒ 必须让人**看得出**这一段能点，不能只靠 hover。
+ */
+.filter-box__face--collapsed .filter-box__crumbs .filter-box__item:not(.is-picked){
+  text-decoration:underline dotted #b6bec9;
+  text-underline-offset:3px;
+}
+.filter-box__face--collapsed .filter-box__crumbs .filter-box__item:not(.is-picked):hover{
+  color:var(--accent);text-decoration-color:var(--accent);
+}
 
 /* 「还有下一级」的提示 */
 .filter-box__more{font-size:9px;opacity:.5;margin-left:1px}

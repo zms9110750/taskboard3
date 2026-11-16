@@ -43,7 +43,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-import { hasSelection, selectionText, viewOf } from '../pure/filter-box.ts';
+import { collapsedCrumbs, hasSelection, viewOf } from '../pure/filter-box.ts';
 import type { FilterNode, Picked } from '../pure/filter-box.ts';
 
 /** 组件属性。 */
@@ -74,11 +74,21 @@ export function FilterBox(props: FilterBoxProps): ReactNode {
 	const collapsedRef = useRef<HTMLDivElement>(null);
 	const expandedRef = useRef<HTMLDivElement>(null);
 
-	const text = selectionText(props.nodes, props.picked);
 	const hasValue = hasSelection(props.picked);
 	const view = viewOf(props.nodes, props.picked);
 
+	/*
+	 * 收起态是**面包屑**，不是一串字符串。
+	 *
+	 * 用户 `2026-11-16`：
+	 * > 「我要的是，『进行』，可以点。『提交』，可以点。
+	 * >  不是『进行/提交』这一个按钮。……每一层，虽然他写的是文字。
+	 * >  但是文字都是可以单独点击的。」
+	 */
+	const crumbsCollapsed = collapsedCrumbs(props.nodes, props.picked);
+
 	const key = JSON.stringify([
+		crumbsCollapsed.map((one) => one.label),
 		view.crumbs.map((one) => one.label),
 		view.currentLevel.map((one) => one.label),
 		view.childLevel.map((one) => one.label),
@@ -91,7 +101,7 @@ export function FilterBox(props: FilterBoxProps): ReactNode {
 		if (box === null || face === null) return;
 		/* +24 = 左右各 12px 内边距。 */
 		box.style.width = `${Math.ceil(face.getBoundingClientRect().width) + 24}px`;
-	}, [props.open, text, key]);
+	}, [props.open, key]);
 
 	const pick = (next: Picked): void => {
 		props.onChange(next);
@@ -106,19 +116,35 @@ export function FilterBox(props: FilterBoxProps): ReactNode {
 				if (!props.open) props.onOpenChange(true);
 			}}
 		>
-			{/* ── 收起态 ── */}
+			{/* ── 收起态：面包屑，每一段独立可点 ── */}
 			<div ref={collapsedRef} className="filter-box__face filter-box__face--collapsed">
-				{/* 主体：永远只是「展开」。清值靠右边独立的 ✕。 */}
-				<span className="filter-box__zone" title="展开（不改筛选）">
-					<span className="filter-box__title">{props.title}</span>
-					{hasValue && (
-						<>
-							<span className="filter-box__colon">：</span>
-							<span className="filter-box__value">{text}</span>
-						</>
-					)}
-					<span className="filter-box__caret">▾</span>
-				</span>
+				<span className="filter-box__title">{props.title}</span>
+				{hasValue && (
+					<>
+						<span className="filter-box__colon">：</span>
+						<span className="filter-box__crumbs">
+							{crumbsCollapsed.map((crumb, index) => (
+								<span key={`cc-${crumb.value}`} style={{ display: 'contents' }}>
+									{index > 0 && <span className="filter-box__csep">/</span>}
+									<button
+										type="button"
+										className={index === crumbsCollapsed.length - 1
+											? 'filter-box__item is-picked'
+											: 'filter-box__item'}
+										title={`选中 ${crumb.label}（丢弃它下面的）`}
+										onClick={(event) => {
+											event.stopPropagation();
+											pick(crumb.next);
+										}}
+									>
+										{crumb.label}
+									</button>
+								</span>
+							))}
+						</span>
+					</>
+				)}
+				<span className="filter-box__caret">▾</span>
 				{hasValue && (
 					<span
 						className="filter-box__clear"
