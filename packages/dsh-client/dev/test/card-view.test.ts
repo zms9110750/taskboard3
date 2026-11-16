@@ -18,6 +18,7 @@ import {
 	kindTone,
 	stateLabel,
 	stateTone,
+	unreadSide,
 } from '../pure/card-view.ts';
 
 /* 常见状态全名，省得每处写长串 */
@@ -200,3 +201,44 @@ describe('cardTimes —— 从 history 取时间', () => {
 		assert.deepEqual(t, { created: undefined, last: undefined });
 	});
 });
+
+/* ══════════════════════════════════════════════════════════ */
+describe('unreadSide —— 未读亮哪一边', () => {
+	/*
+	 * 用户 2026-11-17：
+	 * > 「然后你这个两边都改过是不可能的。这个东西是，一边改了而且另一边没读。
+	 * >  他要改肯定会读啊。不点开读怎么改？」
+	 *
+	 * ⇒ 现实里两个不会同时为真。但数据层允许它是坏的（core 的 unreadAfter
+	 *   只置位不清位，客户端漏调 markSeen 就写会造成两边都真）。
+	 *   ⇒ 这里是唯一判决点。
+	 */
+
+	it('都没改 ⇒ none', () => {
+		assert.equal(unreadSide({ ai: false, user: false }), 'none');
+	});
+
+	it('AI 改过我没读 ⇒ 左边', () => {
+		assert.equal(unreadSide({ ai: true, user: false }), 'left');
+	});
+
+	it('我改过 AI 没读 ⇒ 右边', () => {
+		assert.equal(unreadSide({ ai: false, user: true }), 'right');
+	});
+
+	it('⚠ 两边都真（脏数据）⇒ 只亮左边，不两边都亮', () => {
+		/* 两边都亮会被误认为「选中」；且「我有未读」是用户能行动的信息。 */
+		assert.equal(unreadSide({ ai: true, user: true }), 'left');
+	});
+
+	it('⚠ 返回值只有三种，不会同时返回两个', () => {
+		const all = [
+			unreadSide({ ai: true, user: true }),
+			unreadSide({ ai: true, user: false }),
+			unreadSide({ ai: false, user: true }),
+			unreadSide({ ai: false, user: false }),
+		];
+		assert.equal(all.every((one) => ['left', 'right', 'none'].includes(one)), true);
+	});
+});
+

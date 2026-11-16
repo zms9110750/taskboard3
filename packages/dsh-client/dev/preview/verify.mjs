@@ -158,13 +158,15 @@ const geo = await ev(`(() => {
     statusTop: Math.round(stR.top),
     sameLeft: Math.abs(idR.left - stR.left) < 2,
     whenW: Math.round(r.querySelector('.task-card__when').getBoundingClientRect().width),
+    gapToBadge: Math.round(r.querySelector('.task-card__square').getBoundingClientRect().right) === 0 ? 0 : Math.round(r.querySelector('.badge').getBoundingClientRect().left - r.querySelector('.task-card__square').getBoundingClientRect().right),
   };
 })()`);
 console.log('  ', JSON.stringify(geo));
-expect('正方形固定 76px', geo.squareW, 76);
+expect('正方形固定 58px', geo.squareW, 58);
 expect('⚠ 状态在编号下面（top 更大）', geo.statusTop > geo.idTop, true);
 expect('⚠ 两者左对齐（同一竖列）', geo.sameLeft, true);
 expect('最后动过 90px', geo.whenW, 90);
+expect('⚠ 正方形到 label 的间距 ≤ 10px', geo.gapToBadge <= 10, true);
 
 console.log('\n═══ ④ 三个 label 横排（不换行不堆叠）═══');
 const labelGeo = await ev(`(() => {
@@ -202,8 +204,8 @@ expect('⚠ 右边框变橙', ww.borderRightColor, 'rgb(217, 119, 6)');
 expect('左边框保持 2px', ww.borderLeftW, '2px');
 
 const wsCard = rows[4];
-expect('WS-01 = 两边都改过', [wsCard.unreadAi, wsCard.unreadUser], [true, true]);
-expect('左右都 4px', [wsCard.borderLeftW, wsCard.borderRightW], ['4px', '4px']);
+expect('⚠ WS-01 数据两边都真，但 UI 只亮左边', [wsCard.unreadAi, wsCard.unreadUser], [true, false]);
+expect('左 4px、右 2px（只亮一边）', [wsCard.borderLeftW, wsCard.borderRightW], ['4px', '2px']);
 
 const dm = rows[1];
 expect('DM-01 = 没改过', [dm.unreadAi, dm.unreadUser], [false, false]);
@@ -235,6 +237,7 @@ console.log(failures.length ? failures.join('\n') : '  全部通过');
 
 proc.kill();
 process.exit(failures.length > 0 || errors.length > 0 ? 1 : 0);
+
 
 
 

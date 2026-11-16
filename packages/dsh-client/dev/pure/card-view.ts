@@ -161,9 +161,47 @@ export interface CardTimes {
 }
 
 /**
+ * 未读该亮哪一边。
+ *
+ * ## 用户 `2026-11-17`：两边同时为真在现实中不可能
+ *
+ * > 「然后你这个两边都改过是不可能的。这个东西是，一边改了而且另一边没读。
+ * >  他要改肯定会读啊。不点开读怎么改？」
+ *
+ * 对 —— 改之前必须点开，点开就 `markSeen` 了，所以「AI 改过我没读」和
+ * 「我改过 AI 没读」**不会同时成立**。
+ *
+ * ## 但数据层允许它是坏的
+ *
+ * core 的 `unreadAfter` 只置位不清位，`clearedUnread` 由 `markSeen` 触发。
+ * 如果**客户端没调 `markSeen` 就写**（程序化写、SSE 竞态、别处直接改库），
+ * 两个 can 同时为 `true`（`core/test/updates.test.ts:130` 就构造出了这个状态）。
+ *
+ * ⇒ **这里是唯一的判决点**：两个都为真时，只亮**左边（AI 改过）**。
+ *
+ * 为什么偏向左边：用户正在看这个界面，「我有一条没读的更新」是他能行动的信息；
+ * 「我改了 AI 还没读」是 AI 的事，不该占用视觉主位。
+ * 而且两个都亮会让人以为「选中了」。
+ *
+ * @param unread 卡的未读字段
+ * @returns `'left'` = AI 改过（左）、`'right'` = 我改过（右）、`'none'` = 两边都不亮
+ */
+export function unreadSide(unread: {
+	readonly ai: boolean;
+	readonly user: boolean;
+}): 'left' | 'right' | 'none' {
+	if (unread.ai) return 'left';
+	if (unread.user) return 'right';
+	return 'none';
+}
+
+/**
  * 从 `history` 取创建时间与最后动作时间。
  *
  * ⚠ **空历史时两个都 `undefined`** —— 调用方自己跳过空值，这里不编默认值。
+ *
+ * ⚠ **不统计「最后动过」时排除 `recompute`**：那是机器推导（父卡随子任务变化），
+ *   不是人动过。用户看「最后动过」是想知道**谁最后一次真的碰了这张卡**。
  *
  * @param history 历史数组（可能是脏数据）
  */

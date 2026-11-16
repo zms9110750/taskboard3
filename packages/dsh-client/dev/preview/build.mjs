@@ -1,53 +1,87 @@
 /**
- * 把组件预览打成**一个自包含 HTML** —— 双击即可打开，不需要服务器。
+ * 组件预览构建 —— **一个组件一个目录，互不干扰**。
  *
- * ## 为什么用 rolldown 而不是 tsdown
+ * ## 为什么改成参数化
  *
- * `tsdown` 是**产品**的打包器（产出 `window.__ModuleLoader__.load({...})`，
- * react 留 external 由宿主提供）。预览页是**完全相反的需求**：
- * react 必须打进来，产物必须是普通 `<script>`。
+ * 原来只有一个 `main.tsx` + `preview.css`，两个成员同时加组件就会**抢同一批文件**
+ * （都是往 `main.tsx` 里塞一个 section、往 `preview.css` 里塞一段样式）。
+ * 合并时必然冲突。
  *
- * 两个需求用同一套配置会互相污染（改预览配置动到产品产物 = 灾难）。
- * ⇒ 预览单独用一个最小 rolldown 配置。
+ * ⇒ 现在每个组件在自己的子目录里：
  *
- * ## 产出
- *
- * `preview/out/<组件名>.html` —— 单文件，含 CSS + JS + 全部依赖。
- *
- * 用法：
- * ```powershell
- * node packages/dsh-client/scripts/build-preview.mjs
  * ```
+ * dev/preview/
+ * ├─ build.mjs                 ← 本文件（参数化）
+ * ├─ preview.css               ← 共享变量 + 公共部分
+ * ├─ main.tsx                  ← FilterBox + CardRow（已定稿的，不动）
+ * ├─ index.html                ← 上面那个的产物
+ * ├─ verify.mjs                ← 上面那个的验证
+ * └─ <组件名>/
+ *    ├─ main.tsx               该组件的入口（自己写，不碰根 main.tsx）
+ *    ├─ style.css              该组件的样式（自己写，不碰根 preview.css）
+ *    ├─ index.html             产物
+ *    └─ verify.mjs             该组件的 CDP 验证
+ * ```
+ *
+ * ## 用法
+ *
+ * ```powershell
+ * # 构建根（FilterBox + CardRow）
+ * node dev/preview/build.mjs
+ *
+ * # 构建某个组件子目录
+ * node dev/preview/build.mjs spacebar
+ * ```
+ *
+ * ⚠ 子目录的 `style.css` 会在**共享样式之后**注入 ⇒ 可以覆盖，
+ *   但**不要改共享的类名**（那是别的组件的）。
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as nodePath from 'node:path';
 
 import { rolldown } from 'rolldown';
 
 const HERE = import.meta.dirname;
 const DEV = nodePath.join(HERE, '..');
-const OUT = HERE;
-const ENTRY = nodePath.join(HERE, 'main.tsx');
-const CSS = nodePath.join(HERE, 'preview.css');
+const PKG = nodePath.join(DEV, '..');
 
-mkdirSync(OUT, { recursive: true });
+/* ── 参数：要构建哪个目录（默认根） ── */
 
-/* ── 1. 取预览页的 CSS ── */
+const which = process.argv[2] ?? '.';
+const DIR = which === '.' ? HERE : nodePath.join(HERE, which);
+
+if (!existsSync(DIR)) {
+	console.error(`目录不存在: ${DIR}`);
+	process.exit(1);
+}
+
+const ENTRY = nodePath.join(DIR, 'main.tsx');
+if (!existsSync(ENTRY)) {
+	console.error(`找不到入口: ${ENTRY}`);
+	process.exit(1);
+}
+
+const OUT = nodePath.join(DIR, 'index.html');
+
+/* ── CSS：共享 + 组件自己的 ── */
 
 /*
  * ⚠ 用 `readFileSync` 读真 `.css`，不要 `import` 一个导出模板字符串的 `.ts`。
  *   第一版就是后者：CSS 里的反引号和模板字符串互相干扰，
  *   Node 的 TS 剥离器报 `Expected a semicolon`。
  */
-const css = readFileSync(CSS, 'utf8');
+const sharedCss = readFileSync(nodePath.join(HERE, 'preview.css'), 'utf8');
+const ownCssPath = nodePath.join(DIR, 'style.css');
+const ownCss = existsSync(ownCssPath) ? readFileSync(ownCssPath, 'utf8') : '';
+const css = sharedCss + '\n' + ownCss;
 
-/* ── 2. 打包 ── */
+/* ── 打包 ── */
 
 const bundle = await rolldown({
 	input: ENTRY,
 	platform: 'browser',
-	/* 预览页要能在普通浏览器里跑 ⇒ 尽量新但别太激进（Edge 稳定版）。 */
-	target: 'es2022',
 	jsx: 'react-jsx',
 	/*
 	 * ⚠ 开发版 React：报错信息完整（生产版会把错误压成 #310 这种码）。
@@ -62,6 +96,12 @@ const bundle = await rolldown({
 	 *   照抄会产出 `require("react")` 在浏览器里直接炸。
 	 */
 	external: [],
+	resolve: {
+		/* `dev/` 下的组件要能 import `src/types.ts` 之类的产品类型。 */
+		alias: {
+			'@pkg': nodePath.join(PKG, 'src'),
+		},
+	},
 });
 
 const { output } = await bundle.generate({
@@ -77,14 +117,14 @@ const js = output
 
 await bundle.close();
 
-/* ── 3. 拼 HTML ── */
+/* ── 拼 HTML ── */
 
 const html = `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>任务板 3 · 组件预览 · FilterBox</title>
+<title>任务板 3 · 组件预览</title>
 <style>${css}</style>
 </head>
 <body>
@@ -93,8 +133,6 @@ const html = `<!doctype html>
 </body>
 </html>`;
 
-const target = nodePath.join(OUT, 'index.html');
-writeFileSync(target, html, 'utf8');
-console.log('written:', target);
+writeFileSync(OUT, html, 'utf8');
+console.log('written:', OUT);
 console.log('size:', html.length, 'chars');
-

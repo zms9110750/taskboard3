@@ -42,7 +42,7 @@
 
 import type { ReactNode } from 'react';
 
-import { cardTimes, fmtDateTime, isDraftStatus, kindTone } from '../pure/card-view.ts';
+import { cardTimes, fmtDateTime, isDraftStatus, kindTone, unreadSide } from '../pure/card-view.ts';
 import type { Card } from '../../src/types.ts';
 import { StatusCell } from './StatusCell.tsx';
 
@@ -71,9 +71,18 @@ export function CardRow(props: CardRowProps): ReactNode {
 	const cls = ['task-card'];
 	if (props.selected) cls.push('is-selected');
 	if (isDraftStatus(card.status)) cls.push('is-draft');
-	/* 未读两向分别加类 —— CSS 各自负责左 / 右边框。 */
-	if (card.unread.ai) cls.push('is-unread-ai');
-	if (card.unread.user) cls.push('is-unread-user');
+	/*
+	 * 未读只亮**一边**。
+	 *
+	 * 用户 `2026-11-17`：「两边都改过是不可能的。这个东西是，一边改了而且另一边没读。
+	 * 他要改肯定会读啊。不点开读怎么改？」
+	 *
+	 * ⇒ 判决在 `unreadSide()`（已单测）—— 两边都真时只亮左边。
+	 *   组件这里不做任何判断。
+	 */
+	const side = unreadSide(card.unread);
+	if (side === 'left') cls.push('is-unread-ai');
+	if (side === 'right') cls.push('is-unread-user');
 
 	return (
 		<button

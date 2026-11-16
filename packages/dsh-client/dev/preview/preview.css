@@ -189,6 +189,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
  *   额外线条会和选中框、hover 框打架。
  * ⚠ 加粗后总宽变 1px，用 `padding` 补偿回去，否则整块会抖。
  */
+/*
+ * ⚠ 两个类**不会同时存在** —— `unreadSide()` 已把「两边都真」收敛成只亮左边。
+ *   见 pure/card-view.ts 的 unreadSide 注释。
+ */
 .task-card.is-unread-ai{
   border-left-width:4px;border-left-color:var(--accent);
   padding-left:10px;   /* 12 - 2 补偿 */
@@ -198,9 +202,13 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   padding-right:10px;
 }
 
+/* 正方形和右侧内容的间距：12px（用户 2026-11-17 说太宽，从 12 收到 8） */
+.task-card{gap:8px}
+.task-card__status.is-compact{align-items:center}
+
 /* ── 左侧正方形：编号在上、状态在下 ── */
 .task-card__square{
-  flex:0 0 76px;display:flex;flex-direction:column;justify-content:center;gap:3px;
+  flex:0 0 58px;display:flex;flex-direction:column;justify-content:center;gap:3px;
   min-width:0;
 }
 .task-card__square-id{
@@ -236,5 +244,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 /* 未读的文字信号：编号加粗到 800（旧版行为，保留） */
 .task-card.is-unread-ai .card-id{font-weight:800}
+
+
 
 
