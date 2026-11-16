@@ -14,17 +14,30 @@
 packages/dsh-client/
 ├─ src/                    ← 产品代码（会打进插件、发 npm）
 ├─ test/                   ← 产品代码的测试
-└─ dev/                    ← 开发中的东西（不进行产品构建）
+└─ dev/                    ← 开发中的东西（不参与产品构建）
    ├─ pure/                ←   ┐
    ├─ components/          ←   ├ 组件本体（未定稿）
    ├─ test/                ←   ┘ 它们自己的单测
-   ├─ preview/             ← 展示脚手架：入口 + CSS + 构建 + 验证
+   ├─ preview/             ← 展示脚手架
    │   ├─ main.tsx           预览页入口（假数据、演示布局）
    │   ├─ preview.css        只看样式，不是产品样式
    │   ├─ build.mjs          rolldown → index.html
    │   ├─ verify.mjs         CDP 断言脚本
    │   └─ index.html         生成物（双击看）
    └─ shots/               ← verify 跑出来的截图
+```
+
+## 命令
+
+```powershell
+# 建预览（改完组件就重跑，0.3 秒）
+node packages/dsh-client/dev/preview/build.mjs
+
+# 验证（CDP 点一遍 + 断言，约 16 秒）
+node packages/dsh-client/dev/preview/verify.mjs
+
+# 纯逻辑单测（0.4 秒）
+node --test "packages/dsh-client/dev/test/*.test.ts"
 ```
 
 ## 为什么这样分
@@ -39,35 +52,43 @@ packages/dsh-client/
 `lib/preview/main.d.ts` —— 展示脚手架混进了产物目录，`files: ["lib"]` 会把它发出去。
 （`2026-11-17` 发现的，已移出。）
 
+## 当前 dev/ 清单
+
+| 文件 | 行数 | 状态 |
+|---|---|---|
+| `pure/filter-box.ts` | 195 | ✅ 可用（27 单测）|
+| `components/FilterBox.tsx` | 228 | ✅ 可用 |
+| `components/FilterRow.tsx` | 95 | ✅ 可用 |
+| `pure/card-view.ts` | 156 | ✅ 可用（28 单测）|
+| `components/StatusDot.tsx` | 42 | ✅ 可用 |
+| `components/StatusCell.tsx` | 36 | ✅ 可用 |
+| `components/CardRow.tsx` | 86 | ✅ 可用 |
+| `test/filter-box.test.ts` | 228 | 27 条 |
+| `test/card-view.test.ts` | 170 | 28 条 |
+| `preview/*` | 665 | 脚手架，长期保留 |
+
 ## 定稿迁移流程
 
 组件在 `dev/` 里通过验收后：
 
 ```powershell
-# 1. 组件本体 → src（按层归类）
-mv dev/pure/x.ts        src/x.ts            # 纯逻辑放 src 根（和 pure.ts 并列）
-mv dev/components/X.tsx src/views/X.tsx     # 组件放 views/（现有约定）
+# 1. 组件本体 → src（按现有约定归类）
+mv dev/pure/x.ts          src/x.ts
+mv dev/components/X.tsx   src/views/X.tsx
+mv dev/test/x.test.ts     test/x.test.ts
 
-# 2. 单测 → test
-mv dev/test/x.test.ts   test/x.test.ts
+# 2. 修 import 路径（全部换成产品路径）
 
-# 3. 修 import 路径（全部换成产品路径）
-
-# 4. 全仓验证
-tsc -b packages/*          # 必须过
+# 3. 全仓验证
+tsc -b packages/*
 node --test "packages/*/test/**/*.test.ts"
 ```
 
 **`dev/preview/` 和 `dev/shots/` 不迁移** —— 它们是给下一个组件复用的脚手架。
 
-## 当前 dev/ 里的东西
+## ⚠ 一条纪律
 
-| 项 | 状态 | 说明 |
-|---|---|---|
-| `pure/filter-box.ts`（195 行）| ✅ 可用，待迁移 | 面包屑路径逻辑，27 条单测 |
-| `components/FilterBox.tsx`（228 行）| ✅ 可用，待迁移 | |
-| `components/FilterRow.tsx`（95 行）| ✅ 可用，待迁移 | |
-| `test/filter-box.test.ts`（228 行）| ✅ 27 条全过 | |
-| `preview/*` | 脚手架，长期保留 | 下个组件改 `main.tsx` 复用 |
+**组件在 dev/ 里改到用户验收通过，才迁 src。**
 
-**FilterBox 已通过验收（用户 `2026-11-16` 确认）。可以迁移。**
+原因：`src/` 里的代码会被 `tsc -b` 检验、被产品构建打包、被 npm 发布。
+**半成品进去一次，就得清理一次产物。**

@@ -2,12 +2,6 @@
  * 组件预览入口 —— **只用于给用户看组件，不进产物、不进插件**。
  *
  * 由 `dev/preview/build.mjs` 用 rolldown 打成一个**自包含 HTML**，双击即可打开。
- *
- * ## 这一版加的是
- *
- * · `StatusDot` —— 7px 状态圆点（六档颜色）
- * · `StatusCell` —— 圆点 + 中文名，固定 96px
- * · `CardRow` —— 列表一行
  */
 
 import { StrictMode, useState } from 'react';
@@ -18,7 +12,7 @@ import { StatusCell } from '../components/StatusCell.tsx';
 import { StatusDot } from '../components/StatusDot.tsx';
 import type { Card } from '../../src/types.ts';
 
-/* ── 夹具：分类中文名（真实产品从模板清单查，这里写死） ── */
+/* ── 夹具：分类 / 模板中文名（真实产品从模板清单查） ── */
 
 const KIND_LABEL: Readonly<Record<string, string>> = {
 	goal: '目标',
@@ -27,7 +21,17 @@ const KIND_LABEL: Readonly<Record<string, string>> = {
 	record: '记录',
 };
 
-/* ── 夹具：九个状态各一张卡 ── */
+const TEMPLATE_LABEL: Readonly<Record<string, string>> = {
+	'user-need': '用户任务',
+	architecture: '技术架构',
+	'write-code': '写代码',
+	'write-doc': '写文档',
+	record: '记录',
+};
+
+/* ── 夹具 ── */
+
+const at = (d: number, h: number) => new Date(2026, 10, d, h, 12).getTime();
 
 const mkCard = (o: Partial<Card> & { id: string; title: string }): Card => ({
 	status: 'TASK_STATE_SUBMITTED',
@@ -35,13 +39,15 @@ const mkCard = (o: Partial<Card> & { id: string; title: string }): Card => ({
 	relations: { parent: null, links: [] },
 	sections: {},
 	note: '',
+	createdAt: at(17, 9),
+	adoptedAt: null,
 	history: [
-		{ at: new Date(2026, 10, 17, 9, 12).getTime(), action: 'create' },
-		{ at: new Date(2026, 10, 17, 14, 31).getTime(), action: 'transition' },
+		{ at: at(17, 9), action: 'create' },
+		{ at: at(17, 14), action: 'transition' },
 	],
 	deleted: false,
-	claimedBy: null,
-	claimedAt: null,
+	holders: [],
+	unread: { ai: false, user: false },
 	...o,
 });
 
@@ -50,6 +56,7 @@ const CARDS: readonly Card[] = [
 		id: 'GU-01', title: '把任务板的语义定清楚',
 		status: 'TASK_STATE_UNSPECIFIED',
 		template: { ref: 'user-need', kind: 'goal', domain: '核心' },
+		unread: { ai: true, user: false },
 	}),
 	mkCard({
 		id: 'DM-01', title: '卡片的编号前缀怎么拼',
@@ -60,6 +67,7 @@ const CARDS: readonly Card[] = [
 		id: 'WW-01', title: '查一下分组为空的渲染路径',
 		status: 'TASK_STATE_WORKING',
 		template: { ref: 'write-code', kind: 'work', domain: '代码' },
+		unread: { ai: false, user: true },
 	}),
 	mkCard({
 		id: 'WF-01', title: '【验证】编号应带模板前缀',
@@ -70,6 +78,7 @@ const CARDS: readonly Card[] = [
 		id: 'WS-01', title: '现有任务板实现的调研',
 		status: 'TASK_STATE_AUTH_REQUIRED',
 		template: { ref: 'write-doc', kind: 'work', domain: '写作' },
+		unread: { ai: true, user: true },
 	}),
 	mkCard({
 		id: 'RB-01', title: '查一下分组为空的渲染路径-记阻碍',
@@ -93,7 +102,6 @@ const CARDS: readonly Card[] = [
 	}),
 ];
 
-/** 九状态全览（圆点 + 名字）。 */
 const ALL_STATUS = [
 	'TASK_STATE_UNSPECIFIED',
 	'TASK_STATE_SUBMITTED',
@@ -106,6 +114,27 @@ const ALL_STATUS = [
 	'TASK_STATE_REJECTED',
 ] as const;
 
+function Preview(props: {
+	readonly title: string;
+	readonly card: Card;
+	readonly selected?: boolean;
+}): React.ReactNode {
+	return (
+		<div style={{ width: '100%' }}>
+			<div style={{ fontSize: 11, color: '#9aa1ad', margin: '10px 0 4px' }}>
+				{props.title}
+			</div>
+			<CardRow
+				card={props.card}
+				selected={props.selected === true}
+				kindLabel={KIND_LABEL[props.card.template.kind] ?? props.card.template.kind}
+				templateLabel={TEMPLATE_LABEL[props.card.template.ref] ?? props.card.template.ref}
+				onSelect={() => undefined}
+			/>
+		</div>
+	);
+}
+
 /** 预览页。 */
 function App(): React.ReactNode {
 	const [selected, setSelected] = useState<string | null>('WW-01');
@@ -114,7 +143,7 @@ function App(): React.ReactNode {
 		<div className="preview">
 			<header className="pv-head">
 				<h1>CardRow / StatusCell / StatusDot</h1>
-				<p>列表条目 · 列结构固定（编号 / 分类 / 领域 / 标题 / 最后动过 / 状态）</p>
+				<p>左侧正方形（编号 / 状态）+ 右侧三个 label 横排 + 标题 + 最后动过</p>
 			</header>
 
 			<section className="pv-block">
@@ -125,8 +154,8 @@ function App(): React.ReactNode {
 							key={card.id}
 							card={card}
 							selected={selected === card.id}
-							unread={card.id === 'WW-01' || card.id === 'GU-01'}
 							kindLabel={KIND_LABEL[card.template.kind] ?? card.template.kind}
+							templateLabel={TEMPLATE_LABEL[card.template.ref] ?? card.template.ref}
 							onSelect={setSelected}
 						/>
 					))}
@@ -140,7 +169,23 @@ function App(): React.ReactNode {
 			</section>
 
 			<section className="pv-block">
-				<h2>② 九个状态的圆点 + 名字（六档颜色）</h2>
+				<h2>② 未读两种方向（边框加厚上色）</h2>
+				<div className="filter-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+					<Preview title="AI 改过、我没读 ⇒ 左边框加厚变蓝" card={CARDS[0] as Card} />
+					<Preview title="我改过、AI 没读 ⇒ 右边框加厚变橙" card={CARDS[2] as Card} />
+					<Preview title="两边都改过 ⇒ 两边都亮" card={CARDS[4] as Card} />
+					<Preview title="没改过 ⇒ 普通 2px 灰边框" card={CARDS[1] as Card} />
+				</div>
+			</section>
+
+			<section className="pv-block">
+				<h2>③ 选中 / 草稿</h2>
+				<Preview title="选中（蓝框）" card={CARDS[1] as Card} selected />
+				<Preview title="草稿（无边框，但占 2px 不跳）" card={CARDS[0] as Card} />
+			</section>
+
+			<section className="pv-block">
+				<h2>④ 九个状态的圆点（六档颜色）</h2>
 				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
 					{ALL_STATUS.map((status) => (
 						<div key={status} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -152,97 +197,41 @@ function App(): React.ReactNode {
 						</div>
 					))}
 				</div>
-				<p className="pv-note" style={{ marginTop: 12, marginBottom: 0 }}>
-					<b>六档</b>：草稿灰 / 进行蓝 / 搁置橙 / 成功绿 / 失败拒绝红 / 取消灰。
-					<br />
-					注意「成功」「失败」「取消」「拒绝」四个同属「完成」组，
-					但颜色分三种 —— 组只到「完成」这一层，细分只能按协议名。
-				</p>
 			</section>
 
 			<section className="pv-block">
-				<h2>③ 列结构（固定宽度，长标题不挤走状态列）</h2>
+				<h2>⑤ 布局与规则</h2>
 				<table className="pv-table">
 					<thead>
-						<tr>
-							<th>列</th>
-							<th>宽度</th>
-							<th>说明</th>
-						</tr>
+						<tr><th>部分</th><th>内容</th><th>规则</th></tr>
 					</thead>
 					<tbody>
-						<tr><td>编号</td><td>自适应</td><td>等宽 + 分类色 + 粗体</td></tr>
-						<tr><td>分类徽章</td><td>自适应</td><td>色块（四个分类四色）</td></tr>
-						<tr><td>领域徽章</td><td>自适应</td><td>中性灰</td></tr>
-						<tr><td>标题</td><td><code>flex:1</code></td><td>唯一弹性列，长了省略</td></tr>
-						<tr><td>最后动过</td><td><code>90px</code></td><td>右对齐，列名常显</td></tr>
-						<tr><td>状态</td><td><code>96px</code></td><td>点 + 中文名</td></tr>
+						<tr>
+							<td>左侧正方形</td>
+							<td>编号（上行）<br />状态（下行）</td>
+							<td>固定 76px，上下两行</td>
+						</tr>
+						<tr>
+							<td>右侧第一行</td>
+							<td>分类 / 领域 / 模板名 + 标题 + 最后动过</td>
+							<td>三个 label <b>横排不换行</b>，挤不下就省略（最长 120px）</td>
+						</tr>
+						<tr>
+							<td>边框</td>
+							<td>未读信号</td>
+							<td>AI 改过 ⇒ 左 4px 蓝；我改过 ⇒ 右 4px 橙；都真 ⇒ 两边</td>
+						</tr>
+						<tr>
+							<td>草稿</td>
+							<td>透明边框</td>
+							<td>保留 2px 占位，切换时不跳</td>
+						</tr>
 					</tbody>
 				</table>
-			</section>
-
-			<section className="pv-block">
-				<h2>④ 三种视觉状态</h2>
-				<div className="filter-row" style={{ alignItems: 'flex-start', flexDirection: 'column' }}>
-					<div style={{ fontSize: 11, color: '#9aa1ad' }}>正常</div>
-					<div style={{ width: '100%' }}>
-						<CardRow
-							card={CARDS[1] as Card}
-							selected={false}
-							unread={false}
-							kindLabel="设计"
-							onSelect={() => undefined}
-						/>
-					</div>
-					<div style={{ fontSize: 11, color: '#9aa1ad', marginTop: 8 }}>
-						选中（蓝框）
-					</div>
-					<div style={{ width: '100%' }}>
-						<CardRow
-							card={CARDS[2] as Card}
-							selected
-							unread={false}
-							kindLabel="工作"
-							onSelect={() => undefined}
-						/>
-					</div>
-					<div style={{ fontSize: 11, color: '#9aa1ad', marginTop: 8 }}>
-						AI 改过未读（编号加粗到 800）
-					</div>
-					<div style={{ width: '100%' }}>
-						<CardRow
-							card={CARDS[3] as Card}
-							selected={false}
-							unread
-							kindLabel="工作"
-							onSelect={() => undefined}
-						/>
-					</div>
-					<div style={{ fontSize: 11, color: '#9aa1ad', marginTop: 8 }}>
-						草稿（无边框 —— 用透明边框占位，不会跳 2px）
-					</div>
-					<div style={{ width: '100%' }}>
-						<CardRow
-							card={CARDS[0] as Card}
-							selected={false}
-							unread={false}
-							kindLabel="目标"
-							onSelect={() => undefined}
-						/>
-					</div>
-				</div>
-			</section>
-
-			<section className="pv-block">
-				<h2>⑤ 规则</h2>
-				<ol className="pv-list">
-					<li>状态列<b>固定 96px</b>：扫视时不用横跨整行</li>
-					<li>「最后动过」<b>固定 90px</b>，右对齐；列名常显（只有时间看不懂）</li>
-					<li>草稿<b>无边框</b>，但用透明边框占 2px —— 切换时不跳</li>
-					<li>AI 改过未读：<b>编号加粗到 800</b>（旧版原样，不是装饰、不是变色）</li>
-					<li>组件<b>不判「能不能选中」</b>，只上报 onSelect</li>
-					<li>分类中文名<b>不从组件拿</b>，由调用方传（真实产品从模板清单查）</li>
-				</ol>
+				<p className="pv-note" style={{ marginTop: 12, marginBottom: 0 }}>
+					⚠ <b>未读从 `card.unread` 读</b>（卡的字段，core 唯一维护点），
+					不是外部传参 —— 两个来源迟早不一致。
+				</p>
 			</section>
 		</div>
 	);
@@ -256,4 +245,3 @@ if (root !== null) {
 		</StrictMode>,
 	);
 }
-

@@ -1,17 +1,9 @@
 /**
- * 状态列 —— **圆点 + 中文名**，固定宽度。
+ * 状态列 —— **圆点 + 中文名**。
  *
- * ## 为什么不是「行尾一个小圆点」
- *
- * 旧版旧版状态只在行尾一个小圆点（离标题 ~1000px，9 个状态只剩「蓝 / 灰」两档）。
- * 用户 `2026-11-10` 采纳的修法：
- *
- * ```
- * 编号 分类徽章 领域徽章 标题……………… 最后动过  ●状态文字
- *                                              ↑ 固定 96px
- * ```
- *
- * ⇒ 状态列**固定宽度**，扫视时不用横跨整行；文字带上，不再只靠颜色区分。
+ * 两种排法：
+ * - 默认（`compact=false`）：横排，用于旧版列表行
+ * - `compact`：上下两行都靠左的小号，用于 CardRow 左侧那个正方形
  */
 
 import type { ReactNode } from 'react';
@@ -23,17 +15,20 @@ import { StatusDot } from './StatusDot.tsx';
 export interface StatusCellProps {
 	/** A2A 状态全名。 */
 	readonly status: string;
+	/** `true` = 紧凑模式（正方形里用，小一号）。 */
+	readonly compact?: boolean;
 }
 
 /**
- * 一个状态列（点 + 文字）。
+ * 一个状态（点 + 文字）。
  *
  * @param props 见 `StatusCellProps`
  */
 export function StatusCell(props: StatusCellProps): ReactNode {
+	const cls = props.compact ? 'task-card__status is-compact' : 'task-card__status';
 	return (
-		<span className="task-card__status">
-			<StatusDot status={props.status} />
+		<span className={cls}>
+			<StatusDot status={props.status} size={props.compact === true ? 6 : undefined} />
 			<span className="task-card__status-label">{stateLabel(props.status)}</span>
 		</span>
 	);

@@ -44,7 +44,9 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 				<span>{card.id}</span>
 				<StatusBadge status={card.status} />
 				<span>{props.templateLabel}</span>
-				{card.claimedBy !== null ? <span>占用：{card.claimedBy}</span> : null}
+				{card.holders.length > 0 ? (
+					<span>占用：{card.holders.map((one) => one.holder).join('、')}</span>
+				) : null}
 			</div>
 
 			{sections.length === 0 ? (

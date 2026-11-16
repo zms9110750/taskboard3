@@ -86,29 +86,37 @@ const expect = (label, actual, want) => {
 };
 
 const readRows = () => ev(`(() => {
-    const scope = document.querySelectorAll('.pv-block')[0];
+  const scope = document.querySelectorAll('.pv-block')[0];
   const rows = [...scope.querySelectorAll('.task-card')];
   return rows.map(r => {
-    const id = r.querySelector('.card-id');
+    const square = r.querySelector('.task-card__square');
+    const id = r.querySelector('.task-card__square-id');
     const status = r.querySelector('.task-card__status-label');
-    const dot = r.querySelector('.dot');
+    const dot = r.querySelector('.task-card__status .dot');
     const when = r.querySelector('.task-card__when');
+    const cs = getComputedStyle(r);
     return {
       id: id?.textContent,
       idWeight: id ? getComputedStyle(id).fontWeight : null,
-      idColor: id ? getComputedStyle(id).color : null,
-      kind: r.querySelector('.badge:not(.badge--domain)')?.textContent,
+      kind: r.querySelector('.badge:not(.badge--domain):not(.badge--template)')?.textContent,
       domain: r.querySelector('.badge--domain')?.textContent,
+      template: r.querySelector('.badge--template')?.textContent,
       title: r.querySelector('.task-card__title')?.textContent,
       whenLabel: when?.querySelector('.task-card__when-label')?.textContent,
       whenValue: when ? when.textContent.replace('最后动过','').trim() : null,
       status: status?.textContent,
       dotColor: dot ? getComputedStyle(dot).backgroundColor : null,
+      squareW: square ? Math.round(square.getBoundingClientRect().width) : null,
+      squareH: square ? Math.round(square.getBoundingClientRect().height) : null,
       selected: r.classList.contains('is-selected'),
-      unread: r.classList.contains('is-unread'),
       draft: r.classList.contains('is-draft'),
-      borderColor: getComputedStyle(r).borderTopColor,
-      borderWidth: getComputedStyle(r).borderTopWidth,
+      unreadAi: r.classList.contains('is-unread-ai'),
+      unreadUser: r.classList.contains('is-unread-user'),
+      borderLeftW: cs.borderLeftWidth,
+      borderRightW: cs.borderRightWidth,
+      borderLeftColor: cs.borderLeftColor,
+      borderRightColor: cs.borderRightColor,
+      borderTopColor: cs.borderTopColor,
     };
   });
 })()`);
@@ -136,43 +144,76 @@ expect('取消 = 灰 #6b7280', dotByStatus['取消'], 'rgb(107, 114, 128)');
 expect('拒绝 = 红（同失败）', dotByStatus['拒绝'], 'rgb(239, 68, 68)');
 console.log('  → 成功绿 / 失败拒绝红 / 取消灰 —— 「完成」组内部三种色 ✅');
 
-console.log('\n═══ ③ 列结构：固定宽度 ═══');
+console.log('\n═══ ③ 左侧正方形：编号在上、状态在下 ═══');
 const geo = await ev(`(() => {
   const r = document.querySelectorAll('.task-card')[1];
-  const get = (sel) => {
-    const el = r.querySelector(sel);
-    return el ? Math.round(el.getBoundingClientRect().width) : null;
-  };
+  const sq = r.querySelector('.task-card__square');
+  const id = r.querySelector('.task-card__square-id');
+  const st = r.querySelector('.task-card__status');
+  const idR = id.getBoundingClientRect();
+  const stR = st.getBoundingClientRect();
   return {
-    rowW: Math.round(r.getBoundingClientRect().width),
-    whenW: get('.task-card__when'),
-    statusW: get('.task-card__status'),
-    titleW: get('.task-card__title'),
+    squareW: Math.round(sq.getBoundingClientRect().width),
+    idTop: Math.round(idR.top),
+    statusTop: Math.round(stR.top),
+    sameLeft: Math.abs(idR.left - stR.left) < 2,
+    whenW: Math.round(r.querySelector('.task-card__when').getBoundingClientRect().width),
   };
 })()`);
 console.log('  ', JSON.stringify(geo));
-expect('最后动过 = 90px', geo.whenW, 90);
-expect('状态列 = 96px', geo.statusW, 96);
-expect('标题是弹性列（> 200px）', geo.titleW > 200, true);
+expect('正方形固定 76px', geo.squareW, 76);
+expect('⚠ 状态在编号下面（top 更大）', geo.statusTop > geo.idTop, true);
+expect('⚠ 两者左对齐（同一竖列）', geo.sameLeft, true);
+expect('最后动过 90px', geo.whenW, 90);
 
-console.log('\n═══ ④ 草稿无边框（但占 2px 不跳）═══');
+console.log('\n═══ ④ 三个 label 横排（不换行不堆叠）═══');
+const labelGeo = await ev(`(() => {
+  const r = document.querySelectorAll('.task-card')[3];
+  const bs = [...r.querySelectorAll('.task-card__line > .badge')];
+  const tops = bs.map(b => Math.round(b.getBoundingClientRect().top));
+  const heights = bs.map(b => Math.round(b.getBoundingClientRect().height));
+  return {
+    count: bs.length,
+    texts: bs.map(b => b.textContent),
+    tops,
+    allSameTop: new Set(tops).size === 1,
+    oneRow: new Set(heights).size === 1,
+    maxW: Math.max(...bs.map(b => Math.round(b.getBoundingClientRect().width))),
+  };
+})()`);
+console.log('  ', JSON.stringify(labelGeo));
+expect('三个 label', labelGeo.count, 3);
+expect('是 分类/领域/模板名', labelGeo.texts.length === 3, true);
+expect('⚠ 同一行（top 相同）', labelGeo.allSameTop, true);
+expect('⚠ 单行高度（没有堆叠）', labelGeo.oneRow, true);
+expect('模板名显示了', labelGeo.texts[2], '写代码');
+
+console.log('\n═══ ⑤ 未读：边框加厚 + 上色 ═══');
 const gu = rows[0];
-expect('GU-01 是草稿', gu.draft, true);
-expect('草稿边框透明', gu.borderColor, 'rgba(0, 0, 0, 0)');
-expect('⚠ 但边框宽度仍是 2px（不跳）', gu.borderWidth, '2px');
-const dm = rows[1];
-expect('非草稿有边框', dm.draft, false);
-expect('非草稿边框是灰', dm.borderColor, 'rgb(231, 233, 238)');
+expect('GU-01 = AI 改过', gu.unreadAi, true);
+expect('⚠ 左边框加厚到 4px', gu.borderLeftW, '4px');
+expect('⚠ 左边框变蓝', gu.borderLeftColor, 'rgb(37, 99, 235)');
+expect('右边框保持 2px', gu.borderRightW, '2px');
 
-console.log('\n═══ ⑤ 未读 = 编号加粗 800（不是装饰）═══');
 const ww = rows[2];
-expect('WW-01 未读', ww.unread, true);
-expect('⚠ 编号字重 800', ww.idWeight, '800');
-const wf = rows[3];
-expect('WF-01 非未读', wf.unread, false);
-expect('编号字重 700', wf.idWeight, '700');
+expect('WW-01 = 我改过', ww.unreadUser, true);
+expect('⚠ 右边框加厚到 4px', ww.borderRightW, '4px');
+expect('⚠ 右边框变橙', ww.borderRightColor, 'rgb(217, 119, 6)');
+expect('左边框保持 2px', ww.borderLeftW, '2px');
 
-console.log('\n═══ ⑥ 点一行选中 ═══');
+const wsCard = rows[4];
+expect('WS-01 = 两边都改过', [wsCard.unreadAi, wsCard.unreadUser], [true, true]);
+expect('左右都 4px', [wsCard.borderLeftW, wsCard.borderRightW], ['4px', '4px']);
+
+const dm = rows[1];
+expect('DM-01 = 没改过', [dm.unreadAi, dm.unreadUser], [false, false]);
+expect('左右都 2px', [dm.borderLeftW, dm.borderRightW], ['2px', '2px']);
+
+console.log('\n═══ ⑥ 草稿无边框（但占 2px 不跳）═══');
+expect('GU-01 是草稿', gu.draft, true);
+expect('草稿边框透明', gu.borderTopColor, 'rgba(0, 0, 0, 0)');
+
+console.log('\n═══ ⑦ 点一行选中 ═══');
 await click(`document.querySelectorAll('.task-card')[5]`);
 await sleep(400);
 const after = await readRows();
@@ -183,20 +224,9 @@ await shot('02-selected.png');
 const selState = await ev(`(document.querySelector('.pv-state code')||{}).textContent`);
 expect('selected 状态同步', selState, '"RB-01"');
 
-console.log('\n═══ ⑦ 最后动过：列名 + 值 ═══');
-const first = rows[0];
-expect('列名常显「最后动过」', first.whenLabel, '最后动过');
-expect('值格式 MM-DD HH:mm', /^\d{2}-\d{2} \d{2}:\d{2}$/.test(first.whenValue), true);
-
-console.log('\n═══ ⑧ 九个状态的圆点区块 ═══');
-const dotBlock = await ev(`(() => {
-  const block = [...document.querySelectorAll('.pv-block')][1];
-    const dots = [...block.querySelectorAll('.task-card__status .dot')];
-  return { count: dots.length, colors: dots.map(d => getComputedStyle(d).backgroundColor) };
-})()`);
-console.log('  ', JSON.stringify(dotBlock));
-expect('九个圆点', dotBlock.count, 9);
-expect('颜色种类恰好 6 档', new Set(dotBlock.colors).size, 6);
+console.log('\n═══ ⑧ 最后动过：列名 + 值 ═══');
+expect('列名常显「最后动过」', rows[0].whenLabel, '最后动过');
+expect('值格式 MM-DD HH:mm', /^\d{2}-\d{2} \d{2}:\d{2}$/.test(rows[0].whenValue), true);
 
 console.log('\n═══ JS 错误 ═══');
 console.log(errors.length ? errors.join('\n') : '  没有');
@@ -205,4 +235,8 @@ console.log(failures.length ? failures.join('\n') : '  全部通过');
 
 proc.kill();
 process.exit(failures.length > 0 || errors.length > 0 ? 1 : 0);
+
+
+
+
 

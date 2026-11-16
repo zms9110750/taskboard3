@@ -120,7 +120,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 :root{
   --dot-draft:#9ca3af; --dot-active:#2563eb; --dot-shelved:#f59e0b;
-  --dot-completed:#10b981; --dot-failed:#ef4444; --dot-canceled:#6b7280;
+  --dot-completed:#10b981; --dot-failed:#ef4444; --dot-canceled:#6b7280; --warn:#d97706;
   --kind-goal-fg:#7c3aed;   --kind-goal-bg:#f3e8ff;
   --kind-design-fg:#2563eb; --kind-design-bg:#dbeafe;
   --kind-work-fg:#0891b2;   --kind-work-bg:#cffafe;
@@ -157,36 +157,75 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .badge--domain{color:var(--text-secondary);background:#f3f4f6}
 
 /* ══════════════════════════════════════════════════════════
-   列表条目
+   列表条目 —— 左侧正方形（编号/状态）+ 右侧一行
+   用户 2026-11-17 定的布局
    ══════════════════════════════════════════════════════════ */
 
+/*
+ * 外层：横向 flex。
+ * ⚠ 边框承担「未读」信号 ⇒ 必须预留 2px，选中/未读切换时不跳。
+ */
 .task-card{
-  display:block;width:100%;text-align:left;border:2px solid var(--border);
-  border-radius:8px;background:var(--bg-card);padding:8px 12px;margin-bottom:1px;
-  cursor:pointer;font-family:inherit;color:inherit;
+  display:flex;align-items:stretch;gap:12px;width:100%;text-align:left;
+  border:2px solid var(--border);border-radius:8px;background:var(--bg-card);
+  padding:8px 12px;margin-bottom:6px;cursor:pointer;font-family:inherit;color:inherit;
   transition:border-color .12s,background .12s;
 }
 .task-card:hover{background:#f8f9fb}
 .task-card.is-selected{border-color:var(--accent);background:#f5f9ff}
 
-/*
- * ⚠ 草稿：透明边框（保留 2px 占位）。
- *   用 border:none 会让草稿/非草稿切换时整行跳 2px。
- */
+/* 草稿：透明边框（保留 2px 占位，切换不跳） */
 .task-card.is-draft{border-color:transparent}
 .task-card.is-draft:hover{border-color:var(--border)}
 .task-card.is-draft.is-selected{border-color:var(--accent)}
 
 /*
- * 未读：**编号加粗到 800**（旧版原样：`.task-card.is-unread .card-id { font-weight: 800 }`）。
+ * 未读：**加厚 + 上色边框**（用户 2026-11-17）。
+ *   AI 改过我没读 ⇒ 左边框
+ *   我改过 AI 没读 ⇒ 右边框
+ * 两个都真 ⇒ 两边都亮。
  *
- * ⚠ 我最初自己编了「左侧蓝竖线 + 标题加粗」，那是**加戏** —— 旧版没有。
- *   旧版的语义是「跟邮箱未读邮件一样」，靠**编号字重**区分，不靠装饰。
- *   而「淡化未命中的卡」是另一个功能（update-focus），走 opacity，不在这里。
+ * ⚠ 用 `border-left/right-width` 加粗，不画额外线条 ——
+ *   额外线条会和选中框、hover 框打架。
+ * ⚠ 加粗后总宽变 1px，用 `padding` 补偿回去，否则整块会抖。
  */
-.task-card.is-unread .card-id{font-weight:800}
+.task-card.is-unread-ai{
+  border-left-width:4px;border-left-color:var(--accent);
+  padding-left:10px;   /* 12 - 2 补偿 */
+}
+.task-card.is-unread-user{
+  border-right-width:4px;border-right-color:var(--warn);
+  padding-right:10px;
+}
 
-.task-card__head{display:flex;align-items:center;gap:8px}
+/* ── 左侧正方形：编号在上、状态在下 ── */
+.task-card__square{
+  flex:0 0 76px;display:flex;flex-direction:column;justify-content:center;gap:3px;
+  min-width:0;
+}
+.task-card__square-id{
+  font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
+  letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 正方形里的状态：小一号、左对齐、不要固定 96px */
+.task-card__status.is-compact{
+  flex:0 0 auto;font-size:10px;gap:4px;color:var(--text-weak);
+}
+
+/* ── 右侧：一行 ── */
+.task-card__body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.task-card__line{display:flex;align-items:center;gap:8px;min-width:0}
+
+/*
+ * 三个 label **横排不换行**（用户 2026-11-17：
+ * 「我怕这三个到时候因为都是自定义命名，长度不一样，不能上下行的摆放」）
+ * ⇒ 一律 ellipsis，不换行、不堆叠。
+ */
+.task-card__line .badge{
+  flex:0 0 auto;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.badge--template{color:var(--text-secondary);background:#eef1f5}
+
 .task-card__title{font-weight:600;font-size:var(--fs-body);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
 
@@ -195,8 +234,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   white-space:nowrap;overflow:hidden}
 .task-card__when-label{display:block;font-size:9px;opacity:.7}
 
-/* 状态列：固定 96px（点 + 中文名） */
-.task-card__status{flex:0 0 96px;display:flex;align-items:center;gap:6px;min-width:0;
-  font-size:11px;color:var(--text-secondary)}
-.task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 未读的文字信号：编号加粗到 800（旧版行为，保留） */
+.task-card.is-unread-ai .card-id{font-weight:800}
+
 

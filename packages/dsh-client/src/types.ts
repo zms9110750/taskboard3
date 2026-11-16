@@ -55,11 +55,36 @@ export interface HistoryEntry {
 	readonly detail?: unknown;
 }
 
+/** 一个持有者。同一张卡可以有多个。 */
+export interface CardHolder {
+	/** AI 的消息循环 id / 会话 id。 */
+	readonly holder: string;
+	/** 开始持有的时间（毫秒）。 */
+	readonly at: number;
+}
+
+/**
+ * 未读标记 —— 「对方改过，我还没读」。
+ *
+ * 用户 `2026-11-13`：「不能再用胶水代码了」⇒ 这是**卡的字段**，
+ * 不是从 `history` + 外部游标算出来的。维护点唯一：core 的 `withHistory`。
+ */
+export interface CardUnread {
+	/** AI 改过、用户还没读。 */
+	readonly ai: boolean;
+	/** 用户改过、AI 还没读。 */
+	readonly user: boolean;
+}
+
 /**
  * 一张任务卡。
  *
- * 与 core 的 `Card` 逐字段对应，没有多余没有遗漏 —— 缺一个字段就是
- * 界面上一块空白，而且不报错。
+ * ⚠ **与 core 的 `Card` 逐字段一一对应** —— 缺一个字段就是界面上一块空白，
+ *   而且不报错。`test/schema-parity.test.ts` 钉住这一点。
+ *
+ * ⚠ **旧字段 `claimedBy` / `claimedAt` 已删**：core 把它们换成了 `holders` 列表
+ *   （允许多人协作，用户 `2026-11-13`）。留着会让类型和服务端对不上，
+ *   而 TypeScript **不会报错**（JSON 多字段/少字段都不检查）。
  */
 export interface Card {
 	readonly id: string;
@@ -70,10 +95,16 @@ export interface Card {
 	readonly relations: Relations;
 	readonly sections: Readonly<Record<string, CardSection>>;
 	readonly note: string;
+	/** 建卡时间（毫秒）。终身不变，**不是从 history 派生**。 */
+	readonly createdAt: number;
+	/** 采纳时间；未采纳为 `null`。 */
+	readonly adoptedAt: number | null;
 	readonly history: readonly HistoryEntry[];
 	readonly deleted: boolean;
-	readonly claimedBy: string | null;
-	readonly claimedAt: number | null;
+	/** 当前持有者（可以是多个）。 */
+	readonly holders: readonly CardHolder[];
+	/** 未读标记。 */
+	readonly unread: CardUnread;
 }
 
 /** 模板摘要（模板选择器用）。 */

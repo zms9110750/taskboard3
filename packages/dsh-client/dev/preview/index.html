@@ -126,7 +126,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 :root{
   --dot-draft:#9ca3af; --dot-active:#2563eb; --dot-shelved:#f59e0b;
-  --dot-completed:#10b981; --dot-failed:#ef4444; --dot-canceled:#6b7280;
+  --dot-completed:#10b981; --dot-failed:#ef4444; --dot-canceled:#6b7280; --warn:#d97706;
   --kind-goal-fg:#7c3aed;   --kind-goal-bg:#f3e8ff;
   --kind-design-fg:#2563eb; --kind-design-bg:#dbeafe;
   --kind-work-fg:#0891b2;   --kind-work-bg:#cffafe;
@@ -163,36 +163,75 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .badge--domain{color:var(--text-secondary);background:#f3f4f6}
 
 /* ══════════════════════════════════════════════════════════
-   列表条目
+   列表条目 —— 左侧正方形（编号/状态）+ 右侧一行
+   用户 2026-11-17 定的布局
    ══════════════════════════════════════════════════════════ */
 
+/*
+ * 外层：横向 flex。
+ * ⚠ 边框承担「未读」信号 ⇒ 必须预留 2px，选中/未读切换时不跳。
+ */
 .task-card{
-  display:block;width:100%;text-align:left;border:2px solid var(--border);
-  border-radius:8px;background:var(--bg-card);padding:8px 12px;margin-bottom:1px;
-  cursor:pointer;font-family:inherit;color:inherit;
+  display:flex;align-items:stretch;gap:12px;width:100%;text-align:left;
+  border:2px solid var(--border);border-radius:8px;background:var(--bg-card);
+  padding:8px 12px;margin-bottom:6px;cursor:pointer;font-family:inherit;color:inherit;
   transition:border-color .12s,background .12s;
 }
 .task-card:hover{background:#f8f9fb}
 .task-card.is-selected{border-color:var(--accent);background:#f5f9ff}
 
-/*
- * ⚠ 草稿：透明边框（保留 2px 占位）。
- *   用 border:none 会让草稿/非草稿切换时整行跳 2px。
- */
+/* 草稿：透明边框（保留 2px 占位，切换不跳） */
 .task-card.is-draft{border-color:transparent}
 .task-card.is-draft:hover{border-color:var(--border)}
 .task-card.is-draft.is-selected{border-color:var(--accent)}
 
 /*
- * 未读：**编号加粗到 800**（旧版原样：`.task-card.is-unread .card-id { font-weight: 800 }`）。
+ * 未读：**加厚 + 上色边框**（用户 2026-11-17）。
+ *   AI 改过我没读 ⇒ 左边框
+ *   我改过 AI 没读 ⇒ 右边框
+ * 两个都真 ⇒ 两边都亮。
  *
- * ⚠ 我最初自己编了「左侧蓝竖线 + 标题加粗」，那是**加戏** —— 旧版没有。
- *   旧版的语义是「跟邮箱未读邮件一样」，靠**编号字重**区分，不靠装饰。
- *   而「淡化未命中的卡」是另一个功能（update-focus），走 opacity，不在这里。
+ * ⚠ 用 `border-left/right-width` 加粗，不画额外线条 ——
+ *   额外线条会和选中框、hover 框打架。
+ * ⚠ 加粗后总宽变 1px，用 `padding` 补偿回去，否则整块会抖。
  */
-.task-card.is-unread .card-id{font-weight:800}
+.task-card.is-unread-ai{
+  border-left-width:4px;border-left-color:var(--accent);
+  padding-left:10px;   /* 12 - 2 补偿 */
+}
+.task-card.is-unread-user{
+  border-right-width:4px;border-right-color:var(--warn);
+  padding-right:10px;
+}
 
-.task-card__head{display:flex;align-items:center;gap:8px}
+/* ── 左侧正方形：编号在上、状态在下 ── */
+.task-card__square{
+  flex:0 0 76px;display:flex;flex-direction:column;justify-content:center;gap:3px;
+  min-width:0;
+}
+.task-card__square-id{
+  font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
+  letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 正方形里的状态：小一号、左对齐、不要固定 96px */
+.task-card__status.is-compact{
+  flex:0 0 auto;font-size:10px;gap:4px;color:var(--text-weak);
+}
+
+/* ── 右侧：一行 ── */
+.task-card__body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.task-card__line{display:flex;align-items:center;gap:8px;min-width:0}
+
+/*
+ * 三个 label **横排不换行**（用户 2026-11-17：
+ * 「我怕这三个到时候因为都是自定义命名，长度不一样，不能上下行的摆放」）
+ * ⇒ 一律 ellipsis，不换行、不堆叠。
+ */
+.task-card__line .badge{
+  flex:0 0 auto;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.badge--template{color:var(--text-secondary);background:#eef1f5}
+
 .task-card__title{font-weight:600;font-size:var(--fs-body);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
 
@@ -201,10 +240,9 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   white-space:nowrap;overflow:hidden}
 .task-card__when-label{display:block;font-size:9px;opacity:.7}
 
-/* 状态列：固定 96px（点 + 中文名） */
-.task-card__status{flex:0 0 96px;display:flex;align-items:center;gap:6px;min-width:0;
-  font-size:11px;color:var(--text-secondary)}
-.task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 未读的文字信号：编号加粗到 800（旧版行为，保留） */
+.task-card.is-unread-ai .card-id{font-weight:800}
+
 
 </style>
 </head>
@@ -17491,14 +17529,18 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	}
 	// ../components/StatusCell.tsx
 	/**
-	* 一个状态列（点 + 文字）。
+	* 一个状态（点 + 文字）。
 	*
 	* @param props 见 `StatusCellProps`
 	*/
 	function StatusCell(props) {
+		const cls = props.compact ? "task-card__status is-compact" : "task-card__status";
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-			className: "task-card__status",
-			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusDot, { status: props.status }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+			className: cls,
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusDot, {
+				status: props.status,
+				size: props.compact === true ? 6 : void 0
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 				className: "task-card__status-label",
 				children: stateLabel(props.status)
 			})]
@@ -17512,48 +17554,60 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	*/
 	function CardRow(props) {
 		const card = props.card;
-		const draft = isDraftStatus(card.status);
 		const time = cardTimes(card.history).last;
 		const tone = kindTone(card.template.kind);
 		const cls = ["task-card"];
 		if (props.selected) cls.push("is-selected");
-		if (props.unread) cls.push("is-unread");
-		if (draft) cls.push("is-draft");
-		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+		if (isDraftStatus(card.status)) cls.push("is-draft");
+		if (card.unread.ai) cls.push("is-unread-ai");
+		if (card.unread.user) cls.push("is-unread-user");
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 			type: "button",
 			className: cls.join(" "),
 			"data-card-id": card.id,
 			onClick: () => props.onSelect(card.id),
-			children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "task-card__head",
-				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: `card-id card-id--${tone}`,
-						children: card.id
-					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: `badge badge--${tone}`,
-						children: props.kindLabel
-					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "badge badge--domain",
-						children: card.template.domain
-					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "task-card__title",
-						title: card.title,
-						children: card.title
-					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-						className: "task-card__when",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-							className: "task-card__when-label",
-							children: "最后动过"
-						}), fmtDateTime(time)]
-					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusCell, { status: card.status })
-				]
-			})
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+				className: "task-card__square",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: `task-card__square-id card-id card-id--${tone}`,
+					children: card.id
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusCell, {
+					status: card.status,
+					compact: true
+				})]
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+				className: "task-card__body",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+					className: "task-card__line",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: `badge badge--${tone}`,
+							children: props.kindLabel
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "badge badge--domain",
+							children: card.template.domain
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "badge badge--template",
+							title: props.templateLabel,
+							children: props.templateLabel
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "task-card__title",
+							title: card.title,
+							children: card.title
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+							className: "task-card__when",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "task-card__when-label",
+								children: "最后动过"
+							}), fmtDateTime(time)]
+						})
+					]
+				})
+			})]
 		});
 	}
 	// main.tsx
@@ -17561,12 +17615,6 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	* 组件预览入口 —— **只用于给用户看组件，不进产物、不进插件**。
 	*
 	* 由 `dev/preview/build.mjs` 用 rolldown 打成一个**自包含 HTML**，双击即可打开。
-	*
-	* ## 这一版加的是
-	*
-	* · `StatusDot` —— 7px 状态圆点（六档颜色）
-	* · `StatusCell` —— 圆点 + 中文名，固定 96px
-	* · `CardRow` —— 列表一行
 	*/
 	const KIND_LABEL = {
 		goal: "目标",
@@ -17574,6 +17622,14 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		work: "工作",
 		record: "记录"
 	};
+	const TEMPLATE_LABEL = {
+		"user-need": "用户任务",
+		architecture: "技术架构",
+		"write-code": "写代码",
+		"write-doc": "写文档",
+		record: "记录"
+	};
+	const at = (d, h) => new Date(2026, 10, d, h, 12).getTime();
 	const mkCard = (o) => ({
 		status: "TASK_STATE_SUBMITTED",
 		template: {
@@ -17587,16 +17643,21 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		},
 		sections: {},
 		note: "",
+		createdAt: at(17, 9),
+		adoptedAt: null,
 		history: [{
-			at: new Date(2026, 10, 17, 9, 12).getTime(),
+			at: at(17, 9),
 			action: "create"
 		}, {
-			at: new Date(2026, 10, 17, 14, 31).getTime(),
+			at: at(17, 14),
 			action: "transition"
 		}],
 		deleted: false,
-		claimedBy: null,
-		claimedAt: null,
+		holders: [],
+		unread: {
+			ai: false,
+			user: false
+		},
 		...o
 	});
 	const CARDS = [
@@ -17608,6 +17669,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				ref: "user-need",
 				kind: "goal",
 				domain: "核心"
+			},
+			unread: {
+				ai: true,
+				user: false
 			}
 		}),
 		mkCard({
@@ -17628,6 +17693,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				ref: "write-code",
 				kind: "work",
 				domain: "代码"
+			},
+			unread: {
+				ai: false,
+				user: true
 			}
 		}),
 		mkCard({
@@ -17648,6 +17717,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				ref: "write-doc",
 				kind: "work",
 				domain: "写作"
+			},
+			unread: {
+				ai: true,
+				user: true
 			}
 		}),
 		mkCard({
@@ -17691,7 +17764,6 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			}
 		})
 	];
-	/** 九状态全览（圆点 + 名字）。 */
 	const ALL_STATUS = [
 		"TASK_STATE_UNSPECIFIED",
 		"TASK_STATE_SUBMITTED",
@@ -17703,6 +17775,25 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		"TASK_STATE_CANCELED",
 		"TASK_STATE_REJECTED"
 	];
+	function Preview(props) {
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			style: { width: "100%" },
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				style: {
+					fontSize: 11,
+					color: "#9aa1ad",
+					margin: "10px 0 4px"
+				},
+				children: props.title
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
+				card: props.card,
+				selected: props.selected === true,
+				kindLabel: KIND_LABEL[props.card.template.kind] ?? props.card.template.kind,
+				templateLabel: TEMPLATE_LABEL[props.card.template.ref] ?? props.card.template.ref,
+				onSelect: () => void 0
+			})]
+		});
+	}
 	/** 预览页。 */
 	function App() {
 		const [selected, setSelected] = (0, import_react.useState)("WW-01");
@@ -17711,7 +17802,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			children: [
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 					className: "pv-head",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "CardRow / StatusCell / StatusDot" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "列表条目 · 列结构固定（编号 / 分类 / 领域 / 标题 / 最后动过 / 状态）" })]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "CardRow / StatusCell / StatusDot" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "左侧正方形（编号 / 状态）+ 右侧三个 label 横排 + 标题 + 最后动过" })]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
@@ -17720,8 +17811,8 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: CARDS.map((card) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
 							card,
 							selected: selected === card.id,
-							unread: card.id === "WW-01" || card.id === "GU-01",
 							kindLabel: KIND_LABEL[card.template.kind] ?? card.template.kind,
+							templateLabel: TEMPLATE_LABEL[card.template.ref] ?? card.template.ref,
 							onSelect: setSelected
 						}, card.id)) }),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
@@ -17735,32 +17826,115 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 未读两种方向（边框加厚上色）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "filter-row",
+						style: {
+							flexDirection: "column",
+							alignItems: "stretch"
+						},
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Preview, {
+								title: "AI 改过、我没读 ⇒ 左边框加厚变蓝",
+								card: CARDS[0]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Preview, {
+								title: "我改过、AI 没读 ⇒ 右边框加厚变橙",
+								card: CARDS[2]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Preview, {
+								title: "两边都改过 ⇒ 两边都亮",
+								card: CARDS[4]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Preview, {
+								title: "没改过 ⇒ 普通 2px 灰边框",
+								card: CARDS[1]
+							})
+						]
+					})]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 九个状态的圆点 + 名字（六档颜色）" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 选中 / 草稿" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Preview, {
+							title: "选中（蓝框）",
+							card: CARDS[1],
+							selected: true
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Preview, {
+							title: "草稿（无边框，但占 2px 不跳）",
+							card: CARDS[0]
+						})
+					]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "pv-block",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 九个状态的圆点（六档颜色）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						style: {
+							display: "grid",
+							gridTemplateColumns: "repeat(3, 1fr)",
+							gap: 10
+						},
+						children: ALL_STATUS.map((status) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							style: {
-								display: "grid",
-								gridTemplateColumns: "repeat(3, 1fr)",
-								gap: 10
+								display: "flex",
+								alignItems: "center",
+								gap: 8
 							},
-							children: ALL_STATUS.map((status) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								style: {
-									display: "flex",
-									alignItems: "center",
-									gap: 8
-								},
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusDot, { status }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", {
-										style: {
-											fontSize: 10,
-											color: "#9aa1ad"
-										},
-										children: status.replace("TASK_STATE_", "")
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusCell, { status })
-								]
-							}, status))
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusDot, { status }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", {
+									style: {
+										fontSize: 10,
+										color: "#9aa1ad"
+									},
+									children: status.replace("TASK_STATE_", "")
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusCell, { status })
+							]
+						}, status))
+					})]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "pv-block",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "⑤ 布局与规则" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+							className: "pv-table",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "部分" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "内容" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "规则" })
+							] }) }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tbody", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "左侧正方形" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [
+										"编号（上行）",
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+										"状态（下行）"
+									] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "固定 76px，上下两行" })
+								] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "右侧第一行" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "分类 / 领域 / 模板名 + 标题 + 最后动过" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [
+										"三个 label ",
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "横排不换行" }),
+										"，挤不下就省略（最长 120px）"
+									] })
+								] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "边框" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "未读信号" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "AI 改过 ⇒ 左 4px 蓝；我改过 ⇒ 右 4px 橙；都真 ⇒ 两边" })
+								] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "草稿" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "透明边框" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "保留 2px 占位，切换时不跳" })
+								] })
+							] })]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 							className: "pv-note",
@@ -17769,176 +17943,12 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 								marginBottom: 0
 							},
 							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "六档" }),
-								"：草稿灰 / 进行蓝 / 搁置橙 / 成功绿 / 失败拒绝红 / 取消灰。",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
-								"注意「成功」「失败」「取消」「拒绝」四个同属「完成」组， 但颜色分三种 —— 组只到「完成」这一层，细分只能按协议名。"
+								"⚠ ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "未读从 `card.unread` 读" }),
+								"（卡的字段，core 唯一维护点）， 不是外部传参 —— 两个来源迟早不一致。"
 							]
 						})
 					]
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-					className: "pv-block",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 列结构（固定宽度，长标题不挤走状态列）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-						className: "pv-table",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "列" }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "宽度" }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "说明" })
-						] }) }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tbody", { children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "编号" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "自适应" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "等宽 + 分类色 + 粗体" })
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "分类徽章" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "自适应" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "色块（四个分类四色）" })
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "领域徽章" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "自适应" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "中性灰" })
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "标题" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "flex:1" }) }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "唯一弹性列，长了省略" })
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "最后动过" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "90px" }) }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "右对齐，列名常显" })
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "状态" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "96px" }) }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "点 + 中文名" })
-							] })
-						] })]
-					})]
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-					className: "pv-block",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 三种视觉状态" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "filter-row",
-						style: {
-							alignItems: "flex-start",
-							flexDirection: "column"
-						},
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: {
-									fontSize: 11,
-									color: "#9aa1ad"
-								},
-								children: "正常"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: { width: "100%" },
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
-									card: CARDS[1],
-									selected: false,
-									unread: false,
-									kindLabel: "设计",
-									onSelect: () => void 0
-								})
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: {
-									fontSize: 11,
-									color: "#9aa1ad",
-									marginTop: 8
-								},
-								children: "选中（蓝框）"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: { width: "100%" },
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
-									card: CARDS[2],
-									selected: true,
-									unread: false,
-									kindLabel: "工作",
-									onSelect: () => void 0
-								})
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: {
-									fontSize: 11,
-									color: "#9aa1ad",
-									marginTop: 8
-								},
-								children: "AI 改过未读（编号加粗到 800）"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: { width: "100%" },
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
-									card: CARDS[3],
-									selected: false,
-									unread: true,
-									kindLabel: "工作",
-									onSelect: () => void 0
-								})
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: {
-									fontSize: 11,
-									color: "#9aa1ad",
-									marginTop: 8
-								},
-								children: "草稿（无边框 —— 用透明边框占位，不会跳 2px）"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								style: { width: "100%" },
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
-									card: CARDS[0],
-									selected: false,
-									unread: false,
-									kindLabel: "目标",
-									onSelect: () => void 0
-								})
-							})
-						]
-					})]
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-					className: "pv-block",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "⑤ 规则" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ol", {
-						className: "pv-list",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"状态列",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "固定 96px" }),
-								"：扫视时不用横跨整行"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"「最后动过」",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "固定 90px" }),
-								"，右对齐；列名常显（只有时间看不懂）"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"草稿",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "无边框" }),
-								"，但用透明边框占 2px —— 切换时不跳"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"AI 改过未读：",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "编号加粗到 800" }),
-								"（旧版原样，不是装饰、不是变色）"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"组件",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "不判「能不能选中」" }),
-								"，只上报 onSelect"
-							] }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
-								"分类中文名",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "不从组件拿" }),
-								"，由调用方传（真实产品从模板清单查）"
-							] })
-						]
-					})]
 				})
 			]
 		});

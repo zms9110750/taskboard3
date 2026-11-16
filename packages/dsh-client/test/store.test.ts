@@ -31,10 +31,12 @@ function card(id: string, patch: Partial<Card> = {}): Card {
 		relations: { parent: null, links: [] },
 		sections: {},
 		note: '',
+		createdAt: 0,
+		adoptedAt: null,
 		history: [],
 		deleted: false,
-		claimedBy: null,
-		claimedAt: null,
+		holders: [],
+		unread: { ai: false, user: false },
 		...patch,
 	};
 }
@@ -147,3 +149,4 @@ describe('templateLabelOf', () => {
 		assert.equal(templateLabelOf(templates, 'research'), 'research');
 	});
 });
+
