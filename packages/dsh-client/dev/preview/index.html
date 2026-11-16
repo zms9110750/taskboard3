@@ -118,6 +118,94 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 /* 段与段之间的结构竖线：贯通上下内边 */
 .filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
+
+/* ══════════════════════════════════════════════════════════
+   状态圆点 —— 逐条对应旧版 styles.css:570-600
+   六个档位（四个组 + 完成组细分三种）
+   ══════════════════════════════════════════════════════════ */
+
+:root{
+  --dot-draft:#9ca3af; --dot-active:#2563eb; --dot-shelved:#f59e0b;
+  --dot-completed:#10b981; --dot-failed:#ef4444; --dot-canceled:#6b7280;
+  --kind-goal-fg:#7c3aed;   --kind-goal-bg:#f3e8ff;
+  --kind-design-fg:#2563eb; --kind-design-bg:#dbeafe;
+  --kind-work-fg:#0891b2;   --kind-work-bg:#cffafe;
+  --kind-record-fg:#6b7280; --kind-record-bg:#f3f4f6;
+  --fs-id:11px; --fs-badge:10px; --fs-body:12.5px;
+  --font-mono:ui-monospace,Consolas,'Courier New',monospace;
+  --text-weak:#9aa1ad;
+}
+
+.dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;display:inline-block;
+  background:var(--dot-draft)}
+.dot--draft{background:var(--dot-draft)}
+.dot--active{background:var(--dot-active)}
+.dot--shelved{background:var(--dot-shelved)}
+.dot--completed{background:var(--dot-completed)}
+.dot--failed{background:var(--dot-failed)}
+.dot--canceled{background:var(--dot-canceled)}
+
+/* 编号：等宽 + 分类色 + 粗体 */
+.card-id{font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
+  letter-spacing:-.2px;flex:0 0 auto}
+.card-id--goal{color:var(--kind-goal-fg)}
+.card-id--design{color:var(--kind-design-fg)}
+.card-id--work{color:var(--kind-work-fg)}
+.card-id--record{color:var(--kind-record-fg)}
+
+/* 徽章 */
+.badge{display:inline-block;padding:0 5px;border-radius:3px;font-size:var(--fs-badge);
+  line-height:1.6;white-space:nowrap;flex:0 0 auto}
+.badge--goal{color:var(--kind-goal-fg);background:var(--kind-goal-bg)}
+.badge--design{color:var(--kind-design-fg);background:var(--kind-design-bg)}
+.badge--work{color:var(--kind-work-fg);background:var(--kind-work-bg)}
+.badge--record{color:var(--kind-record-fg);background:var(--kind-record-bg)}
+.badge--domain{color:var(--text-secondary);background:#f3f4f6}
+
+/* ══════════════════════════════════════════════════════════
+   列表条目
+   ══════════════════════════════════════════════════════════ */
+
+.task-card{
+  display:block;width:100%;text-align:left;border:2px solid var(--border);
+  border-radius:8px;background:var(--bg-card);padding:8px 12px;margin-bottom:1px;
+  cursor:pointer;font-family:inherit;color:inherit;
+  transition:border-color .12s,background .12s;
+}
+.task-card:hover{background:#f8f9fb}
+.task-card.is-selected{border-color:var(--accent);background:#f5f9ff}
+
+/*
+ * ⚠ 草稿：透明边框（保留 2px 占位）。
+ *   用 border:none 会让草稿/非草稿切换时整行跳 2px。
+ */
+.task-card.is-draft{border-color:transparent}
+.task-card.is-draft:hover{border-color:var(--border)}
+.task-card.is-draft.is-selected{border-color:var(--accent)}
+
+/*
+ * 未读：**编号加粗到 800**（旧版原样：`.task-card.is-unread .card-id { font-weight: 800 }`）。
+ *
+ * ⚠ 我最初自己编了「左侧蓝竖线 + 标题加粗」，那是**加戏** —— 旧版没有。
+ *   旧版的语义是「跟邮箱未读邮件一样」，靠**编号字重**区分，不靠装饰。
+ *   而「淡化未命中的卡」是另一个功能（update-focus），走 opacity，不在这里。
+ */
+.task-card.is-unread .card-id{font-weight:800}
+
+.task-card__head{display:flex;align-items:center;gap:8px}
+.task-card__title{font-weight:600;font-size:var(--fs-body);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
+
+/* 「最后动过」：固定 90px，右对齐，列名常显 */
+.task-card__when{flex:0 0 90px;text-align:right;font-size:11px;color:var(--text-weak);
+  white-space:nowrap;overflow:hidden}
+.task-card__when-label{display:block;font-size:9px;opacity:.7}
+
+/* 状态列：固定 96px（点 + 中文名） */
+.task-card__status{flex:0 0 96px;display:flex;align-items:center;gap:6px;min-width:0;
+  font-size:11px;color:var(--text-secondary)}
+.task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 </style>
 </head>
 <body>
@@ -16942,110 +17030,233 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	var require_client = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_dom_client_development();
 	}));
-	// ../pure/filter-box.ts
+	// ../../../protocol/lib/status.js
+	/**
+	* 任务板的九个状态 —— 词汇来源是 Agent2Agent (A2A) 协议的 `TaskState`
+	* （v1.0.1 的 `specification/a2a.proto`）。
+	*
+	* ## 为什么是这九个
+	*
+	* A2A v1.0 的枚举恰好九个值，第 0 个是 `TASK_STATE_UNSPECIFIED`：
+	*
+	* ```
+	* TASK_STATE_UNSPECIFIED = 0   ← 「未指定」，本仓库的术语叫「草稿」
+	* TASK_STATE_SUBMITTED   = 1   ← 「提交」
+	* TASK_STATE_WORKING     = 2   ← 「处理中」
+	* TASK_STATE_COMPLETED   = 3   ← 「成功」
+	* TASK_STATE_FAILED      = 4   ← 「失败」
+	* TASK_STATE_CANCELED    = 5   ← 「取消」
+	* TASK_STATE_INPUT_REQUIRED = 6 ← 「需要信息」
+	* TASK_STATE_REJECTED    = 7   ← 「拒绝」
+	* TASK_STATE_AUTH_REQUIRED  = 8 ← 「需要授权」
+	* ```
+	*
+	* ⚠ v0.3 的 JSON 形式把第 9 个叫 `unknown`，那是旧版本的线上名称。
+	* 本仓库取 **v1.0.1 的 `UNSPECIFIED`**，不做任何名称转换。
+	* 协议若改版，`test/a2a-conformance.test.ts` 会报错（它拿官方 SDK 的
+	* `taskStateToJSON` 逐个比对），而不是靠人记得升级。
+	*
+	* ## 「草稿」是组名，不是状态
+	*
+	* 用户 `2026-11-01 00:57`：「草稿不是组。只有一个情况，做类型联合没有意义。
+	* 但是，他的实际名字是未指定。而我在里面的术语都会用草稿。」
+	*
+	* ⇒ `UNSPECIFIED` 是**唯一成员的单元素组**，组名叫「草稿」。
+	* `DRAFT` 常量是它的别名，不是第十个状态。
+	*
+	* ## 本文件不含行为
+	*
+	* 没有转移判定、没有权限、没有读写。分组用普通比较即可，
+	* 转移规则在 `transition.ts`，由用户裁定。
+	*/
+	/** 九个状态。键是短名，值是 A2A 协议全名。 */
+	const TaskState = {
+		UNSPECIFIED: "TASK_STATE_UNSPECIFIED",
+		SUBMITTED: "TASK_STATE_SUBMITTED",
+		WORKING: "TASK_STATE_WORKING",
+		INPUT_REQUIRED: "TASK_STATE_INPUT_REQUIRED",
+		AUTH_REQUIRED: "TASK_STATE_AUTH_REQUIRED",
+		COMPLETED: "TASK_STATE_COMPLETED",
+		FAILED: "TASK_STATE_FAILED",
+		CANCELED: "TASK_STATE_CANCELED",
+		REJECTED: "TASK_STATE_REJECTED"
+	};
+	/**
+	* 九个状态的清单，顺序同 A2A 枚举。
+	*
+	* ⚠ 手工列出，不用 `Object.values(TaskState)` —— 那样顺序依赖对象字面量的
+	* 书写顺序，而这份顺序要用于契约表（状态机、UI 菜单）。显式写出，
+	* 且下面有编译期断言保证它与 `TaskState` 一一对应。
+	*/
+	const TASK_STATES = [
+		TaskState.UNSPECIFIED,
+		TaskState.SUBMITTED,
+		TaskState.WORKING,
+		TaskState.INPUT_REQUIRED,
+		TaskState.AUTH_REQUIRED,
+		TaskState.COMPLETED,
+		TaskState.FAILED,
+		TaskState.CANCELED,
+		TaskState.REJECTED
+	];
+	TaskState.UNSPECIFIED;
+	Object.freeze({
+		draft: "草稿",
+		active: "进行",
+		shelved: "搁置",
+		ended: "完成"
+	});
+	/**
+	* 每个状态属于哪个组。
+	*
+	* ⚠ 类型是 `Record<TaskState, StatusGroup>` ⇒ 九个状态**每个都必须有归属**，
+	* 漏一个就编译失败。这比「用四个 `is*Status` 函数各判断一次」更硬：
+	* 那种写法漏一个只会落到假分支，不会报错。
+	*/
+	const STATUS_GROUP_OF = Object.freeze({
+		[TaskState.UNSPECIFIED]: "draft",
+		[TaskState.SUBMITTED]: "active",
+		[TaskState.WORKING]: "active",
+		[TaskState.INPUT_REQUIRED]: "shelved",
+		[TaskState.AUTH_REQUIRED]: "shelved",
+		[TaskState.COMPLETED]: "ended",
+		[TaskState.FAILED]: "ended",
+		[TaskState.CANCELED]: "ended",
+		[TaskState.REJECTED]: "ended"
+	});
+	/** 是否是已知状态（用于校验外部输入）。 */
+	function isTaskState(value) {
+		return typeof value === "string" && TASK_STATES.includes(value);
+	}
+	/**
+	* 状态的中文名。
+	*
+	* 用户 `2026-11-01 06:43`：「9态的中文只在终端。例如 ui 层，ai 工具层，dsh 命令层。
+	* 任务板内部交互用的就是英文名。」
+	*
+	* ⇒ 词表在这里，**消费方读它、不复制它**。
+	*
+	* ⚠ 措辞来自用户矩阵原话，不是我们造的：
+	*   · `SUBMITTED` 是「提交」不是「已提交」（用户原话：「用户点击`采纳`，变成`提交`」）；
+	*   · `ended` 是「完成」不是「结束」（用户原话：「"完成"，是一个状态组」）。
+	*/
+	const STATE_LABELS = Object.freeze({
+		[TaskState.UNSPECIFIED]: "未指定",
+		[TaskState.SUBMITTED]: "提交",
+		[TaskState.WORKING]: "处理中",
+		[TaskState.INPUT_REQUIRED]: "需要信息",
+		[TaskState.AUTH_REQUIRED]: "需要授权",
+		[TaskState.COMPLETED]: "成功",
+		[TaskState.FAILED]: "失败",
+		[TaskState.CANCELED]: "取消",
+		[TaskState.REJECTED]: "拒绝"
+	});
+	// ../pure/card-view.ts
+	/**
+	* 卡片**显示用**的派生值 —— 零 React、零 DOM。
+	*
+	* ## 为什么单独一个文件
+	*
+	* 旧版把这些散在 `lib/card-style.js`（78 行）+ `lib/card-state-style.js`（71 行）
+	* + `views/card-detail/times.js`（28 行）三处，然后在 **4 个 view 里各写一遍**。
+	* 同一份知识写四遍的代价不是行数，是**改一处会漏三处**，而编译器不会告诉你哪一处漏了。
+	*
+	* ## ⚠ 这里**没有**分类的中文名
+	*
+	* 旧版 `KIND_LABEL` 是硬编码的（`goal: '目标'`…），注释里写「后端没有这个词表 —— 核过三层」。
+	* **v3 不一样**：`core` 的模板 YAML 里 `kind` 是英文 id，但**每个模板有 `displayName`**。
+	* 分类的中文名应该由**模板清单**推出来，或者在 `protocol` 补一张词表 ——
+	* 不该在 UI 里再抄一份。
+	*
+	* ⇒ 本文件只导出 `KIND_ORDER`（四个已知 kind 的**顺序**），
+	*   中文名由调用方从模板清单取；取不到就显示英文 id（不编中文）。
+	*/
 	var import_react = require_react();
 	var import_client = require_client();
-	/** 有没有子节点。 */
-	function hasChildren(node) {
-		return node.children !== void 0 && node.children.length > 0;
+	/** 组 → 默认档位（组内不再细分时的回落）。 */
+	const TONE_OF_GROUP = Object.freeze({
+		draft: "draft",
+		active: "active",
+		shelved: "shelved",
+		ended: "canceled"
+	});
+	/**
+	* 状态 → 视觉档位。
+	*
+	* @param status A2A 状态全名；未知值回落 `draft`（最淡、最不引人注意）
+	*/
+	function stateTone(status) {
+		if (!isTaskState(status)) return "draft";
+		if (status === "TASK_STATE_COMPLETED") return "completed";
+		if (status === "TASK_STATE_FAILED" || status === "TASK_STATE_REJECTED") return "failed";
+		return TONE_OF_GROUP[STATUS_GROUP_OF[status]];
 	}
 	/**
-	* 沿路径把节点找出来。
+	* 状态 → 中文名。未知状态回落协议名去掉前缀（**不编中文**）。
 	*
-	* @param nodes 根
-	* @param picked 路径
-	* @returns 路径上的每个节点（顺序同路径）；路径断了返回 `undefined`
+	* @param status A2A 状态全名
 	*/
-	function resolvePath(nodes, picked) {
-		const out = [];
-		let level = nodes;
-		for (const value of picked) {
-			const hit = level.find((one) => one.value === value);
-			if (hit === void 0) return void 0;
-			out.push(hit);
-			level = hit.children ?? [];
-		}
-		return out;
-	}
-	/** 一组兄弟 → 可点项。`prefix` 是它们共同的祖先路径。 */
-	function optionsOf(siblings, prefix, selected) {
-		return siblings.map((node) => ({
-			value: node.value,
-			label: node.label,
-			picked: node.value === selected,
-			hasChildren: hasChildren(node),
-			next: [...prefix, node.value]
-		}));
+	function stateLabel(status) {
+		if (isTaskState(status)) return STATE_LABELS[status];
+		return status.replace(/^TASK_STATE_/, "");
 	}
 	/**
-	* 展开态该画哪几段。
+	* 是不是草稿（`draft` 组）。
 	*
-	* @param nodes 根
-	* @param picked 当前路径
+	* 列表/科技树用它决定**边框**：草稿不加边框（用户 `2026-11-10`：
+	* 「草稿无边框、选中用强调色」），其它状态有实线边框。
+	*
+	* @param status A2A 状态全名
 	*/
-	function segmentsOf(nodes, picked) {
-		if (picked.length === 0) return [{
-			kind: "level",
-			sep: " / ",
-			items: optionsOf(nodes, [], void 0)
-		}];
-		const resolved = resolvePath(nodes, picked);
-		if (resolved === void 0) return [];
-		const last = picked.length - 1;
-		const segments = [];
-		if (last > 0) segments.push({
-			kind: "crumbs",
-			sep: "/",
-			items: resolved.slice(0, last).map((node, index) => ({
-				value: picked[index],
-				label: node.label,
-				picked: false,
-				hasChildren: true,
-				next: picked.slice(0, index + 1)
-			}))
-		});
-		const parent = last === 0 ? void 0 : resolved[last - 1];
-		const siblings = parent === void 0 ? nodes : parent.children ?? [];
-		segments.push({
-			kind: "level",
-			sep: " / ",
-			items: optionsOf(siblings, picked.slice(0, last), picked[last])
-		});
-		const children = resolved[last]?.children ?? [];
-		if (children.length > 0) segments.push({
-			kind: "level",
-			sep: " / ",
-			items: optionsOf(children, picked, void 0)
-		});
-		return segments;
+	function isDraftStatus(status) {
+		return isTaskState(status) && STATUS_GROUP_OF[status] === "draft";
+	}
+	/** 四个已知分类，顺序固定（目标 → 设计 → 工作 → 记录）。 */
+	const KIND_ORDER = [
+		"goal",
+		"design",
+		"work",
+		"record"
+	];
+	/** 是不是四个已知分类之一。 */
+	function isKnownKind(kind) {
+		return KIND_ORDER.includes(kind);
 	}
 	/**
-	* 收起态是一条**可点的面包屑** —— 整条路径，每段独立。
+	* 分类 → 编号/徽章的色系 key。
 	*
-	* 用户 `2026-11-16`：
-	* > 「我要的是，『进行』，可以点。『提交』，可以点。
-	* >  不是『进行/提交』这一个按钮。……每一层，虽然他写的是文字。
-	* >  但是文字都是可以单独点击的。」
+	* ⚠ 未知分类回落 `'record'`（灰）—— 与旧版一致：
+	*   编号只是几个字符没颜色不碍事，但**徽章是色块**，没有底色会像渲染坏了一半。
+	*   给它一个中性灰，让「这是个我不认识的分类」**看得见**。
 	*
-	* 注意：这里**包含最后一段**（它才是当前选中项）。
-	* 展开态的 ① 不含它 —— 因为 ② 里已经画了。
-	*
-	* @param nodes 根
-	* @param picked 路径
+	* @param kind 分类 id
 	*/
-	function collapsedCrumbs(nodes, picked) {
-		if (picked.length === 0) return [];
-		const resolved = resolvePath(nodes, picked);
-		return picked.map((value, index) => {
-			const node = resolved?.[index];
-			return {
-				value,
-				label: node?.label ?? value,
-				picked: index === picked.length - 1,
-				hasChildren: node === void 0 ? false : hasChildren(node),
-				next: picked.slice(0, index + 1)
-			};
-		});
+	function kindTone(kind) {
+		return isKnownKind(kind) ? kind : "record";
+	}
+	/** 时间戳 → `MM-DD HH:mm`。 */
+	function fmtDateTime(ms) {
+		if (ms === void 0 || !Number.isFinite(ms) || ms <= 0) return "";
+		const date = new Date(ms);
+		return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+	}
+	function pad(n) {
+		return String(n).padStart(2, "0");
+	}
+	/**
+	* 从 `history` 取创建时间与最后动作时间。
+	*
+	* ⚠ **空历史时两个都 `undefined`** —— 调用方自己跳过空值，这里不编默认值。
+	*
+	* @param history 历史数组（可能是脏数据）
+	*/
+	function cardTimes(history) {
+		const created = history.find((one) => one.action === "create");
+		const last = history.length > 0 ? history[history.length - 1] : void 0;
+		return {
+			created: typeof created?.at === "number" ? created.at : void 0,
+			last: typeof last?.at === "number" ? last.at : void 0
+		};
 	}
 	// ../../../../node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.development.js
 	/**
@@ -17258,633 +17469,474 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			};
 		})();
 	}));
-	// ../components/FilterBox.tsx
-	/**
-	* 筛选方框 —— **一个按钮为一个单位**的面包屑筛选控件。
-	*
-	* ## 唯一的操作
-	*
-	* 用户 `2026-11-16`：
-	* > 「点他的效果是选中他。既然选中了他，那他就应该展开。」
-	* > 「我要的逻辑是完全具有一致性的。你套了多少if」
-	*
-	* ⇒ 这个组件**只有一个动作**：
-	*
-	* ```ts
-	* const select = (next: Picked): void => {
-	*     props.onChange(next);      // 选中
-	*     props.onOpenChange(true);  // 既然选中了，就展开
-	* };
-	* ```
-	*
-	* 所有可点的地方（标题、面包屑每一段、当前层每一项、子层每一项）
-	* **都调这一个函数**，区别只是传进去的 `next` 路径不同 ——
-	* 而路径是 `pure/filter-box.ts` 算好的，写在每一项的 `next` 字段里。
-	*
-	* | 点哪里 | next |
-	* |---|---|
-	* | 标题（第 0 级）| `[]`（清空）|
-	* | 面包屑第 i 段 | `picked.slice(0, i+1)` |
-	* | 当前层 / 子层的项 | 该项的路径 |
-	*
-	* **没有任何 `if (点的是标题) … else if (点的是面包屑) …`。**
-	*
-	* ## 渲染：只 map 一遍
-	*
-	* 展开态是**若干段**（0–3 个），段之间一条竖线。段由 `segmentsOf()` 给出，
-	* 组件只 `map`，**竖线规则写一次**（`index > 0` 就画）。
-	*
-	* 收起态是一条面包屑，由 `collapsedCrumbs()` 给出，同样只 `map`。
-	*
-	* 组件里剩下的 `if` 只有两类，都是**渲染必需**、不含语义的：
-	* 1. `if (face === null) return` —— ref 还没挂上；
-	* 2. `hasValue && …` / `picked ? cls : cls` —— 决定画什么、加哪个 class。
-	*
-	* ## 宽度动画
-	*
-	* 两套「脸」（收起 / 展开）都 `position: absolute` ⇒ 不参与盒宽。
-	* `useLayoutEffect` 量**当前那张脸**的宽度写到方框上，CSS 对 `width` 做 180ms 过渡。
-	* ⇒ 视觉上是「方块按钮变宽露出内容」，不是「内容把布局挤开」。
-	*/
+	// ../components/StatusDot.tsx
 	var import_jsx_runtime = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_jsx_runtime_development();
 	})))();
 	/**
-	* 一个筛选方框。
+	* 一个状态圆点。
 	*
-	* @param props 见 `FilterBoxProps`
+	* @param props 见 `StatusDotProps`
 	*/
-	function FilterBox(props) {
-		const boxRef = (0, import_react.useRef)(null);
-		const collapsedRef = (0, import_react.useRef)(null);
-		const expandedRef = (0, import_react.useRef)(null);
-		const crumbs = collapsedCrumbs(props.nodes, props.picked);
-		const segments = segmentsOf(props.nodes, props.picked);
-		const hasValue = crumbs.length > 0;
-		/**
-		* **唯一的动作**：选中一条路径，并展开。
-		*
-		* ⚠ 不要在这里加分支。任何「点的是哪一类东西」的区分都已经体现在 `next` 里了。
-		*/
-		const select = (next) => {
-			props.onChange(next);
-			props.onOpenChange(true);
-		};
-		const signature = JSON.stringify([crumbs.map((one) => one.label), segments.map((seg) => seg.items.map((one) => one.label))]);
-		(0, import_react.useLayoutEffect)(() => {
-			const box = boxRef.current;
-			const face = props.open ? expandedRef.current : collapsedRef.current;
-			if (box === null || face === null) return;
-			box.style.width = `${Math.ceil(face.getBoundingClientRect().width) + 24}px`;
-		}, [props.open, signature]);
-		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-			ref: boxRef,
-			"data-box-id": props.boxId,
-			className: props.open ? "filter-box is-open" : "filter-box",
-			onClick: () => props.onOpenChange(true),
-			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				ref: collapsedRef,
-				className: "filter-box__face filter-box__face--collapsed",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-					type: "button",
-					className: "filter-box__title",
-					title: hasValue ? "清空筛选" : props.title,
-					onClick: (event) => {
-						event.stopPropagation();
-						select([]);
-					},
-					children: props.title
-				}), hasValue && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "filter-box__colon",
-					children: "："
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Crumbs, {
-					items: crumbs,
-					onPick: select
-				})] })]
-			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				ref: expandedRef,
-				className: "filter-box__face filter-box__face--expanded",
-				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-						type: "button",
-						className: "filter-box__title",
-						title: "清空筛选",
-						onClick: (event) => {
-							event.stopPropagation();
-							select([]);
-						},
-						children: props.title
-					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-						className: "filter-box__colon",
-						children: "："
-					}),
-					segments.map((seg, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.Fragment, { children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-box__vline" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Items, {
-						items: seg.items,
-						sep: seg.sep,
-						onPick: select
-					})] }, `seg-${index}`))
-				]
+	function StatusDot(props) {
+		const tone = stateTone(props.status);
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+			className: `dot dot--${tone}`,
+			title: props.label ?? stateLabel(props.status),
+			style: props.size === void 0 ? void 0 : {
+				width: props.size,
+				height: props.size
+			}
+		});
+	}
+	// ../components/StatusCell.tsx
+	/**
+	* 一个状态列（点 + 文字）。
+	*
+	* @param props 见 `StatusCellProps`
+	*/
+	function StatusCell(props) {
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+			className: "task-card__status",
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusDot, { status: props.status }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+				className: "task-card__status-label",
+				children: stateLabel(props.status)
 			})]
 		});
 	}
-	/** 收起态面包屑。 */
-	function Crumbs(props) {
-		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-			className: "filter-box__crumbs",
-			children: props.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-				style: { display: "contents" },
-				children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "filter-box__csep",
-					children: "/"
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pick, {
-					item,
-					variant: "crumb",
-					onPick: props.onPick
-				})]
-			}, `c-${item.value}`))
-		});
-	}
-	/** 一段（当前层 / 子层）。 */
-	function Items(props) {
-		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-			className: "filter-box__items",
-			children: props.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-				style: { display: "contents" },
-				children: [index > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "filter-box__sep",
-					children: props.sep
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Pick, {
-					item,
-					variant: "option",
-					onPick: props.onPick
-				})]
-			}, `i-${item.value}`))
-		});
-	}
+	// ../components/CardRow.tsx
 	/**
-	* 一个可点的项。
+	* 一行卡片。
 	*
-	* ⚠ **不是胶囊、不是按钮外观** —— 无边框、无底色，hover 才有淡底。
-	* 用户原话：「里面不是纸片，他们都在方框里面，不是一个可以点击的按钮，
-	* 而是可以点击的内容」。
-	*
-	* `variant` 只影响样式 class，**不影响行为** —— 行为永远是 `onPick(item.next)`。
+	* @param props 见 `CardRowProps`
 	*/
-	function Pick(props) {
-		const cls = ["filter-box__item", `filter-box__item--${props.variant}`];
-		if (props.item.picked) cls.push("is-picked");
-		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+	function CardRow(props) {
+		const card = props.card;
+		const draft = isDraftStatus(card.status);
+		const time = cardTimes(card.history).last;
+		const tone = kindTone(card.template.kind);
+		const cls = ["task-card"];
+		if (props.selected) cls.push("is-selected");
+		if (props.unread) cls.push("is-unread");
+		if (draft) cls.push("is-draft");
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 			type: "button",
 			className: cls.join(" "),
-			onClick: (event) => {
-				event.stopPropagation();
-				props.onPick(props.item.next);
-			},
-			children: [props.item.label, props.item.hasChildren && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-				className: "filter-box__more",
-				children: "›"
-			})]
-		});
-	}
-	// ../components/FilterRow.tsx
-	/**
-	* 筛选行 —— **协调「同时只有一个方框展开」** 的地方。
-	*
-	* ## 为什么「只开一个」是一个显式值，不是副作用收敛
-	*
-	* 用户 `2026-11-16`：
-	* > 「点开一个按钮的时候点开另一个按钮，之前的不会收回去。」
-	* > 「组件应该是以一个按钮为单位的。而不是这一坨按钮组为单位。」
-	*
-	* 上一版每个方框各挂 document 监听、靠「点到我在外面 ⇒ 收起」互相收敛，
-	* **那是涌现行为，不是保证**。
-	*
-	* ⇒ 这里用 `openId` 一个值表达「谁开着」：
-	*
-	* · 点某个方框 ⇒ `setOpenId(那个 id)` ⇒ 其它方框构造上必然 false
-	* · 点「当前开着的那个」外面 ⇒ `setOpenId(null)`
-	*
-	* `FilterBox` 因此是**受控组件** —— 它不知道别的盒子存在。
-	*
-	* ## 「外面」= 按钮外面，不是这一行
-	*
-	* 用户 `2026-11-16`：
-	* > 「『外面』说的是按钮外面，不是放按钮的这一行。」
-	*
-	* ⇒ 判断依据是「点击路径里有没有**当前那个方框的 DOM 节点**」，
-	*   不是「在不在这一行里」。点行内空白 ⇒ 收起。
-	*
-	* ⚠ 用 `composedPath()`，不用 `contains()`：点方框里的项时 React 会换掉那个节点，
-	*   冒泡到 document 时 `box.contains(target)` 已是 `false`。
-	*/
-	/**
-	* 一行筛选方框。
-	*
-	* @param props 方框清单、变化回调、行尾内容
-	*/
-	function FilterRow(props) {
-		const [openId, setOpenId] = (0, import_react.useState)(null);
-		const rowRef = (0, import_react.useRef)(null);
-		const handleOpenChange = (0, import_react.useCallback)((id, next) => {
-			setOpenId(next ? id : null);
-		}, []);
-		(0, import_react.useEffect)(() => {
-			if (openId === null) return;
-			const onDocClick = (event) => {
-				const row = rowRef.current;
-				if (row === null) return;
-				const openBox = row.querySelector(`[data-box-id="${openId}"]`);
-				if (openBox === null) return;
-				if (event.composedPath().includes(openBox)) return;
-				setOpenId(null);
-			};
-			document.addEventListener("click", onDocClick);
-			return () => {
-				document.removeEventListener("click", onDocClick);
-			};
-		}, [openId]);
-		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-			ref: rowRef,
-			className: "filter-row",
-			children: [
-				props.filters.map((spec) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-					boxId: spec.id,
-					title: spec.title,
-					nodes: spec.nodes,
-					picked: spec.picked,
-					open: openId === spec.id,
-					onChange: (next) => props.onChange(spec.id, next),
-					onOpenChange: (next) => handleOpenChange(spec.id, next)
-				}, spec.id)),
-				props.trailing !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-row__spacer" }),
-				props.trailing
-			]
+			"data-card-id": card.id,
+			onClick: () => props.onSelect(card.id),
+			children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "task-card__head",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: `card-id card-id--${tone}`,
+						children: card.id
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: `badge badge--${tone}`,
+						children: props.kindLabel
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "badge badge--domain",
+						children: card.template.domain
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "task-card__title",
+						title: card.title,
+						children: card.title
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+						className: "task-card__when",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "task-card__when-label",
+							children: "最后动过"
+						}), fmtDateTime(time)]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusCell, { status: card.status })
+				]
+			})
 		});
 	}
 	// main.tsx
 	/**
 	* 组件预览入口 —— **只用于给用户看组件，不进产物、不进插件**。
 	*
-	* 由 `scripts/build-preview.mjs` 用 rolldown 打成一个**自包含 HTML**，双击即可打开。
+	* 由 `dev/preview/build.mjs` 用 rolldown 打成一个**自包含 HTML**，双击即可打开。
+	*
+	* ## 这一版加的是
+	*
+	* · `StatusDot` —— 7px 状态圆点（六档颜色）
+	* · `StatusCell` —— 圆点 + 中文名，固定 96px
+	* · `CardRow` —— 列表一行
 	*/
-	const STATUS = [
-		{
-			value: "draft",
-			label: "草稿",
-			children: [{
-				value: "unspecified",
-				label: "未指定"
-			}]
-		},
-		{
-			value: "active",
-			label: "进行",
-			children: [{
-				value: "submitted",
-				label: "提交"
-			}, {
-				value: "working",
-				label: "处理中"
-			}]
-		},
-		{
-			value: "shelved",
-			label: "搁置",
-			children: [{
-				value: "input-required",
-				label: "需要信息"
-			}, {
-				value: "auth-required",
-				label: "需要授权"
-			}]
-		},
-		{
-			value: "ended",
-			label: "完成",
-			children: [
-				{
-					value: "completed",
-					label: "成功"
-				},
-				{
-					value: "failed",
-					label: "失败"
-				},
-				{
-					value: "canceled",
-					label: "取消"
-				},
-				{
-					value: "rejected",
-					label: "拒绝"
-				}
-			]
-		}
-	];
-	const KINDS = [
-		{
-			value: "goal",
-			label: "目标"
-		},
-		{
-			value: "design",
-			label: "设计"
-		},
-		{
-			value: "work",
-			label: "工作"
-		},
-		{
-			value: "record",
-			label: "记录"
-		}
-	];
-	const DOMAINS = [
-		{
-			value: "核心",
-			label: "核心"
-		},
-		{
-			value: "代码",
-			label: "代码"
-		},
-		{
-			value: "写作",
-			label: "写作"
-		},
-		{
-			value: "绘画",
-			label: "绘画"
-		}
-	];
-	const n = (v, kids) => kids === void 0 ? {
-		value: v,
-		label: v
-	} : {
-		value: v,
-		label: v,
-		children: kids
+	const KIND_LABEL = {
+		goal: "目标",
+		design: "设计",
+		work: "工作",
+		record: "记录"
 	};
-	const DEEP = [n("1", [n("2", [n("3", [n("2", [n("4"), n("5")]), n("6")]), n("7")]), n("8")]), n("9")];
-	/** 受控单盒子。 */
-	function SoloBox(props) {
-		const [picked, setPicked] = (0, import_react.useState)(props.initial ?? []);
-		const [open, setOpen] = (0, import_react.useState)(true);
-		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-			className: "filter-row",
-			style: { gap: 10 },
-			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-				boxId: "solo",
-				title: props.title,
-				nodes: props.nodes,
-				picked,
-				open,
-				onChange: setPicked,
-				onOpenChange: setOpen
-			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", {
-				style: {
-					fontSize: 10.5,
-					color: "#9aa1ad",
-					fontFamily: "var(--mono)"
-				},
-				children: JSON.stringify(picked)
-			})]
-		});
-	}
+	const mkCard = (o) => ({
+		status: "TASK_STATE_SUBMITTED",
+		template: {
+			ref: "user-need",
+			kind: "goal",
+			domain: "核心"
+		},
+		relations: {
+			parent: null,
+			links: []
+		},
+		sections: {},
+		note: "",
+		history: [{
+			at: new Date(2026, 10, 17, 9, 12).getTime(),
+			action: "create"
+		}, {
+			at: new Date(2026, 10, 17, 14, 31).getTime(),
+			action: "transition"
+		}],
+		deleted: false,
+		claimedBy: null,
+		claimedAt: null,
+		...o
+	});
+	const CARDS = [
+		mkCard({
+			id: "GU-01",
+			title: "把任务板的语义定清楚",
+			status: "TASK_STATE_UNSPECIFIED",
+			template: {
+				ref: "user-need",
+				kind: "goal",
+				domain: "核心"
+			}
+		}),
+		mkCard({
+			id: "DM-01",
+			title: "卡片的编号前缀怎么拼",
+			status: "TASK_STATE_SUBMITTED",
+			template: {
+				ref: "architecture",
+				kind: "design",
+				domain: "代码"
+			}
+		}),
+		mkCard({
+			id: "WW-01",
+			title: "查一下分组为空的渲染路径",
+			status: "TASK_STATE_WORKING",
+			template: {
+				ref: "write-code",
+				kind: "work",
+				domain: "代码"
+			}
+		}),
+		mkCard({
+			id: "WF-01",
+			title: "【验证】编号应带模板前缀",
+			status: "TASK_STATE_INPUT_REQUIRED",
+			template: {
+				ref: "write-code",
+				kind: "work",
+				domain: "代码"
+			}
+		}),
+		mkCard({
+			id: "WS-01",
+			title: "现有任务板实现的调研",
+			status: "TASK_STATE_AUTH_REQUIRED",
+			template: {
+				ref: "write-doc",
+				kind: "work",
+				domain: "写作"
+			}
+		}),
+		mkCard({
+			id: "RB-01",
+			title: "查一下分组为空的渲染路径-记阻碍",
+			status: "TASK_STATE_COMPLETED",
+			template: {
+				ref: "record",
+				kind: "record",
+				domain: "核心"
+			}
+		}),
+		mkCard({
+			id: "GT-01",
+			title: "补一条空分组的用例",
+			status: "TASK_STATE_FAILED",
+			template: {
+				ref: "user-need",
+				kind: "goal",
+				domain: "代码"
+			}
+		}),
+		mkCard({
+			id: "GT-02",
+			title: "ask 交互隔离验收",
+			status: "TASK_STATE_CANCELED",
+			template: {
+				ref: "user-need",
+				kind: "goal",
+				domain: "代码"
+			}
+		}),
+		mkCard({
+			id: "GT-03",
+			title: "未选择头部验收",
+			status: "TASK_STATE_REJECTED",
+			template: {
+				ref: "user-need",
+				kind: "goal",
+				domain: "代码"
+			}
+		})
+	];
+	/** 九状态全览（圆点 + 名字）。 */
+	const ALL_STATUS = [
+		"TASK_STATE_UNSPECIFIED",
+		"TASK_STATE_SUBMITTED",
+		"TASK_STATE_WORKING",
+		"TASK_STATE_INPUT_REQUIRED",
+		"TASK_STATE_AUTH_REQUIRED",
+		"TASK_STATE_COMPLETED",
+		"TASK_STATE_FAILED",
+		"TASK_STATE_CANCELED",
+		"TASK_STATE_REJECTED"
+	];
 	/** 预览页。 */
 	function App() {
-		const [values, setValues] = (0, import_react.useState)({
-			status: [],
-			kind: [],
-			domain: []
-		});
-		const specs = [
-			{
-				id: "status",
-				title: "状态",
-				nodes: STATUS,
-				picked: values["status"] ?? []
-			},
-			{
-				id: "kind",
-				title: "类别",
-				nodes: KINDS,
-				picked: values["kind"] ?? []
-			},
-			{
-				id: "domain",
-				title: "领域",
-				nodes: DOMAINS,
-				picked: values["domain"] ?? []
-			}
-		];
+		const [selected, setSelected] = (0, import_react.useState)("WW-01");
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			className: "preview",
 			children: [
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 					className: "pv-head",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "FilterBox" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "面包屑筛选 · 一个操作 · 一个按钮为单位" })]
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "CardRow / StatusCell / StatusDot" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "列表条目 · 列结构固定（编号 / 分类 / 领域 / 标题 / 最后动过 / 状态）" })]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "① 真实用法：一排三个（互斥在这一层保证）" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterRow, {
-							filters: specs,
-							onChange: (id, next) => setValues((prev) => ({
-								...prev,
-								[id]: next
-							})),
-							trailing: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "① 列表（点一行选中）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: CARDS.map((card) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
+							card,
+							selected: selected === card.id,
+							unread: card.id === "WW-01" || card.id === "GU-01",
+							kindLabel: KIND_LABEL[card.template.kind] ?? card.template.kind,
+							onSelect: setSelected
+						}, card.id)) }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "pv-state",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "pv-k",
+								children: "selected"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: JSON.stringify(selected) })] })
+						})
+					]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "pv-block",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 九个状态的圆点 + 名字（六档颜色）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							style: {
+								display: "grid",
+								gridTemplateColumns: "repeat(3, 1fr)",
+								gap: 10
+							},
+							children: ALL_STATUS.map((status) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								style: {
+									display: "flex",
+									alignItems: "center",
+									gap: 8
+								},
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusDot, { status }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", {
+										style: {
+											fontSize: 10,
+											color: "#9aa1ad"
+										},
+										children: status.replace("TASK_STATE_", "")
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusCell, { status })
+								]
+							}, status))
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+							className: "pv-note",
+							style: {
+								marginTop: 12,
+								marginBottom: 0
+							},
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "六档" }),
+								"：草稿灰 / 进行蓝 / 搁置橙 / 成功绿 / 失败拒绝红 / 取消灰。",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+								"注意「成功」「失败」「取消」「拒绝」四个同属「完成」组， 但颜色分三种 —— 组只到「完成」这一层，细分只能按协议名。"
+							]
+						})
+					]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "pv-block",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 列结构（固定宽度，长标题不挤走状态列）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+						className: "pv-table",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "列" }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "宽度" }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "说明" })
+						] }) }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tbody", { children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "编号" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "自适应" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "等宽 + 分类色 + 粗体" })
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "分类徽章" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "自适应" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "色块（四个分类四色）" })
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "领域徽章" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "自适应" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "中性灰" })
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "标题" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "flex:1" }) }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "唯一弹性列，长了省略" })
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "最后动过" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "90px" }) }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "右对齐，列名常显" })
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "状态" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "96px" }) }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "点 + 中文名" })
+							] })
+						] })]
+					})]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "pv-block",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 三种视觉状态" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "filter-row",
+						style: {
+							alignItems: "flex-start",
+							flexDirection: "column"
+						},
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 								style: {
 									fontSize: 11,
 									color: "#9aa1ad"
 								},
-								children: "← 右边以后放搜索框"
-							})
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "pv-state",
-							children: specs.map((spec) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-								className: "pv-k",
-								children: spec.id
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: JSON.stringify(spec.picked) })] }, spec.id))
-						})
-					]
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-					className: "pv-block",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 只有一个操作" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-							className: "pv-table",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "点哪里" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "next" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "之后" })
-							] }) }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tbody", { children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "标题「状态」（第 0 级）" }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "[]" }) }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "清空 + 展开" })
-								] }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "面包屑第 i 段" }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "picked.slice(0, i+1)" }) }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "选中它 + 展开" })
-								] }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "当前层 / 子层任一项" }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "它的路径" }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "选中它 + 展开" })
-								] })
-							] })]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-							className: "pv-note",
-							style: {
-								marginTop: 12,
-								marginBottom: 0
-							},
-							children: [
-								"组件里**只有一个函数**：",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("code", { children: [
-									"select(next) ",
-									"=> {",
-									" onChange(next); onOpenChange(true) ",
-									"}"
-								] }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
-								"没有任何 ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "if (点的是标题) … else if (点的是面包屑) …" }),
-								"。 区别只在 ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "next" }),
-								"，而 ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "next" }),
-								" 是纯函数算好的。"
-							]
-						})
-					]
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-					className: "pv-block",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 四级实例（1/2/3/2/4）" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-							className: "pv-note",
-							children: "点「1」→ 选中 1 并展开 2/8；点「2」→ 选中 2 并展开 3/7； 面包屑里每段都能点，点了就跳回那一层。"
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SoloBox, {
-							title: "编号",
-							nodes: DEEP
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							style: { marginTop: 14 },
-							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SoloBox, {
-								title: "编号",
-								nodes: DEEP,
-								initial: [
-									"1",
-									"2",
-									"3",
-									"2"
-								]
-							})
-						})
-					]
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
-					className: "pv-block",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 各层收起态（看面包屑）" }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "filter-row",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									boxId: "s0",
-									title: "状态",
-									nodes: STATUS,
-									picked: [],
-									open: false,
-									onChange: () => void 0,
-									onOpenChange: () => void 0
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									boxId: "s1",
-									title: "状态",
-									nodes: STATUS,
-									picked: ["ended"],
-									open: false,
-									onChange: () => void 0,
-									onOpenChange: () => void 0
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									boxId: "s2",
-									title: "状态",
-									nodes: STATUS,
-									picked: ["ended", "failed"],
-									open: false,
-									onChange: () => void 0,
-									onOpenChange: () => void 0
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterBox, {
-									boxId: "s3",
-									title: "类别",
-									nodes: KINDS,
-									picked: ["work"],
-									open: false,
-									onChange: () => void 0,
-									onOpenChange: () => void 0
+								children: "正常"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: { width: "100%" },
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
+									card: CARDS[1],
+									selected: false,
+									unread: false,
+									kindLabel: "设计",
+									onSelect: () => void 0
 								})
-							]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-							className: "pv-note",
-							style: {
-								marginTop: 12,
-								marginBottom: 0
-							},
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态" }),
-								" · ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成" }),
-								" ·",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "状态：完成 / 失败" }),
-								" · ",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "类别：工作" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
-								"标题是第 0 级（点了清空）；面包屑每段都能点；",
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "没有 ▾、没有 ✕" }),
-								"。"
-							]
-						})
-					]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: {
+									fontSize: 11,
+									color: "#9aa1ad",
+									marginTop: 8
+								},
+								children: "选中（蓝框）"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: { width: "100%" },
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
+									card: CARDS[2],
+									selected: true,
+									unread: false,
+									kindLabel: "工作",
+									onSelect: () => void 0
+								})
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: {
+									fontSize: 11,
+									color: "#9aa1ad",
+									marginTop: 8
+								},
+								children: "AI 改过未读（编号加粗到 800）"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: { width: "100%" },
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
+									card: CARDS[3],
+									selected: false,
+									unread: true,
+									kindLabel: "工作",
+									onSelect: () => void 0
+								})
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: {
+									fontSize: 11,
+									color: "#9aa1ad",
+									marginTop: 8
+								},
+								children: "草稿（无边框 —— 用透明边框占位，不会跳 2px）"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								style: { width: "100%" },
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CardRow, {
+									card: CARDS[0],
+									selected: false,
+									unread: false,
+									kindLabel: "目标",
+									onSelect: () => void 0
+								})
+							})
+						]
+					})]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "⑤ 展开态结构（点开①的第一个方框看）" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-						className: "pv-note",
-						style: { marginBottom: 0 },
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "⑤ 规则" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ol", {
+						className: "pv-list",
 						children: [
-							"永远是若干段，段间一条竖线：",
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "①面包屑" }),
-							"（祖先，紧斜杠 ",
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "/" }),
-							"，可点跳回）│",
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "②当前层兄弟" }),
-							"（空格斜杠 ",
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: " / " }),
-							"，选中的蓝字加粗）│",
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "③选中项的子" }),
-							"（空格斜杠 ",
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: " / " }),
-							"）",
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
-							"① 只在选中项不是第 1 级时出现；③ 只在选中项有子时出现；",
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "②永远有" }),
-							"。"
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"状态列",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "固定 96px" }),
+								"：扫视时不用横跨整行"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"「最后动过」",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "固定 90px" }),
+								"，右对齐；列名常显（只有时间看不懂）"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"草稿",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "无边框" }),
+								"，但用透明边框占 2px —— 切换时不跳"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"AI 改过未读：",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "编号加粗到 800" }),
+								"（旧版原样，不是装饰、不是变色）"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"组件",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "不判「能不能选中」" }),
+								"，只上报 onSelect"
+							] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("li", { children: [
+								"分类中文名",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "不从组件拿" }),
+								"，由调用方传（真实产品从模板清单查）"
+							] })
 						]
 					})]
 				})

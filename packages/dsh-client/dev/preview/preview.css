@@ -112,3 +112,91 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 
 /* 段与段之间的结构竖线：贯通上下内边 */
 .filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
+
+/* ══════════════════════════════════════════════════════════
+   状态圆点 —— 逐条对应旧版 styles.css:570-600
+   六个档位（四个组 + 完成组细分三种）
+   ══════════════════════════════════════════════════════════ */
+
+:root{
+  --dot-draft:#9ca3af; --dot-active:#2563eb; --dot-shelved:#f59e0b;
+  --dot-completed:#10b981; --dot-failed:#ef4444; --dot-canceled:#6b7280;
+  --kind-goal-fg:#7c3aed;   --kind-goal-bg:#f3e8ff;
+  --kind-design-fg:#2563eb; --kind-design-bg:#dbeafe;
+  --kind-work-fg:#0891b2;   --kind-work-bg:#cffafe;
+  --kind-record-fg:#6b7280; --kind-record-bg:#f3f4f6;
+  --fs-id:11px; --fs-badge:10px; --fs-body:12.5px;
+  --font-mono:ui-monospace,Consolas,'Courier New',monospace;
+  --text-weak:#9aa1ad;
+}
+
+.dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;display:inline-block;
+  background:var(--dot-draft)}
+.dot--draft{background:var(--dot-draft)}
+.dot--active{background:var(--dot-active)}
+.dot--shelved{background:var(--dot-shelved)}
+.dot--completed{background:var(--dot-completed)}
+.dot--failed{background:var(--dot-failed)}
+.dot--canceled{background:var(--dot-canceled)}
+
+/* 编号：等宽 + 分类色 + 粗体 */
+.card-id{font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
+  letter-spacing:-.2px;flex:0 0 auto}
+.card-id--goal{color:var(--kind-goal-fg)}
+.card-id--design{color:var(--kind-design-fg)}
+.card-id--work{color:var(--kind-work-fg)}
+.card-id--record{color:var(--kind-record-fg)}
+
+/* 徽章 */
+.badge{display:inline-block;padding:0 5px;border-radius:3px;font-size:var(--fs-badge);
+  line-height:1.6;white-space:nowrap;flex:0 0 auto}
+.badge--goal{color:var(--kind-goal-fg);background:var(--kind-goal-bg)}
+.badge--design{color:var(--kind-design-fg);background:var(--kind-design-bg)}
+.badge--work{color:var(--kind-work-fg);background:var(--kind-work-bg)}
+.badge--record{color:var(--kind-record-fg);background:var(--kind-record-bg)}
+.badge--domain{color:var(--text-secondary);background:#f3f4f6}
+
+/* ══════════════════════════════════════════════════════════
+   列表条目
+   ══════════════════════════════════════════════════════════ */
+
+.task-card{
+  display:block;width:100%;text-align:left;border:2px solid var(--border);
+  border-radius:8px;background:var(--bg-card);padding:8px 12px;margin-bottom:1px;
+  cursor:pointer;font-family:inherit;color:inherit;
+  transition:border-color .12s,background .12s;
+}
+.task-card:hover{background:#f8f9fb}
+.task-card.is-selected{border-color:var(--accent);background:#f5f9ff}
+
+/*
+ * ⚠ 草稿：透明边框（保留 2px 占位）。
+ *   用 border:none 会让草稿/非草稿切换时整行跳 2px。
+ */
+.task-card.is-draft{border-color:transparent}
+.task-card.is-draft:hover{border-color:var(--border)}
+.task-card.is-draft.is-selected{border-color:var(--accent)}
+
+/*
+ * 未读：**编号加粗到 800**（旧版原样：`.task-card.is-unread .card-id { font-weight: 800 }`）。
+ *
+ * ⚠ 我最初自己编了「左侧蓝竖线 + 标题加粗」，那是**加戏** —— 旧版没有。
+ *   旧版的语义是「跟邮箱未读邮件一样」，靠**编号字重**区分，不靠装饰。
+ *   而「淡化未命中的卡」是另一个功能（update-focus），走 opacity，不在这里。
+ */
+.task-card.is-unread .card-id{font-weight:800}
+
+.task-card__head{display:flex;align-items:center;gap:8px}
+.task-card__title{font-weight:600;font-size:var(--fs-body);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
+
+/* 「最后动过」：固定 90px，右对齐，列名常显 */
+.task-card__when{flex:0 0 90px;text-align:right;font-size:11px;color:var(--text-weak);
+  white-space:nowrap;overflow:hidden}
+.task-card__when-label{display:block;font-size:9px;opacity:.7}
+
+/* 状态列：固定 96px（点 + 中文名） */
+.task-card__status{flex:0 0 96px;display:flex;align-items:center;gap:6px;min-width:0;
+  font-size:11px;color:var(--text-secondary)}
+.task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
