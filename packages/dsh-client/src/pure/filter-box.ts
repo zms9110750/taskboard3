@@ -1,277 +1,325 @@
 /**
  * 筛选方框的**纯逻辑** —— 零 React、零 DOM、零网络。
  *
- * ## 这个文件解决什么
+ * ## 语义（用户 `2026-11-16` 重新定义，推翻了旧版「再点一次取消」）
  *
- * 旧的 `filter-box.ts` 把「选项怎么分组 / 选了什么 / 收起该显示什么 / 点一下变成什么」
- * 全混在渲染函数里（400 行，其中一半是 DOM 操作）。这里把**判决**抽出来：
- * 同一个输入永远得到同一个输出，可以用 `node --test` 直接断言。
+ * > 在有东西选中时，点击那个选中的状态：展开到选中他（例如以后如果有4级，5级，
+ * > 在点击第3级的时候，就展开3的子，并选中3）。点击最左边的组名时，展开并取消所有
+ * > 选择（换句话说，组等于第0级，语义和点击第x级时选择第x级并展开第x的子是一样的逻辑）
  *
- * React 组件只负责「把这里算出来的东西画出去 + 把点击翻译成一次 `onChange`」。
+ * ⇒ **统一规则**：点第 N 级的节点 = 选中它 + 展开它的子（第 N+1 级）。
+ *   第 0 级是**组**，点组 = 「选中第 0 级」= 没有筛选值 = 取消所有选择。
  *
- * ## 语义（全部来自旧版用户逐版确认的行为，一条不许少）
- *
- * | # | 行为 |
+ * | 点哪里 | 结果 |
  * |---|---|
- * | 1 | 单选：选一项 = **替换**；再点同一项 = **取消** |
- * | 2 | 点一级的「组」= **选中整组**（组里每个值都进去）|
- * | 3 | 组被整组选中时，**二级展开**显示组内各项 |
- * | 4 | 选中**单项**时，二级也展开（回到它的组）|
- * | 5 | 收起态：没选 = 只剩标题；整组 = 组名；单项 = `组/项`；多项 = `a/b` |
- * | 6 | 一级之间用 `|` 分隔，二级之间用 `/` 分隔（分隔符由组件画，逻辑只给数组）|
- * | 7 | 没有组的方框（类别 / 领域）不出二级 |
+ * | 组（第 0 级） | **清空选择**，展开这个组（它的子成为第 1 级）|
+ * | 第 1 级节点 | 选中它；有子就展开第 2 级 |
+ * | 第 N 级节点 | 选中它；有子就展开第 N+1 级 |
+ * | 已选中的节点 | **再点不变**（幂等）—— 只是把它的子展开出来 |
  *
- * ⚠ **单选是 UI 语义，数组是数据契约。**
- * 旧版注释：`SearchCondition` 五个字段全是数组，但用户明确要单选
- * （「筛选应该是单选而不是复选。他是用来快速查找的」）。
- * ⇒ 本模块的出参永远是 `readonly string[]`，长度 0 或 1
- *   **除了「点整组」** —— 那时是「一个选择」展开成的多个值。
+ * ⚠ **没有「再点一次取消」了。** 取消只有一个入口：点组名。
+ *   旧版注释里的「再点同一项 = 取消」已被用户这条指令推翻。
  *
- * ## 为什么 `group` 是 option 的字段而不是外部函数
+ * ## 为什么组不是筛选值
  *
- * 旧版传的是 `(option) => option.group ?? ''`，即**回调只是把字段取出来**。
- * 那种写法让每个调用点都必须传同一个函数，且容易传错。
- * 这里直接把 `group` 挂在 option 上，少一层可以传错的东西。
+ * 「组等于第0级」⇒ 第 0 级的语义是「层级起点」，不是「一个可筛的值」。
+ * 所以 `picked` 为空时，这个方框**不产生任何筛选条件**。
+ *
+ * ## 层级是无限的
+ *
+ * 节点结构是递归的（`children`），`rowsOf()` 沿选中路径一路往下铺。
+ * 现在只有两级（组 + 状态），但代码不假设级数 —— 加第三级只改数据，不改逻辑。
+ *
+ * ## 数据结构
+ *
+ * ```ts
+ * 状态 ─┬─ 草稿   (grp) ── 未指定
+ *       ├─ 进行   (grp) ── 提交 / 处理中
+ *       ├─ 搁置   (grp) ── 需要信息 / 需要授权
+ *       └─ 完成   (grp) ── 成功 / 失败 / 取消 / 拒绝
+ * ```
+ *
+ * `group` 存「当前进入了哪个组」，`picked` 存「从组往下的选中路径」。
+ * 二者合起来才能同时回答「展开哪几行」和「选中了什么」。
  */
 
-/** 一个可选项。`group` 为空 / 缺省 = 这个方框没有分组。 */
-export interface FilterOption {
+/** 一个可选节点。有 `children` 的就是「组 / 中间层」，没有的是叶子。 */
+export interface FilterNode {
 	readonly value: string;
 	readonly label: string;
-	/** 所属组名。缺省或空串 = 不参与分组（类别 / 领域方框）。 */
-	readonly group?: string;
+	/** 子节点。缺省或空数组 = 叶子。 */
+	readonly children?: readonly FilterNode[];
 }
 
 /**
- * 已选值。永远是数组（数据契约），但 UI 上只体现单选语义。
+ * 方框的完整状态。
  *
- * ⚠ 空数组 = 没选。**不要用 `undefined` 表示没选** —— 调用方要因此多一支分支。
+ * ⚠ **不要用单个 `picked` 数组兼任「展开哪个组」** —— 组不算筛选值，
+ *   混在一起就分不清「点了组」和「选了叶子」。
  */
-export type Picked = readonly string[];
-
-/** 一个组：组名 + 组里的选项。 */
-export interface FilterGroup {
-	readonly key: string;
-	readonly options: readonly FilterOption[];
+export interface FilterState {
+	/** 已进入的组（第 0 级）。空串 = 没进入任何组（方框只显示标题）。 */
+	readonly group: string;
+	/** 从组往下的选中路径（第 1 级起）。空数组 = 没有任何筛选值。 */
+	readonly picked: readonly string[];
 }
 
-/** 取选项的组名；缺省 / 空串 → `''`（表示「不属于任何组」）。 */
-export function groupKeyOf(option: FilterOption): string {
-	return option.group ?? '';
+/** 空状态：没进入组、没选任何值。 */
+export const EMPTY_FILTER: FilterState = Object.freeze({
+	group: '',
+	picked: Object.freeze([]) as readonly string[],
+});
+
+/** 一个节点是否还有下一级。 */
+export function hasChildren(node: FilterNode): boolean {
+	return node.children !== undefined && node.children.length > 0;
+}
+
+/** 第 0 级：所有带子节点的节点（= 组）。保持原顺序。 */
+export function groupsOf(nodes: readonly FilterNode[]): readonly FilterNode[] {
+	return nodes.filter(hasChildren);
+}
+
+/** 这个方框有没有分组（没有的话就是「一层平铺」，跟旧版类别/领域一样）。 */
+export function hasGroups(nodes: readonly FilterNode[]): boolean {
+	return groupsOf(nodes).length > 0;
 }
 
 /**
- * 按组分组，**保持 options 的原始顺序**。
+ * 按路径找节点。
  *
- * 组第一次出现的顺序 = 组在结果里的顺序（旧版行为：不排序）。
- *
- * @param options 全部选项
- * @returns 每项一个 `{ key, options }`；没分组的项 `key === ''`
+ * @param nodes 根节点
+ * @param path 从根往下的 value 序列
+ * @returns 节点；路径断了返回 `undefined`
  */
-export function groupOf(options: readonly FilterOption[]): readonly FilterGroup[] {
-	const map = new Map<string, FilterOption[]>();
-	for (const option of options) {
-		const key = groupKeyOf(option);
-		const list = map.get(key);
-		if (list === undefined) map.set(key, [option]);
-		else list.push(option);
+export function findNode(
+	nodes: readonly FilterNode[],
+	path: readonly string[],
+): FilterNode | undefined {
+	let level: readonly FilterNode[] = nodes;
+	let hit: FilterNode | undefined;
+	for (const value of path) {
+		hit = level.find((one) => one.value === value);
+		if (hit === undefined) return undefined;
+		level = hit.children ?? [];
 	}
-	return [...map].map(([key, list]) => ({ key, options: list }));
+	return hit;
 }
 
-/** 这个方框有没有真分组（至少一个 `key !== ''` 的组）。 */
-export function hasGroups(options: readonly FilterOption[]): boolean {
-	return groupOf(options).some((one) => one.key !== '');
+/** 一级要画的一项（**已算好「点它会变成什么」**）。 */
+export interface FilterItemView {
+	readonly value: string;
+	readonly label: string;
+	/** 它是不是当前选中的那个（叶子 / 路径上的某一项）。 */
+	readonly picked: boolean;
+	/**
+	 * 它是不是**当前所在的分支**（组，或选中路径上的祖先）。
+	 *
+	 * 只用于视觉上标出「子节点属于谁」—— 不等于「选中」。
+	 */
+	readonly branch: boolean;
+	/** 还有下一级。 */
+	readonly hasChildren: boolean;
+	/** 点它之后的完整状态。组件把整个对象交给 `onChange`。 */
+	readonly next: FilterState;
+}
+
+/** 一行（一个层级）。 */
+export interface FilterRow {
+	/** 0 = 组行；1.. = 子级行。 */
+	readonly level: number;
+	readonly items: readonly FilterItemView[];
 }
 
 /**
- * 这一组是否**整组**被选中。
+ * 把状态铺成要画的行。
  *
- * ⚠ 空组返回 `false` —— 否则空组会被当成「全选中」，二级无端展开。
+ * · 第 0 行永远画（全部组；无分组时画全部节点）；
+ * · 未进入组 ⇒ 只有第 0 行；
+ * · 进入组后，沿 `picked` 一路往下，**每一层只要还有子节点就再画一行**。
  *
- * @param group 一个组
- * @param picked 已选值
+ * @param nodes 根节点
+ * @param state 当前状态
  */
-export function isGroupPicked(group: FilterGroup, picked: Picked): boolean {
-	if (group.options.length === 0) return false;
-	return group.options.every((one) => picked.includes(one.value));
-}
+export function rowsOf(
+	nodes: readonly FilterNode[],
+	state: FilterState,
+): readonly FilterRow[] {
+	const groups = groupsOf(nodes);
 
-/**
- * 当前该展开哪个组的二级。
- *
- * 规则（顺序即优先级）：
- * 1. 什么都没选 → `undefined`（不展开）
- * 2. 某组被**整组**选中 → 那个组
- * 3. 恰好选中**一项**且它属于某个组 → 那个组
- * 4. 其它（多值但不构成整组）→ `undefined`
- *
- * @param options 全部选项
- * @param picked 已选值
- * @returns 组名；`undefined` = 不展开二级
- */
-export function activeGroup(options: readonly FilterOption[], picked: Picked): string | undefined {
-	if (picked.length === 0) return undefined;
-
-	for (const group of groupOf(options)) {
-		if (group.key !== '' && isGroupPicked(group, picked)) return group.key;
+	/* 没有分组：一层平铺，点一项就是选中它，没有下一级。 */
+	if (groups.length === 0) {
+		return [
+			{
+				level: 0,
+				items: nodes.map((node) => ({
+					value: node.value,
+					label: node.label,
+					picked: state.picked.length === 1 && state.picked[0] === node.value,
+					branch: false,
+					hasChildren: false,
+					next: { group: '', picked: [node.value] },
+				})),
+			},
+		];
 	}
 
-	if (picked.length === 1) {
-		const only = picked[0];
-		const hit = options.find((one) => one.value === only);
-		if (hit !== undefined) {
-			const key = groupKeyOf(hit);
-			if (key !== '') return key;
-		}
+	const rows: FilterRow[] = [
+		{
+			level: 0,
+			items: groups.map((node) => ({
+				value: node.value,
+				label: node.label,
+				/* 组本身不是筛选值 ⇒ 永远不算 picked；只标「当前在这个组里」。 */
+				picked: false,
+				branch: state.group === node.value,
+				hasChildren: true,
+				/* 点组 = 清空选择 + 进入这个组。 */
+				next: { group: node.value, picked: [] },
+			})),
+		},
+	];
+
+	const group = groups.find((one) => one.value === state.group);
+	if (group === undefined) return rows;
+
+	let node: FilterNode = group;
+	for (let depth = 0; depth <= state.picked.length; depth += 1) {
+		const children = node.children ?? [];
+		if (children.length === 0) break;
+
+		const pickedHere = state.picked[depth];
+		const prefix = state.picked.slice(0, depth);
+
+		rows.push({
+			level: depth + 1,
+			items: children.map((child) => ({
+				value: child.value,
+				label: child.label,
+				picked: pickedHere === child.value,
+				branch: pickedHere === child.value && hasChildren(child),
+				hasChildren: hasChildren(child),
+				next: { group: state.group, picked: [...prefix, child.value] },
+			})),
+		});
+
+		const next = children.find((one) => one.value === pickedHere);
+		if (next === undefined) break;
+		node = next;
 	}
 
-	return undefined;
-}
-
-/** 值 → 显示名（找不到回落 value 本身，不抛 —— 脏数据也要能显示）。 */
-export function labelOf(options: readonly FilterOption[], value: string): string {
-	return options.find((one) => one.value === value)?.label ?? value;
+	return rows;
 }
 
 /**
  * 收起态显示什么。
  *
- * | 已选 | 显示 |
+ * | 状态 | 显示 |
  * |---|---|
- * | 无 | `''`（组件只画标题）|
- * | 整组 | 组名（`完成`）|
- * | 单项 | `组/项`（`完成/成功`），无组时只有项名 |
- * | 多项不构成整组 | 各项名用 `/` 连（`成功/失败`）|
+ * | 没进入组 / 没选值 | `''`（组件只画标题）|
+ * | 选了 `[失败]`，组是 `完成` | `完成/失败` |
+ * | 选了 `[成功, 变体]`，组是 `完成` | `完成/成功/变体` |
  *
- * @param options 全部选项
- * @param picked 已选值
+ * ⚠ 组名只是**路径前缀**，不是筛选值 —— 但显示出来用户才知道自己筛的是哪一支。
+ *
+ * @param nodes 根节点
+ * @param state 当前状态
  */
-export function selectionText(options: readonly FilterOption[], picked: Picked): string {
-	if (picked.length === 0) return '';
+export function selectionText(
+	nodes: readonly FilterNode[],
+	state: FilterState,
+): string {
+	if (state.picked.length === 0) return '';
 
-	for (const group of groupOf(options)) {
-		if (group.key !== '' && isGroupPicked(group, picked)) return group.key;
+	/*
+	 * 无组方框（类别 / 领域）：没有第 0 级，`picked` 直接从根开始。
+	 * ⇒ 逐级查根节点即可。
+	 */
+	if (!hasGroups(nodes)) {
+		const labels: string[] = [];
+		let level: readonly FilterNode[] = nodes;
+		for (const value of state.picked) {
+			const hit = level.find((one) => one.value === value);
+			if (hit === undefined) {
+				labels.push(value);
+				break;
+			}
+			labels.push(hit.label);
+			level = hit.children ?? [];
+		}
+		return labels.join('/');
 	}
 
-	if (picked.length === 1) {
-		const only = picked[0] as string;
-		const hit = options.find((one) => one.value === only);
-		if (hit === undefined) return only;
-		const key = groupKeyOf(hit);
-		return key === '' ? hit.label : `${key}/${hit.label}`;
+	/*
+	 * 有组方框：显示的是**从组开始的路径** —— 用户要知道自己筛的是哪一支。
+	 * `state.group` 是根上的一级，之后每一段都在上一段的 children 里。
+	 */
+	const labels: string[] = [];
+	let level: readonly FilterNode[] = nodes;
+
+	const groupNode = level.find((one) => one.value === state.group);
+	if (groupNode === undefined) return state.picked.join('/');
+
+	labels.push(groupNode.label);
+	level = groupNode.children ?? [];
+
+	for (const value of state.picked) {
+		const hit = level.find((one) => one.value === value);
+		if (hit === undefined) {
+			labels.push(value);
+			break;
+		}
+		labels.push(hit.label);
+		level = hit.children ?? [];
 	}
 
-	return picked.map((one) => labelOf(options, one)).join('/');
+	return labels.join('/');
 }
 
 /**
- * 点一个**项**（一级的无组方框 / 二级的子项）之后的已选值。
+ * 收起态要不要拆成两个可点区。
  *
- * 单选语义：
- * · 已是「唯一选中项」→ **取消**（返回 `[]`）
- * · 否则 → **替换**成它
+ * 旧版用户指令（仍然有效）：
+ * > 「筛选选中以后，左边和右边至少要有一个是点击取消并展开，一个是单纯展开。……
+ * >  取消筛选是很常规的用法。」
  *
- * ⚠ **不能用 `picked.includes(value)` 判。**
- * 点整组后 `picked` 里包含组内每个值，此时再点其中一项，
- * 若用 `includes` 会判成「已选 ⇒ 取消 ⇒ 全清」，而不是「收窄到这一项」。
- * 旧版注释明确写了这个坑。
+ * ⇒ 有选中时：**左**（标题＋已选值）＝ 清空选择并展开；**右 ▾** ＝ 只展开。
  *
- * @param picked 当前已选
- * @param value 被点的值
+ * @param state 当前状态
  */
-export function pickOption(picked: Picked, value: string): Picked {
-	const alreadyOnly = picked.length === 1 && picked[0] === value;
-	return alreadyOnly ? [] : [value];
+export function collapsedSplit(state: FilterState): boolean {
+	return state.picked.length > 0;
 }
 
 /**
- * 点一个**组**（一级的组项）之后的已选值。
+ * 清空选择但**保留当前组**（用于收起态的「取消筛选」区）。
  *
- * · 该组已整组选中 → **取消**（返回 `[]`）
- * · 否则 → **选中整组**（组内全部值）
+ * 为什么不直接 `EMPTY_FILTER`：用户点「取消」是**只想去掉筛选**，
+ * 不是想退出这个组 —— 退出组会让方框整个收成一行，反而要多点一次。
  *
- * @param group 被点的组
- * @param picked 当前已选
+ * @param state 当前状态
  */
-export function pickGroup(group: FilterGroup, picked: Picked): Picked {
-	return isGroupPicked(group, picked) ? [] : group.options.map((one) => one.value);
-}
-
-/** 一级要画的一项：要么是个组，要么是个独立项。 */
-export interface LevelOneEntry {
-	/** `group` = 有分组的组项；`option` = 无分组的独立项。 */
-	readonly kind: 'group' | 'option';
-	readonly label: string;
-	readonly picked: boolean;
-	/** 点它之后的已选值。 */
-	readonly next: Picked;
+export function clearPicked(state: FilterState): FilterState {
+	return { group: state.group, picked: [] };
 }
 
 /**
- * 一级要画什么（**已算好「点它会变成什么」**）。
+ * 选中路径的**筛选值**（给 API 层用）。
  *
- * 组件拿到这个数组后只做两件事：画分隔符 `|`、把 `next` 交给 `onChange`。
- * —— 任何「点一下会怎样」的判断都不该在组件里。
+ * 取最深层那个节点的 value。组不算值；没选就是空数组。
  *
- * @param options 全部选项
- * @param picked 已选值
+ * ⚠ 如果将来需要「选上层 = 筛整个子树」，在这里展开成子节点全集，
+ *   而不是让组件或 API 各自去遍历。
+ *
+ * @param state 当前状态
+ * @param nodes 根节点（展开子树时要用）
  */
-export function levelOne(options: readonly FilterOption[], picked: Picked): readonly LevelOneEntry[] {
-	if (!hasGroups(options)) {
-		return options.map((option) => ({
-			kind: 'option',
-			label: option.label,
-			picked: picked.length === 1 && picked[0] === option.value,
-			next: pickOption(picked, option.value),
-		}));
-	}
-
-	return groupOf(options).map((group) => ({
-		kind: 'group',
-		label: group.key,
-		picked: isGroupPicked(group, picked),
-		next: pickGroup(group, picked),
-	}));
-}
-
-/**
- * 二级要画什么；不该展开时返回 `undefined`。
- *
- * @param options 全部选项
- * @param picked 已选值
- */
-export function levelTwo(
-	options: readonly FilterOption[],
-	picked: Picked,
-): readonly LevelOneEntry[] | undefined {
-	const key = activeGroup(options, picked);
-	if (key === undefined) return undefined;
-
-	const group = groupOf(options).find((one) => one.key === key);
-	if (group === undefined) return undefined;
-
-	return group.options.map((option) => ({
-		kind: 'option',
-		label: option.label,
-		picked: picked.includes(option.value),
-		next: pickOption(picked, option.value),
-	}));
-}
-
-/**
- * 收起态该拆成几个可点区。
- *
- * 旧版用户指令：
- * > 「筛选选中以后，左边和右边至少要有一个是点击取消并展开，一个是单纯展开。
- * >  现在两边都是点开展开，再点取消。不方便。取消筛选是很常规的用法。」
- *
- * ⇒ 已选中时：**左**（标题＋已选值）＝ 取消筛选并展开；**右 ▾** ＝ 只展开。
- *   没选中时：整个方框就是「展开」，不拆。
- *
- * @param picked 已选值
- * @returns `split = true` 时组件要画左右两个可点区
- */
-export function collapsedSplit(picked: Picked): boolean {
-	return picked.length > 0;
+export function filterValuesOf(
+	nodes: readonly FilterNode[],
+	state: FilterState,
+): readonly string[] {
+	if (state.picked.length === 0) return [];
+	const leaf = state.picked[state.picked.length - 1];
+	if (leaf === undefined) return [];
+	return [leaf];
 }

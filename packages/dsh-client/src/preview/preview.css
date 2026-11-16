@@ -1,11 +1,6 @@
 /*
  * 组件预览页的样式。
  *
- * ⚠ 为什么是 `.css` 而不是 `.ts` 里的模板字符串：
- *   第一版写成 `export const PREVIEW_CSS = \`…\``，结果 CSS 里的
- *   `transition:width` 和反引号互相干扰，Node 的 TS 剥离器直接语法报错。
- *   ⇒ 用真 `.css` 文件，预览脚本 `readFileSync` 读它。简单、没有转义问题。
- *
  * ⚠ 这个文件只服务预览页；方框本身的正式样式最终要进 `src/styles.ts`。
  *   现在两边内容一样，改的时候**两边都要改** —— 等组件定稿后合并。
  */
@@ -42,7 +37,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   padding:1px 6px;border-radius:4px;color:#16181d}
 
 /* ══════════════════════════════════════════════════════════
-   筛选方框 —— 逐条对应旧版 styles.css:396-519
+   筛选方框
    ══════════════════════════════════════════════════════════ */
 
 .filter-row{display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap}
@@ -76,13 +71,21 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 /* 可点的文字（不是胶囊 / 按钮外观） */
 .filter-box__item{
   padding:2px 4px;border:0;border-radius:4px;font-size:12.5px;color:var(--text);
-  background:none;cursor:pointer;font-family:inherit;
+  background:none;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:2px;
 }
 .filter-box__item:hover{background:#f3f4f6}
+
+/* 选中的那个值：蓝字加粗（无底色） */
 .filter-box__item.is-picked{color:var(--accent);font-weight:700}
 
-/* 文字分隔：一级 |，二级 / */
+/* 有子节点且被进入：蓝字 + 淡蓝底（子行属于它） */
+.filter-box__item.is-branch{color:var(--accent);background:#eff6ff;font-weight:600}
+
+/* 「还有下一级」的提示 */
+.filter-box__more{font-size:9px;opacity:.5;margin-left:1px}
+
+/* 文字分隔：组行 |，子级 / */
 .filter-box__sep{padding:0 2px;font-size:12px;color:#cbd5e1;user-select:none}
 
-/* 一级 / 二级之间的结构竖线：贯通上下内边 */
+/* 层级之间的结构竖线：贯通上下内边 */
 .filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
