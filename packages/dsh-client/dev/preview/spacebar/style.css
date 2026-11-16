@@ -1,0 +1,195 @@
+/*
+ * SpaceBar（空间 chip 行）的样式 —— 只在 `dev/preview/spacebar/` 里用。
+ *
+ * 由 `dev/preview/build.mjs spacebar` 追加在共享 `preview.css` **之后**
+ * ⇒ 可以用共享变量（`--bg-card` / `--border` / `--accent` / `--text-weak` …），
+ *   但**不要改共享的类名**（那是别的组件的）。
+ *
+ * 视觉规格照抄旧版 `taskboard2/packages/browser/public/styles.css:293-395`：
+ *   · chip  = 圆角胶囊；`is-current` 黑底白字；`is-viewing` accent 描边；
+ *             `is-archived` 虚线 + 降透明（hover 恢复）；
+ *             当前 + 归档 = 虚线 + **不降透明**（它是当前在用的空间）
+ *   · 左侧按钮 `.space-action` 固定 `min-width` —— 两种模式的文案长度不同
+ *             （「当前空间」/「激活此为当前空间」/「已归档」），
+ *             不加的话按钮宽度会跳，整行跟着抖。
+ */
+
+/* ── 通用小按钮（旧版 `.ghost-btn`）── */
+/* preview.css 里没有它（那是 CardRow 的预览，没用过 ghost-btn），所以在这里定义。 */
+.ghost-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 9px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-size: 12px;
+	font-family: inherit;
+	color: var(--text-secondary);
+	background: var(--bg-card);
+	cursor: pointer;
+	white-space: nowrap;
+	transition:
+		border-color 0.12s,
+		color 0.12s,
+		background 0.12s;
+}
+.ghost-btn:hover:not(:disabled) {
+	border-color: var(--text-weak, #9aa1ad);
+	color: var(--text);
+}
+.ghost-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+/* 「显示已归档」开着 —— 淡蓝底 + accent 边框，视觉强度低于 chip 的黑底 */
+.ghost-btn.is-active {
+	border-color: var(--accent);
+	color: var(--accent);
+	background: #eff6ff;
+}
+
+/* ── 整行 ── */
+.space-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	padding: 2px 0;
+}
+
+/* 左侧两个按钮固定，不随 chip 横向滚动 */
+.space-bar__actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+}
+
+/* chip 区可横向滚动 */
+.space-bar__scroll {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-x: auto;
+	padding: 1px 2px; /* 给 is-viewing 的 outline 留位置，否则被 scroll 裁掉 */
+}
+.space-bar__scroll > * {
+	flex: 0 0 auto;
+}
+
+/*
+ * 左侧那个**单个**按钮。
+ * 固定最小宽度：三种文案长度不同，不给就会跳。
+ */
+.space-action {
+	min-width: 108px;
+	justify-content: center;
+}
+/* 「已归档」的**选中**态（这个空间确实已归档）—— 黑底反白 */
+.space-action.is-on {
+	border-color: var(--text);
+	background: var(--text);
+	color: #fff;
+}
+.space-action.is-on:hover:not(:disabled) {
+	border-color: var(--text);
+	color: #fff;
+}
+
+/* ── chip ── */
+.space-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 10px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	font-size: 12px;
+	font-family: inherit;
+	color: var(--text-secondary);
+	background: var(--bg-card);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+/* 当前**激活**空间：黑底白字（语义最重） */
+.space-chip.is-current {
+	background: var(--text);
+	color: #fff;
+	border-color: var(--text);
+}
+
+/*
+ * 正在**查看**的空间：accent 描边。
+ * ⚠ 与 `.is-current` 是两件事，可以同时成立（默认选中就是当前空间）。
+ */
+.space-chip.is-viewing {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+
+/*
+ * 已归档：**虚线 + 降透明**（用户 2026-11-09：
+ * 「已归档。的黑白状态，就是没启用的当前空间。」）
+ * ⇒ 它就是「未启用」的白底黑字，不是另一种配色。
+ */
+.space-chip.is-archived {
+	border-style: dashed;
+	opacity: 0.65;
+}
+.space-chip.is-archived:hover {
+	opacity: 1;
+}
+
+/*
+ * 当前 + 已归档（异常态）：虚线仍然表「归档了」，但**不降透明** ——
+ * 它是当前在用的空间，不该看起来像「不参与日常」。
+ */
+.space-chip.is-current.is-archived {
+	opacity: 1;
+}
+
+.space-chip__count {
+	font-size: 11px;
+	opacity: 0.75;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+}
+
+.space-chip--add {
+	padding: 3px 8px;
+	color: var(--text-weak, #9aa1ad);
+}
+
+/* ── 预览页专用：场景块 ── */
+.pv-case {
+	margin-bottom: 16px;
+}
+.pv-case:last-child {
+	margin-bottom: 0;
+}
+.pv-case__note {
+	font-size: 11px;
+	color: var(--text-weak, #9aa1ad);
+	margin-bottom: 6px;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+}
+
+/* ── 预览页专用：回调日志 ── */
+.pv-events {
+	margin: 0 0 10px;
+	padding-left: 18px;
+	font-size: 11.5px;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+	color: #3f4652;
+	max-height: 150px;
+	overflow-y: auto;
+}
+.pv-events__empty {
+	list-style: none;
+	margin-left: -18px;
+	color: var(--text-weak, #9aa1ad);
+	font-family: inherit;
+}
