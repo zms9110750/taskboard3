@@ -20,8 +20,8 @@ import {
 	resolvePath,
 	selectionText,
 	segmentsOf,
-} from '../src/pure/filter-box.ts';
-import type { FilterNode } from '../src/pure/filter-box.ts';
+} from '../pure/filter-box.ts';
+import type { FilterNode } from '../pure/filter-box.ts';
 
 /* ── 夹具一：状态（两级） ── */
 
@@ -262,3 +262,4 @@ describe('selectionText', () => {
 		assert.equal(selectionText(STATUS, ['ended', 'failed']), '完成/失败');
 	});
 });
+

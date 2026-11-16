@@ -13,10 +13,10 @@ const EDGE = [
 	'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
 ].find((one) => existsSync(one));
 const HERE = import.meta.dirname;
-const PKG = nodePath.join(HERE, '..');
-const OUT = nodePath.join(PKG, 'preview', 'shots');
+const DEV = nodePath.join(HERE, '..');
+const OUT = nodePath.join(DEV, 'shots');
 mkdirSync(OUT, { recursive: true });
-const PAGE = nodePath.join(PKG, 'preview', 'filter-box.html');
+const PAGE = nodePath.join(HERE, 'index.html');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const port = 9290;
@@ -295,4 +295,5 @@ console.log(failures.length ? failures.join('\n') : '  全部通过');
 
 proc.kill();
 process.exit(failures.length > 0 || errors.length > 0 ? 1 : 0);
+
 

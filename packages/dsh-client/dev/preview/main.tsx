@@ -225,3 +225,4 @@ if (root !== null) {
 		</StrictMode>,
 	);
 }
+

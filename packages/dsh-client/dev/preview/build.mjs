@@ -25,10 +25,10 @@ import * as nodePath from 'node:path';
 import { rolldown } from 'rolldown';
 
 const HERE = import.meta.dirname;
-const PKG = nodePath.join(HERE, '..');
-const OUT = nodePath.join(PKG, 'preview');
-const ENTRY = nodePath.join(PKG, 'src', 'preview', 'main.tsx');
-const CSS = nodePath.join(PKG, 'src', 'preview', 'preview.css');
+const DEV = nodePath.join(HERE, '..');
+const OUT = HERE;
+const ENTRY = nodePath.join(HERE, 'main.tsx');
+const CSS = nodePath.join(HERE, 'preview.css');
 
 mkdirSync(OUT, { recursive: true });
 
@@ -93,7 +93,8 @@ const html = `<!doctype html>
 </body>
 </html>`;
 
-const target = nodePath.join(OUT, 'filter-box.html');
+const target = nodePath.join(OUT, 'index.html');
 writeFileSync(target, html, 'utf8');
 console.log('written:', target);
 console.log('size:', html.length, 'chars');
+
