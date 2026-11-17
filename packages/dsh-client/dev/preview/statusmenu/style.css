@@ -1,0 +1,177 @@
+/*
+ * StatusPill / StatusMenu 的样式 —— 只在 `dev/preview/statusmenu/` 里用。
+ *
+ * 由 `dev/preview/build.mjs statusmenu` 追加在共享 `preview.css` **之后**
+ * ⇒ 可以用共享变量（`--bg-card` / `--border` / `--accent` / `--text-weak` …），
+ *   但**不要改共享的类名**（那是别的组件的）。
+ *
+ * 视觉规格照抄旧版：
+ *   · `.status-pill`    `taskboard2/packages/browser/public/styles.css:815-835`
+ *   · `.menu*`          同上 `:1752-1902`
+ */
+
+/* ── 状态胶囊 ── */
+.status-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 2px 8px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	font-size: 12px;
+	font-family: inherit;
+	color: var(--text);
+	background: var(--bg-card);
+	cursor: pointer;
+	white-space: nowrap;
+}
+.status-pill:hover {
+	border-color: var(--text-weak, #9aa1ad);
+}
+/* 开着菜单：accent 描边（给一个「现在是谁开着」的视觉锚） */
+.status-pill[data-pill-open='true'] {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+/* 没有 onClick 时渲染成 span —— 看起来一样，但不可点 */
+.status-pill.is-static {
+	cursor: default;
+	opacity: 0.75;
+}
+
+.status-pill__caret {
+	font-size: 9px;
+	color: var(--text-weak, #9aa1ad);
+}
+
+/* ── 菜单浮层 ── */
+.menu {
+	/*
+	 * `fixed` + 视口坐标：`getBoundingClientRect()` 是视口坐标，
+	 * 只有 `fixed` 与之同坐标系（旧版注释详述过）。
+	 */
+	position: fixed;
+	/*
+	 * 层级：高于弹窗遮罩（100）、低于 toast（200）。
+	 * 旧版用户指令 2026-11-09 11:38：「这个层级不对」。
+	 */
+	z-index: 150;
+	width: 280px;
+	min-width: 250px;
+	background: var(--bg-card);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+	padding: 8px;
+	overflow-y: auto;
+}
+
+.menu__title {
+	font-size: 11px;
+	color: var(--text-weak, #9aa1ad);
+	font-weight: 600;
+	padding: 4px 8px 6px;
+}
+
+.menu__item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 5px 8px;
+	border: 0;
+	border-radius: 5px;
+	background: none;
+	font-family: inherit;
+	text-align: left;
+	font-size: 12px;
+	color: var(--text);
+	cursor: pointer;
+}
+
+.menu__item:hover,
+.menu__item.is-active {
+	background: #f3f4f6;
+}
+
+.menu__item.is-danger {
+	color: var(--dot-failed, #ef4444);
+}
+.menu__item.is-danger:hover,
+.menu__item.is-danger.is-active {
+	background: #fef2f2;
+}
+
+.menu__icon {
+	width: 15px;
+	flex: 0 0 auto;
+	text-align: center;
+	font-size: 11px;
+	color: var(--text-weak, #9aa1ad);
+}
+.menu__item.is-danger .menu__icon {
+	color: var(--dot-failed, #ef4444);
+}
+
+.menu__label {
+	flex: 0 0 auto;
+}
+
+.menu__hint {
+	margin-left: auto;
+	color: var(--text-weak, #9aa1ad);
+	font-size: 11px;
+	padding-left: 14px;
+}
+
+.menu__divider {
+	height: 1px;
+	background: #f2f4f7;
+	margin: 4px 0;
+}
+
+.menu__empty {
+	padding: 8px;
+	font-size: 12px;
+	color: var(--text-weak, #9aa1ad);
+}
+
+.menu__footer {
+	border-top: 1px solid #f2f4f7;
+	margin-top: 4px;
+	padding: 8px 8px 2px;
+	font-size: 11px;
+	color: var(--text-weak, #9aa1ad);
+	line-height: 1.6;
+}
+
+/* ── 预览页专用：常显菜单（② 静态矩阵里用，不浮层） ── */
+.menu--static {
+	position: static;
+	width: 280px;
+	box-shadow: none;
+	margin-bottom: 4px;
+}
+
+/* ── 预览页专用：定位边界 ── */
+.pv-edge {
+	position: relative;
+	margin-bottom: 12px;
+}
+.pv-edge--bottom {
+	/*
+	 * 「贴着视口底部」这个场景靠 verify.mjs 的 `scrollIntoView({block:'end'})`
+	 * 把胶囊推到视口下缘 —— CSS 里故意不写死偏移（写死了换分辨率就失效）。
+	 */
+	padding-top: 8px;
+}
+.pv-edge--right {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	justify-content: flex-end;
+}
+/* 右侧边界那条：把胶囊推到视口最右边（留 2px，让它必然超出 maxLeft） */
+.pv-edge--right > span:nth-child(2) {
+	margin-right: 2px;
+}
