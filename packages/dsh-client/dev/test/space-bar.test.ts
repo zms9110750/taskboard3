@@ -95,23 +95,30 @@ describe('① chip 的意图恒为 view（查看 ≠ 激活）', () => {
 /* ② 那张四行表                                                */
 /* ══════════════════════════════════════════════════════════ */
 
-describe('② 表第一行：显示已归档=关 ⇒ 「激活此为当前空间」', () => {
-	it('⭐ 关 + 查看的不是当前 ⇒ 文案 / 可用 / kind=activate', () => {
+describe('② 表第一行：显示已归档=关 ⇒ 「当前空间」（文案合并，2026-11-18）', () => {
+	it('⭐ 关 + 查看的不是当前 ⇒ 文案也是「当前空间」/ 可用 / kind=activate / emphasis=action', () => {
 		const a = actionButtonOf(LIST, 'A', 'B', false);
-		assert.equal(a.label, '激活此为当前空间');
+		/*
+		 * ⚠ 文案**合并**了（用户 2026-11-18：「那个 6 个字的占用文档流太宽了」）：
+		 *   原来这里是「激活此为当前空间」（6 字），现在是「当前空间」（4 字）。
+		 *   靠 `emphasis` 区分「已是当前」和「可以切过去」。
+		 */
+		assert.equal(a.label, '当前空间');
 		assert.equal(a.disabled, false);
 		assert.equal(a.kind, 'activate');
 		assert.equal(a.checked, false);
+		assert.equal(a.emphasis, 'action', '可点 ⇒ action（描边，像按钮）');
 		assert.equal(a.workspaceId, 'B');
 	});
 
-	it('⭐ 关 + 查看的就是当前 ⇒ 文案「当前空间」（不是「激活…」）/ 禁用', () => {
+	it('⭐ 关 + 查看的就是当前 ⇒ 文案「当前空间」/ 禁用 / emphasis=current', () => {
 		const a = actionButtonOf(LIST, 'A', 'A', false);
 		assert.equal(a.label, '当前空间');
 		assert.equal(a.disabled, true);
 		assert.equal(a.kind, 'activate');
+		assert.equal(a.emphasis, 'current', '不可点 ⇒ current（实心，像徽章）');
 		assert.equal(a.workspaceId, 'A');
-		assert.match(a.title, /已经是当前激活空间/);
+		assert.match(a.title, /这就是当前空间/);
 	});
 
 	it('关 + 显式 viewingId 落在看不见的归档空间 ⇒ 回落到当前空间 ⇒ 禁用', () => {
@@ -119,13 +126,18 @@ describe('② 表第一行：显示已归档=关 ⇒ 「激活此为当前空间
 		assert.equal(a.workspaceId, 'A');
 		assert.equal(a.label, '当前空间');
 		assert.equal(a.disabled, true);
+		assert.equal(a.emphasis, 'current');
 	});
 
-	it('关 + 一个空间都没有 ⇒ 禁用，文案仍是「激活此为当前空间」（表第一行）', () => {
+	it('关 + 一个空间都没有 ⇒ 禁用，文案仍是「当前空间」，emphasis=plain', () => {
 		const a = actionButtonOf([], '', '', false);
 		assert.equal(a.disabled, true);
-		/* 表第一行「关 | — | 激活此为当前空间」：没有空间 ≠ 已是当前，所以不是「当前空间」。 */
-		assert.equal(a.label, '激活此为当前空间');
+		/*
+		 * ⚠ 文案合并后，这一格的文案也是「当前空间」—— 但它既不是
+		 *   「已是当前」也不是「可切过去」，靠 `emphasis: 'plain'` 区分。
+		 */
+		assert.equal(a.label, '当前空间');
+		assert.equal(a.emphasis, 'plain', '没有可作用的空间 ⇒ plain');
 		assert.equal(a.workspaceId, undefined);
 		assert.match(a.title, /还没有任务空间/);
 	});
@@ -135,6 +147,54 @@ describe('② 表第一行：显示已归档=关 ⇒ 「激活此为当前空间
 			const a = actionButtonOf(LIST, 'A', view, false);
 			assert.equal(a.checked, false, `viewing=${view}`);
 			assert.notEqual(a.label, '已归档', `viewing=${view}`);
+		}
+	});
+});
+
+describe('②b 文案合并后：两个「当前空间」必须靠 emphasis + title 区分', () => {
+	/*
+	 * 用户 2026-11-18 要求两句话合并成一句、靠**着色**区分。
+	 * 合并带来的语义风险：用户看到两个一样字的按钮，不知道点了会发生什么。
+	 * ⇒ 两条防线，各一条测试：
+	 *   ① emphasis 不同（视觉上不是一类东西）
+	 *   ② title 说清后果
+	 */
+	it('⭐ 「已是当前」与「可切过去」的 emphasis 必须不同', () => {
+		const isCurrent = actionButtonOf(LIST, 'A', 'A', false);
+		const canSwitch = actionButtonOf(LIST, 'A', 'B', false);
+		assert.equal(isCurrent.label, canSwitch.label, '文案已合并，两者相同');
+		assert.notEqual(
+			isCurrent.emphasis,
+			canSwitch.emphasis,
+			'⚠ 文案相同 ⇒ emphasis 必须不同，否则用户分不出「你在这里」和「可以切过去」',
+		);
+		assert.equal(isCurrent.emphasis, 'current');
+		assert.equal(canSwitch.emphasis, 'action');
+	});
+
+	it('⭐ 两者的 title 也要不同：一个说「就是这」，一个说「点一下会怎样」', () => {
+		const isCurrent = actionButtonOf(LIST, 'A', 'A', false);
+		const canSwitch = actionButtonOf(LIST, 'A', 'B', false);
+		assert.notEqual(isCurrent.title, canSwitch.title);
+		assert.match(isCurrent.title, /这就是当前空间/);
+		assert.match(canSwitch.title, /点一下/);
+		/* 「可切过去」那个要说出目标空间的名字，避免点错 */
+		assert.match(canSwitch.title, /另一个空间/);
+	});
+
+	it('⚠ 文案合并不能让「可点击性」跟着变：仍由 disabled 决定', () => {
+		assert.equal(actionButtonOf(LIST, 'A', 'A', false).disabled, true);
+		assert.equal(actionButtonOf(LIST, 'A', 'B', false).disabled, false);
+	});
+
+	it('四行表里凡是「当前空间」文案，emphasis 都必须是 current（不可误画成可点）', () => {
+		const cases = [
+			actionButtonOf(LIST, 'A', 'A', false), // 第 1 行后半
+			actionButtonOf(LIST, 'A', 'A', true), // 第 3 行
+		];
+		for (const a of cases) {
+			assert.equal(a.label, '当前空间');
+			assert.equal(a.emphasis, 'current', `disabled=${String(a.disabled)}`);
 		}
 	});
 });

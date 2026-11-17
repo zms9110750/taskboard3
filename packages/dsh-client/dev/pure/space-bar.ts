@@ -23,14 +23,34 @@
  * ⇒ `actionButtonOf()` 返回的是**一个**对象（不是数组、不是两张表），
  *   它的 `kind` 只有两种可能，互斥：
  *
- * | 显示已归档 | 选中空间 | 按钮文案 | 禁用 | kind |
- * |---|---|---|---|---|
- * | 关 | 不是当前 | `激活此为当前空间` | 否 | `activate` |
- * | 关 | 就是当前 | `当前空间` | **是** | `activate` |
- * | 开 | 不是当前（未归档）| `已归档` | 否 | `toggle-archived` |
- * | 开 | 不是当前（已归档）| `已归档`（选中态）| 否 | `toggle-archived` |
- * | 开 | 就是当前（未归档）| `当前空间` | **是** | `toggle-archived` |
- * | 开 | 就是当前（已归档，异常态）| `已归档`（选中态）| **否** | `toggle-archived` |
+ * | 显示已归档 | 选中空间 | 按钮文案 | 禁用 | kind | emphasis |
+ * |---|---|---|---|---|---|
+ * | 关 | 不是当前 | `当前空间` | 否 | `activate` | `action` |
+ * | 关 | 就是当前 | `当前空间` | **是** | `activate` | `current` |
+ * | 开 | 不是当前（未归档）| `已归档` | 否 | `toggle-archived` | `action` |
+ * | 开 | 不是当前（已归档）| `已归档`（选中态）| 否 | `toggle-archived` | `action` |
+ * | 开 | 就是当前（未归档）| `当前空间` | **是** | `toggle-archived` | `current` |
+ * | 开 | 就是当前（已归档，异常态）| `已归档`（选中态）| **否** | `toggle-archived` | `current` |
+ *
+ * ## ②b 文案合并（用户 `2026-11-18`）
+ *
+ * > 「把『激活当前空间』和『当前空间』，改为『当前空间』，然后通过着色来表示
+ * >  现在就是『当前空间』。那个 6 个字的占用文档流太宽了。」
+ *
+ * ⇒ 原来 `激活此为当前空间`（6 字）与 `当前空间`（4 字）两套文案合并成**一套** `当前空间`，
+ *   靠 `emphasis` 区分「你在这里」和「可以切过去」：
+ *
+ * | emphasis | 语义 | 视觉（组件负责）|
+ * |---|---|---|
+ * | `current` | **已经是**当前空间 | 实心强调（像状态徽章），**不可点** |
+ * | `action` | 可以切过去 | 描边（像按钮），可点 |
+ * | `plain` | 没有可作用的空间 | 普通 |
+ *
+ * ⚠ **合并文案带来的语义风险**：两个按钮都写「当前空间」，用户可以会问
+ *   「点了会发生什么？」⇒ 补两件事：
+ *   ① `emphasis` 让两者**看起来就不是一类东西**（徽章 vs 按钮）；
+ *   ② `title` 说清后果（「这就是当前空间」/「点一下把『代码』设为当前空间」）。
+ *   这两条都有单测钉住，不是靠注释约定。
  *
  * ## ③ 归档的 chip 只选中、不激活
  *
@@ -69,11 +89,26 @@ export interface SpaceAction {
 	readonly kind: SpaceActionKind;
 	/** 「开」态（= 这个空间确实已归档）。只有 `toggle-archived` 会真。 */
 	readonly checked: boolean;
+	/**
+	 * 视觉强调档 —— **文案合并后，这是区分「已是当前」与「可切过去」的唯一手段**。
+	 *
+	 * - `current`：这已经是当前空间 ⇒ 实心、不可点（像「你在这里」的标记）
+	 * - `action`：点了会改变当前空间 ⇒ 描边、可点（像按钮）
+	 * - `plain`：没有可作用的空间 ⇒ 普通灰
+	 */
+	readonly emphasis: SpaceEmphasis;
 	/** `title`（禁用时用户唯一的说明来源）。 */
 	readonly title: string;
 	/** 按钮作用于哪个空间；`undefined` = 没有可作用的空间。 */
 	readonly workspaceId: string | undefined;
 }
+
+/**
+ * 左侧按钮的视觉强调档。
+ *
+ * 用户 `2026-11-18` 要求两句话合并成一句、靠着色区分 ⇒ 这个字段就是那个「着色」。
+ */
+export type SpaceEmphasis = 'current' | 'action' | 'plain';
 
 /**
  * 点 chip 的**唯一**意图。
@@ -181,18 +216,24 @@ export function actionButtonOf(
 
 	/* ── 「显示已归档」关：唯一的按钮做**激活** ── */
 	if (!showArchived) {
+		/*
+		 * ⚠ 文案**只有一套**（用户 2026-11-18：「那个 6 个字的占用文档流太宽了」）。
+		 *   原来这里是 `isCurrent ? '当前空间' : '激活此为当前空间'` —— 两个宽度不同的文案
+		 *   还会让按钮宽度在两个状态间跳，整行跟着抖。
+		 *   ⇒ 现在恒为 `当前空间`，靠 `emphasis` + `title` 区分。
+		 */
 		return {
 			kind: 'activate',
-			/* 已是当前 ⇒ 文案说清「为什么禁用」，不写一个禁用的「激活」。 */
-			label: isCurrent ? '当前空间' : '激活此为当前空间',
+			label: '当前空间',
 			disabled: selected === undefined || isCurrent,
 			checked: false,
+			emphasis: selected === undefined ? 'plain' : isCurrent ? 'current' : 'action',
 			title:
 				selected === undefined
 					? '还没有任务空间'
 					: isCurrent
-						? '这已经是当前激活空间'
-						: '把正在查看的空间激活为当前空间（写操作才作用于它）',
+						? '这就是当前空间，写操作都作用在它上面'
+						: `点一下把「${selected.displayName}」设为当前空间（写操作才作用于它）`,
 			workspaceId: selected?.id,
 		};
 	}
@@ -210,6 +251,14 @@ export function actionButtonOf(
 		label: currentCannotArchive ? '当前空间' : '已归档',
 		disabled: selected === undefined || currentCannotArchive,
 		checked: isArchived,
+		/*
+		 * ⚠ 判据是**「能不能点」**，不是「是不是当前」。
+		 *
+		 * 第 4 行（当前 + 已归档，异常态）虽然 `isCurrent`，但它**可点**（点了取消归档）
+		 * ⇒ `action`。若按 `isCurrent` 给 `current`，视觉会画成「实心、不可点」，
+		 * 而它其实能点 —— 比不区分更误导。
+		 */
+		emphasis: selected === undefined ? 'plain' : currentCannotArchive ? 'current' : 'action',
 		title:
 			selected === undefined
 				? '还没有任务空间'
