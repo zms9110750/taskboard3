@@ -12,8 +12,8 @@
  *    其中 `empty-history`（空备注、0 历史、0 章节）也必须有。
  * ③ **没有「正文」二字** —— 全页 `document.body.innerText` 不含「正文」，
  *    且不存在 `.detail-body` / `[data-detail-body]` 这种容器节点。
- * ④ **历史可折叠** —— 0 条整块不出现；1 条直接展开且**没有**折叠按钮；
- *    3 条初始折叠、点表头能展开并出现 3 条。
+ * ④ **历史不折叠** —— 0 条整块不出现；1 条显示且列表在；
+ *    3 条**全部可见**、表头上没有折叠按钮、没有 aria-expanded。
  * ⑤ 动作行：关系按钮 `emphasis=primary` + 计算样式是 accent 实底；
  *    点它派发 `add-relation`，点派生子任务派发 `derive`；墓碑时两个都禁用。
  * ⑥ 备注交互：失焦提交一次、值没变不提交；墓碑时 textarea disabled 且只读提示在。
@@ -235,14 +235,14 @@ const clearEvents = () => ev(`document.querySelector('[data-clear-log]').click()
 console.log('\n═══ ① ⭐ 标题独占一行 ═══');
 {
 	const panes = await ev(`document.querySelectorAll('.detail').length`);
-	expect('七个详情面板都渲染了（1 活 + 6 场景）', panes, 7);
+	expect('八个详情面板都渲染了（1 活 + 7 场景）', panes, 8);
 
 	const many = await readPanel('many-history');
 	expect('标题文字正确', many.title, '把详情面板重做成「标题独占一行、备注常驻」');
 	expect(
-		'meta 五格顺序 = 编号/类别/领域/模板/状态',
+		'⭐ meta 行顺序 = 状态在最左，然后 编号/类别/领域/模板',
 		many.metaKinds,
-		['id', 'kind', 'domain', 'template', 'status'],
+		['status', 'id', 'kind', 'domain', 'template'],
 	);
 	expect('⭐ 标题**不在** meta 里', many.metaText.includes(many.title), false);
 	expect(
@@ -260,18 +260,64 @@ console.log('\n═══ ① ⭐ 标题独占一行 ═══');
 }
 
 /* ══════════════════════════════════════════════════════════ */
+console.log('\n═══ ①b ⭐ 状态在最左（编号左边），且不随 label 漂移 ═══');
+{
+	/*
+	 * 用户 2026-11-18：
+	 * > 「状态需要放在最左边。可交互的东西被 label 顺位放在右边是不合理的。
+	 * >  如果 label 太长，那么状态按钮的位置甚至会变化。所以他至少放在 label 的左边。
+	 * >  但我希望他放在编号的左边。」
+	 *
+	 * 两条断言：
+	 *   ① status.left < id.left（在编号左边，不只是 label 左边）
+	 *   ② 超长 label 场景下 status.left **不变**（这才是根因那条）
+	 */
+	const geo = (key) =>
+		ev(`(() => {
+			const box = document.querySelector('[data-scenario="${key}"] .detail');
+			if (!box) return null;
+			const st = box.querySelector('[data-meta="status"]');
+			const id = box.querySelector('[data-meta="id"]');
+			const dom = box.querySelector('[data-meta="domain"]');
+			if (st === null || id === null) return null;
+			const r = (n) => { const b = n.getBoundingClientRect(); return { left: Math.round(b.left), w: Math.round(b.width) }; };
+			return { status: r(st), id: r(id), domainW: dom === null ? 0 : Math.round(dom.getBoundingClientRect().width) };
+		})()`);
+
+	const normal = await geo('many-history');
+	const long = await geo('long-label');
+	console.log('  普通:', JSON.stringify(normal), ' 超长:', JSON.stringify(long));
+
+	expect('状态列在编号列的**左边**', normal.status.left < normal.id.left, true);
+	expect('状态列有固定宽度（>0）', normal.status.w > 0, true);
+	expect('⚠ 超长 label 场景确实把 label 撑宽了', long.domainW > normal.domainW, true);
+	expect('⭐ **超长 label 下，状态列的 left 完全不变**', long.status.left, normal.status.left);
+	expect('⭐ 状态列宽度也不变（固定 92px）', long.status.w, normal.status.w);
+
+	/* 再确认一次：状态不在 meta 数组的后半段（DOM 里它排第一）。 */
+	const first = await ev(
+		`(() => {
+			const box = document.querySelector('[data-scenario="many-history"] .detail');
+			const kids = [...box.querySelector('[data-detail-meta]').children];
+			return kids.map((n) => n.dataset.meta);
+		})()`,
+	);
+	expect('meta 行的第一个子元素就是状态', first[0], 'status');
+}
+
+/* ══════════════════════════════════════════════════════════ */
 console.log('\n═══ ② ⭐ 备注常驻（每个场景都有）═══');
 {
-	const keys = ['empty-history', 'one-history', 'many-history', 'deleted', 'no-sections', 'no-close'];
+	const keys = ['empty-history', 'one-history', 'many-history', 'long-label', 'deleted', 'no-sections', 'no-close'];
 	const notes = [];
 	for (const key of keys) {
 		const one = await readPanel(key);
 		notes.push({ key, has: one.note !== null, visible: one.note !== null && one.note.visible });
 	}
 	expect(
-		'⭐ 六个场景都有备注节点且**真的可见**',
+		'⭐ 七个场景都有备注节点且**真的可见**',
 		notes.map((one) => one.has && one.visible),
-		[true, true, true, true, true, true],
+		[true, true, true, true, true, true, true],
 	);
 
 	const empty = await readPanel('empty-history');
@@ -289,7 +335,7 @@ console.log('\n═══ ② ⭐ 备注常驻（每个场景都有）═══')
     const n = box.querySelector('[data-detail-note]');
     return n === null ? null : { value: n.querySelector('[data-note-input]').value };
   })()`);
-	expect('⭐ 活面板也有备注，且带当前值', liveNote.value, '等用户确认「历史默认折叠」这一条。');
+	expect('⭐ 活面板也有备注，且带当前值', liveNote.value, '历史不折叠了，三条全画出来。');
 	expect('活面板备注**没有**折叠按钮（不存在 + 备注 这种东西）', await ev(
 		`(() => {
       const box = document.querySelector('[data-live] .detail');
@@ -328,54 +374,52 @@ console.log('\n═══ ③ ⭐ 没有「正文」二字 ═══');
 }
 
 /* ══════════════════════════════════════════════════════════ */
-console.log('\n═══ ④ ⭐ 历史可折叠 ═══');
+console.log('\n═══ ④ ⭐ 历史**不折叠**，全部竖直可见 ═══');
 {
+	/*
+	 * 用户 2026-11-18：
+	 * > 「历史不需要折叠。没有折叠的含义。他是一个竖直显示。但是历史自己就是最后了。
+	 * >  他的折叠并不影响看他后面的内容。他没有更后面了。」
+	 *
+	 * ⇒ 断言：3 条时**全部可见**、表头上**没有折叠按钮**、也没有 aria-expanded。
+	 */
 	const none = await readPanel('empty-history');
 	expect('⭐ 0 条 ⇒ 整块历史不出现', none.history, null);
 
 	const one = await readPanel('one-history');
 	expect('⭐ 1 条 ⇒ 显示', one.history !== null, true);
-	expect('⭐ 1 条 ⇒ **没有**折叠按钮（不给点了没反应的按钮）', one.history.hasToggle, false);
-	expect('⭐ 1 条 ⇒ 列表直接展开', one.history.hasList, true);
+	expect('⭐ 1 条 ⇒ 列表在', one.history.hasList, true);
 	expect('1 条的内容', one.history.items.map((x) => x.action), ['create']);
-	expect('表头带计数（不可折叠时是 div，不是 button）', one.history.headLabel, '历史（1）');
+	expect('表头带计数', one.history.headLabel, '历史（1）');
 
 	const many = await readPanel('many-history');
-	expect('⭐ 3 条 ⇒ 有折叠按钮', many.history.hasToggle, true);
-	expect('⭐ 3 条 ⇒ 初始 `aria-expanded=false`', many.history.expandedAttr, 'false');
-	expect('⭐ 3 条 ⇒ 初始**不渲染**列表', many.history.hasList, false);
-	expect('⭐ 3 条 ⇒ 初始一条 item 都没有', many.history.items, []);
-	expect('表头文字 = 历史（3）', many.history.toggleLabel, '历史（3）');
-
-	await shot('03-history-collapsed.png');
-
-	/* 点开 */
-	await clearEvents();
-	await click(`document.querySelector('[data-scenario="many-history"] [data-history-toggle]')`);
-	await sleep(320);
-	const opened = await readPanel('many-history');
-	expect('⭐ 点表头 ⇒ 展开，出现 3 条', opened.history.items.length, 3);
-	expect('⭐ 展开后 `aria-expanded=true`', opened.history.expandedAttr, 'true');
+	expect('⭐ 3 条 ⇒ 表头在', many.history.headLabel, '历史（3）');
+	expect('⭐ 3 条 ⇒ **没有折叠按钮**（折叠被删掉了）', many.history.hasToggle, false);
+	expect('⭐ 3 条 ⇒ 也没有 aria-expanded 属性', many.history.expandedAttr, null);
+	expect('⭐ 3 条 ⇒ 列表**一开始就在**（不是点了才出现）', many.history.hasList, true);
 	expect(
-		'⭐ 最新在上（update → transition → create）',
-		opened.history.items.map((one) => one.action),
+		'⭐ 3 条 ⇒ **三条全部**在 DOM 里',
+		many.history.items.map((one) => one.action),
 		['update', 'transition', 'create'],
 	);
 	expect(
 		'人话：AI 那条说「AI 把状态从…」',
-		opened.history.items[1].text,
+		many.history.items[1].text,
 		'AI 把状态从「提交」改成「处理中」',
 	);
-	expect('每条都带时间', opened.history.items.every((one) => /^\d\d-\d\d \d\d:\d\d$/.test(one.time)), true);
-	expect('点表头**不**派发业务回调（只是 UI 开合）', await readEvents(), []);
-	await shot('04-history-expanded.png');
+	expect('每条都带时间', many.history.items.every((one) => /^\d\d-\d\d \d\d:\d\d$/.test(one.time)), true);
 
-	/* 再点收起 */
-	await click(`document.querySelector('[data-scenario="many-history"] [data-history-toggle]')`);
-	await sleep(320);
-	const closed = await readPanel('many-history');
-	expect('⭐ 再点一次 ⇒ 又收起（列表消失）', closed.history.hasList, false);
-	expect('收起后 `aria-expanded=false`', closed.history.expandedAttr, 'false');
+	/* 三条都**可见**（不只是 DOM 里有，而且 `offsetParent` 非空、高度 > 0）。 */
+	const visible = await ev(`(() => {
+		const rows = [...document.querySelectorAll('[data-scenario="many-history"] [data-history-action]')];
+		return rows.map((n) => {
+			const r = n.getBoundingClientRect();
+			return { h: Math.round(r.height), visible: r.height > 0 && getComputedStyle(n).display !== 'none' };
+		});
+	})()`);
+	expect('⭐ 三条**都真的可见**（高度 > 0）', visible.every((one) => one.visible && one.h > 0), true);
+
+	await shot('03-history-all-visible.png');
 }
 
 /* ══════════════════════════════════════════════════════════ */
@@ -491,7 +535,7 @@ console.log('\n═══ ⑦ 图标按钮 / 关闭 / 切卡 ═══');
 	expect('⭐ 切卡 ⇒ 卡 id 跟着换', second.cardId, 'DE-04');
 	expect('标题跟着换', second.title, '第二张卡（历史只有一条）');
 	expect(
-		'⭐ 切卡后历史折叠态不串（第二张只有 1 条 ⇒ 无折叠按钮、直接展开）',
+		'⭐ 切卡后历史不串（第二张只有 1 条，全部画出来、仍无折叠按钮）',
 		[second.hasToggle, second.hasList],
 		[false, true],
 	);

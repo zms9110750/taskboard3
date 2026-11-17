@@ -3,11 +3,12 @@
  *
  * 两段：
  *
- * ① **活的一面板** —— 受控 note、可点关闭/放大、可切卡（验「切卡后历史折叠态不串」）。
+ * ① **活的一面板** —— 受控 note、可点关闭/放大、可切卡。
  * ② **固定场景** —— 每格直接可断言：
  *    · `empty-history`  0 条历史 + 0 章节 + 空备注 ⇒ 备注**仍然在**
- *    · `one-history`    1 条历史 ⇒ 不折叠、直接展开
- *    · `many-history`   3 条历史 ⇒ 初始折叠
+ *    · `one-history`    1 条历史 ⇒ 全画出来
+ *    · `many-history`   3 条历史 ⇒ **全部可见，没有折叠按钮**（用户 `2026-11-18`）
+ *    · `long-label`     超长 label ⇒ 状态列 left **不变**（用户 `2026-11-18` 的根因）
  *    · `deleted`        墓碑 ⇒ 备注/章节都显示，动作禁用，横幅在
  *    · `no-sections`    没有章节 ⇒ 「模板没有章节」占位，但**没有「正文」二字**
  *
@@ -66,7 +67,7 @@ function card(over: Partial<Card> = {}): Card {
 			},
 			record: { label: '记录', payload: { $type: 'text', value: '' } },
 		},
-		note: '等用户确认「历史默认折叠」这一条。',
+		note: '历史不折叠了，三条全画出来。',
 		createdAt: T0,
 		adoptedAt: null,
 		history: history(
@@ -88,7 +89,7 @@ interface LiveProps {
 }
 
 function Live(props: LiveProps): React.ReactNode {
-	const [note, setNote] = useState('等用户确认「历史默认折叠」这一条。');
+	const [note, setNote] = useState('历史不折叠了，三条全画出来。');
 	const [cardId, setCardId] = useState('DE-03');
 	const [closed, setClosed] = useState(false);
 
@@ -185,13 +186,28 @@ const SCENARIOS: readonly Scenario[] = [
 	},
 	{
 		key: 'one-history',
-		note: '1 条历史 ⇒ 显示但不可折叠（不给点了没反应的按钮）',
+		note: '1 条历史 ⇒ 显示，全部画出来',
 		card: card({ history: history({ at: T0, action: 'create', actor: 'user' }) }),
 	},
 	{
 		key: 'many-history',
-		note: '3 条历史 ⇒ 初始折叠（用户：旧版「占满一屏」）',
+		note: '3 条历史 ⇒ 全部可见，**没有折叠按钮**（用户 2026-11-18：历史后面没有内容，折叠无意义）',
 		card: card(),
+	},
+	{
+		key: 'long-label',
+		note: '超长 label ⇒ 状态列 left **不变**（用户 2026-11-18 的根因：label 太大会让状态漂移）',
+		card: card({
+			template: {
+				ref: 'user-need',
+				kind: 'design',
+				/*
+				 * 故意把 domain 弄成长串 —— 它会被画成 badge，是 meta 行里的一个 label。
+				 * 断言会量 `[data-meta="status"]` 的 left，和 `DE-03` 那格对比。
+				 */
+				domain: '这是一个非常非常长的领域名称用来把标签撑开'.repeat(3),
+			},
+		}),
 	},
 	{
 		key: 'deleted',
@@ -258,8 +274,8 @@ function App(): React.ReactNode {
 			<header className="pv-head">
 				<h1>CardDetail / 卡片详情面板</h1>
 				<p>
-					标题独占一行 · 备注常驻 · 历史默认折叠 · 章节渲染等 C6 <code>Section</code>{' '}
-					合并后替换
+					状态在最左（固定列，不随 label 漂移）· 标题独占一行 · 备注常驻 ·{' '}
+					<b>历史不折叠</b> · 章节渲染等 C6 <code>Section</code> 合并后替换
 				</p>
 			</header>
 

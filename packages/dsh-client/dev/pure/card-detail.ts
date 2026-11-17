@@ -8,9 +8,9 @@
  *
  * | 问题 | 这里怎么答 | 组件怎么用 |
  * |---|---|---|
- * | **显示什么** | `head.meta` / `head.actions` / `sections` / `note` / `history` 五个数组 | 只 `map` |
- * | **按什么顺序** | meta 固定五格；section 用卡的键插入顺序；history 最新在上 | 不排序 |
- * | **哪些常驻 / 折叠** | `note.visible` 是**字面量 `true`**；`history.collapsed` 是**初始**折叠态 | 不判断 |
+ * | **显示什么** | `head.status` / `head.meta` / `head.actions` / `sections` / `note` / `history` | 只 `map` |
+ * | **按什么顺序** | 状态在最左；meta 四格；section 用卡的键插入顺序；history 最新在上 | 不排序 |
+ * | **哪些常驻** | 备注是**字面量 `true`**；历史空才不显示，有就全画 | 不判断 |
  *
  * ⇒ 组件里没有 `if (card.note !== '')`、没有 `if (history.length)`、没有 `.sort()`。
  *   这些一旦散进 JSX，改一处就漏一处，而编译器不会告诉你漏了。
@@ -21,22 +21,30 @@
  * `index.js`（170）+ `header.js`（123）+ `history-block.js`（110）+ `relations-block.js`（147）。
  * 下面每条规则都标了对应旧文件的行区间。
  *
- * ## ⚠ 用户 `2026-11-15` 否定的三件事（本文件把它们变成类型/常量）
+ * ## ⚠ 用户否定的五件事（本文件把它们变成类型/字段）
  *
- * 1. **标题独占一行** —— `DetailHeadView.title` 是**单个字符串字段**，
- *    和 `meta`（编号/类别/领域/模板/状态）**分在两个数组里**。
+ * 1. **标题独占一行**（`2026-11-15`）—— `DetailHeadView.title` 是**单个字符串字段**，
+ *    和 `meta` **分在两个字段里**。
  *    组件想「把标题塞进 meta 行」得自己拼 DOM，而 CDP 会按几何位置抓它。
- * 2. **不要「正文」这种容器标签** —— 本文件里没有任何 "正文" 字符串，
+ * 2. **不要「正文」这种容器标签**（`2026-11-15`）—— 本文件里没有任何 "正文" 字符串，
  *    章节直接平铺（旧版 `sectionList()` 也是平铺的，没有外层标题）。
- * 3. **备注常驻** —— `DetailNoteView.visible` 的类型是 `true` 而不是 `boolean`。
+ * 3. **备注常驻**（`2026-11-15`）—— `DetailNoteView.visible` 的类型是 `true` 而不是 `boolean`。
  *    这不是修辞：写 `visible: false` 编译不过。
  *    （旧产品 MVP `src/views/CardDetail.tsx` 是 `card.note !== '' ? … : null`，
  *      正是「不常驻」；旧版 taskboard2 反而是常驻的。**两版各错一半。**）
+ * 4. **状态放最左**（`2026-11-18`）—— `head.status` 是**独立字段**，不在 `meta` 数组里
+ *    ⇒ 组件只有一个地方能画它，label 再长也挤不走（见 `DetailStatusView`）。
+ * 5. **历史不折叠**（`2026-11-18`）—— `DetailHistoryView` 里**没有**
+ *    `collapsible` / `collapsed` 字段。删字段不是省略，是判决（见 `historyTableOf`）。
  *
- * ## 历史：**折叠**，不常驻
+ * ## 历史：**不折叠**
  *
- * 用户 `2026-11-15` 只说「历史可以折叠」；我（成员）判「应该折叠」，理由见
- * `historyTableOf()`。折叠的是**初始态**，不是能力 —— 组件仍能展开。
+ * 用户 `2026-11-18`：
+ * > 「历史不需要折叠。没有折叠的含义。他是一个竖直显示。但是历史自己就是最后了。
+ * >  他的折叠并不影响看他后面的内容。他没有更后面了。」
+ *
+ * 折行的意义是「省空间给后面的内容让位」；历史在最后面，后面没有了
+ * ⇒ 折它不换回任何东西。
  */
 
 import { extractText } from '../../src/pure.ts';
@@ -66,15 +74,43 @@ export interface DetailLabels {
    ══════════════════════════════════════════════════════════ */
 
 /**
- * meta 行的五格。
+ * 状态 —— **独立字段**，不在 `meta` 数组里。
  *
- * 顺序**固定**为：编号 → 类别 → 领域 → 模板 → 状态
+ * ## 用户 `2026-11-18`（这次改版的起因）
+ *
+ * > 「状态需要放在最左边。可交互的东西被 label 顺位放在右边是不合理的。
+ * >  如果 label 太长，那么状态按钮的位置甚至会变化。所以他至少放在 label 的左边。
+ * >  但我希望他放在编号的左边。」
+ *
+ * ## 为什么做成独立字段而不是 `meta` 的一个成员
+ *
+ * 和 `title` 同一手法：**结构保证 > CSS 保证**。
+ *
+ * 状态留在 `meta` 数组里时，它和 label 是同一行 flex 的兄弟 —— 位置取决于
+ * 前面几个 label 有多宽。做成独立字段后，组件**只有**一个地方能画它
+ * （那个固定宽度的首列），它物理上不可能被 label 挤走。
+ * CDP 会量「状态 left < 编号 left」和「超长 label 下状态 left 不变」。
+ *
+ * ⚠ 旧版是可点的状态胶囊，v3 的菜单归 C4 `StatusMenu`（另一个人做的），
+ *   所以这里只描述「画什么」，不含「点了干什么」。
+ */
+export interface DetailStatusView {
+	/** A2A 状态全名（`TASK_STATE_*`），`StatusCell` 用它判颜色。 */
+	readonly status: string;
+	/** 中文名。 */
+	readonly text: string;
+}
+
+/**
+ * meta 行的四格 —— **不含状态**（状态是 `DetailHeadView.status`）。
+ *
+ * 顺序**固定**为：编号 → 类别 → 领域 → 模板
  * （旧版 `header.js:83-89` 的 `status-line`；用户 `2026-11-15` 只要求
  * 「标题独占一行」，没要求动这一行的顺序）。
  *
- * 做成可辨识联合而不是 `{kind, text}` 两字段：状态的圆点需要**原始 state id**
- * （颜色由 `stateTone()` 判），编号/类别需要**色系 key**。用一个宽接口就得
- * 把所有字段都设成可选，`exactOptionalPropertyTypes` 下每个使用点都要窄化。
+ * 做成可辨识联合而不是 `{kind, text}` 两字段：编号/类别需要**色系 key**，
+ * 模板需要 `title`。用一个宽接口就得把所有字段都设成可选，
+ * `exactOptionalPropertyTypes` 下每个使用点都要窄化。
  */
 export type DetailMetaItem =
 	/** 编号（等宽、分类色）。 */
@@ -84,9 +120,7 @@ export type DetailMetaItem =
 	/** 领域徽章。 */
 	| { readonly kind: 'domain'; readonly text: string }
 	/** 模板徽章（`title` 里带完整说明）。 */
-	| { readonly kind: 'template'; readonly text: string; readonly title: string }
-	/** 状态：圆点 + 中文名（旧版是**可点**的状态胶囊，v3 的菜单归 C4）。 */
-	| { readonly kind: 'status'; readonly status: string; readonly text: string };
+	| { readonly kind: 'template'; readonly text: string; readonly title: string };
 
 /** 动作行里按钮的种类 —— 组件的「机械映射」就映射这两个值。 */
 export type DetailActionKind = 'relations' | 'derive';
@@ -110,7 +144,7 @@ export interface DetailAction {
 	readonly title: string;
 }
 
-/** 头部（标题行 + meta 行 + 动作行 + 墓碑横幅）。 */
+/** 头部（标题行 + 状态/编号/meta 行 + 动作行 + 墓碑横幅）。 */
 export interface DetailHeadView {
 	/**
 	 * 标题。
@@ -119,6 +153,13 @@ export interface DetailHeadView {
 	 *   和 `meta` 是两个数组，组件没有「把它拼进 meta」的位置可放。
 	 */
 	readonly title: string;
+	/**
+	 * 状态 —— **独立字段**，组件只在固定宽度的首列里画它。
+	 *
+	 * ⚠ 不在 `meta` 数组里，见 `DetailStatusView` 的注释（用户 `2026-11-18`）。
+	 */
+	readonly status: DetailStatusView;
+	/** meta 四格（编号 / 类别 / 领域 / 模板），**不含状态**。 */
 	readonly meta: readonly DetailMetaItem[];
 	readonly actions: readonly DetailAction[];
 	/** 墓碑横幅文案；`null` = 没删除，不显示。 */
@@ -214,19 +255,21 @@ export interface DetailHistoryView {
 	 *   历史是**追加的记录**（一条没有就是没有，画个空框只会让人以为加载失败）。
 	 */
 	readonly visible: boolean;
-	/** 能不能折起来。`false` = 只有一条，折它没意义（见 `historyTableOf`）。 */
-	readonly collapsible: boolean;
-	/**
-	 * **初始**折叠态。`true` = 一开始收着，用户点一下展开。
+	/*
+	 * ⚠ 这里**没有** `collapsible` / `collapsed` —— 用户 `2026-11-18` 把折叠否掉了：
 	 *
-	 * ⚠ 这是语义（「进来时该不该占一屏」），不是 UI 状态 ——
-	 *   真正的开合由组件 `useState` 持有，初值取这里。
+	 *   > 「历史不需要折叠。没有折叠的含义。他是一个竖直显示。但是历史自己就是最后了。
+	 *   >  他的折叠并不影响看他后面的内容。他没有更后面了。」
+	 *
+	 * 折行的意义是「省空间，给后面的内容让位」。历史在**最后面**，后面没有了
+	 * ⇒ 折它不换回任何东西，只多一次点击。
+	 *
+	 * ⇒ 这两个字段是**故意删掉的**，不是忘了写。谁想加回来，先看上面这句话。
 	 */
-	readonly collapsed: boolean;
 	readonly count: number;
 	/** 表头文案，带计数（旧版 `历史（N）`）。 */
 	readonly label: string;
-	/** 最新在前的条目。 */
+	/** 最新在前的条目，**全部**都要画（没有「只画前 N 条」）。 */
 	readonly items: readonly DetailHistoryItem[];
 }
 
@@ -249,15 +292,6 @@ export interface CardDetailTable {
 /** 备注的固定文案（旧版 `index.js:66` 的 label / placeholder，一字未改）。 */
 const NOTE_LABEL = '备注 / 搁置理由（随时写）';
 const NOTE_PLACEHOLDER = '随时写，不用管格式';
-
-/**
- * 历史折叠的**最小条数**。
- *
- * 1 条折起来只藏一行，省不了空间却多一次点击 ⇒ 1 条直接展开、不给折叠按钮；
- * 2 条起才有「详情页被历史占满一屏」的问题（用户 `2026-11-15` 的原话是
- * 「旧版常驻占满一屏」）。
- */
-export const HISTORY_COLLAPSE_MIN = 2;
 
 /**
  * 建整张表。
@@ -286,15 +320,20 @@ export function headOf(card: Card, labels: DetailLabels): DetailHeadView {
 	return {
 		title: card.title,
 		/*
-		 * 五格顺序 = 旧版 `header.js:83-89`。用户只改了「标题独占一行」，
-		 * 这一行本身没动 ⇒ 顺序照旧。
+		 * 状态**独立**于 meta —— 用户 `2026-11-18`：
+		 * 「我希望他放在编号的左边」+ 「如果 label 太长，那么状态按钮的位置甚至会变化」。
+		 * 拆成独立字段后，组件只能把它画在固定宽度的首列里。
+		 */
+		status: { status: card.status, text: stateLabel(card.status) },
+		/*
+		 * 四格顺序 = 旧版 `header.js:83-89` 去掉状态那一格。
+		 * 用户只改了「标题独占一行」和「状态挪到最左」，这几格的相对顺序没动。
 		 */
 		meta: [
 			{ kind: 'id', text: card.id, tone },
 			{ kind: 'kind', text: labels.kindLabel, tone },
 			{ kind: 'domain', text: card.template.domain },
 			{ kind: 'template', text: labels.templateLabel, title: `模板：${labels.templateLabel}` },
-			{ kind: 'status', status: card.status, text: stateLabel(card.status) },
 		],
 		actions: actionsOf(card),
 		/*
@@ -401,18 +440,17 @@ export function noteOf(card: Card): DetailNoteView {
 /**
  * 历史表。
  *
- * ## 折叠规则（我判的，用户只说「可以折叠」）
+ * ## 不折叠（用户 `2026-11-18` 否掉了这个功能）
  *
- * | 条数 | visible | collapsible | collapsed（初始）|
- * |---|---|---|---|
- * | 0 | `false` | `false` | `false` |
- * | 1 | `true` | `false` | `false` |
- * | ≥2 | `true` | `true` | `true` |
+ * > 「历史不需要折叠。没有折叠的含义。他是一个竖直显示。但是历史自己就是最后了。
+ * >  他的折叠并不影响看他后面的内容。他没有更后面了。」
  *
- * **理由**：详情页一屏能放的东西有限，历史是**只读记录**（用户极少反复看），
- * 而章节/备注是要读要写的。旧版让它常驻、列表展开，用户 `2026-11-15` 的原话是
- * 「占满一屏」⇒ 默认收起。但只藏一条又变成「多点一次看一行」，
- * 所以 1 条时直接展开、不给折梅按钮。
+ * 折行的意义是「省空间，给后面的内容让位」。历史在**最后面**，后面没有了
+ * ⇒ 折它不换回任何东西。所以这里**没有** `collapsible` / `collapsed` 字段，
+ * 组件也没有折叠按钮。
+ *
+ * ⚠ 上一版（`2026-11-18` 之前）有「≥2 条初始折叠」，那是成员自己的判断。
+ *   用户给了明确的判据把它否掉了 —— **判据是「后面还有没有内容」，不是条数**。
  *
  * ## 排序：最新在上，**同毫秒保持原顺序**
  *
@@ -450,17 +488,8 @@ export function historyTableOf(
 		};
 	});
 
-	/*
-	 * 1 条直接展开：`collapsed` 只在 ≥2 条时才为 `true`，
-	 * 而 `collapsible` 与它同步 —— 不给折叠按钮却把列表收着是自相矛盾的。
-	 * 空历史两个都 `false`（`visible: false` 时它们无意义，但不留「收着一个看不见的东西」）。
-	 */
-	const expandable = count >= HISTORY_COLLAPSE_MIN;
-
 	return {
 		visible: count > 0,
-		collapsible: expandable,
-		collapsed: expandable,
 		count,
 		label: `历史（${count}）`,
 		items,

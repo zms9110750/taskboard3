@@ -13,13 +13,29 @@
  * ```
  * detail-head
  *  ├ detail-title-row    h2 标题 ……………… ⧉ ×   ← 只有标题 + 图标按钮
- *  ├ detail-meta         编号 · 类别 · 领域 · 模板 · ● 状态
+ *  ├ detail-meta-row     固定宽度状态列 │ 编号 │ 类别 领域 模板
  *  ├ detail-actions      关系 N（primary）  + 派生子任务
  *  └ detail-banner       墓碑说明（有才显示）
  * ```
  *
  * 标题和 meta **不在同一个父容器的同一行**里 —— 这是结构保证，
  * 不是「CSS 让它看起来像两行」。CDP 断言会量两者的矩形是否纵向重叠。
+ *
+ * ## ⚠ 状态在最左，是**固定宽度列**（用户 `2026-11-18`）
+ *
+ * > 「状态需要放在最左边。可交互的东西被 label 顺位放在右边是不合理的。
+ * >  如果 label 太长，那么状态按钮的位置甚至会变化。所以他至少放在 label 的左边。
+ * >  但我希望他放在编号的左边。」
+ *
+ * 根因是**「label 太长，状态按钮的位置会变化」**。所以光把它挪到 label 左边
+ * 不够 —— 它必须在**不受 label 宽度影响**的容器里。
+ *
+ * ⇒ `.detail-status-col` 是 `flex: 0 0 92px`（固定宽度），是 meta 行的**第一个**
+ *   子元素。它的 left 只由容器的 padding 决定，和后面几个 label 多宽完全无关。
+ *   两条 CDP 断言钉住：① status.left < id.left ② 超长 label 下 status.left 不变。
+ *
+ * ⚠ 结构上还有一道保险：状态是 `head.status`（独立字段），**不在 `head.meta` 数组里**
+ *   ⇒ 本文件里只有一个地方能画它，想把它混进 label 行得先改类型。
  *
  * ## 只 map `pure/card-detail.ts` 的表
  *
@@ -105,8 +121,18 @@ export function DetailHead(props: DetailHeadProps): ReactNode {
 				)}
 			</div>
 
-			{/* ② meta 行：五格，顺序由 pure 定 */}
+			{/*
+			 * ② meta 行：**状态在最左的固定宽度列**，然后是四格。
+			 *
+			 * ⚠ 状态**不在** `head.meta` 里（它是 `head.status`）——
+			 *   这是类型级保证：本文件里只有这一处能画状态。
+			 *   `.detail-status-col` 的 `flex: 0 0 92px` 保证它的 left
+			 *   不随后面 label 变宽而漂移（用户 `2026-11-18` 的根因）。
+			 */}
 			<div className="detail-meta" data-detail-meta>
+				<span className="detail-status-col" data-meta="status" title="当前状态">
+					<StatusCell status={head.status.status} />
+				</span>
 				{head.meta.map((item) => (
 					<MetaItem key={item.kind} item={item} />
 				))}
@@ -183,20 +209,6 @@ function MetaItem(props: { readonly item: DetailMetaItem }): ReactNode {
 			return (
 				<span className="badge badge--template" data-meta="template" title={item.title}>
 					{item.text}
-				</span>
-			);
-		case 'status':
-			/*
-			 * 状态胶囊 = 圆点 + 中文名（复用 `StatusCell`，它已经处理了
-			 * `exactOptionalPropertyTypes` 下 `size` 的省略）。
-			 *
-			 * ⚠ 状态**菜单**归 C4 `StatusMenu`（另一个成员在做），
-			 *   所以这里只画不可点的胶囊。等 C4 合并后把这一格换成
-			 *   `<StatusMenu>`，`CardDetailProps.onTransition` 才真正接上。
-			 */
-			return (
-				<span className="detail-status" data-meta="status" title="当前状态">
-					<StatusCell status={item.status} />
 				</span>
 			);
 		default:
