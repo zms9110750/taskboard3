@@ -49,7 +49,12 @@ export default defineConfig({
 	 */
 	deps: {
 		neverBundle: ['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client'],
-		alwaysBundle: ['@taskboard/protocol'],
+		/**
+		 * `marked` **必须打进来**：宿主冻结模块表里没有它，留 external 会
+		 * 在浏览器里 `require("marked")` 直接抛 —— 而且是**运行到 markdown 才炸**，
+		 * 面板打开时不报错。所以它和 `@taskboard/protocol` 一样属于 `alwaysBundle`。
+		 */
+		alwaysBundle: ['@taskboard/protocol', 'marked'],
 	},
 
 	/**

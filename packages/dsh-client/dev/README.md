@@ -65,6 +65,10 @@ node --test "packages/dsh-client/dev/test/*.test.ts"
 | `components/CardRow.tsx` | 86 | ✅ 可用 |
 | `test/filter-box.test.ts` | 228 | 27 条 |
 | `test/card-view.test.ts` | 170 | 28 条 |
+| `pure/markdown-tokens.ts` | 899 | ✅ 可用（46 单测，含 12 条 XSS）|
+| `components/Markdown.tsx` | 108 | ✅ 可用 |
+| `test/markdown.test.ts` | 391 | 46 条 |
+| `preview/markdown/*` | 606 | 脚手架（GFM 样本 + XSS 样本 + CDP 断言）|
 | `preview/*` | 665 | 脚手架，长期保留 |
 
 ## 定稿迁移流程

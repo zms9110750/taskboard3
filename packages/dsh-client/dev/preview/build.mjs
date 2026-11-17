@@ -115,6 +115,23 @@ const js = output
 	.map((one) => one.code)
 	.join('\n');
 
+/*
+ * ⚠ 产物要内联进 `<script>…</script>` ⇒ **必须**转义两个序列，缺一个都会坏。
+ *
+ * 1. `</script` → `<\/script`
+ * 2. `<!--`    → `<\!--`
+ *
+ * 只做第 1 条**不够**：HTML 的 script 数据有「escaped / double-escaped」状态，
+ * `<!--` 会把 tokenizer 推进 escaped 状态，之后真正的 `</script>` 就不再关标签了。
+ *
+ * **实测症状**（本仓库第一次跑 markdown 预览时撞上的）：`document.scripts[0]`
+ * 的 `textContent` 一直延伸到 `</html>`，页面白屏、控制台**零报错** ——
+ * 因为它根本没报错，只是整段脚本都被当成了文本。
+ *
+ * 两个替换都不改变 JS 语义：`\!` 在字符串和正则里都等价于 `!`，`\/` 等价于 `/`。
+ */
+const inlineJs = js.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--');
+
 await bundle.close();
 
 /* ── 拼 HTML ── */
@@ -129,7 +146,7 @@ const html = `<!doctype html>
 </head>
 <body>
 <div id="root"></div>
-<script>${js}</script>
+<script>${inlineJs}</script>
 </body>
 </html>`;
 
