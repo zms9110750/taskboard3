@@ -208,27 +208,34 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   padding-right:10px;
 }
 
-/* 正方形和右侧内容的间距：12px（用户 2026-11-17 说太宽，从 12 收到 8） */
-.task-card{gap:8px}
+/*
+ * 正方形和右侧内容的间距：**0**（用户 `2026-11-18`：
+ * 「我不知道你的状态到 label 里面的间隔是怎么设置的。但这里应该试试不加任何间隔。」）
+ * 总宽度同时收了 20px（58 + 8 → 46 + 0）。
+ */
+.task-card{gap:0}
 .task-card__status.is-compact{align-items:center}
 
 /* ── 左侧正方形：编号在上、状态在下 ── */
 .task-card__square{
-  flex:0 0 58px;display:flex;flex-direction:column;justify-content:center;gap:3px;
+  flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
   min-width:0;
 }
 .task-card__square-id{
   font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-/* 正方形里的状态：小一号、左对齐、不要固定 96px */
+/*
+ * 正方形里的状态：9px、点线间距 3px（不是 4px）—— 46px 宽要塞下「需要信息」四个字。
+ * 4 字 × 9px + 点 6px + 间距 3px = 45px，刚好。
+ */
 .task-card__status.is-compact{
-  flex:0 0 auto;font-size:10px;gap:4px;color:var(--text-weak);
+  flex:0 0 auto;font-size:9px;gap:3px;color:var(--text-weak);
 }
 
 /* ── 右侧：一行 ── */
 .task-card__body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.task-card__line{display:flex;align-items:center;gap:8px;min-width:0}
+.task-card__line{display:flex;align-items:center;gap:6px;min-width:0}
 
 /*
  * 三个 label **横排不换行**（用户 2026-11-17：
@@ -262,22 +269,35 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
  * ⇒ 可以用共享变量（`--bg-card` / `--border` / `--accent` / `--text-weak` …），
  *   但**不要改共享的类名**（那是别的组件的）。
  *
- * 视觉规格照抄旧版 `taskboard2/packages/browser/public/styles.css:293-395`：
- *   · chip  = 圆角胶囊；`is-current` 黑底白字；`is-viewing` accent 描边；
- *             `is-archived` 虚线 + 降透明（hover 恢复）；
- *             当前 + 归档 = 虚线 + **不降透明**（它是当前在用的空间）
- *   · 左侧按钮 `.space-action` 固定 `min-width` —— 两种模式的文案长度不同
- *             （「当前空间」/「激活此为当前空间」/「已归档」），
- *             不加的话按钮宽度会跳，整行跟着抖。
+ * ## 2026-11-18 改版（用户原话）
+ *
+ * > 「把『激活当前空间』和『当前空间』，改为『当前空间』，然后通过着色来表示
+ * >  现在就是『当前空间』。那个 6 个字的占用文档流太宽了。然后现在这个组件的条，
+ * >  太窄了。选中按钮的上下边框被遮挡了。」
+ *
+ * > 「这个组件后续还要换。因为如果只有一行，那么在拖动的时候，
+ * >  是无法精确的点到横向滚动条的。这个视觉效果需要重新设计。」
+ *
+ * ## 「上下边框被遮挡」的**真实原因**（实测，不是猜）
+ *
+ * 原来选中态用的是 `outline: 2px + outline-offset: 1px` ——
+ * **outline 画在 border-box 外面，且不计入 `getBoundingClientRect()`**。
+ * 而 `.space-bar__scroll` 是 `overflow-x: auto`，只给了 `padding: 1px 2px`。
+ * ⇒ 上下各只有 1px 空间，outline 要占 3px ⇒ **被滚动容器裁掉 2px**。
+ *   横向更糟：贴边的第一个/最后一个 chip 的 outline 左右也被裁。
+ *
+ * ⇒ 根治：选中态**不用 outline**，改成
+ *   `border-color` + `box-shadow: inset 0 0 0 1px` —— 两者都画在盒子**内部**，
+ *   物理上不可能被 overflow 裁掉。（inset 阴影也不影响布局尺寸。）
+ *   同时给容器 4px 内边距，让 hover 的描边也有位置。
  */
 
 /* ── 通用小按钮（旧版 `.ghost-btn`）── */
-/* preview.css 里没有它（那是 CardRow 的预览，没用过 ghost-btn），所以在这里定义。 */
 .ghost-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	padding: 3px 9px;
+	padding: 4px 10px;
 	border: 1px solid var(--border);
 	border-radius: 6px;
 	font-size: 12px;
@@ -296,10 +316,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	color: var(--text);
 }
 .ghost-btn:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
+	opacity: 0.45;
+	cursor: default;
 }
-/* 「显示已归档」开着 —— 淡蓝底 + accent 边框，视觉强度低于 chip 的黑底 */
+/* 「显示已归档」开着 —— 淡蓝底 + accent 边框 */
 .ghost-btn.is-active {
 	border-color: var(--accent);
 	color: var(--accent);
@@ -309,43 +329,78 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 /* ── 整行 ── */
 .space-bar {
 	display: flex;
-	align-items: center;
-	gap: 8px;
+	align-items: flex-start;
+	gap: 10px;
 	min-width: 0;
-	padding: 2px 0;
+	/*
+	 * ⚠ 原来 `padding: 2px 0` ⇒ 整行 30px，按钮 24px，两侧各只剩 3px。
+	 *   用户说「条太窄了」。给到 6px 上下 ⇒ 行高 36px，按钮四周有呼吸。
+	 */
+	padding: 6px 0;
 }
 
-/* 左侧两个按钮固定，不随 chip 横向滚动 */
+/* 左侧按钮组固定，不随 chip 滚动 */
 .space-bar__actions {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	flex: none;
+	padding-top: 2px;
 }
 
-/* chip 区可横向滚动 */
-.space-bar__scroll {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex: 1 1 auto;
-	min-width: 0;
-	overflow-x: auto;
-	padding: 1px 2px; /* 给 is-viewing 的 outline 留位置，否则被 scroll 裁掉 */
-}
-.space-bar__scroll > * {
-	flex: 0 0 auto;
+/* ── 左侧那个**单个**按钮 ── */
+/*
+ * ⚠ 固定最小宽度：文案合并后已经是同一句「当前空间」，
+ *   但「显示已归档=开」时文案是「已归档」，两种仍需等宽，否则切开关时整行抖。
+ */
+.space-action {
+	min-width: 84px;
+	justify-content: center;
 }
 
 /*
- * 左侧那个**单个**按钮。
- * 固定最小宽度：三种文案长度不同，不给就会跳。
+ * ## 强调档 —— 文案合并后**唯一**的区分手段
+ *
+ * 用户：「改为『当前空间』，然后通过着色来表示现在就是『当前空间』。」
+ *
+ * `current`（实心徽章）vs `action`（描边按钮）—— 两者**看起来就不是一类东西**，
+ * 所以即使用户读到同一个词，也知道哪个能点。
  */
-.space-action {
-	min-width: 108px;
-	justify-content: center;
+
+/* 已是当前空间：实心浅底 + accent 边框，像「你在这里」的标记，不像按钮 */
+.space-action.is-emphasis-current {
+	border-color: var(--accent);
+	background: #eef4ff;
+	color: var(--accent);
+	font-weight: 600;
+	cursor: default;
 }
-/* 「已归档」的**选中**态（这个空间确实已归档）—— 黑底反白 */
+.space-action.is-emphasis-current:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+/* 可以切过去：描边按钮，hover 才亮 —— 明确是「一个能点的东西」 */
+.space-action.is-emphasis-action {
+	border-color: var(--border);
+	background: var(--bg-card);
+	color: var(--text-secondary);
+}
+.space-action.is-emphasis-action:hover:not(:disabled) {
+	border-color: var(--accent);
+	color: var(--accent);
+	background: #f5f9ff;
+}
+
+/* 没有可作用的空间：普通灰 */
+.space-action.is-emphasis-plain {
+	color: var(--text-weak, #9aa1ad);
+}
+
+/*
+ * 「已归档」的**选中**态（这个空间确实已归档）—— 黑底反白。
+ * ⚠ 放最后：要盖掉上面 emphasis 的底色（第 2/4 行都是 checked + emphasis=action）。
+ */
 .space-action.is-on {
 	border-color: var(--text);
 	background: var(--text);
@@ -353,15 +408,121 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 }
 .space-action.is-on:hover:not(:disabled) {
 	border-color: var(--text);
+	background: var(--text);
 	color: #fff;
 }
 
-/* ── chip ── */
+/* ══════════════════════════════════════════════════════════
+   布局变体
+   ══════════════════════════════════════════════════════════ */
+
+/* 四种变体共用的 chip 容器底子 */
+.space-bar__wrap,
+.space-bar__scroll {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* ── A · 换行（推荐）：没有滚动条，不存在「拖不到」 ── */
+.space-bar--wrap .space-bar__wrap,
+.space-bar--compact .space-bar__wrap {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	/* 顶部对齐：换行后左侧按钮仍贴第一行 */
+	padding: 2px 2px 2px 0;
+}
+
+/* ── B · 单行 + 粗滚动条 ── */
+.space-bar--scroll .space-bar__scroll {
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 6px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	/* 上下留 6px：滚动条不贴按钮，鼠标好瞄准 */
+	padding: 4px 2px 6px;
+	scrollbar-width: auto;
+}
+.space-bar__scroll > * {
+	flex: 0 0 auto;
+}
+
+/* 把滚动条做粗（用户原话：「拖的时候无法精确点到横向滚动条」）*/
+.space-bar--scroll .space-bar__scroll::-webkit-scrollbar {
+	height: 12px;
+}
+.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-track {
+	background: #eef1f5;
+	border-radius: 6px;
+}
+.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-thumb {
+	background: #c2c8d2;
+	border-radius: 6px;
+	border: 2px solid #eef1f5;
+}
+.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-thumb:hover {
+	background: #9aa1ad;
+}
+
+/* ── D · 单行 + 左右翻页按钮（滚动条隐藏，改用点大目标）── */
+.space-bar__peruse {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.space-bar--arrows .space-bar__scroll--nobar {
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 6px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding: 2px;
+	scrollbar-width: none;
+}
+.space-bar--arrows .space-bar__scroll--nobar::-webkit-scrollbar {
+	display: none;
+}
+.space-bar__arrow {
+	flex: none;
+	width: 26px;
+	height: 26px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-card);
+	color: var(--text-secondary);
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+	font-family: inherit;
+}
+.space-bar__arrow:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+/* ── C · 折叠：只显示当前 + 查看 ── */
+.space-chip--more {
+	border-style: dashed;
+	color: var(--text-weak, #9aa1ad);
+}
+
+/* ══════════════════════════════════════════════════════════
+   chip
+   ══════════════════════════════════════════════════════════ */
+
 .space-chip {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
-	padding: 3px 10px;
+	padding: 4px 11px;
 	border: 1px solid var(--border);
 	border-radius: 999px;
 	font-size: 12px;
@@ -370,6 +531,13 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	background: var(--bg-card);
 	cursor: pointer;
 	white-space: nowrap;
+	transition:
+		border-color 0.12s,
+		background 0.12s;
+}
+
+.space-chip:hover {
+	border-color: var(--text-weak, #9aa1ad);
 }
 
 /* 当前**激活**空间：黑底白字（语义最重） */
@@ -380,18 +548,26 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 }
 
 /*
- * 正在**查看**的空间：accent 描边。
- * ⚠ 与 `.is-current` 是两件事，可以同时成立（默认选中就是当前空间）。
+ * 正在**查看**的空间：accent 强调。
+ *
+ * ⚠ **不用 outline** —— 见文件头「上下边框被遮挡」的解释：
+ *   outline 画在 border-box 外面、不计入 rect、会被 `overflow` 裁掉。
+ *   `border-color + inset box-shadow` 都画在盒子内部，物理上不可能被裁。
+ *   视觉上仍是「2px 的 accent 环」，因为 1px 边框 + 1px inset 阴影叠加。
  */
 .space-chip.is-viewing {
-	outline: 2px solid var(--accent);
-	outline-offset: 1px;
+	border-color: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* 当前 + 查看：黑底上再加 accent 内环，仍然看得见 */
+.space-chip.is-current.is-viewing {
+	border-color: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 /*
  * 已归档：**虚线 + 降透明**（用户 2026-11-09：
  * 「已归档。的黑白状态，就是没启用的当前空间。」）
- * ⇒ 它就是「未启用」的白底黑字，不是另一种配色。
  */
 .space-chip.is-archived {
 	border-style: dashed;
@@ -401,10 +577,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	opacity: 1;
 }
 
-/*
- * 当前 + 已归档（异常态）：虚线仍然表「归档了」，但**不降透明** ——
- * 它是当前在用的空间，不该看起来像「不参与日常」。
- */
+/* 当前 + 已归档（异常态）：虚线仍表「归档了」，但**不降透明** */
 .space-chip.is-current.is-archived {
 	opacity: 1;
 }
@@ -416,11 +589,14 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 }
 
 .space-chip--add {
-	padding: 3px 8px;
+	padding: 4px 9px;
 	color: var(--text-weak, #9aa1ad);
 }
 
-/* ── 预览页专用：场景块 ── */
+/* ══════════════════════════════════════════════════════════
+   预览页专用
+   ══════════════════════════════════════════════════════════ */
+
 .pv-case {
 	margin-bottom: 16px;
 }
@@ -434,7 +610,31 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	font-family: var(--mono, ui-monospace, Consolas, monospace);
 }
 
-/* ── 预览页专用：回调日志 ── */
+/* 布局切换按钮组 */
+.pv-layouts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+.pv-layouts button {
+	padding: 5px 12px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-card);
+	color: var(--text-secondary);
+	font-size: 12px;
+	font-family: inherit;
+	cursor: pointer;
+}
+.pv-layouts button.is-on {
+	border-color: var(--accent);
+	background: #eef4ff;
+	color: var(--accent);
+	font-weight: 600;
+}
+
+/* 回调日志 */
 .pv-events {
 	margin: 0 0 10px;
 	padding-left: 18px;
@@ -17332,10 +17532,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		const isCurrent = selected !== void 0 && selected.id === currentId;
 		if (!showArchived) return {
 			kind: "activate",
-			label: isCurrent ? "当前空间" : "激活此为当前空间",
+			label: "当前空间",
 			disabled: selected === void 0 || isCurrent,
 			checked: false,
-			title: selected === void 0 ? "还没有任务空间" : isCurrent ? "这已经是当前激活空间" : "把正在查看的空间激活为当前空间（写操作才作用于它）",
+			emphasis: selected === void 0 ? "plain" : isCurrent ? "current" : "action",
+			title: selected === void 0 ? "还没有任务空间" : isCurrent ? "这就是当前空间，写操作都作用在它上面" : `点一下把「${selected.displayName}」设为当前空间（写操作才作用于它）`,
 			workspaceId: selected?.id
 		};
 		const isArchived = selected?.archived === true;
@@ -17345,6 +17546,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			label: currentCannotArchive ? "当前空间" : "已归档",
 			disabled: selected === void 0 || currentCannotArchive,
 			checked: isArchived,
+			emphasis: selected === void 0 ? "plain" : currentCannotArchive ? "current" : "action",
 			title: selected === void 0 ? "还没有任务空间" : currentCannotArchive ? "当前激活的任务空间不能归档" : isArchived ? "点一下取消归档" : "点一下归档",
 			workspaceId: selected?.id
 		};
@@ -17625,6 +17827,13 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	var import_jsx_runtime = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_jsx_runtime_development();
 	})))();
+	/** 布局变体的中文名（预览页的切换按钮用）。 */
+	const LAYOUT_LABELS = {
+		wrap: "A 换行（推荐）",
+		scroll: "B 单行 + 粗滚动条",
+		arrows: "D 单行 + 左右翻页",
+		compact: "C 折叠（当前+查看）"
+	};
 	/**
 	* 空间 chip 行。
 	*
@@ -17644,37 +17853,155 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			}
 			props.onToggleArchived(hit.id);
 		};
-		const actionCls = ["ghost-btn", "space-action"];
+		const actionCls = [
+			"ghost-btn",
+			"space-action",
+			`is-emphasis-${action.emphasis}`
+		];
 		if (action.checked) actionCls.push("is-on");
+		const layout = props.layout ?? "wrap";
+		const chipNodes = chips.map((chip) => {
+			const cls = ["space-chip"];
+			if (chip.isCurrent) cls.push("is-current");
+			if (chip.isArchived) cls.push("is-archived");
+			if (chip.isViewing) cls.push("is-viewing");
+			return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+				type: "button",
+				className: cls.join(" "),
+				"data-chip-id": chip.id,
+				"data-chip-intent": chip.intent,
+				"data-chip-current": String(chip.isCurrent),
+				"data-chip-archived": String(chip.isArchived),
+				"data-chip-viewing": String(chip.isViewing),
+				title: chip.title,
+				onClick: () => props.onView(chip.id),
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "space-chip__name",
+					children: chip.label
+				}), chip.count === null ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+					className: "space-chip__count",
+					children: chip.count
+				})]
+			}, chip.id);
+		});
+		const addNode = /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+			type: "button",
+			className: "space-chip space-chip--add",
+			"data-create": "1",
+			title: "新建任务板",
+			onClick: props.onCreate,
+			children: "+"
+		});
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-			className: "space-bar",
+			className: `space-bar space-bar--${layout}`,
+			"data-layout": layout,
 			"data-current": props.currentId,
 			"data-viewing": props.viewingId,
 			"data-show-archived": String(props.showArchived),
-			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "space-bar__actions",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "space-bar__actions",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: actionCls.join(" "),
+						"data-space-action": "1",
+						"data-action-kind": action.kind,
+						"data-checked": String(action.checked),
+						"data-emphasis": action.emphasis,
+						disabled: action.disabled,
+						title: action.title,
+						onClick: runAction,
+						children: action.label
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: `ghost-btn space-toggle${toggle.active ? " is-active" : ""}`,
+						"data-archived-toggle": "1",
+						"aria-pressed": toggle.active,
+						title: toggle.title,
+						onClick: props.onToggleShowArchived,
+						children: toggle.label
+					})]
+				}),
+				layout === "wrap" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "space-bar__wrap",
+					"data-chip-scope": "wrap",
+					children: [chipNodes, addNode]
+				}) : null,
+				layout === "scroll" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "space-bar__scroll",
+					"data-chip-scope": "scroll",
+					children: [chipNodes, addNode]
+				}) : null,
+				layout === "arrows" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(ScrollWithArrows, { children: [chipNodes, addNode] }) : null,
+				layout === "compact" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CompactChips, {
+					chips,
+					addNode,
+					onView: props.onView
+				}) : null
+			]
+		});
+	}
+	/**
+	* D · 单行 + 左右翻页按钮。
+	*
+	* 为什么不用滚动条：用户 `2026-11-18`
+	* > 「如果只有一行，那么在拖动的时候，是无法精确的点到横向滚动条的。」
+	*
+	* ⇒ 把「拖动」换成「点按钮」—— 一个 28×28 的按钮比 6px 高的滚动条好点得多。
+	*/
+	function ScrollWithArrows(props) {
+		const box = (0, import_react.useRef)(null);
+		const page = (dir) => {
+			const el = box.current;
+			if (el === null) return;
+			el.scrollBy({
+				left: dir * Math.max(80, Math.round(el.clientWidth * .75)),
+				behavior: "smooth"
+			});
+		};
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "space-bar__peruse",
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 					type: "button",
-					className: actionCls.join(" "),
-					"data-space-action": "1",
-					"data-action-kind": action.kind,
-					"data-checked": String(action.checked),
-					disabled: action.disabled,
-					title: action.title,
-					onClick: runAction,
-					children: action.label
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					className: "space-bar__arrow",
+					"data-arrow": "prev",
+					"aria-label": "向前翻",
+					onClick: () => page(-1),
+					children: "‹"
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "space-bar__scroll space-bar__scroll--nobar",
+					ref: box,
+					"data-chip-scope": "arrows",
+					children: props.children
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 					type: "button",
-					className: `ghost-btn space-toggle${toggle.active ? " is-active" : ""}`,
-					"data-archived-toggle": "1",
-					"aria-pressed": toggle.active,
-					title: toggle.title,
-					onClick: props.onToggleShowArchived,
-					children: toggle.label
-				})]
-			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "space-bar__scroll",
-				children: [chips.map((chip) => {
+					className: "space-bar__arrow",
+					"data-arrow": "next",
+					"aria-label": "向后翻",
+					onClick: () => page(1),
+					children: "›"
+				})
+			]
+		});
+	}
+	/**
+	* C · 折叠布局：只显示「当前」和「正在查看」两个 chip，其余收进「全部 N」。
+	*
+	* ⚠ 展开后仍然是 wrap 布局（不引入滚动条）—— 折叠只是把「默认可见的数量」降下来。
+	*/
+	function CompactChips(props) {
+		const [expanded, setExpanded] = (0, import_react.useState)(false);
+		const visible = expanded ? props.chips : props.chips.filter((one) => one.isCurrent || one.isViewing);
+		const hidden = props.chips.length - visible.length;
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "space-bar__wrap",
+			"data-chip-scope": "compact",
+			"data-expanded": String(expanded),
+			children: [
+				visible.map((chip) => {
 					const cls = ["space-chip"];
 					if (chip.isCurrent) cls.push("is-current");
 					if (chip.isArchived) cls.push("is-archived");
@@ -17697,28 +18024,39 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 							children: chip.count
 						})]
 					}, chip.id);
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+				}),
+				hidden > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 					type: "button",
-					className: "space-chip space-chip--add",
-					"data-create": "1",
-					title: "新建任务板",
-					onClick: props.onCreate,
-					children: "+"
-				})]
-			})]
+					className: "space-chip space-chip--more",
+					"data-expand": "1",
+					onClick: () => setExpanded(true),
+					children: ["全部 ", props.chips.length]
+				}) : null,
+				expanded ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					type: "button",
+					className: "space-chip space-chip--more",
+					"data-collapse": "1",
+					onClick: () => setExpanded(false),
+					children: "收起"
+				}) : null,
+				props.addNode
+			]
 		});
 	}
 	// dev/preview/spacebar/main.tsx
 	/**
 	* SpaceBar 预览入口 —— **只在 `dev/preview/spacebar/` 里，不碰根 `main.tsx`**。
 	*
-	* 两段：
+	* ## 五段
 	*
-	* ① **活的一行**（受控状态）—— 用来验「点 chip 只改 viewing，不改 current」。
-	* ② **静态矩阵** —— 五个场景，每个场景一套固定状态，用来验那张表的
-	*    按钮文案 / `disabled` / 点下去派发哪个回调。
+	* ① **布局变体对比**（用户 `2026-11-18` 要求重新设计视觉）——
+	*    四个方案并排 + 一个切换按钮组，直接看哪个可用。
+	* ② **活的一行**（受控状态）—— 验「点 chip 只改 viewing，不改 current」。
+	* ③ **静态矩阵** —— 六个场景，固定状态，验那张表的文案 / `disabled` / 派发回调。
+	* ④ **回调日志**。
+	* ⑤ **规则表**。
 	*
-	* 之所以要 ② 而不能只靠 ①：① 里想凑出「显示已归档=开 + 当前空间=已归档」
+	* 之所以要 ③ 而不能只靠 ②：② 里想凑出「显示已归档=开 + 当前空间=已归档」
 	* 这种异常态，得先在界面上点好几步；而断言需要**每格都能直接读到**。
 	*/
 	const ws = (id, displayName, archived) => ({
@@ -17727,12 +18065,128 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		archived,
 		createdAt: 0
 	});
+	const CORE = ws("ws-core", "核心", false);
+	const CODE = ws("ws-code", "代码", false);
+	const WRITE = ws("ws-write", "写作", false);
+	const OLD = ws("ws-old", "旧空间", true);
 	const ALL = [
-		ws("ws-core", "核心", false),
-		ws("ws-code", "代码", false),
-		ws("ws-write", "写作", false),
-		ws("ws-old", "旧空间", true)
+		CORE,
+		CODE,
+		WRITE,
+		OLD
 	];
+	/** 多空间夹具 —— 专门用来把单行撑爆，暴露「拖不到滚动条」。 */
+	const MANY = [
+		CORE,
+		CODE,
+		WRITE,
+		ws("ws-a", "调研", false),
+		ws("ws-b", "归档区", false),
+		ws("ws-c", "设计稿", false),
+		ws("ws-d", "外部协作", false),
+		ws("ws-e", "历史遗留", false),
+		ws("ws-f", "实验", false),
+		ws("ws-g", "文档", false),
+		ws("ws-h", "测试", false),
+		ws("ws-i", "发布", false),
+		OLD
+	];
+	const LAYOUTS = [
+		"wrap",
+		"scroll",
+		"arrows",
+		"compact"
+	];
+	function LayoutSection(props) {
+		const [currentId, setCurrentId] = (0, import_react.useState)("ws-core");
+		const [viewingId, setViewingId] = (0, import_react.useState)("ws-code");
+		const [showArchived, setShowArchived] = (0, import_react.useState)(false);
+		const bar = (one) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SpaceBar, {
+			workspaces: MANY,
+			currentId,
+			viewingId,
+			showArchived,
+			cardCount: 7,
+			layout: one,
+			onView: (id) => {
+				props.onEvent(`layout/${one}/view:${id}`);
+				setViewingId(id);
+			},
+			onActivate: (id) => {
+				props.onEvent(`layout/${one}/activate:${id}`);
+				setCurrentId(id);
+				setViewingId(id);
+			},
+			onToggleArchived: (id) => props.onEvent(`layout/${one}/toggle-archived:${id}`),
+			onToggleShowArchived: () => {
+				props.onEvent(`layout/${one}/toggle-show`);
+				setShowArchived((one2) => !one2);
+			},
+			onCreate: () => props.onEvent(`layout/${one}/create`)
+		});
+		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+			className: "pv-block",
+			children: [
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "① 布局变体对比（13 个空间，故意撑爆单行）" }),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+					className: "pv-note",
+					style: { marginTop: 0 },
+					children: "用户原话：「如果只有一行，那么在拖动的时候，是无法精确的点到横向滚动条的。」 ⇒ 这不是审美问题，是**够不到**。四个方案都做出来了，切换看。"
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "pv-layouts",
+					"data-layout-switch": true,
+					children: LAYOUTS.map((one) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: props.layout === one ? "is-on" : "",
+						"data-layout-option": one,
+						onClick: () => props.onChange(one),
+						children: LAYOUT_LABELS[one]
+					}, one))
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					"data-layout-live": true,
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "pv-case",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "pv-case__note",
+							children: [
+								"当前变体：",
+								props.layout,
+								" —— 拖动 / 滚动 / 换行行为直接看这里"
+							]
+						}), bar(props.layout)]
+					})
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "pv-state",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "pv-k",
+							children: "current"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", {
+							"data-layout-current": true,
+							children: currentId
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "pv-k",
+							children: "viewing"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", {
+							"data-layout-viewing": true,
+							children: viewingId
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "pv-k",
+							children: "showArchived"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", {
+							"data-layout-show": true,
+							children: String(showArchived)
+						})] })
+					]
+				})
+			]
+		});
+	}
 	function Live(props) {
 		const [currentId, setCurrentId] = (0, import_react.useState)("ws-core");
 		const [viewingId, setViewingId] = (0, import_react.useState)("ws-core");
@@ -17741,7 +18195,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 			className: "pv-block",
 			children: [
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "① 活的一行（点 chip 只改「正在查看」）" }),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 活的一行（点 chip 只改「正在查看」）" }),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					"data-live": true,
 					children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SpaceBar, {
@@ -17808,7 +18262,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	const SCENARIOS = [
 		{
 			key: "off-other",
-			note: "表第 1 行：关 + 查看的不是当前 ⇒ 激活此为当前空间（可点）",
+			note: "表第 1 行：关 + 查看的不是当前 ⇒ 「当前空间」可点（emphasis=action）",
 			workspaces: ALL,
 			currentId: "ws-core",
 			viewingId: "ws-code",
@@ -17817,7 +18271,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		},
 		{
 			key: "off-current",
-			note: "表第 1 行后半：关 + 查看的就是当前 ⇒ 当前空间（禁用）",
+			note: "表第 1 行后半：关 + 查看的就是当前 ⇒ 「当前空间」禁用（emphasis=current）",
 			workspaces: ALL,
 			currentId: "ws-core",
 			viewingId: "ws-core",
@@ -17864,7 +18318,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	function Matrix(props) {
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 			className: "pv-block",
-			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "② 那张表的五个场景（固定状态，逐个断言）" }), SCENARIOS.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 那张表的六个场景（固定状态，逐个断言）" }), SCENARIOS.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "pv-case",
 				"data-scenario": s.key,
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
@@ -17887,6 +18341,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	}
 	function App() {
 		const [events, setEvents] = (0, import_react.useState)([]);
+		const [layout, setLayout] = (0, import_react.useState)("wrap");
 		const push = (what) => {
 			setEvents((one) => [...one, what]);
 		};
@@ -17896,17 +18351,22 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 					className: "pv-head",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "SpaceBar / 空间 chip 行" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { children: [
-						"chip 点击 = 查看（不改激活）· 左侧",
+						"文案已合并成「当前空间」· 靠 emphasis 着色区分「你在这里 / 可以切过去」· chip 点击 = 查看（不改激活）· 左侧",
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "一个" }),
-						"按钮随「显示已归档」换语义 · 「+」新建"
+						"按钮随「显示已归档」换语义"
 					] })]
+				}),
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LayoutSection, {
+					layout,
+					onChange: setLayout,
+					onEvent: push
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Live, { onEvent: push }),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Matrix, { onEvent: push }),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "③ 回调日志（点了什么就是什么）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 回调日志（点了什么就是什么）" }),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("ul", {
 							className: "pv-events",
 							"data-event-log": true,
@@ -17916,7 +18376,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 							}) : null, events.map((one, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", {
 								"data-event": one,
 								children: one
-							}, `${index}-${one}`))]
+							}, `${String(index)}-${one}`))]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 							type: "button",
@@ -17930,37 +18390,42 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 					className: "pv-block",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "④ 规则（用户原话）" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "⑤ 规则（用户原话）" }),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
 							className: "pv-table",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "显示已归档" }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "选中空间" }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "按钮" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "emphasis" }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", { children: "行为" })
 							] }) }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tbody", { children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "关" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "不是当前" }),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "激活此为当前空间" }) }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "当前空间" }) }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "action" }), "（描边，可点）"] }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "把正在查看的变成激活" })
 								] }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "关" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "就是当前" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "当前空间" }), "（禁用）"] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "current" }), "（实心）"] }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "无" })
 								] }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "开" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "不是当前" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "已归档" }) }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "action" }) }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "切换归档状态" })
 								] }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "开" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "就是当前（未归档）" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "当前空间" }), "（禁用）"] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "current" }) }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [
 										"无；",
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "不显示「已归档」" }),
@@ -17971,6 +18436,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "开" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: "就是当前（已归档，异常态）" }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "已归档" }), "（选中）"] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "action" }) }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "可点" }), " ⇒ 取消归档，修回正常"] })
 								] })
 							] })]
@@ -17982,11 +18448,27 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 								marginBottom: 0
 							},
 							children: [
+								"⚠ ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "文案合并的代价" }),
+								"：两个按钮都写「当前空间」，用户看不出区别。 两道防线：① ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "emphasis" }),
+								" 让它们**看起来不是一类东西**（实心徽章 vs 描边按钮）； ② ",
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "title" }),
+								" 说清后果（「这就是当前空间」/「点一下把『代码』设为当前空间」）。 两道防线都有单测。"
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+							className: "pv-note",
+							style: {
+								marginTop: 8,
+								marginBottom: 0
+							},
+							children: [
 								"⚠ 全部判决在 ",
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "dev/pure/space-bar.ts" }),
-								"，组件只做渲染 + 机械派发。 四行表由 ",
+								"，组件只做渲染 + 机械派发。 表由 ",
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "dev/test/space-bar.test.ts" }),
-								" 逐行断言。"
+								" 逐行断言（54 条）。"
 							]
 						})
 					]

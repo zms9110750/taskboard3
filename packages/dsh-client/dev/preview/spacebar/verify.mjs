@@ -155,12 +155,17 @@ const readScenario = (key) => ev(`(() => {
   const a = box.querySelector('[data-space-action="1"]');
   const btns = box.querySelectorAll('[data-space-action="1"]');
   const chips = [...box.querySelectorAll('[data-chip-id]')];
+  const acs = getComputedStyle(a);
   return {
     actionCount: btns.length,
     label: a.textContent.trim(),
     disabled: a.disabled,
     kind: a.dataset.actionKind,
     checked: a.dataset.checked === 'true',
+    emphasis: a.dataset.emphasis,
+    actionBg: acs.backgroundColor,
+    actionColor: acs.color,
+    actionBorder: acs.borderTopColor,
     title: a.title,
     barCurrent: box.dataset.current,
     barViewing: box.dataset.viewing,
@@ -173,6 +178,9 @@ const readScenario = (key) => ev(`(() => {
       viewing: c.dataset.chipViewing === 'true',
       intent: c.dataset.chipIntent,
       count: c.querySelector('.space-chip__count') ? c.querySelector('.space-chip__count').textContent : null,
+      boxShadow: getComputedStyle(c).boxShadow,
+      outlineWidth: getComputedStyle(c).outlineWidth,
+      outlineStyle: getComputedStyle(c).outlineStyle,
     })),
     hasAdd: box.querySelector('[data-create="1"]') !== null,
     toggleLabel: box.querySelector('[data-archived-toggle="1"]').textContent.trim(),
@@ -193,11 +201,11 @@ const readLive = () =>
   }))()`);
 
 /* ══════════════════════════════════════════════════════════ */
-console.log('\n═══ ① 只有一个操作按钮（不是两个独立按钮）═══');
-{
-	const boxes = await ev(`document.querySelectorAll('.space-bar').length`);
-	/* 1 个活的一行 + 6 个固定场景 = 7 行 */
-	expect('七个 SpaceBar 都渲染了（1 活 + 6 场景）', boxes, 7);
+	console.log('\n═══ ① 只有一个操作按钮（不是两个独立按钮）═══');
+	{
+		const boxes = await ev(`document.querySelectorAll('.space-bar').length`);
+		/* 1 个布局对比 + 1 个活的一行 + 6 个固定场景 = 8 行 */
+		expect('八个 SpaceBar 都渲染了（1 布局 + 1 活 + 6 场景）', boxes, 8);
 	const off = await readScenario('off-other');
 	expect('⭐ 左侧只有 1 个操作按钮', off.actionCount, 1);
 	expect('⭐ chip 的 intent 恒为 view', off.chips.map((c) => c.intent), ['view', 'view', 'view']);
@@ -210,10 +218,16 @@ console.log('\n═══ ① 只有一个操作按钮（不是两个独立按钮
 console.log('\n═══ ② 表第 1 行：显示已归档=关 ═══');
 {
 	const s = await readScenario('off-other');
-	expect('⭐ 文案 = 激活此为当前空间', s.label, '激活此为当前空间');
+	/*
+	 * ⚠ 文案**已合并**（用户 2026-11-18：「那个 6 个字的占用文档流太宽了」）。
+	 *   原来这里是「激活此为当前空间」，现在是「当前空间」——
+	 *   靠 `emphasis=action` 表示「可以切过去」。
+	 */
+	expect('⭐ 文案 = 当前空间（6 字已合并成 4 字）', s.label, '当前空间');
 	expect('⭐ 可点', s.disabled, false);
 	expect('kind = activate', s.kind, 'activate');
 	expect('checked = false', s.checked, false);
+	expect('⭐ emphasis = action（描边，像按钮）', s.emphasis, 'action');
 	expect('开关文案 = 显示已归档', s.toggleLabel, '显示已归档');
 	expect(
 		'归档 chip 不显示（关态过滤掉了）',
@@ -235,6 +249,17 @@ console.log('\n═══ ② 表第 1 行：显示已归档=关 ═══');
 		s.chips.map((c) => c.count),
 		[null, '7', null],
 	);
+	/*
+	 * ⚠ 「上下边框被遮挡」的回归断言：
+	 *   选中环**必须是 inset box-shadow**，不能是 outline ——
+	 *   outline 画在 border-box 外面、不计入 rect、会被 overflow 裁掉。
+	 *
+	 * ⚠ 不能用 `outlineWidth === '0px'` 判断：Chrome 的默认 `outline-width` 是
+	 *   `medium`（= 3px），即使 `outline-style: none` 也报 3px。
+	 *   **真正的判据是 `outline-style === 'none'`** —— 这里踩过一次，写下来。
+	 */
+	expect('⚠ 选中 chip 用 inset 阴影（不是 outline）', s.chips[1].boxShadow.includes('inset'), true);
+	expect('⚠ 选中 chip 不画 outline（会被 overflow 裁掉）', s.chips[1].outlineStyle, 'none');
 
 	await clearEvents();
 	await click(`document.querySelector('[data-scenario="off-other"] [data-space-action="1"]')`);
@@ -246,14 +271,30 @@ console.log('\n═══ ② 表第 1 行：显示已归档=关 ═══');
 console.log('\n═══ ③ 表第 1 行后半：关 + 查看的就是当前 ═══');
 {
 	const s = await readScenario('off-current');
-	expect('⭐ 文案 = 当前空间（不是「激活…」）', s.label, '当前空间');
+	expect('⭐ 文案 = 当前空间', s.label, '当前空间');
 	expect('⭐ 禁用', s.disabled, true);
 	expect('kind 仍是 activate（同一个按钮）', s.kind, 'activate');
+	expect('⭐ emphasis = current（实心，像徽章）', s.emphasis, 'current');
 	await clearEvents();
 	await click(`document.querySelector('[data-scenario="off-current"] [data-space-action="1"]')`);
 	await sleep(300);
 	expect('⭐ 禁用 ⇒ 点它什么都不派发', await readEvents(), []);
 	await shot('03-off-current.png');
+}
+
+console.log('\n═══ ③b ⭐ 文案合并后：两格都是「当前空间」，必须靠 emphasis + 颜色区分 ═══');
+{
+	const can = await readScenario('off-other');
+	const is = await readScenario('off-current');
+	expect('两格文案相同', [can.label, is.label], ['当前空间', '当前空间']);
+	expect('⚠ emphasis 必须不同', [can.emphasis, is.emphasis], ['action', 'current']);
+	expect('⚠ 背景色必须不同（着色区分）', can.actionBg !== is.actionBg, true);
+	expect('⚠ 文字色必须不同', can.actionColor !== is.actionColor, true);
+	expect('⚠ title 必须不同（说清点了会怎样）', can.title === is.title, false);
+	expect('可点那个的 title 说「点一下」', /点一下/.test(can.title), true);
+	expect('不可点那个的 title 说「这就是当前空间」', /这就是当前空间/.test(is.title), true);
+	console.log(`     可点: bg=${can.actionBg} color=${can.actionColor}`);
+	console.log(`     当前: bg=${is.actionBg} color=${is.actionColor}`);
 }
 
 console.log('\n═══ ④ 表第 2 行：开 + 非当前（未归档）═══');
@@ -327,7 +368,10 @@ console.log('\n═══ ⑦ 表第 4 行：开 + 当前空间（已归档，异
 	expect('这一格不能是「当前空间」（那是未归档时的防误导文案）', s.label === '当前空间', false);
 	expect(
 		'该 chip 同时 is-current + is-archived（异常态的视觉依据）',
-		s.chips.find((c) => c.id === 'ws-old'),
+		(() => {
+			const one = s.chips.find((c) => c.id === 'ws-old');
+			return one === undefined ? null : { id: one.id, label: one.label, current: one.current, archived: one.archived, viewing: one.viewing, intent: one.intent, count: one.count };
+		})(),
 		{
 			id: 'ws-old',
 			label: '旧空间',
@@ -372,14 +416,17 @@ console.log('\n═══ ⑧ ⭐ 点 chip 只改 viewing、不改 current ══
 		'7',
 	);
 
-	/* 点 chip 后活的那行的按钮文案应该从「当前空间」变成「激活此为当前空间」 */
+	/* 点 chip 后活的那行的按钮：文案不变，但 emphasis 从 current 变成 action */
 	const liveAction = await ev(`(() => {
     const a = document.querySelector('[data-live] [data-space-action="1"]');
-    return { label: a.textContent.trim(), disabled: a.disabled };
+    const s = getComputedStyle(a);
+    return { label: a.textContent.trim(), disabled: a.disabled, emphasis: a.dataset.emphasis, bg: s.backgroundColor };
   })()`);
-	expect('⭐ 查看非当前 ⇒ 按钮变「激活此为当前空间」且可点', liveAction, {
-		label: '激活此为当前空间',
+	expect('⭐ 查看非当前 ⇒ 按钮变可点（文案仍是「当前空间」）', liveAction, {
+		label: '当前空间',
 		disabled: false,
+		emphasis: 'action',
+		bg: 'rgb(255, 255, 255)',
 	});
 
 	/* 点当前空间（ws-core）的 chip —— 也是 view，不是 activate */
@@ -458,14 +505,108 @@ console.log('\n═══ ⑫ DOM 契约（其他组件/测试要依赖的钩子�
     return {
       spaceBar: box.classList.contains('space-bar'),
       hasActions: box.querySelector('.space-bar__actions') !== null,
-      hasScroll: box.querySelector('.space-bar__scroll') !== null,
+      hasChipScope: box.querySelector('[data-chip-scope]') !== null,
+      layout: box.dataset.layout,
       actionCount: box.querySelectorAll('.space-bar__actions button').length,
     };
   })()`);
 	expect('根 class = space-bar', hooks.spaceBar, true);
 	expect('左侧 actions 容器存在', hooks.hasActions, true);
-	expect('chip 滚动容器存在', hooks.hasScroll, true);
+	expect('chip 容器存在（带 data-chip-scope）', hooks.hasChipScope, true);
+	expect('⭐ 默认布局 = wrap（换行，没有滚动条）', hooks.layout, 'wrap');
 	expect('⭐ 左侧恰好 2 个按钮：那**一个**操作按钮 + 「显示已归档」', hooks.actionCount, 2);
+}
+
+console.log('\n═══ ⑬ 布局变体：四个都能切、都能用 ═══');
+{
+	for (const layout of ['wrap', 'scroll', 'arrows', 'compact']) {
+		await ev(`document.querySelector('[data-layout-option="${layout}"]').click()`);
+		await sleep(400);
+		const info = await ev(`(() => {
+      const box = document.querySelector('[data-layout-live] .space-bar');
+      const scope = box.querySelector('[data-chip-scope]');
+      const s = getComputedStyle(scope);
+      return {
+        layout: box.dataset.layout,
+        chipCount: box.querySelectorAll('[data-chip-id]').length,
+        overflowX: s.overflowX,
+        wrap: s.flexWrap,
+        hasArrows: box.querySelector('[data-arrow="prev"]') !== null,
+        hasExpand: box.querySelector('[data-expand="1"]') !== null,
+      };
+    })()`);
+		expect(`⭐ 切到 ${layout} ⇒ data-layout 跟上`, info.layout, layout);
+		expect(`${layout}: chip 还在（≥1）`, info.chipCount > 0, true);
+		expect(`${layout}: 滚动条上没有 overflow-hidden 的假象`, info.overflowX !== 'hidden', true);
+
+		if (layout === 'wrap') {
+			expect('⭐ wrap: 换行 + 不横向滚动（用户要的「不用拖」）', [info.wrap, info.overflowX], ['wrap', 'visible']);
+		}
+		if (layout === 'scroll') {
+			expect('scroll: 单行 + 横向溢出', [info.wrap, info.overflowX], ['nowrap', 'auto']);
+		}
+		if (layout === 'arrows') {
+			expect('⭐ arrows: 有左右翻页按钮（点大目标，不用拖）', info.hasArrows, true);
+		}
+		if (layout === 'compact') {
+			expect('⭐ compact: 折叠 ⇒ 出现「全部 N」', info.hasExpand, true);
+		}
+	}
+	await ev(`document.querySelector('[data-layout-option="wrap"]').click()`);
+	await sleep(300);
+	await shot('09-layouts.png');
+}
+
+console.log('\n═══ ⑭ ⭐ 几何：按钮上下边框不被裁（用户说「条太窄」）═══');
+{
+	for (const layout of ['wrap', 'scroll', 'arrows', 'compact']) {
+		await ev(`document.querySelector('[data-layout-option="${layout}"]').click()`);
+		await sleep(400);
+		const g = await ev(`(() => {
+      const box = document.querySelector('[data-layout-live] .space-bar');
+      const action = box.querySelector('[data-space-action="1"]');
+      const scope = box.querySelector('[data-chip-scope]');
+      const viewing = box.querySelector('.space-chip.is-viewing');
+      const br = box.getBoundingClientRect();
+      const ar = action.getBoundingClientRect();
+      const chips = [...box.querySelectorAll('[data-chip-id]')];
+      /* chip 有没有越出它自己的容器（上下） */
+      const sr = scope.getBoundingClientRect();
+      const escaped = chips.filter(c => {
+        const r = c.getBoundingClientRect();
+        return r.top < sr.top - 0.5 || r.bottom > sr.bottom + 0.5;
+      }).length;
+      return {
+        barH: Math.round(br.height),
+        actionH: Math.round(ar.height),
+        topGap: Math.round(ar.top - br.top),
+        bottomGap: Math.round(br.bottom - ar.bottom),
+        inside: ar.top >= br.top - 0.5 && ar.bottom <= br.bottom + 0.5,
+        escaped,
+        viewingShadow: viewing ? getComputedStyle(viewing).boxShadow : null,
+        viewingOutline: viewing ? getComputedStyle(viewing).outlineWidth : null,
+      };
+    })()`);
+		expect(`⭐ ${layout}: 操作按钮完全在容器内（上下边框不被裁）`, g.inside, true);
+		expect(`⚠ ${layout}: 按钮上下都有留白（≥4px，用户说「太窄」）`, g.topGap >= 4 && g.bottomGap >= 4, true);
+		expect(`⚠ ${layout}: 没有 chip 越出容器（选中环不被裁）`, g.escaped, 0);
+		console.log(`     ${layout}: barH=${g.barH} actionH=${g.actionH} topGap=${g.topGap} bottomGap=${g.bottomGap}`);
+	}
+	await ev(`document.querySelector('[data-layout-option="wrap"]').click()`);
+	await sleep(300);
+}
+
+console.log('\n═══ ⑮ ⭐ 选中环用 inset 阴影而不是 outline（防被裁）═══');
+{
+	const ring = await ev(`(() => {
+    const chips = [...document.querySelectorAll('[data-layout-live] .space-chip.is-viewing')];
+    if (chips.length === 0) return null;
+    const s = getComputedStyle(chips[0]);
+    return { boxShadow: s.boxShadow, outlineWidth: s.outlineWidth, outlineStyle: s.outlineStyle };
+  })()`);
+	expect('存在 is-viewing 的 chip', ring !== null, true);
+	expect('⭐ 环是 inset box-shadow', ring.boxShadow.includes('inset'), true);
+	expect('⚠ 不画 outline（画在盒外会被 overflow 裁）', ring.outlineStyle, 'none');
 }
 
 console.log('\n═══ JS 错误 ═══');

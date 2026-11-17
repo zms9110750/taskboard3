@@ -5,22 +5,35 @@
  * ⇒ 可以用共享变量（`--bg-card` / `--border` / `--accent` / `--text-weak` …），
  *   但**不要改共享的类名**（那是别的组件的）。
  *
- * 视觉规格照抄旧版 `taskboard2/packages/browser/public/styles.css:293-395`：
- *   · chip  = 圆角胶囊；`is-current` 黑底白字；`is-viewing` accent 描边；
- *             `is-archived` 虚线 + 降透明（hover 恢复）；
- *             当前 + 归档 = 虚线 + **不降透明**（它是当前在用的空间）
- *   · 左侧按钮 `.space-action` 固定 `min-width` —— 两种模式的文案长度不同
- *             （「当前空间」/「激活此为当前空间」/「已归档」），
- *             不加的话按钮宽度会跳，整行跟着抖。
+ * ## 2026-11-18 改版（用户原话）
+ *
+ * > 「把『激活当前空间』和『当前空间』，改为『当前空间』，然后通过着色来表示
+ * >  现在就是『当前空间』。那个 6 个字的占用文档流太宽了。然后现在这个组件的条，
+ * >  太窄了。选中按钮的上下边框被遮挡了。」
+ *
+ * > 「这个组件后续还要换。因为如果只有一行，那么在拖动的时候，
+ * >  是无法精确的点到横向滚动条的。这个视觉效果需要重新设计。」
+ *
+ * ## 「上下边框被遮挡」的**真实原因**（实测，不是猜）
+ *
+ * 原来选中态用的是 `outline: 2px + outline-offset: 1px` ——
+ * **outline 画在 border-box 外面，且不计入 `getBoundingClientRect()`**。
+ * 而 `.space-bar__scroll` 是 `overflow-x: auto`，只给了 `padding: 1px 2px`。
+ * ⇒ 上下各只有 1px 空间，outline 要占 3px ⇒ **被滚动容器裁掉 2px**。
+ *   横向更糟：贴边的第一个/最后一个 chip 的 outline 左右也被裁。
+ *
+ * ⇒ 根治：选中态**不用 outline**，改成
+ *   `border-color` + `box-shadow: inset 0 0 0 1px` —— 两者都画在盒子**内部**，
+ *   物理上不可能被 overflow 裁掉。（inset 阴影也不影响布局尺寸。）
+ *   同时给容器 4px 内边距，让 hover 的描边也有位置。
  */
 
 /* ── 通用小按钮（旧版 `.ghost-btn`）── */
-/* preview.css 里没有它（那是 CardRow 的预览，没用过 ghost-btn），所以在这里定义。 */
 .ghost-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	padding: 3px 9px;
+	padding: 4px 10px;
 	border: 1px solid var(--border);
 	border-radius: 6px;
 	font-size: 12px;
@@ -39,10 +52,10 @@
 	color: var(--text);
 }
 .ghost-btn:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
+	opacity: 0.45;
+	cursor: default;
 }
-/* 「显示已归档」开着 —— 淡蓝底 + accent 边框，视觉强度低于 chip 的黑底 */
+/* 「显示已归档」开着 —— 淡蓝底 + accent 边框 */
 .ghost-btn.is-active {
 	border-color: var(--accent);
 	color: var(--accent);
@@ -52,43 +65,78 @@
 /* ── 整行 ── */
 .space-bar {
 	display: flex;
-	align-items: center;
-	gap: 8px;
+	align-items: flex-start;
+	gap: 10px;
 	min-width: 0;
-	padding: 2px 0;
+	/*
+	 * ⚠ 原来 `padding: 2px 0` ⇒ 整行 30px，按钮 24px，两侧各只剩 3px。
+	 *   用户说「条太窄了」。给到 6px 上下 ⇒ 行高 36px，按钮四周有呼吸。
+	 */
+	padding: 6px 0;
 }
 
-/* 左侧两个按钮固定，不随 chip 横向滚动 */
+/* 左侧按钮组固定，不随 chip 滚动 */
 .space-bar__actions {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	flex: none;
+	padding-top: 2px;
 }
 
-/* chip 区可横向滚动 */
-.space-bar__scroll {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex: 1 1 auto;
-	min-width: 0;
-	overflow-x: auto;
-	padding: 1px 2px; /* 给 is-viewing 的 outline 留位置，否则被 scroll 裁掉 */
-}
-.space-bar__scroll > * {
-	flex: 0 0 auto;
+/* ── 左侧那个**单个**按钮 ── */
+/*
+ * ⚠ 固定最小宽度：文案合并后已经是同一句「当前空间」，
+ *   但「显示已归档=开」时文案是「已归档」，两种仍需等宽，否则切开关时整行抖。
+ */
+.space-action {
+	min-width: 84px;
+	justify-content: center;
 }
 
 /*
- * 左侧那个**单个**按钮。
- * 固定最小宽度：三种文案长度不同，不给就会跳。
+ * ## 强调档 —— 文案合并后**唯一**的区分手段
+ *
+ * 用户：「改为『当前空间』，然后通过着色来表示现在就是『当前空间』。」
+ *
+ * `current`（实心徽章）vs `action`（描边按钮）—— 两者**看起来就不是一类东西**，
+ * 所以即使用户读到同一个词，也知道哪个能点。
  */
-.space-action {
-	min-width: 108px;
-	justify-content: center;
+
+/* 已是当前空间：实心浅底 + accent 边框，像「你在这里」的标记，不像按钮 */
+.space-action.is-emphasis-current {
+	border-color: var(--accent);
+	background: #eef4ff;
+	color: var(--accent);
+	font-weight: 600;
+	cursor: default;
 }
-/* 「已归档」的**选中**态（这个空间确实已归档）—— 黑底反白 */
+.space-action.is-emphasis-current:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+/* 可以切过去：描边按钮，hover 才亮 —— 明确是「一个能点的东西」 */
+.space-action.is-emphasis-action {
+	border-color: var(--border);
+	background: var(--bg-card);
+	color: var(--text-secondary);
+}
+.space-action.is-emphasis-action:hover:not(:disabled) {
+	border-color: var(--accent);
+	color: var(--accent);
+	background: #f5f9ff;
+}
+
+/* 没有可作用的空间：普通灰 */
+.space-action.is-emphasis-plain {
+	color: var(--text-weak, #9aa1ad);
+}
+
+/*
+ * 「已归档」的**选中**态（这个空间确实已归档）—— 黑底反白。
+ * ⚠ 放最后：要盖掉上面 emphasis 的底色（第 2/4 行都是 checked + emphasis=action）。
+ */
 .space-action.is-on {
 	border-color: var(--text);
 	background: var(--text);
@@ -96,15 +144,121 @@
 }
 .space-action.is-on:hover:not(:disabled) {
 	border-color: var(--text);
+	background: var(--text);
 	color: #fff;
 }
 
-/* ── chip ── */
+/* ══════════════════════════════════════════════════════════
+   布局变体
+   ══════════════════════════════════════════════════════════ */
+
+/* 四种变体共用的 chip 容器底子 */
+.space-bar__wrap,
+.space-bar__scroll {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* ── A · 换行（推荐）：没有滚动条，不存在「拖不到」 ── */
+.space-bar--wrap .space-bar__wrap,
+.space-bar--compact .space-bar__wrap {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	/* 顶部对齐：换行后左侧按钮仍贴第一行 */
+	padding: 2px 2px 2px 0;
+}
+
+/* ── B · 单行 + 粗滚动条 ── */
+.space-bar--scroll .space-bar__scroll {
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 6px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	/* 上下留 6px：滚动条不贴按钮，鼠标好瞄准 */
+	padding: 4px 2px 6px;
+	scrollbar-width: auto;
+}
+.space-bar__scroll > * {
+	flex: 0 0 auto;
+}
+
+/* 把滚动条做粗（用户原话：「拖的时候无法精确点到横向滚动条」）*/
+.space-bar--scroll .space-bar__scroll::-webkit-scrollbar {
+	height: 12px;
+}
+.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-track {
+	background: #eef1f5;
+	border-radius: 6px;
+}
+.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-thumb {
+	background: #c2c8d2;
+	border-radius: 6px;
+	border: 2px solid #eef1f5;
+}
+.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-thumb:hover {
+	background: #9aa1ad;
+}
+
+/* ── D · 单行 + 左右翻页按钮（滚动条隐藏，改用点大目标）── */
+.space-bar__peruse {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.space-bar--arrows .space-bar__scroll--nobar {
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 6px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding: 2px;
+	scrollbar-width: none;
+}
+.space-bar--arrows .space-bar__scroll--nobar::-webkit-scrollbar {
+	display: none;
+}
+.space-bar__arrow {
+	flex: none;
+	width: 26px;
+	height: 26px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-card);
+	color: var(--text-secondary);
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+	font-family: inherit;
+}
+.space-bar__arrow:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+/* ── C · 折叠：只显示当前 + 查看 ── */
+.space-chip--more {
+	border-style: dashed;
+	color: var(--text-weak, #9aa1ad);
+}
+
+/* ══════════════════════════════════════════════════════════
+   chip
+   ══════════════════════════════════════════════════════════ */
+
 .space-chip {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
-	padding: 3px 10px;
+	padding: 4px 11px;
 	border: 1px solid var(--border);
 	border-radius: 999px;
 	font-size: 12px;
@@ -113,6 +267,13 @@
 	background: var(--bg-card);
 	cursor: pointer;
 	white-space: nowrap;
+	transition:
+		border-color 0.12s,
+		background 0.12s;
+}
+
+.space-chip:hover {
+	border-color: var(--text-weak, #9aa1ad);
 }
 
 /* 当前**激活**空间：黑底白字（语义最重） */
@@ -123,18 +284,26 @@
 }
 
 /*
- * 正在**查看**的空间：accent 描边。
- * ⚠ 与 `.is-current` 是两件事，可以同时成立（默认选中就是当前空间）。
+ * 正在**查看**的空间：accent 强调。
+ *
+ * ⚠ **不用 outline** —— 见文件头「上下边框被遮挡」的解释：
+ *   outline 画在 border-box 外面、不计入 rect、会被 `overflow` 裁掉。
+ *   `border-color + inset box-shadow` 都画在盒子内部，物理上不可能被裁。
+ *   视觉上仍是「2px 的 accent 环」，因为 1px 边框 + 1px inset 阴影叠加。
  */
 .space-chip.is-viewing {
-	outline: 2px solid var(--accent);
-	outline-offset: 1px;
+	border-color: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* 当前 + 查看：黑底上再加 accent 内环，仍然看得见 */
+.space-chip.is-current.is-viewing {
+	border-color: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 /*
  * 已归档：**虚线 + 降透明**（用户 2026-11-09：
  * 「已归档。的黑白状态，就是没启用的当前空间。」）
- * ⇒ 它就是「未启用」的白底黑字，不是另一种配色。
  */
 .space-chip.is-archived {
 	border-style: dashed;
@@ -144,10 +313,7 @@
 	opacity: 1;
 }
 
-/*
- * 当前 + 已归档（异常态）：虚线仍然表「归档了」，但**不降透明** ——
- * 它是当前在用的空间，不该看起来像「不参与日常」。
- */
+/* 当前 + 已归档（异常态）：虚线仍表「归档了」，但**不降透明** */
 .space-chip.is-current.is-archived {
 	opacity: 1;
 }
@@ -159,11 +325,14 @@
 }
 
 .space-chip--add {
-	padding: 3px 8px;
+	padding: 4px 9px;
 	color: var(--text-weak, #9aa1ad);
 }
 
-/* ── 预览页专用：场景块 ── */
+/* ══════════════════════════════════════════════════════════
+   预览页专用
+   ══════════════════════════════════════════════════════════ */
+
 .pv-case {
 	margin-bottom: 16px;
 }
@@ -177,7 +346,31 @@
 	font-family: var(--mono, ui-monospace, Consolas, monospace);
 }
 
-/* ── 预览页专用：回调日志 ── */
+/* 布局切换按钮组 */
+.pv-layouts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+.pv-layouts button {
+	padding: 5px 12px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-card);
+	color: var(--text-secondary);
+	font-size: 12px;
+	font-family: inherit;
+	cursor: pointer;
+}
+.pv-layouts button.is-on {
+	border-color: var(--accent);
+	background: #eef4ff;
+	color: var(--accent);
+	font-weight: 600;
+}
+
+/* 回调日志 */
 .pv-events {
 	margin: 0 0 10px;
 	padding-left: 18px;
