@@ -1,0 +1,450 @@
+/*
+ * CardDetail（卡片详情面板）的样式 —— 只在 `dev/preview/carddetail/` 里用。
+ *
+ * 由 `dev/preview/build.mjs carddetail` 追加在共享 `preview.css` **之后**
+ * ⇒ 能用共享变量（`--bg-card` / `--border` / `--accent` / `--text-weak` …），
+ *   但**不要改共享的类名**（那是别的组件的）。
+ *
+ * 视觉规格照抄旧版 `taskboard2/packages/browser/public/styles.css` 的
+ * `.detail*` / `.status-line` / `.history*` 段（`:293-395` 附近 + 详情段）。
+ *
+ * ## 三条用户要求对应的样式
+ *
+ * 1. **标题独占一行**：`.detail-title-row` 是 flex 行，`.detail-meta` 是**兄弟**
+ *    ⇒ 两行不共享父盒，`flex-wrap` 也救不回来。
+ * 2. **关系按钮显眼**：`.detail-action.is-primary` 是 accent 实底反白
+ *    （旧版是灰字小按钮，用户说「太隐蔽」）。
+ * 3. **备注常驻**：`.detail-note` 无条件参与布局（没有 `display:none` 的类）。
+ */
+
+/* ── 面板外框 ── */
+.detail {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	background: var(--bg-card);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 16px 18px;
+	min-width: 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+   ① 头部
+   ══════════════════════════════════════════════════════════ */
+
+.detail-head {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+}
+
+/*
+ * 标题独占一行。
+ * ⚠ 这一行**只**有标题 + 两个图标按钮 —— 不要往这里塞编号/徽章/状态。
+ *   用户 2026-11-15 的原话就是这条，CDP 会量矩形是否和 meta 重叠。
+ */
+.detail-title-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	min-width: 0;
+}
+
+.detail-title {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 700;
+	line-height: 1.4;
+	letter-spacing: -0.01em;
+	color: var(--text);
+	/* 长标题换行而不是溢出（这一行的横向空间全给标题） */
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.detail-title-row__spacer {
+	flex: 0 0 auto;
+	width: 0;
+}
+
+/* ⧉ / × 图标按钮（旧版 `.icon-btn`） */
+.icon-btn {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 5px;
+	background: none;
+	color: var(--text-weak);
+	font-size: 14px;
+	font-family: inherit;
+	line-height: 1;
+	cursor: pointer;
+}
+.icon-btn:hover {
+	border-color: var(--border);
+	background: #f6f7f9;
+	color: var(--text);
+}
+
+/* meta 行：五格横排，挤不下就省略，不换行成两行（旧版 `.status-line`） */
+.detail-meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	min-width: 0;
+	font-size: 11.5px;
+	color: var(--text-secondary);
+}
+.detail-meta > * {
+	flex: 0 0 auto;
+	max-width: 220px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.detail-status {
+	display: inline-flex;
+	align-items: center;
+	min-width: 0;
+}
+
+/* 动作行：关系（primary）+ 派生子任务 */
+.detail-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.detail-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 11px;
+	font-size: 12px;
+}
+
+/*
+ * ⭐ 关系按钮**显眼**（用户 2026-11-15 第 2 条：旧版藏在标题下方小按钮里，太隐蔽）
+ * ⇒ accent 实底反白。派生子任务保持 ghost 灰白。
+ */
+.detail-action.is-primary {
+	border-color: var(--accent);
+	background: var(--accent);
+	color: #fff;
+	font-weight: 600;
+}
+.detail-action.is-primary:hover:not(:disabled) {
+	border-color: #1d4ed8;
+	background: #1d4ed8;
+	color: #fff;
+}
+.detail-action.is-primary:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.detail-action__badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 17px;
+	height: 17px;
+	padding: 0 4px;
+	border-radius: 9px;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 1;
+	background: rgba(255, 255, 255, 0.24);
+}
+.detail-action:not(.is-primary) .detail-action__badge {
+	background: #eef1f5;
+	color: var(--text-secondary);
+}
+
+/* 墓碑横幅 */
+.detail-banner {
+	padding: 8px 11px;
+	border-radius: 7px;
+	border: 1px solid #fde68a;
+	background: #fffbeb;
+	color: #92400e;
+	font-size: 11.5px;
+	line-height: 1.6;
+}
+
+/* ══════════════════════════════════════════════════════════
+   ② 章节 —— 直接平铺，**没有**「正文」容器标签
+   ══════════════════════════════════════════════════════════ */
+
+.detail-sections {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.detail-section {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+.detail-section__label {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.detail-section__body {
+	font-size: 12.5px;
+	line-height: 1.75;
+	color: var(--text);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.detail-section__empty,
+.detail-empty {
+	font-size: 12px;
+	color: var(--text-weak);
+}
+
+/* ══════════════════════════════════════════════════════════
+   ③ 备注 —— **常驻**
+   ══════════════════════════════════════════════════════════ */
+
+/*
+ * 备注永远在文档流里（用户：不要折叠成 `+ 备注`）。
+ * 旧版 `styles.css` 给它的是一条浅底 + 圆角，让它看起来像「可写区域」。
+ */
+.detail-note {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: #fbfcfd;
+	min-width: 0;
+}
+
+.detail-note__label {
+	font-size: 11.5px;
+	font-weight: 600;
+	color: var(--text-secondary);
+}
+
+.detail-note__input {
+	width: 100%;
+	resize: vertical;
+	border: 1px solid transparent;
+	border-radius: 5px;
+	background: var(--bg-card);
+	padding: 7px 9px;
+	font-family: inherit;
+	font-size: 12.5px;
+	line-height: 1.7;
+	color: var(--text);
+}
+.detail-note__input:focus {
+	outline: none;
+	border-color: #93c5fd;
+	box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+.detail-note__input:disabled {
+	background: #f4f5f7;
+	color: var(--text-weak);
+	cursor: not-allowed;
+}
+
+.detail-note__readonly {
+	font-size: 11px;
+	color: var(--text-weak);
+}
+
+/* ══════════════════════════════════════════════════════════
+   ④ 历史 —— 默认折叠
+   ══════════════════════════════════════════════════════════ */
+
+.detail-history {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+/* 表头（可折叠时是 button，不可折叠时是 div）—— 两套外观一致 */
+.detail-history__toggle,
+.detail-history__head {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	align-self: flex-start;
+	padding: 2px 6px;
+	margin-left: -6px;
+	border: 0;
+	border-radius: 5px;
+	background: none;
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-secondary);
+	cursor: pointer;
+	text-align: left;
+}
+.detail-history__head {
+	cursor: default;
+}
+.detail-history__toggle:hover {
+	background: #f3f4f6;
+	color: var(--text);
+}
+
+.detail-history__caret {
+	font-size: 10px;
+	width: 10px;
+	color: var(--text-weak);
+}
+
+.detail-history__list {
+	list-style: none;
+	margin: 0;
+	padding: 0 0 0 2px;
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+}
+
+/* 一条：点 + 文字 + 时间（旧版 `.history-item`） */
+.detail-history__item {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	font-size: 11.5px;
+	line-height: 1.6;
+	color: #3f4652;
+	min-width: 0;
+}
+
+.detail-history__dot {
+	flex: 0 0 auto;
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: #cbd5e1;
+	transform: translateY(-2px);
+}
+/* 作者着色：AI 蓝、用户 黑、系统 灰 */
+.detail-history__item.is-ai .detail-history__dot {
+	background: var(--dot-active, #2563eb);
+}
+.detail-history__item.is-user .detail-history__dot {
+	background: var(--text);
+}
+
+.detail-history__text {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.detail-history__time {
+	flex: 0 0 auto;
+	font-family: var(--font-mono);
+	font-size: 10.5px;
+	color: var(--text-weak);
+}
+
+/* ══════════════════════════════════════════════════════════
+   预览页专用
+   ══════════════════════════════════════════════════════════ */
+
+/* 详情面板的舞台：给一个「右栏」的宽度感，否则详情会拉满 1180px 看不出问题 */
+.pv-detail-stage {
+	max-width: 460px;
+	min-width: 0;
+}
+
+.pv-detail-stage__empty {
+	padding: 40px 16px;
+	text-align: center;
+	font-size: 12px;
+	color: var(--text-weak);
+	border: 1px dashed var(--border);
+	border-radius: 9px;
+}
+
+/* 场景块（骨 preview.css 里的 .pv-case 已在 spacebar 的 style.css 定义过 ——
+   每个组件子目录的 css 都跟着自己的 page 加载，重复定义是安全的，但这里
+   只补本页需要的部分，复用 `.pv-case` / `.pv-case__note` 的既有规则）。 */
+
+/* 回调日志本页也要（spacebar 的 css 定义了它，但那是**别的组件的页面**） */
+.pv-events {
+	margin: 0 0 10px;
+	padding-left: 18px;
+	font-size: 11.5px;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+	color: #3f4652;
+	max-height: 150px;
+	overflow-y: auto;
+}
+.pv-events__empty {
+	list-style: none;
+	margin-left: -18px;
+	color: var(--text-weak, #9aa1ad);
+	font-family: inherit;
+}
+
+.pv-case {
+	margin-bottom: 16px;
+}
+.pv-case:last-child {
+	margin-bottom: 0;
+}
+.pv-case__note {
+	font-size: 11px;
+	color: var(--text-weak, #9aa1ad);
+	margin-bottom: 6px;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+}
+
+/* ghost-btn（spacebar 的 css 里定义过，但那是别的页面） */
+.ghost-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 9px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-size: 12px;
+	font-family: inherit;
+	color: var(--text-secondary);
+	background: var(--bg-card);
+	cursor: pointer;
+	white-space: nowrap;
+}
+.ghost-btn:hover:not(:disabled) {
+	border-color: var(--text-weak, #9aa1ad);
+	color: var(--text);
+}
+.ghost-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+.ghost-btn.is-active {
+	border-color: var(--accent);
+	color: var(--accent);
+	background: #eff6ff;
+}
