@@ -202,27 +202,34 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   padding-right:10px;
 }
 
-/* 正方形和右侧内容的间距：12px（用户 2026-11-17 说太宽，从 12 收到 8） */
-.task-card{gap:8px}
+/*
+ * 正方形和右侧内容的间距：**0**（用户 `2026-11-18`：
+ * 「我不知道你的状态到 label 里面的间隔是怎么设置的。但这里应该试试不加任何间隔。」）
+ * 总宽度同时收了 20px（58 + 8 → 46 + 0）。
+ */
+.task-card{gap:0}
 .task-card__status.is-compact{align-items:center}
 
 /* ── 左侧正方形：编号在上、状态在下 ── */
 .task-card__square{
-  flex:0 0 58px;display:flex;flex-direction:column;justify-content:center;gap:3px;
+  flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
   min-width:0;
 }
 .task-card__square-id{
   font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-/* 正方形里的状态：小一号、左对齐、不要固定 96px */
+/*
+ * 正方形里的状态：9px、点线间距 3px（不是 4px）—— 46px 宽要塞下「需要信息」四个字。
+ * 4 字 × 9px + 点 6px + 间距 3px = 45px，刚好。
+ */
 .task-card__status.is-compact{
-  flex:0 0 auto;font-size:10px;gap:4px;color:var(--text-weak);
+  flex:0 0 auto;font-size:9px;gap:3px;color:var(--text-weak);
 }
 
 /* ── 右侧：一行 ── */
 .task-card__body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.task-card__line{display:flex;align-items:center;gap:8px;min-width:0}
+.task-card__line{display:flex;align-items:center;gap:6px;min-width:0}
 
 /*
  * 三个 label **横排不换行**（用户 2026-11-17：
