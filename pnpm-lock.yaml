@@ -48,6 +48,9 @@ importers:
       '@taskboard/protocol':
         specifier: workspace:*
         version: link:../protocol
+      marked:
+        specifier: ^18.2.1
+        version: 18.2.1
     devDependencies:
       '@types/react':
         specifier: ^19.3.0
@@ -556,6 +559,11 @@ packages:
   lilconfig@3.1.5:
     resolution: {integrity: sha512-aRAOI9Ia43ygL4o1EOmC/sc/0OFxrm7qcQngiIyWaqVnSnz932ybJ07zyCcgMNGSDP8Yxaf88Xj1zHEXmvQ4SA==}
     engines: {node: '>=14'}
+
+  marked@18.2.1:
+    resolution: {integrity: sha512-ii4bxCTCqqwpT86XZWgJNs+ZnAIZksmLGYMViWA7PDIXYIeNo1x6cDdX3JOip9NM/cI6p8z57FxliACboTruMA==}
+    engines: {node: '>= 20'}
+    hasBin: true
 
   obug@3.0.0:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
@@ -1075,6 +1083,8 @@ snapshots:
 
   lilconfig@3.1.5:
     optional: true
+
+  marked@18.2.1: {}
 
   obug@3.0.0: {}
 

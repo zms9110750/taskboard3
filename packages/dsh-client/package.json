@@ -29,7 +29,8 @@
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@taskboard/protocol": "workspace:*"
+    "@taskboard/protocol": "workspace:*",
+    "marked": "^18.2.1"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
