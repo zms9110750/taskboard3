@@ -107,8 +107,19 @@ node node_modules/typescript/bin/tsc --noEmit \
 **真实案例**（`2026-11-17`）：`space-dev` 主动报告了这一点，并自己补跑了检查。
 若不是它报告，我们会拿着一个假的「tsc 通过」继续往下做。
 
-**这条的根治办法**：给 `dev/` 单独一个 `tsconfig.dev.json`，
-让 `pnpm run check:dev` 成为验收的一部分。**现在没有，所以必须手跑。**
+**已根治**（`2026-11-18`）：`packages/dsh-client/tsconfig.dev.json` 存在，
+它 include `dev/**` + `dev/` 依赖的那几个 `src/` 文件，`noEmit: true`：
+
+```powershell
+node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
+```
+
+⇒ **dev 组件的验收口令改成**：`tsc -b packages/dsh-client` **且**
+`tsc -p packages/dsh-client/tsconfig.dev.json` 两条都 exit 0。
+
+⚠ 这个配置第一次跑就抓到一个真错误：`StatusCell` 传 `size={undefined}` ——
+`exactOptionalPropertyTypes: true` 下不允许，必须省略 prop 而不是传 undefined。
+**这就是「不检查」的代价：它在 `dev/` 里躺了一整天。**
 
 ---
 
@@ -283,4 +294,5 @@ pnpm install
 
 **⚠ 不要在这里写「当前状态」**（比如「现在有 149 个测试」）—— 那是事实，会漂。
 **状态在 `docs/设计.md`。**
+
 

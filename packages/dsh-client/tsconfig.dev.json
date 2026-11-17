@@ -1,0 +1,62 @@
+/**
+ * `dev/` 下开发中组件的**类型检查**配置。
+ *
+ * ## 为什么需要它
+ *
+ * `tsconfig.json` 的 `include` 只有 `src/**` —— `dev/` 是开发中组件的暂存区，
+ * 不该进行产品构建（也不该被 npm 发布，见 `dev/README.md`）。
+ *
+ * **但副作用是**：`tsc -b packages/dsh-client` **完全不检查 `dev/` 下的任何文件**。
+ * ⇒ 说「dev 里的组件类型检查过了」是假的。
+ *
+ * （`space-dev` 在 `2026-11-17` 主动报告了这一点，并自己补跑了手写参数的检查。
+ *   若不是它报告，我们会拿着一个假的绿色继续往下做。）
+ *
+ * ## 用法
+ *
+ * ```powershell
+ * # 从包目录
+ * node ../../node_modules/typescript/bin/tsc -p tsconfig.dev.json
+ *
+ * # 或从仓库根
+ * node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
+ * ```
+ *
+ * **这个必须和 `tsc -b` 一起跑**，才算「dev 里的组件类型检查过了」。
+ *
+ * ## 与 `tsconfig.json` 的差异
+ *
+ * | 项 | `tsconfig.json`（产品）| 本文件（dev）|
+ * |---|---|---|
+ * | include | `src/**` | `dev/**` + `src/types.ts` 等被 import 的 |
+ * | emitDeclarationOnly | ✅ 出 .d.ts | ❌ `noEmit`（只是检查）|
+ * | composite | ✅（被 `tsc -b` 引用）| ❌ 独立项目，不参与 build |
+ * | outDir | `lib` | 无（不产出）|
+ *
+ * ⚠ **不能设 `composite: true`** —— 那要求 `noEmit` 为 false，且会要求
+ *   生成 `tsbuildinfo`，与「只检查不产出」冲突。
+ */
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"types": ["react", "react-dom", "node"],
+		"jsx": "react-jsx",
+
+		/* 只检查，不产出。 */
+		"noEmit": true,
+
+		/* dev 不是被 `tsc -b` 引用的子项目 ⇒ 不能 composite。 */
+		"composite": false,
+		"declaration": false,
+		"declarationMap": false,
+		"sourceMap": false
+	},
+	/*
+	 * `dev/` 全部文件 + 它所依赖的 `src/` 文件（只 import 少数据型和函数）。
+	 *
+	 * ⚠ 不要 include 整个 `src/` —— 那会把产品代码也拉进来检查，
+	 *   而产品代码由 `tsc -b` 负责。两条路径都报错时反而更难定位。
+	 */
+	"include": ["dev/**/*.ts", "dev/**/*.tsx", "src/types.ts", "src/pure.ts"]
+}

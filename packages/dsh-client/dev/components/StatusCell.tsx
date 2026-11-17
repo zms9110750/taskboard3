@@ -26,9 +26,16 @@ export interface StatusCellProps {
  */
 export function StatusCell(props: StatusCellProps): ReactNode {
 	const cls = props.compact ? 'task-card__status is-compact' : 'task-card__status';
+	/*
+	 * ⚠ `exactOptionalPropertyTypes: true` ⇒ 不能传 `size={undefined}`，
+	 *   必须**省略这个 prop**。所以分两支写，不是 `?: undefined`。
+	 */
+	const dot = props.compact === true
+		? <StatusDot status={props.status} size={6} />
+		: <StatusDot status={props.status} />;
 	return (
 		<span className={cls}>
-			<StatusDot status={props.status} size={props.compact === true ? 6 : undefined} />
+			{dot}
 			<span className="task-card__status-label">{stateLabel(props.status)}</span>
 		</span>
 	);
