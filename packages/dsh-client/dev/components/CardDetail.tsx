@@ -9,10 +9,10 @@
  *
  * ```
  * CardDetail
- *  ├ DetailHead      标题行 / meta 行 / 动作行 / 墓碑横幅
+ *  ├ DetailHead      标题行 / 状态+meta 行 / 动作行 / 墓碑横幅
  *  ├ detail-sections 章节（← flatten，直接平铺）
  *  ├ DetailNote      备注（常驻）
- *  └ DetailHistory   历史（默认折叠）
+ *  └ DetailHistory   历史（**不折叠**，竖直全画）
  * ```
  *
  * ## ⚠ 用户 `2026-11-15` 否定的三件事 → 各自的结构保证
@@ -20,8 +20,10 @@
  * | 要求 | 保证方式 |
  * |---|---|
  * | 标题独占一行 | `DetailHead` 里标题是**独立的一行 div**，meta 在**另一个 div**；CDP 量矩形不重叠 |
+ * | 状态放最左 | `head.status` 是**独立字段**（不在 `head.meta` 里）+ 固定宽度列 `flex:0 0 92px`；CDP 量 left 且构造超长 label 复测 |
  * | 不要「正文」容器标签 | 章节直接 `map` 进 `.detail-sections`，**没有** `.detail-body` 这种包一层再给标题的节点；全组件无「正文」字符串 |
  * | 备注常驻 | `DetailNote` 无 `visible` 分支（`DetailNoteView.visible` 是字面量 `true`）|
+ * | 历史不折叠 | `DetailHistory` 无 `useState`、无折叠按钮；`DetailHistoryView` 类型里没有 `collapsed` 字段 |
  *
  * ## ⚠ 章节渲染：等 C6 `Section` 合并后替换
  *
@@ -125,10 +127,11 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 			<DetailNote note={table.note} onNoteChange={props.onNoteChange} />
 
 			{/*
-			 * ⚠ `key={card.id}`：`DetailHistory` 用 `useState` 记「现在展开没有」，
-			 *   初值只在挂载时读一次 ⇒ 不换 key 会把上一张卡的展开态带过来。
+			 * 历史：**不折叠**（用户 `2026-11-18`：「历史自己就是最后了……他没有更后面了」）。
+			 * ⚠ 这里**不需要** `key={card.id}` —— 组件已经没有 `useState` 了，
+			 *   没有「上一张卡的展开态带过来」这个问题。
 			 */}
-			<DetailHistory key={props.card.id} history={table.history} />
+			<DetailHistory history={table.history} />
 		</div>
 	);
 }

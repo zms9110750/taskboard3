@@ -1,28 +1,29 @@
 /**
- * 详情**历史** —— 默认折叠，点表头展开。
+ * 详情**历史** —— 竖直列表，**不折叠**。
  *
- * ## 折叠是**语义**，开合是**UI 临时态**
+ * ## 为什么没有折叠（用户 `2026-11-18` 的判断，不是我们省事）
  *
- * | 谁是语义 | 在哪 |
- * |---|---|
- * | 显示不显示、能不能折、初始折不折、条数、顺序、每条的人话 | `pure/card-detail.ts` 的 `historyTableOf()`（单测钉住）|
- * | 用户此刻展开了没有 | **本组件的 `useState`**（不进 store、不落库）|
+ * > 「历史不需要折叠。没有折叠的含义。他是一个竖直显示。但是历史自己就是最后了。
+ * >  他的折叠并不影响看他后面的内容。他没有更后面了。」
  *
- * 这跟旧版的分工一致：旧版 `index.js:99` 的 `expanded` 是「本视图实例的 UI 临时态」
- * （注释原话：「不能进 store」）。区别是旧版折的是关系区，这里折的是历史。
+ * 折行的意义是「省空间，给后面的内容让位」。历史在**最后面**，后面没有了
+ * ⇒ 折它换不回任何东西，只多一次点击。
  *
- * ## 为什么组件持有状态而 pure 只给初值
+ * ## ⚠ 上一版有折叠，被用户否掉了
  *
- * 「初始折叠」是设计决定，「现在展开着」是用户动作的结果。
- * 把后者也塞进 pure ⇒ 每次开合都要重建整张表，而且 pure 就不纯了。
+ * 上一版（`2026-11-18` 之前）是「≥2 条初始折叠」—— 那是成员的**推断**，
+ * 用户当时的原话只有「历史可以折叠」。这次用户给了判据把它否掉：
+ * **判据是「后面还有没有内容」，不是条数。**
  *
- * ## ⚠ 父组件要用 `key={card.id}` 挂它
+ * ⇒ 本组件**没有 `useState`**、没有折叠按钮、没有 `aria-expanded`。
+ *   加回来之前先读上面那段话。
  *
- * `useState` 的初值**只在挂载时读一次**。切卡时若不换 key，上一张卡的展开状态
- * 会带到下一张卡上。`CardDetail.tsx` 里已经这么做（那里的注释写了原因）。
+ * ## 空历史仍然不画
+ *
+ * `visible: false` 时返回 `null`（旧版 `history-block.js:96-97`）。
+ * 这和折叠是两件事：空的时候没有内容可展开，画个空框只会让人以为加载失败。
  */
 
-import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import type { DetailHistoryItem, DetailHistoryView } from '../pure/card-detail.ts';
@@ -41,48 +42,24 @@ export interface DetailHistoryProps {
 export function DetailHistory(props: DetailHistoryProps): ReactNode {
 	const view = props.history;
 
-	/*
-	 * ⚠ 钩子必须在条件返回**之前**调用（React 规则）。
-	 *   所以「不可见就不渲染」的判断放在 hooks 之后。
-	 */
-	const [open, setOpen] = useState<boolean>(!view.collapsed);
-
+	/* 空历史不画 —— 这是「有没有内容」，不是「折不折叠」。 */
 	if (!view.visible) return null;
-
-	/*
-	 * 不可折叠（0/1 条）⇒ 表头不是按钮，列表常开。
-	 * 这里按 `view.collapsible` 分两支，而不是在 `<button disabled>` 上动手脚 ——
-	 * 一个点了没反应的按钮比没有按钮更让人困惑。
-	 */
-	const collapsed = view.collapsible ? !open : false;
 
 	return (
 		<div className="detail-history" data-detail-history data-history-count={view.count}>
-			{view.collapsible ? (
-				<button
-					type="button"
-					className={`detail-history__toggle${collapsed ? '' : ' is-open'}`}
-					data-history-toggle
-					aria-expanded={!collapsed}
-					title={collapsed ? '展开历史' : '收起历史'}
-					onClick={() => setOpen((one) => !one)}
-				>
-					<span className="detail-history__caret">{collapsed ? '▸' : '▾'}</span>
-					<span className="detail-history__label">{view.label}</span>
-				</button>
-			) : (
-				<div className="detail-history__head">
-					<span className="detail-history__label">{view.label}</span>
-				</div>
-			)}
+			<div className="detail-history__head" data-history-head>
+				<span className="detail-history__label">{view.label}</span>
+			</div>
 
-			{collapsed ? null : (
-				<ul className="detail-history__list" data-history-list>
-					{view.items.map((item) => (
-						<HistoryRow key={item.key} item={item} />
-					))}
-				</ul>
-			)}
+			{/*
+			 * ⚠ 这里**没有** `collapsed ? null : …` —— 全部条目永远画出来。
+			 *   `data-history-list` 是 CDP 断言「3 条都在」的钩子。
+			 */}
+			<ul className="detail-history__list" data-history-list>
+				{view.items.map((item) => (
+					<HistoryRow key={item.key} item={item} />
+				))}
+			</ul>
 		</div>
 	);
 }

@@ -208,27 +208,34 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   padding-right:10px;
 }
 
-/* 正方形和右侧内容的间距：12px（用户 2026-11-17 说太宽，从 12 收到 8） */
-.task-card{gap:8px}
+/*
+ * 正方形和右侧内容的间距：**0**（用户 `2026-11-18`：
+ * 「我不知道你的状态到 label 里面的间隔是怎么设置的。但这里应该试试不加任何间隔。」）
+ * 总宽度同时收了 20px（58 + 8 → 46 + 0）。
+ */
+.task-card{gap:0}
 .task-card__status.is-compact{align-items:center}
 
 /* ── 左侧正方形：编号在上、状态在下 ── */
 .task-card__square{
-  flex:0 0 58px;display:flex;flex-direction:column;justify-content:center;gap:3px;
+  flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
   min-width:0;
 }
 .task-card__square-id{
   font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-/* 正方形里的状态：小一号、左对齐、不要固定 96px */
+/*
+ * 正方形里的状态：9px、点线间距 3px（不是 4px）—— 46px 宽要塞下「需要信息」四个字。
+ * 4 字 × 9px + 点 6px + 间距 3px = 45px，刚好。
+ */
 .task-card__status.is-compact{
-  flex:0 0 auto;font-size:10px;gap:4px;color:var(--text-weak);
+  flex:0 0 auto;font-size:9px;gap:3px;color:var(--text-weak);
 }
 
 /* ── 右侧：一行 ── */
 .task-card__body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.task-card__line{display:flex;align-items:center;gap:8px;min-width:0}
+.task-card__line{display:flex;align-items:center;gap:6px;min-width:0}
 
 /*
  * 三个 label **横排不换行**（用户 2026-11-17：
@@ -351,12 +358,21 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	color: var(--text);
 }
 
-/* meta 行：五格横排，挤不下就省略，不换行成两行（旧版 `.status-line`） */
+/*
+ * meta 行：**状态在第一个固定宽度列**，后面四格横排。
+ *
+ * ⚠ 状态列必须 `flex: 0 0 92px`（固定），不能靠内容撑 —— 否则后面 label 一长，
+ *   状态就被挤着漂移（用户 `2026-11-18` 的根因：
+ *   「如果 label 太长，那么状态按钮的位置甚至会变化」）。
+ *
+ * ⚠ 这一行**不开 `flex-wrap`**：换行会让状态列的 left 也可能变（父容器宽度变了）。
+ *   挤不下时靠各格 `ellipsis` 收，不换行。
+ */
 .detail-meta {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	min-width: 0;
 	font-size: 11.5px;
 	color: var(--text-secondary);
@@ -368,10 +384,15 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.detail-status {
+
+/* 状态列：**固定 92px**，是整个 meta 行的第一格 */
+.detail-status-col {
 	display: inline-flex;
 	align-items: center;
+	flex: 0 0 92px;
 	min-width: 0;
+	margin-left: 0;
+	padding: 0;
 }
 
 /* 动作行：关系（primary）+ 派生子任务 */
@@ -532,7 +553,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 }
 
 /* ══════════════════════════════════════════════════════════
-   ④ 历史 —— 默认折叠
+   ④ 历史 —— **不折叠**，竖直全画（用户 2026-11-18）
    ══════════════════════════════════════════════════════════ */
 
 .detail-history {
@@ -542,8 +563,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	min-width: 0;
 }
 
-/* 表头（可折叠时是 button，不可折叠时是 div）—— 两套外观一致 */
-.detail-history__toggle,
+/*
+ * 表头 —— 只是个 div，**不是按钮**。
+ * 折叠被删掉了（用户：「历史自己就是最后了……他没有更后面了」），
+ * 所以这里没有 `.detail-history__toggle` / `__caret`。
+ */
 .detail-history__head {
 	display: inline-flex;
 	align-items: center;
@@ -551,28 +575,9 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	align-self: flex-start;
 	padding: 2px 6px;
 	margin-left: -6px;
-	border: 0;
-	border-radius: 5px;
-	background: none;
-	font-family: inherit;
 	font-size: 12px;
 	font-weight: 600;
 	color: var(--text-secondary);
-	cursor: pointer;
-	text-align: left;
-}
-.detail-history__head {
-	cursor: default;
-}
-.detail-history__toggle:hover {
-	background: #f3f4f6;
-	color: var(--text);
-}
-
-.detail-history__caret {
-	font-size: 10px;
-	width: 10px;
-	color: var(--text-weak);
 }
 
 .detail-history__list {
@@ -17777,9 +17782,9 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	*
 	* | 问题 | 这里怎么答 | 组件怎么用 |
 	* |---|---|---|
-	* | **显示什么** | `head.meta` / `head.actions` / `sections` / `note` / `history` 五个数组 | 只 `map` |
-	* | **按什么顺序** | meta 固定五格；section 用卡的键插入顺序；history 最新在上 | 不排序 |
-	* | **哪些常驻 / 折叠** | `note.visible` 是**字面量 `true`**；`history.collapsed` 是**初始**折叠态 | 不判断 |
+	* | **显示什么** | `head.status` / `head.meta` / `head.actions` / `sections` / `note` / `history` | 只 `map` |
+	* | **按什么顺序** | 状态在最左；meta 四格；section 用卡的键插入顺序；history 最新在上 | 不排序 |
+	* | **哪些常驻** | 备注是**字面量 `true`**；历史空才不显示，有就全画 | 不判断 |
 	*
 	* ⇒ 组件里没有 `if (card.note !== '')`、没有 `if (history.length)`、没有 `.sort()`。
 	*   这些一旦散进 JSX，改一处就漏一处，而编译器不会告诉你漏了。
@@ -17790,22 +17795,30 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	* `index.js`（170）+ `header.js`（123）+ `history-block.js`（110）+ `relations-block.js`（147）。
 	* 下面每条规则都标了对应旧文件的行区间。
 	*
-	* ## ⚠ 用户 `2026-11-15` 否定的三件事（本文件把它们变成类型/常量）
+	* ## ⚠ 用户否定的五件事（本文件把它们变成类型/字段）
 	*
-	* 1. **标题独占一行** —— `DetailHeadView.title` 是**单个字符串字段**，
-	*    和 `meta`（编号/类别/领域/模板/状态）**分在两个数组里**。
+	* 1. **标题独占一行**（`2026-11-15`）—— `DetailHeadView.title` 是**单个字符串字段**，
+	*    和 `meta` **分在两个字段里**。
 	*    组件想「把标题塞进 meta 行」得自己拼 DOM，而 CDP 会按几何位置抓它。
-	* 2. **不要「正文」这种容器标签** —— 本文件里没有任何 "正文" 字符串，
+	* 2. **不要「正文」这种容器标签**（`2026-11-15`）—— 本文件里没有任何 "正文" 字符串，
 	*    章节直接平铺（旧版 `sectionList()` 也是平铺的，没有外层标题）。
-	* 3. **备注常驻** —— `DetailNoteView.visible` 的类型是 `true` 而不是 `boolean`。
+	* 3. **备注常驻**（`2026-11-15`）—— `DetailNoteView.visible` 的类型是 `true` 而不是 `boolean`。
 	*    这不是修辞：写 `visible: false` 编译不过。
 	*    （旧产品 MVP `src/views/CardDetail.tsx` 是 `card.note !== '' ? … : null`，
 	*      正是「不常驻」；旧版 taskboard2 反而是常驻的。**两版各错一半。**）
+	* 4. **状态放最左**（`2026-11-18`）—— `head.status` 是**独立字段**，不在 `meta` 数组里
+	*    ⇒ 组件只有一个地方能画它，label 再长也挤不走（见 `DetailStatusView`）。
+	* 5. **历史不折叠**（`2026-11-18`）—— `DetailHistoryView` 里**没有**
+	*    `collapsible` / `collapsed` 字段。删字段不是省略，是判决（见 `historyTableOf`）。
 	*
-	* ## 历史：**折叠**，不常驻
+	* ## 历史：**不折叠**
 	*
-	* 用户 `2026-11-15` 只说「历史可以折叠」；我（成员）判「应该折叠」，理由见
-	* `historyTableOf()`。折叠的是**初始态**，不是能力 —— 组件仍能展开。
+	* 用户 `2026-11-18`：
+	* > 「历史不需要折叠。没有折叠的含义。他是一个竖直显示。但是历史自己就是最后了。
+	* >  他的折叠并不影响看他后面的内容。他没有更后面了。」
+	*
+	* 折行的意义是「省空间给后面的内容让位」；历史在最后面，后面没有了
+	* ⇒ 折它不换回任何东西。
 	*/
 	/** 备注的固定文案（旧版 `index.js:66` 的 label / placeholder，一字未改）。 */
 	const NOTE_LABEL = "备注 / 搁置理由（随时写）";
@@ -17834,6 +17847,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		const tone = kindTone(card.template.kind);
 		return {
 			title: card.title,
+			status: {
+				status: card.status,
+				text: stateLabel(card.status)
+			},
 			meta: [
 				{
 					kind: "id",
@@ -17853,11 +17870,6 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 					kind: "template",
 					text: labels.templateLabel,
 					title: `模板：${labels.templateLabel}`
-				},
-				{
-					kind: "status",
-					status: card.status,
-					text: stateLabel(card.status)
 				}
 			],
 			actions: actionsOf(card),
@@ -17944,18 +17956,17 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	/**
 	* 历史表。
 	*
-	* ## 折叠规则（我判的，用户只说「可以折叠」）
+	* ## 不折叠（用户 `2026-11-18` 否掉了这个功能）
 	*
-	* | 条数 | visible | collapsible | collapsed（初始）|
-	* |---|---|---|---|
-	* | 0 | `false` | `false` | `false` |
-	* | 1 | `true` | `false` | `false` |
-	* | ≥2 | `true` | `true` | `true` |
+	* > 「历史不需要折叠。没有折叠的含义。他是一个竖直显示。但是历史自己就是最后了。
+	* >  他的折叠并不影响看他后面的内容。他没有更后面了。」
 	*
-	* **理由**：详情页一屏能放的东西有限，历史是**只读记录**（用户极少反复看），
-	* 而章节/备注是要读要写的。旧版让它常驻、列表展开，用户 `2026-11-15` 的原话是
-	* 「占满一屏」⇒ 默认收起。但只藏一条又变成「多点一次看一行」，
-	* 所以 1 条时直接展开、不给折梅按钮。
+	* 折行的意义是「省空间，给后面的内容让位」。历史在**最后面**，后面没有了
+	* ⇒ 折它不换回任何东西。所以这里**没有** `collapsible` / `collapsed` 字段，
+	* 组件也没有折叠按钮。
+	*
+	* ⚠ 上一版（`2026-11-18` 之前）有「≥2 条初始折叠」，那是成员自己的判断。
+	*   用户给了明确的判据把它否掉了 —— **判据是「后面还有没有内容」，不是条数**。
 	*
 	* ## 排序：最新在上，**同毫秒保持原顺序**
 	*
@@ -17986,11 +17997,8 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				actor
 			};
 		});
-		const expandable = count >= 2;
 		return {
 			visible: count > 0,
-			collapsible: expandable,
-			collapsed: expandable,
 			count,
 			label: `历史（${count}）`,
 			items
@@ -18367,10 +18375,15 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						})
 					]
 				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "detail-meta",
 					"data-detail-meta": true,
-					children: head.meta.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MetaItem, { item }, item.kind))
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "detail-status-col",
+						"data-meta": "status",
+						title: "当前状态",
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusCell, { status: head.status.status })
+					}), head.meta.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MetaItem, { item }, item.kind))]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "detail-actions",
@@ -18436,12 +18449,6 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				title: item.title,
 				children: item.text
 			});
-			case "status": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-				className: "detail-status",
-				"data-meta": "status",
-				title: "当前状态",
-				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StatusCell, { status: item.status })
-			});
 			default: return exhaustive(item);
 		}
 	}
@@ -18451,63 +18458,25 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	}
 	// dev/components/DetailHistory.tsx
 	/**
-	* 详情**历史** —— 默认折叠，点表头展开。
-	*
-	* ## 折叠是**语义**，开合是**UI 临时态**
-	*
-	* | 谁是语义 | 在哪 |
-	* |---|---|
-	* | 显示不显示、能不能折、初始折不折、条数、顺序、每条的人话 | `pure/card-detail.ts` 的 `historyTableOf()`（单测钉住）|
-	* | 用户此刻展开了没有 | **本组件的 `useState`**（不进 store、不落库）|
-	*
-	* 这跟旧版的分工一致：旧版 `index.js:99` 的 `expanded` 是「本视图实例的 UI 临时态」
-	* （注释原话：「不能进 store」）。区别是旧版折的是关系区，这里折的是历史。
-	*
-	* ## 为什么组件持有状态而 pure 只给初值
-	*
-	* 「初始折叠」是设计决定，「现在展开着」是用户动作的结果。
-	* 把后者也塞进 pure ⇒ 每次开合都要重建整张表，而且 pure 就不纯了。
-	*
-	* ## ⚠ 父组件要用 `key={card.id}` 挂它
-	*
-	* `useState` 的初值**只在挂载时读一次**。切卡时若不换 key，上一张卡的展开状态
-	* 会带到下一张卡上。`CardDetail.tsx` 里已经这么做（那里的注释写了原因）。
-	*/
-	/**
 	* 历史区块。
 	*
 	* @param props 见 `DetailHistoryProps`
 	*/
 	function DetailHistory(props) {
 		const view = props.history;
-		const [open, setOpen] = (0, import_react.useState)(!view.collapsed);
 		if (!view.visible) return null;
-		const collapsed = view.collapsible ? !open : false;
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			className: "detail-history",
 			"data-detail-history": true,
 			"data-history-count": view.count,
-			children: [view.collapsible ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-				type: "button",
-				className: `detail-history__toggle${collapsed ? "" : " is-open"}`,
-				"data-history-toggle": true,
-				"aria-expanded": !collapsed,
-				title: collapsed ? "展开历史" : "收起历史",
-				onClick: () => setOpen((one) => !one),
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "detail-history__caret",
-					children: collapsed ? "▸" : "▾"
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					className: "detail-history__label",
-					children: view.label
-				})]
-			}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 				className: "detail-history__head",
+				"data-history-head": true,
 				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 					className: "detail-history__label",
 					children: view.label
 				})
-			}), collapsed ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", {
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", {
 				className: "detail-history__list",
 				"data-history-list": true,
 				children: view.items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(HistoryRow, { item }, item.key))
@@ -18613,7 +18582,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 					note: table.note,
 					onNoteChange: props.onNoteChange
 				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(DetailHistory, { history: table.history }, props.card.id)
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(DetailHistory, { history: table.history })
 			]
 		});
 	}
@@ -18648,11 +18617,12 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	*
 	* 两段：
 	*
-	* ① **活的一面板** —— 受控 note、可点关闭/放大、可切卡（验「切卡后历史折叠态不串」）。
+	* ① **活的一面板** —— 受控 note、可点关闭/放大、可切卡。
 	* ② **固定场景** —— 每格直接可断言：
 	*    · `empty-history`  0 条历史 + 0 章节 + 空备注 ⇒ 备注**仍然在**
-	*    · `one-history`    1 条历史 ⇒ 不折叠、直接展开
-	*    · `many-history`   3 条历史 ⇒ 初始折叠
+	*    · `one-history`    1 条历史 ⇒ 全画出来
+	*    · `many-history`   3 条历史 ⇒ **全部可见，没有折叠按钮**（用户 `2026-11-18`）
+	*    · `long-label`     超长 label ⇒ 状态列 left **不变**（用户 `2026-11-18` 的根因）
 	*    · `deleted`        墓碑 ⇒ 备注/章节都显示，动作禁用，横幅在
 	*    · `no-sections`    没有章节 ⇒ 「模板没有章节」占位，但**没有「正文」二字**
 	*
@@ -18717,7 +18687,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 					}
 				}
 			},
-			note: "等用户确认「历史默认折叠」这一条。",
+			note: "历史不折叠了，三条全画出来。",
 			createdAt: T0,
 			adoptedAt: null,
 			history: history({
@@ -18747,7 +18717,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		};
 	}
 	function Live(props) {
-		const [note, setNote] = (0, import_react.useState)("等用户确认「历史默认折叠」这一条。");
+		const [note, setNote] = (0, import_react.useState)("历史不折叠了，三条全画出来。");
 		const [cardId, setCardId] = (0, import_react.useState)("DE-03");
 		const [closed, setClosed] = (0, import_react.useState)(false);
 		const cards = [card(), card({
@@ -18847,7 +18817,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		},
 		{
 			key: "one-history",
-			note: "1 条历史 ⇒ 显示但不可折叠（不给点了没反应的按钮）",
+			note: "1 条历史 ⇒ 显示，全部画出来",
 			card: card({ history: history({
 				at: T0,
 				action: "create",
@@ -18856,8 +18826,17 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		},
 		{
 			key: "many-history",
-			note: "3 条历史 ⇒ 初始折叠（用户：旧版「占满一屏」）",
+			note: "3 条历史 ⇒ 全部可见，**没有折叠按钮**（用户 2026-11-18：历史后面没有内容，折叠无意义）",
 			card: card()
+		},
+		{
+			key: "long-label",
+			note: "超长 label ⇒ 状态列 left **不变**（用户 2026-11-18 的根因：label 太大会让状态漂移）",
+			card: card({ template: {
+				ref: "user-need",
+				kind: "design",
+				domain: "这是一个非常非常长的领域名称用来把标签撑开".repeat(3)
+			} })
 		},
 		{
 			key: "deleted",
@@ -18920,10 +18899,12 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", {
 					className: "pv-head",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "CardDetail / 卡片详情面板" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { children: [
-						"标题独占一行 · 备注常驻 · 历史默认折叠 · 章节渲染等 C6 ",
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "Section" }),
+						"状态在最左（固定列，不随 label 漂移）· 标题独占一行 · 备注常驻 ·",
 						" ",
-						"合并后替换"
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "历史不折叠" }),
+						" · 章节渲染等 C6 ",
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("code", { children: "Section" }),
+						" 合并后替换"
 					] })]
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Live, { onEvent: push }),

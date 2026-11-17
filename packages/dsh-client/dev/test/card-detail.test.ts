@@ -1,16 +1,22 @@
 /**
  * `pure/card-detail.ts` 的测试 —— 纯函数，零 DOM、零 React。
  *
- * 分组就是任务描述那张表：**显示什么 / 按什么顺序 / 哪些常驻哪些折叠**。
- * 用户 `2026-11-15` 否定的三件事（标题独占一行、不要「正文」、备注常驻）
- * 各有专门的断言，且都不是「读代码看出来」的，而是**表里读出来**的。
+ * 分组就是任务描述那张表：**显示什么 / 按什么顺序 / 哪些常驻**。
+ * 用户否定的五件事各有专门断言，且都不是「读代码看出来」的，而是**表里读出来**的：
+ *
+ * | 用户 | 要求 | 钉住的断言 |
+ * |---|---|---|
+ * | `2026-11-15` | 标题独占一行 | `head.title` 是独立字段、不在 meta 里 |
+ * | `2026-11-15` | 不要「正文」容器标签 | 全表文本不含「正文」 |
+ * | `2026-11-15` | 备注常驻 | `note.visible` 是字面量 `true` |
+ * | `2026-11-18` | 状态放最左（编号左边）| `head.status` 是独立字段、不在 meta 里 |
+ * | `2026-11-18` | 历史不折叠 | 视图里**没有** `collapsible` / `collapsed` 字段 |
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-	HISTORY_COLLAPSE_MIN,
 	actionsOf,
 	detailTableOf,
 	headOf,
@@ -70,10 +76,10 @@ describe('① 标题独占一行（用户 2026-11-15 第 1 条）', () => {
 		);
 	});
 
-	it('⭐ meta 五格里没有任何一格是标题', () => {
+	it('⭐ meta 四格里没有任何一格是标题，也**不含状态**（状态是独立字段）', () => {
 		assert.deepEqual(
 			head.meta.map((one) => one.kind),
-			['id', 'kind', 'domain', 'template', 'status'],
+			['id', 'kind', 'domain', 'template'],
 		);
 	});
 
@@ -85,6 +91,58 @@ describe('① 标题独占一行（用户 2026-11-15 第 1 条）', () => {
 
 	it('标题原样返回 —— 不做「截断 / 加前缀」之类加工', () => {
 		assert.equal(headOf(card({ title: '  两边有空格  ' }), LABELS).title, '  两边有空格  ');
+	});
+});
+
+/* ══════════════════════════════════════════════════════════ */
+describe('①b 状态是**独立字段**、不在 meta 里（用户 2026-11-18）', () => {
+	/*
+	 * 用户原话：
+	 * > 「状态需要放在最左边。可交互的东西被 label 顺位放在右边是不合理的。
+	 * >  如果 label 太长，那么状态按钮的位置甚至会变化。所以他至少放在 label 的左边。
+	 * >  但我希望他放在编号的左边。」
+	 *
+	 * 根因是「label 太长会让状态漂移」。⇒ 它必须**独立于 meta 数组**，
+	 * 这样组件里只有一个地方能画它，label 再长也挤不走。
+	 */
+	it('⭐ head.status 是独立字段，带原始 state id 和中文名', () => {
+		const head = headOf(card(), LABELS);
+		assert.equal(head.status.status, S.working);
+		assert.equal(head.status.text, '处理中');
+	});
+
+	it('⭐ status 不在 meta 数组里（meta 四格全是 label）', () => {
+		const head = headOf(card(), LABELS);
+		/*
+		 * ⚠ 这里用 `String(...)` 而不是 `one.kind === 'status'` ——
+		 *   后者在类型上已经被排除了（`DetailMetaItem` 没有 `status` 成员），
+		 *   `tsc` 会报 TS2367「比较无意义」。
+		 *   但这个断言的价值恰恰是**运行时**再确认一遍（类型可以被 `as` 绕过），
+		 *   所以从宽比较。
+		 */
+		assert.equal(
+			head.meta.some((one) => String(one.kind) === 'status'),
+			false,
+		);
+		assert.equal(head.meta.length, 4);
+	});
+
+	it('⚠ meta 里四格的 kind 顺序固定：编号 → 类别 → 领域 → 模板', () => {
+		assert.deepEqual(
+			headOf(card(), LABELS).meta.map((one) => one.kind),
+			['id', 'kind', 'domain', 'template'],
+		);
+	});
+
+	it('⭐ 超长 kindLabel / templateLabel **不会**改变 head.status（状态和 label 无耦合）', () => {
+		const long = { kindLabel: '设'.repeat(80), templateLabel: '模'.repeat(80) };
+		assert.deepEqual(headOf(card(), long).status, headOf(card(), LABELS).status);
+	});
+
+	it('乱状态名不炸（颜色退回灰、名字原样）', () => {
+		const head = headOf(card({ status: 'TASK_STATE_NOT_A_REAL_ONE' }), LABELS);
+		assert.equal(typeof head.status.text, 'string');
+		assert.equal(head.status.status, 'TASK_STATE_NOT_A_REAL_ONE');
 	});
 });
 
@@ -265,7 +323,15 @@ describe('⑤ 动作行：关系显眼（用户 2026-11-15 第 2 条）', () => 
 });
 
 /* ══════════════════════════════════════════════════════════ */
-describe('⑥ 历史：空不显示、1 条展开、≥2 条初始折叠', () => {
+describe('⑥ 历史：空不显示，有就**全画**（不折叠，用户 2026-11-18）', () => {
+	/*
+	 * 用户原话：
+	 * > 「历史不需要折叠。没有折叠的含义。他是一个竖直显示。但是历史自己就是最后了。
+	 * >  他的折叠并不影响看他后面的内容。他没有更后面了。」
+	 *
+	 * ⇒ `DetailHistoryView` 里**没有** collapsible / collapsed 两个字段。
+	 *   这组测试钉住「不该有的字段不存在」—— 用 `in` 检查，加回来就红。
+	 */
 	it('⭐ 空历史 ⇒ visible = false（不画空框）', () => {
 		const view = historyTableOf([]);
 		assert.equal(view.visible, false);
@@ -273,40 +339,32 @@ describe('⑥ 历史：空不显示、1 条展开、≥2 条初始折叠', () =>
 		assert.deepEqual(view.items, []);
 	});
 
-	it('⭐ 1 条 ⇒ 显示，但不可折叠、初始展开', () => {
+	it('⭐ 1 条 ⇒ visible = true，items 全部在', () => {
 		const view = historyTableOf([entry(1, 'create', 'user')]);
 		assert.equal(view.visible, true);
-		assert.equal(view.collapsible, false);
-		assert.equal(view.collapsed, false);
+		assert.equal(view.items.length, 1);
 	});
 
-	it('⭐ 2 条 ⇒ 可折叠，且**初始就是折叠的**（用户：「占满一屏」）', () => {
-		const view = historyTableOf([entry(1, 'create', 'user'), entry(2, 'transition', 'ai')]);
+	it('⭐ 3 条 ⇒ 3 条**全部**在 items 里（没有「只画前 N 条」）', () => {
+		const view = historyTableOf([
+			entry(1, 'create', 'user'),
+			entry(2, 'transition', 'ai'),
+			entry(3, 'update', 'user'),
+		]);
 		assert.equal(view.visible, true);
-		assert.equal(view.collapsible, true);
-		assert.equal(view.collapsed, true);
+		assert.equal(view.count, 3);
+		assert.equal(view.items.length, 3);
 	});
 
-	it('折叠阈值常量与实现一致（≥2）', () => {
-		assert.equal(HISTORY_COLLAPSE_MIN, 2);
-		assert.equal(historyTableOf([entry(1, 'create', 'user')]).collapsed, false);
-		assert.equal(
-			historyTableOf([entry(1, 'a', 'user'), entry(2, 'b', 'user')]).collapsed,
-			true,
-		);
+	it('⭐ 20 条也不截断（真的是一条都不藏）', () => {
+		const many = Array.from({ length: 20 }, (_, i) => entry(i + 1, 'update', 'user'));
+		assert.equal(historyTableOf(many).items.length, 20);
 	});
 
-	it('⭐ 空历史：collapsible / collapsed 都是 false（visible=false 时它们没有意义，但不给矛盾值）', () => {
-		const view = historyTableOf([]);
-		assert.equal(view.collapsible, false);
-		assert.equal(view.collapsed, false);
-	});
-
-	it('⚠ 折叠只发生在「有 ≥2 条」时 —— collapsed=true 且 visible=false 是矛盾组合，实现里不会出现', () => {
-		for (const list of [[], [entry(1, 'create', 'user')]]) {
-			const view = historyTableOf(list);
-			assert.equal(view.collapsed && !view.visible, false);
-		}
+	it('⭐ 视图里**没有** collapsible / collapsed 字段（折叠概念被删掉了，不是默认关）', () => {
+		const view = historyTableOf([entry(1, 'create', 'user'), entry(2, 'update', 'ai')]);
+		assert.equal('collapsible' in view, false);
+		assert.equal('collapsed' in view, false);
 	});
 
 	it('表头带计数（旧版「历史（N）」）', () => {
@@ -440,14 +498,15 @@ describe('⑨ 整张表：detailTableOf 只是四块的组装', () => {
 		assert.equal(table.history.count, 2);
 	});
 
-	it('⭐ 备注常驻 + 历史折叠，同一次调用里同时成立', () => {
+	it('⭐ 备注常驻 + 历史全画，同一次调用里同时成立', () => {
 		assert.equal(table.note.visible, true);
-		assert.equal(table.history.collapsed, true);
+		assert.equal(table.history.visible, true);
+		assert.equal(table.history.items.length, 2);
 	});
 
-	it('meta 里的状态名是中文（不是协议全名）', () => {
-		const status = table.head.meta.find((one) => one.kind === 'status');
-		assert.equal(status?.kind === 'status' ? status.text : '', '处理中');
+	it('状态名是中文（不是协议全名），且在 head.status 上', () => {
+		assert.equal(table.head.status.text, '处理中');
+		assert.equal(table.head.status.status, S.working);
 	});
 
 	it('meta 的编号格带分类色系（design）', () => {
