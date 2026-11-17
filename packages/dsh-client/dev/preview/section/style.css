@@ -1,0 +1,355 @@
+/*
+ * Section（卡片正文的一章）的样式 —— 只在 `dev/preview/section/` 里用。
+ *
+ * 由 `dev/preview/build.mjs section` 追加在共享 `preview.css` **之后**
+ * ⇒ 可以用共享变量（`--bg-card` / `--border` / `--accent` / `--text-weak` …），
+ *   但**不要改共享的类名**（那是别的组件的）。
+ *
+ * 类名分工：
+ *   .section-block            一章的外框（label + content）
+ *   .section-block__label     章节名行（模板给的文字，不是容器词）
+ *   .section-block__text      text 正文（pre-wrap）
+ *   .md                       markdown 容器（换行 / strong / code）
+ *   .ask-*                    ask 的选项 / 徽标 / 自填框
+ *   .payload-box              未知 $type 的原始 JSON
+ */
+
+/* ── 通用小按钮（旧版 `.ghost-btn`）── */
+/* preview.css 里没有它，所以各组件子目录自己定义一份（只服务预览）。 */
+.ghost-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 9px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-size: 12px;
+	font-family: inherit;
+	color: var(--text-secondary);
+	background: var(--bg-card);
+	cursor: pointer;
+	white-space: nowrap;
+	transition:
+		border-color 0.12s,
+		color 0.12s,
+		background 0.12s;
+}
+.ghost-btn:hover:not(:disabled) {
+	border-color: var(--text-weak, #9aa1ad);
+	color: var(--text);
+}
+.ghost-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+/* ══════════════════════════════════════════════════════════
+   一章
+   ══════════════════════════════════════════════════════════ */
+
+.section-block {
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-card);
+	margin-bottom: 10px;
+}
+
+/*
+ * 可编辑：整章是点击目标 ⇒ 给 hover 反馈。
+ * 只读时**没有** pointer / hover —— 让「点不动」看得出来。
+ */
+.section-block.is-editable {
+	cursor: pointer;
+	transition:
+		border-color 0.12s,
+		background 0.12s;
+}
+.section-block.is-editable:hover {
+	border-color: var(--accent);
+	background: #f8fbff;
+}
+
+/* 章节名：小字、次要色 —— 模板给的原文，不加「正文」之类容器词 */
+.section-block__label {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin-bottom: 6px;
+	font-size: 11.5px;
+	color: var(--text-secondary);
+}
+.section-block__label-text {
+	font-weight: 600;
+}
+/* 「编辑」提示只出现在可点的时候 */
+.section-block__edit-hint {
+	margin-left: auto;
+	font-size: 10.5px;
+	color: var(--accent);
+	opacity: 0;
+	transition: opacity 0.12s;
+}
+.section-block.is-editable:hover .section-block__edit-hint {
+	opacity: 1;
+}
+
+/* text 正文：**保留换行与缩进**（text 与 markdown 的区别就在这里） */
+.section-block__text {
+	font-size: 12.5px;
+	line-height: 1.75;
+	color: var(--text);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* 空态 / 草稿灰字 */
+.section-block__placeholder {
+	font-size: 12.5px;
+	line-height: 1.7;
+	color: var(--text-weak, #9aa1ad);
+	font-style: italic;
+}
+
+/* ══════════════════════════════════════════════════════════
+   markdown（临时子集）
+   ══════════════════════════════════════════════════════════ */
+
+.md {
+	font-size: 12.5px;
+	line-height: 1.75;
+	color: var(--text);
+	word-break: break-word;
+}
+.md-line {
+	/* 一段 = 一个 div；空行用 <br> 撑开 */
+}
+.md strong {
+	font-weight: 700;
+}
+.md-code-inline {
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+	font-size: 11.5px;
+	background: #f1f3f6;
+	padding: 0 4px;
+	border-radius: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   ask
+   ══════════════════════════════════════════════════════════ */
+
+.ask-group + .ask-group {
+	margin-top: 14px;
+	padding-top: 12px;
+	border-top: 1px dashed var(--border);
+}
+
+.ask-group__header {
+	font-size: 10.5px;
+	color: var(--text-weak, #9aa1ad);
+	text-transform: none;
+	margin-bottom: 2px;
+}
+.ask-group__question {
+	font-size: 12.5px;
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+
+/* ── 选项 ── */
+.ask-group__options {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.ask-option {
+	display: flex;
+	align-items: flex-start;
+	gap: 7px;
+	width: 100%;
+	padding: 6px 9px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	background: var(--bg-card);
+	font-family: inherit;
+	font-size: 12.5px;
+	color: var(--text);
+	text-align: left;
+	cursor: pointer;
+	transition:
+		border-color 0.12s,
+		background 0.12s;
+}
+.ask-option:hover {
+	border-color: #93c5fd;
+	background: #f8fbff;
+}
+
+/* 只读的选项是 div —— 不给指针、不给 hover */
+div.ask-option {
+	cursor: default;
+}
+div.ask-option:hover {
+	border-color: var(--border);
+	background: var(--bg-card);
+}
+
+/* 已选：accent 描边 + 淡蓝底 + 勾 */
+.ask-option.is-picked {
+	border-color: var(--accent);
+	background: #eff6ff;
+}
+div.ask-option.is-picked:hover {
+	border-color: var(--accent);
+	background: #eff6ff;
+}
+
+/* 勾的位置固定占宽 ⇒ 未选中的文字不会左右跳 */
+.ask-option__mark {
+	flex: 0 0 12px;
+	color: var(--accent);
+	font-weight: 700;
+	line-height: 1.5;
+}
+.ask-option__body {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+/* ⚠ 已选时 label 不能挪位：它和 desc 是两行 */
+.ask-option__label {
+	font-weight: 500;
+}
+.ask-option__desc {
+	font-size: 11px;
+	color: var(--text-secondary);
+	line-height: 1.6;
+}
+
+/* ── 三态徽标 ── */
+.ask-group__state {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 8px;
+	font-size: 10.5px;
+	color: var(--text-weak, #9aa1ad);
+}
+.ask-group__state-text {
+	padding: 0 6px;
+	border-radius: 4px;
+	background: #f1f3f6;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+}
+/* 三态各自的颜色：未选择灰、都不要橙、已选绿 */
+.ask-group__state[data-ask-state-label='unset'] .ask-group__state-text {
+	color: #6b7280;
+}
+.ask-group__state[data-ask-state-label='none'] .ask-group__state-text {
+	color: #b45309;
+	background: #fef3c7;
+}
+.ask-group__state[data-ask-state-label='picked'] .ask-group__state-text {
+	color: #047857;
+	background: #d1fae5;
+}
+.ask-group__custom-values {
+	font-size: 10.5px;
+	color: var(--text-secondary);
+}
+
+/* ── 「都不要」+ 自填 ── */
+.ask-group__actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-top: 9px;
+	padding-top: 9px;
+	border-top: 1px dashed #f0f2f6;
+}
+.ask-group__custom {
+	flex: 1 1 200px;
+	min-width: 120px;
+	padding: 4px 9px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-family: inherit;
+	font-size: 12px;
+	color: var(--text);
+	background: var(--bg-card);
+}
+.ask-group__custom:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+/* ══════════════════════════════════════════════════════════
+   未知 $type / 脏数据
+   ══════════════════════════════════════════════════════════ */
+
+.section-block__unknown {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
+}
+.payload-box {
+	margin: 0;
+	padding: 9px 11px;
+	width: 100%;
+	border-radius: 6px;
+	background: #f6f7f9;
+	border: 1px solid var(--border);
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+	font-size: 10.5px;
+	line-height: 1.7;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 260px;
+	overflow: auto;
+	/* 原始 JSON 别继承「整章可点」的指针语义 */
+	cursor: text;
+}
+
+/* ══════════════════════════════════════════════════════════
+   预览页专用
+   ══════════════════════════════════════════════════════════ */
+
+.live-wrap {
+	max-width: 640px;
+}
+
+.pv-case {
+	margin-bottom: 16px;
+}
+.pv-case:last-child {
+	margin-bottom: 0;
+}
+.pv-case__note {
+	font-size: 11px;
+	color: var(--text-weak, #9aa1ad);
+	margin-bottom: 5px;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+}
+
+.pv-events {
+	margin: 0 0 10px;
+	padding-left: 18px;
+	font-size: 11.5px;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+	color: #3f4652;
+	max-height: 160px;
+	overflow-y: auto;
+}
+.pv-events__empty {
+	list-style: none;
+	margin-left: -18px;
+	color: var(--text-weak, #9aa1ad);
+	font-family: inherit;
+}
