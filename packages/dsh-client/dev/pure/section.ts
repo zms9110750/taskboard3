@@ -1,0 +1,516 @@
+/**
+ * 章节的**纯逻辑** —— 零 React、零 DOM、零网络。
+ *
+ * ## 数据形状（v3，不是旧版）
+ *
+ * payload 的形状**唯一来源**是 `core/template/actions.ts` 的 zod schema（三个内置
+ * action，全部 `strictObject`）：
+ *
+ * | action | payload |
+ * |---|---|
+ * | `text` | `{ $type:'text', value?: string, placeholder?: string }` |
+ * | `markdown` | `{ $type:'markdown', value?: string, placeholder?: string }` |
+ * | `ask` | `{ $type:'ask', items: [{ header?, question?, options: [{label, description?}], multi_select?, picked?: string[], custom?: string[], placeholder? }] }` |
+ *
+ * 真实样例见 `packages/core/templates/*.yaml`（如 `expectedMismatch.yaml` 的
+ * 「为什么这么想」、`question.yaml` 的「需要回答的问题」）。
+ *
+ * ⚠ **旧版的形状不一样**：taskboard2 的 ask 是 `{ title, case:[…] }`。`src/pure.ts`
+ *   的 `extractText()` 认的是**旧形状** ⇒ 对 v3 的 ask 返回空串（已知缺陷，
+ *   另派任务修；`dev/test/section.test.ts` 有一条**会变红**的测试钉住它）。
+ *
+ * ## 为什么这里还要容忍脏数据
+ *
+ * core 的 `validate()` 第 ④ 步把模板 `default` **不校验**就塞进卡
+ * （`template/schema.ts` 的 `defaultsOf`）⇒ 第三方模板能给出任意 payload、任意
+ * `$type`。卡是 JSON、TypeScript 不校验运行时数据 ⇒ **本文件的每个入口都必须
+ * 对任意 `unknown` 给出一个能画的东西，不抛**。
+ *
+ * 判决（哪些形状怎么画）全在这里；组件只把这里给的字段原样画出来。
+ */
+
+import { extractText } from '../../src/pure.ts';
+
+/* ══════════════════════════════════════════════════════════
+   基础：把 unknown 收窄
+   ══════════════════════════════════════════════════════════ */
+
+/** 普通对象（排除 null / 数组）。 */
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** 取一个字符串字段；不是字符串就给 `''`（**不 String() 强转**，那会把数字画成内容）。 */
+function stringField(record: Readonly<Record<string, unknown>>, key: string): string {
+	const value = record[key];
+	return typeof value === 'string' ? value : '';
+}
+
+/* ══════════════════════════════════════════════════════════
+   类型判定
+   ══════════════════════════════════════════════════════════ */
+
+/** 章节内容的四种渲染形态。`unknown` 是**降级**，不是第四种 action。 */
+export type SectionKind = 'text' | 'markdown' | 'ask' | 'unknown';
+
+/**
+ * 取 `$type`。不是字符串就给 `''`。
+ *
+ * @param payload 任意 payload
+ */
+export function payloadTypeOf(payload: unknown): string {
+	if (!isRecord(payload)) return '';
+	return stringField(payload, '$type');
+}
+
+/**
+ * payload → 渲染形态。
+ *
+ * ## 三条兼容（都有测试钉住）
+ *
+ * 1. `$type` 是三个已知值 ⇒ 对应形态；
+ * 2. `$type` 是**别的**字符串 ⇒ `unknown`（**不猜**：第三方 action 的 UI 没接，
+ *    硬画成文本会让「未注册」这个事实看不见）；
+ * 3. 没有 `$type` 但 `value` 是字符串 / payload 本身就是字符串 ⇒ `text`
+ *    —— 与 `extractText()` 已有的行为一致（旧数据 / 未校验的模板默认值）。
+ *
+ * @param payload 任意 payload
+ */
+export function payloadKindOf(payload: unknown): SectionKind {
+	if (typeof payload === 'string') return 'text';
+
+	const type = payloadTypeOf(payload);
+	if (type === 'text' || type === 'markdown' || type === 'ask') return type;
+	if (type !== '') return 'unknown';
+
+	if (isRecord(payload) && typeof payload['value'] === 'string') return 'text';
+	return 'unknown';
+}
+
+/* ══════════════════════════════════════════════════════════
+   markdown —— **临时最小子集**
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * markdown 的一个行内片段。
+ *
+ * ⚠ 这是**渲染用的 token**，不是 HTML。组件按 `kind` 建元素（`strong` / `code`），
+ *   文字一律走 `textContent` ⇒ **结构上没有 innerHTML 这条路**。
+ */
+export type MarkdownToken =
+	| { readonly kind: 'text'; readonly text: string }
+	| { readonly kind: 'strong'; readonly text: string }
+	| { readonly kind: 'code'; readonly text: string };
+
+/** markdown 的一行（行内已 token 化）。 */
+export interface MarkdownLine {
+	readonly tokens: readonly MarkdownToken[];
+	/** 空行（只有空白）—— 渲染成留白，不是一段文字。 */
+	readonly blank: boolean;
+}
+
+/** 空白（含行尾）：`**` 的 flanking 判定要用。 */
+function isBlankChar(char: string | undefined): boolean {
+	return char === undefined || char === ' ' || char === '\t';
+}
+
+/**
+ * 把一行切成 token。
+ *
+ * 支持的两种标记：`` `代码` ``、`**粗体**`。**不闭合的标记保持字面文本**
+ * （用户写的 `2 * 3` 不该变成粗体的一半）。
+ *
+ * ## `**` 按 CommonMark 的 left/right-flanking 简化版判定
+ *
+ * | 写法 | 结果 | 为什么 |
+ * |---|---|---|
+ * | `**粗**` | 粗体 | 开标记后不是空白、闭标记前不是空白 |
+ * | `2 ** 3` | 字面 `2 ** 3` | 开标记后是空白 ⇒ 开不起来 |
+ * | `** 和 **` | 字面 | 同上 |
+ * | `**` | 字面 | 没有内容 |
+ *
+ * ⚠ 不实现完整的 flanking（标点/Unicode 那套）—— 这是**临时实现**，
+ *   正式版换 marked 后整段删掉。
+ */
+function tokensOfLine(line: string): readonly MarkdownToken[] {
+	const tokens: MarkdownToken[] = [];
+	let buffer = '';
+
+	const flush = (): void => {
+		if (buffer !== '') {
+			tokens.push({ kind: 'text', text: buffer });
+			buffer = '';
+		}
+	};
+
+	let index = 0;
+	while (index < line.length) {
+		const char = line[index];
+
+		if (char === '`') {
+			const end = line.indexOf('`', index + 1);
+			/* 空内容（``）也算代码：那是用户明确打了两个反引号。 */
+			if (end > index) {
+				flush();
+				tokens.push({ kind: 'code', text: line.slice(index + 1, end) });
+				index = end + 1;
+				continue;
+			}
+			buffer += char;
+			index += 1;
+			continue;
+		}
+
+		if (char === '*' && line[index + 1] === '*') {
+			/* 开标记后面必须是内容（不是空白），否则保持字面。 */
+			const canOpen = !isBlankChar(line[index + 2]);
+			if (canOpen) {
+				/* 闭标记前面必须是内容（不是空白）。 */
+				let end = line.indexOf('**', index + 2);
+				while (end !== -1 && (end === index + 2 || isBlankChar(line[end - 1]))) {
+					end = line.indexOf('**', end + 2);
+				}
+				if (end !== -1) {
+					flush();
+					tokens.push({ kind: 'strong', text: line.slice(index + 2, end) });
+					index = end + 2;
+					continue;
+				}
+			}
+			buffer += '**';
+			index += 2;
+			continue;
+		}
+
+		buffer += char;
+		index += 1;
+	}
+
+	flush();
+	return tokens;
+}
+
+/**
+ * markdown 源码 → 行数组。
+ *
+ * ## 现在支持的语法（**临时实现**）
+ *
+ * | 语法 | 效果 |
+ * |---|---|
+ * | 换行（`\n`，含 `\r\n` / `\r`）| 一行一段；空行留白 |
+ * | `**粗体**` | `<strong>` |
+ * | `` `代码` `` | `<code>` |
+ *
+ * ⚠ **这是临时实现。** 用户 `2026-11-10` 明确要求「找正规的 md 渲染器」，
+ *   正式版要换成 marked（GFM）+ 白名单净化（旧版 `lib/markdown.js` 是这么做的：
+ *   marked 解析 → DOMParser 惰性文档 → 按白名单**重建**节点 → 绝不 innerHTML）。
+ *   换库点只有本函数一个 —— 正式版替换 `markdownLinesOf` 即可。
+ *
+ * 现在**不支持**（会原样显示成文字）：标题 `#`、列表、引用、代码块 ```、表格、
+ * 链接、图片、删除线、HTML 标签（**原样当文字**，绝不解析）。
+ *
+ * @param source 任意值；不是字符串 ⇒ 空数组
+ */
+export function markdownLinesOf(source: unknown): readonly MarkdownLine[] {
+	if (typeof source !== 'string' || source === '') return [];
+	const normalized = source.replace(/\r\n?/gu, '\n');
+	return normalized.split('\n').map((line) => ({
+		tokens: tokensOfLine(line),
+		blank: line.trim() === '',
+	}));
+}
+
+/* ══════════════════════════════════════════════════════════
+   ask
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * `picked` 的三种状态（`core/template/actions.ts` 的注释原文）：
+ * 不存在 = 未选择；`[]` = 看了但都不要；`["A"]` = 选了 A。
+ *
+ * ⚠ 三态**必须能区分显示** —— `[]` 和「不存在」是两种不同的回答。
+ */
+export type AskPickState = 'unset' | 'none' | 'picked';
+
+/** 一个选项的渲染决定。 */
+export interface AskOptionView {
+	readonly label: string;
+	readonly description: string;
+	/** 这个选项当前被选中（`picked` 里有它的 label）。 */
+	readonly picked: boolean;
+}
+
+/** 一个问卷组（一个问题 + 它的选项 + 已答）。 */
+export interface AskGroupView {
+	readonly header: string;
+	readonly question: string;
+	readonly multiSelect: boolean;
+	readonly options: readonly AskOptionView[];
+	/** 三态之一。 */
+	readonly pickedState: AskPickState;
+	/** 已选数量（`picked` 里合法字符串的个数）。 */
+	readonly pickedCount: number;
+	/** 自填值（不进 `picked`）。 */
+	readonly custom: readonly string[];
+	/** 自填框灰字。 */
+	readonly placeholder: string;
+	/** 可画的东西一个都没有（无 header / question / options / custom）。 */
+	readonly empty: boolean;
+}
+
+/** 一个 ask 章节。 */
+export interface AskSectionView {
+	readonly kind: 'ask';
+	/** 问题组。**结构上 N 条**，模板现在都只用 1 条。 */
+	readonly groups: readonly AskGroupView[];
+	/** 一个组都没有（脏数据 / 空 items）。 */
+	readonly empty: boolean;
+}
+
+/** 把「未选择 / 都不要 / 已选」翻成界面文字。 */
+export function askStateLabelOf(group: AskGroupView): string {
+	if (group.pickedState === 'unset') return '未选择';
+	if (group.pickedState === 'none') return '都不要';
+	return group.multiSelect ? `多选·已答 ${group.pickedCount}` : `单选·已选 ${group.pickedCount}`;
+}
+
+/**
+ * 点「都不要」时回调的 `value`。
+ *
+ * ⚠ 语义：`onAnswer(sectionId, '')` = **看了但都不要**（对应 payload 里
+ *   `picked: []`）。调用方据此写 `picked: []`，**不要**删掉 `picked`
+ *   —— 那会退回「未选择」，两种回答就分不出来了。
+ */
+export const NO_ANSWER = '';
+
+/** 一个原始选项 → 渲染决定；脏数据跳过。 */
+function optionViewOf(raw: unknown, picked: readonly string[]): AskOptionView | undefined {
+	if (!isRecord(raw)) return undefined;
+	const label = raw['label'];
+	if (typeof label !== 'string' || label === '') return undefined;
+	return {
+		label,
+		description: stringField(raw, 'description'),
+		picked: picked.includes(label),
+	};
+}
+
+/** `picked` → 只留字符串。 */
+function pickedOf(raw: unknown): readonly string[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.filter((one): one is string => typeof one === 'string');
+}
+
+/** 一个原始问题组 → 渲染决定；脏数据跳过（返回 `undefined`）。 */
+function groupViewOf(raw: unknown): AskGroupView | undefined {
+	if (!isRecord(raw)) return undefined;
+
+	const picked = pickedOf(raw['picked']);
+	/*
+	 * 三态，只认数组：
+	 *   不是数组（不存在 / 脏值）⇒ `unset` —— **不猜**「他都不要」；
+	 *   `[]`                      ⇒ `none`  —— 看了但都不要；
+	 *   非空                      ⇒ `picked`。
+	 */
+	const rawPicked = raw['picked'];
+	let pickedState: AskPickState = 'unset';
+	if (Array.isArray(rawPicked)) pickedState = rawPicked.length === 0 ? 'none' : 'picked';
+
+	const rawOptions = raw['options'];
+	const options: AskOptionView[] = [];
+	if (Array.isArray(rawOptions)) {
+		for (const one of rawOptions) {
+			const view = optionViewOf(one, picked);
+			if (view !== undefined) options.push(view);
+		}
+	}
+
+	const rawCustom = raw['custom'];
+	const custom = Array.isArray(rawCustom)
+		? rawCustom.filter((one): one is string => typeof one === 'string')
+		: [];
+
+	const header = stringField(raw, 'header');
+	const question = stringField(raw, 'question');
+	const placeholder = stringField(raw, 'placeholder');
+
+	return {
+		header,
+		question,
+		multiSelect: raw['multi_select'] === true,
+		options,
+		pickedState,
+		pickedCount: picked.length,
+		custom,
+		placeholder,
+		empty:
+			header === '' && question === '' && options.length === 0 && custom.length === 0,
+	};
+}
+
+/**
+ * ask payload → 渲染决定。
+ *
+ * 形状不对的地方**跳过**而不是抛：`items` 不是数组 ⇒ 零个组（界面显示「这一章没有
+ * 可显示的问题」）；某一组不是对象 ⇒ 跳过那一组。
+ *
+ * @param payload 任意 payload（通常是 `{ $type:'ask', items:[…] }`）
+ */
+export function askSectionOf(payload: unknown): AskSectionView {
+	const groups: AskGroupView[] = [];
+	if (isRecord(payload)) {
+		const rawItems = payload['items'];
+		if (Array.isArray(rawItems)) {
+			for (const one of rawItems) {
+				const view = groupViewOf(one);
+				if (view !== undefined) groups.push(view);
+			}
+		}
+	}
+	return { kind: 'ask', groups, empty: groups.length === 0 };
+}
+
+/* ══════════════════════════════════════════════════════════
+   三种形态的渲染决定
+   ══════════════════════════════════════════════════════════ */
+
+/** text 章节。 */
+export interface TextSectionView {
+	readonly kind: 'text';
+	readonly value: string;
+	readonly placeholder: string;
+	readonly empty: boolean;
+}
+
+/** markdown 章节。 */
+export interface MarkdownSectionView {
+	readonly kind: 'markdown';
+	readonly source: string;
+	readonly placeholder: string;
+	readonly empty: boolean;
+	readonly lines: readonly MarkdownLine[];
+}
+
+/** 未知 $type / 脏 payload —— 降级成「展开原始 JSON」，不白屏、不猜。 */
+export interface UnknownSectionView {
+	readonly kind: 'unknown';
+	/** 给人看的一句话（含 `$type`）。 */
+	readonly title: string;
+	/** 原始 JSON（已截断）。 */
+	readonly json: string;
+}
+
+/** 一个章节的渲染决定。 */
+export type SectionView = TextSectionView | MarkdownSectionView | AskSectionView | UnknownSectionView;
+
+/** JSON 预览最长字符数 —— 太长会把详情页撑爆。 */
+const JSON_PREVIEW_LIMIT = 2000;
+
+/**
+ * payload → JSON 预览字符串。
+ *
+ * 循环引用 / BigInt 之类 `JSON.stringify` 会抛的脏数据 ⇒ 退回 `String(payload)`。
+ * 两条路都**不抛**。
+ */
+export function jsonPreviewOf(payload: unknown): string {
+	let json: string;
+	try {
+		json = JSON.stringify(payload, undefined, 2) ?? String(payload);
+	} catch {
+		try {
+			json = String(payload);
+		} catch {
+			json = '[无法序列化的数据]';
+		}
+	}
+	return json.length > JSON_PREVIEW_LIMIT ? `${json.slice(0, JSON_PREVIEW_LIMIT)}…` : json;
+}
+
+/**
+ * payload → 渲染决定。
+ *
+ * 这是本文件的主入口：**任意 `unknown` 都有一个能画的结果**。
+ *
+ * @param payload 章节的 payload（可能来自未校验的模板默认值 / 脏数据）
+ */
+export function sectionViewOf(payload: unknown): SectionView {
+	const kind = payloadKindOf(payload);
+
+	if (kind === 'text') {
+		const record = isRecord(payload) ? payload : undefined;
+		const value = typeof payload === 'string' ? payload : extractText(payload);
+		return {
+			kind: 'text',
+			value,
+			placeholder: record === undefined ? '' : stringField(record, 'placeholder'),
+			empty: value.trim() === '',
+		};
+	}
+
+	if (kind === 'markdown') {
+		const record = isRecord(payload) ? payload : {};
+		const source = stringField(record, 'value');
+		return {
+			kind: 'markdown',
+			source,
+			placeholder: stringField(record, 'placeholder'),
+			empty: source.trim() === '',
+			lines: markdownLinesOf(source),
+		};
+	}
+
+	if (kind === 'ask') return askSectionOf(payload);
+
+	const type = payloadTypeOf(payload);
+	return {
+		kind: 'unknown',
+		title: type === '' ? '无法识别的数据' : `未注册的动作「${type}」`,
+		json: jsonPreviewOf(payload),
+	};
+}
+
+/**
+ * 章节名 —— **模板给的副本**（`CardSection.label`），不是容器词。
+ *
+ * 用户 `2026-11-15` 问「那个『正文』那两个字。存在那里的意义是什么。他起到了什么作用？」
+ * ⇒ 没有作用，已删。这里**不编任何名字**：label 为空就返回空串，由组件决定
+ *   「不画标题」，而不是画一个「正文」。
+ *
+ * @param section 卡上的章节（运行时可能是脏数据）
+ */
+export function sectionLabelOf(section: unknown): string {
+	if (!isRecord(section)) return '';
+	const label = section['label'];
+	return typeof label === 'string' ? label : '';
+}
+
+/**
+ * 空章节的占位文字。
+ *
+ * - 只读：`（空）` —— 不提示用户去点（只读时点不动）
+ * - 可编辑：payload 的 `placeholder`（模板作者写的灰字，三态一致）；
+ *   没写就退回 `（空）`
+ *
+ * @param view text / markdown 的渲染决定
+ * @param readonlyFlag 是否只读
+ */
+export function emptyHintOf(
+	view: TextSectionView | MarkdownSectionView,
+	readonlyFlag: boolean,
+): string {
+	if (readonlyFlag) return '（空）';
+	return view.placeholder !== '' ? view.placeholder : '（空）';
+}
+
+/**
+ * 这一章点下去能不能进编辑。
+ *
+ * ⚠ 组件**不判「能不能编辑」**（那由父层按卡片状态决定，见任务描述第 4 条），
+ *   这里只是把 `readonly` 这一个布尔翻成「有没有交互」—— 判决仍然在父层。
+ *
+ * @param readonlyFlag 父层给的只读标记
+ * @param hasCallback 父层有没有接 `onEdit`
+ */
+export function canEditOf(readonlyFlag: boolean, hasCallback: boolean): boolean {
+	return !readonlyFlag && hasCallback;
+}
