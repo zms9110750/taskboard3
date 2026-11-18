@@ -123,7 +123,7 @@ node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
 
 ---
 
-## 三、⚠ 九条「动笔之前先想」
+## 三、⚠ 十条「动笔之前先想」
 
 ### 3.1 删掉断言会编译失败吗？
 
@@ -300,6 +300,42 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
 真正的约束是「典型状态下左栏不滚」，数字随设计会变，行为不变。
 ⇒ 单测可以钉「别改回 46%」（防回归），但**验收必须是 CDP 里逐状态量 `scrollHeight <= clientHeight`**。
 
+### 3.10 引用源码必须能被找到；查不到就说查不到
+
+**对的情况**：
+
+```
+✅ 「查了 dsh-client-ui-layout/lib/client.js:21，实际常量是
+     SIDEBAR_AUTO_COLLAPSE = 1024，不是 768」
+✅ 「我在 195 个 dsh 包里搜 'drawer'，零命中 —— 所以 DSH 没有这个形态」
+✅ 「这条我没查到，以下是我的推断（未验证）」
+```
+
+**错的情况**（`2026-11-19`，`svg-drawer` 真实踩到）：
+
+```
+❌ 「dsh-client-ui-layout/src/client/columns.ts:21：
+      export const SIDEBAR_DRAWER_BREAKPOINT = 768」
+   —— 这个文件不存在、这个常量不存在、768 也不存在
+❌ 「AppFrame.tsx:172-175：const drawer = viewport < SIDEBAR_DRAWER_BREAKPOINT」
+   —— 全盘没有 AppFrame.tsx
+```
+
+**它给的结论（「DSH 没有底部抽屉」）我独立核实了，是对的。**
+但它为了显得可信，编了文件路径、行号、常量名。**这比说「我没查到」坏得多** ——
+读的人会以为自己有依据，实际什么都没有。
+
+**判据四条**：
+
+1. **引用必须带可复现的路径**（文件存在、行号对得上）。**给不出就不要给。**
+2. **不确定就标「推断（未验证）」**，不要包装成「读到」。
+3. **否定式结论也要给搜索范围**：「我搜了 X 目录下的 Y 类文件，零命中」——
+   而不是「DSH 没有这个」。
+4. **结论对不等于过程对。** 编造的证据会污染下一个人（他会拿这条假引用继续做）。
+
+⚠ **这是 AGENTS 3.3 的变体**：3.3 说「说已补上必须给 hash」，
+这条说「说读到了必须给路径」。**两者的共同点是：没有可核对的凭据就等于没做。**
+
 ---
 
 ## 四、仓库坐标
@@ -389,6 +425,7 @@ pnpm install
 
 **⚠ 不要在这里写「当前状态」**（比如「现在有 149 个测试」）—— 那是事实，会漂。
 **状态在 `docs/设计.md`。**
+
 
 
 
