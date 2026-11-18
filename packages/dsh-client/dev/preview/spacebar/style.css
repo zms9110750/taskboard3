@@ -14,18 +14,9 @@
  * > 「这个组件后续还要换。因为如果只有一行，那么在拖动的时候，
  * >  是无法精确的点到横向滚动条的。这个视觉效果需要重新设计。」
  *
- * ## 「上下边框被遮挡」的**真实原因**（实测，不是猜）
- *
- * 原来选中态用的是 `outline: 2px + outline-offset: 1px` ——
- * **outline 画在 border-box 外面，且不计入 `getBoundingClientRect()`**。
- * 而 `.space-bar__scroll` 是 `overflow-x: auto`，只给了 `padding: 1px 2px`。
- * ⇒ 上下各只有 1px 空间，outline 要占 3px ⇒ **被滚动容器裁掉 2px**。
- *   横向更糟：贴边的第一个/最后一个 chip 的 outline 左右也被裁。
- *
- * ⇒ 根治：选中态**不用 outline**，改成
- *   `border-color` + `box-shadow: inset 0 0 0 1px` —— 两者都画在盒子**内部**，
- *   物理上不可能被 overflow 裁掉。（inset 阴影也不影响布局尺寸。）
- *   同时给容器 4px 内边距，让 hover 的描边也有位置。
+ * ⇒ 最终定案（用户）：**只保留顺序换行**，而且**开头两个按钮也在换行流里**。
+ *   没有滚动条了 ⇒ 原来那段「滚动容器裁掉 outline」的问题从根上消失，
+ *   但选中态仍然用 `border + inset box-shadow`（比 outline 稳，不受任何 overflow 影响）。
  */
 
 /* ── 通用小按钮（旧版 `.ghost-btn`）── */
@@ -63,25 +54,34 @@
 }
 
 /* ── 整行 ── */
+/*
+ * ⚠ **这一层就是换行容器**（用户 2026-11-18）。
+ *
+ * > 「我希望他直接按顺序换行和列出。但是最开头的那两个按钮，归档和激活空间，
+ * >  也在视图里，也就是说换行不是从那两个按钮右边才开始换行。」
+ *
+ * ⇒ 四个东西（操作按钮 / 显示已归档 / chips / +）全是本容器的**直接子元素**，
+ *   没有中间那一层 `flex: none` 的 actions 包裹。
+ *
+ * 之前踩过的坑：**不要用 `display: contents` 来「假装拆掉」包裹层** ——
+ *   FilterBox 上实测会让 `:scope >` 选择器失效、竖线画错。直接删掉包裹层。
+ */
 .space-bar {
 	display: flex;
-	align-items: flex-start;
-	gap: 10px;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
 	min-width: 0;
 	/*
 	 * ⚠ 原来 `padding: 2px 0` ⇒ 整行 30px，按钮 24px，两侧各只剩 3px。
 	 *   用户说「条太窄了」。给到 6px 上下 ⇒ 行高 36px，按钮四周有呼吸。
 	 */
-	padding: 6px 0;
+	padding: 6px 2px;
 }
 
-/* 左侧按钮组固定，不随 chip 滚动 */
-.space-bar__actions {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex: none;
-	padding-top: 2px;
+/* 换行后行与行之间要有呼吸，否则第二行的按钮贴第一行的底边 */
+.space-bar > * {
+	flex: 0 0 auto;
 }
 
 /* ── 左侧那个**单个**按钮 ── */
@@ -146,108 +146,6 @@
 	border-color: var(--text);
 	background: var(--text);
 	color: #fff;
-}
-
-/* ══════════════════════════════════════════════════════════
-   布局变体
-   ══════════════════════════════════════════════════════════ */
-
-/* 四种变体共用的 chip 容器底子 */
-.space-bar__wrap,
-.space-bar__scroll {
-	flex: 1 1 auto;
-	min-width: 0;
-}
-
-/* ── A · 换行（推荐）：没有滚动条，不存在「拖不到」 ── */
-.space-bar--wrap .space-bar__wrap,
-.space-bar--compact .space-bar__wrap {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-	/* 顶部对齐：换行后左侧按钮仍贴第一行 */
-	padding: 2px 2px 2px 0;
-}
-
-/* ── B · 单行 + 粗滚动条 ── */
-.space-bar--scroll .space-bar__scroll {
-	display: flex;
-	align-items: center;
-	flex-wrap: nowrap;
-	gap: 6px;
-	overflow-x: auto;
-	overflow-y: hidden;
-	/* 上下留 6px：滚动条不贴按钮，鼠标好瞄准 */
-	padding: 4px 2px 6px;
-	scrollbar-width: auto;
-}
-.space-bar__scroll > * {
-	flex: 0 0 auto;
-}
-
-/* 把滚动条做粗（用户原话：「拖的时候无法精确点到横向滚动条」）*/
-.space-bar--scroll .space-bar__scroll::-webkit-scrollbar {
-	height: 12px;
-}
-.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-track {
-	background: #eef1f5;
-	border-radius: 6px;
-}
-.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-thumb {
-	background: #c2c8d2;
-	border-radius: 6px;
-	border: 2px solid #eef1f5;
-}
-.space-bar--scroll .space-bar__scroll::-webkit-scrollbar-thumb:hover {
-	background: #9aa1ad;
-}
-
-/* ── D · 单行 + 左右翻页按钮（滚动条隐藏，改用点大目标）── */
-.space-bar__peruse {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	flex: 1 1 auto;
-	min-width: 0;
-}
-.space-bar--arrows .space-bar__scroll--nobar {
-	display: flex;
-	align-items: center;
-	flex-wrap: nowrap;
-	gap: 6px;
-	overflow-x: auto;
-	overflow-y: hidden;
-	padding: 2px;
-	scrollbar-width: none;
-}
-.space-bar--arrows .space-bar__scroll--nobar::-webkit-scrollbar {
-	display: none;
-}
-.space-bar__arrow {
-	flex: none;
-	width: 26px;
-	height: 26px;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: var(--bg-card);
-	color: var(--text-secondary);
-	font-size: 15px;
-	line-height: 1;
-	cursor: pointer;
-	font-family: inherit;
-}
-.space-bar__arrow:hover {
-	border-color: var(--accent);
-	color: var(--accent);
-}
-
-/* ── C · 折叠：只显示当前 + 查看 ── */
-.space-chip--more {
-	border-style: dashed;
-	color: var(--text-weak, #9aa1ad);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -344,30 +242,6 @@
 	color: var(--text-weak, #9aa1ad);
 	margin-bottom: 6px;
 	font-family: var(--mono, ui-monospace, Consolas, monospace);
-}
-
-/* 布局切换按钮组 */
-.pv-layouts {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-	margin-bottom: 12px;
-}
-.pv-layouts button {
-	padding: 5px 12px;
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: var(--bg-card);
-	color: var(--text-secondary);
-	font-size: 12px;
-	font-family: inherit;
-	cursor: pointer;
-}
-.pv-layouts button.is-on {
-	border-color: var(--accent);
-	background: #eef4ff;
-	color: var(--accent);
-	font-weight: 600;
 }
 
 /* 回调日志 */

@@ -17,8 +17,7 @@
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { LAYOUT_LABELS, SpaceBar } from '../../components/SpaceBar.tsx';
-import type { SpaceBarLayout } from '../../components/SpaceBar.tsx';
+import { SpaceBar } from '../../components/SpaceBar.tsx';
 import type { Workspace } from '../../../src/types.ts';
 
 /* ── 夹具 ── */
@@ -54,90 +53,65 @@ const MANY: readonly Workspace[] = [
 	OLD,
 ];
 
-const LAYOUTS: readonly SpaceBarLayout[] = ['wrap', 'scroll', 'arrows', 'compact'];
+/* ── ① 换行压力测试（13 个空间，故意撑爆一行） ── */
 
-/* ── ① 布局变体对比 ── */
-
-interface LayoutSectionProps {
-	readonly layout: SpaceBarLayout;
-	readonly onChange: (one: SpaceBarLayout) => void;
+interface WrapSectionProps {
 	readonly onEvent: (what: string) => void;
 }
 
-function LayoutSection(props: LayoutSectionProps): React.ReactNode {
+function WrapSection(props: WrapSectionProps): React.ReactNode {
 	const [currentId, setCurrentId] = useState('ws-core');
 	const [viewingId, setViewingId] = useState('ws-code');
 	const [showArchived, setShowArchived] = useState(false);
 
-	const bar = (one: SpaceBarLayout): React.ReactNode => (
-		<SpaceBar
-			workspaces={MANY}
-			currentId={currentId}
-			viewingId={viewingId}
-			showArchived={showArchived}
-			cardCount={7}
-			layout={one}
-			onView={(id) => {
-				props.onEvent(`layout/${one}/view:${id}`);
-				setViewingId(id);
-			}}
-			onActivate={(id) => {
-				props.onEvent(`layout/${one}/activate:${id}`);
-				setCurrentId(id);
-				setViewingId(id);
-			}}
-			onToggleArchived={(id) => props.onEvent(`layout/${one}/toggle-archived:${id}`)}
-			onToggleShowArchived={() => {
-				props.onEvent(`layout/${one}/toggle-show`);
-				setShowArchived((one2) => !one2);
-			}}
-			onCreate={() => props.onEvent(`layout/${one}/create`)}
-		/>
-	);
-
 	return (
 		<section className="pv-block">
-			<h2>① 布局变体对比（13 个空间，故意撑爆单行）</h2>
+			<h2>① 顺序换行（13 个空间，故意撑爆一行）</h2>
 			<p className="pv-note" style={{ marginTop: 0 }}>
-				用户原话：「如果只有一行，那么在拖动的时候，是无法精确的点到横向滚动条的。」
-				⇒ 这不是审美问题，是**够不到**。四个方案都做出来了，切换看。
+				用户原话：「我希望他直接按顺序换行和列出。但是最开头的那两个按钮，归档和激活空间，
+				也在视图里，也就是说换行不是从那两个按钮右边才开始换行。」
+				⇒ 操作按钮 / 显示已归档 / chips / 「+」<b>全是同一个容器的直接子元素</b>，一起换行。
 			</p>
 
-			<div className="pv-layouts" data-layout-switch>
-				{LAYOUTS.map((one) => (
-					<button
-						key={one}
-						type="button"
-						className={props.layout === one ? 'is-on' : ''}
-						data-layout-option={one}
-						onClick={() => props.onChange(one)}
-					>
-						{LAYOUT_LABELS[one]}
-					</button>
-				))}
-			</div>
-
-			<div data-layout-live>
+			<div data-wrap-live>
 				<div className="pv-case">
-					<div className="pv-case__note">
-						当前变体：{props.layout} —— 拖动 / 滚动 / 换行行为直接看这里
-					</div>
-					{bar(props.layout)}
+					<SpaceBar
+						workspaces={MANY}
+						currentId={currentId}
+						viewingId={viewingId}
+						showArchived={showArchived}
+						cardCount={7}
+						onView={(id) => {
+							props.onEvent(`wrap/view:${id}`);
+							setViewingId(id);
+						}}
+						onActivate={(id) => {
+							props.onEvent(`wrap/activate:${id}`);
+							setCurrentId(id);
+							setViewingId(id);
+						}}
+						onToggleArchived={(id) => props.onEvent(`wrap/toggle-archived:${id}`)}
+						onToggleShowArchived={() => {
+							props.onEvent('wrap/toggle-show');
+							setShowArchived((one) => !one);
+						}}
+						onCreate={() => props.onEvent('wrap/create')}
+					/>
 				</div>
 			</div>
 
 			<div className="pv-state">
 				<div>
 					<span className="pv-k">current</span>
-					<code data-layout-current>{currentId}</code>
+					<code data-wrap-current>{currentId}</code>
 				</div>
 				<div>
 					<span className="pv-k">viewing</span>
-					<code data-layout-viewing>{viewingId}</code>
+					<code data-wrap-viewing>{viewingId}</code>
 				</div>
 				<div>
 					<span className="pv-k">showArchived</span>
-					<code data-layout-show>{String(showArchived)}</code>
+					<code data-wrap-show>{String(showArchived)}</code>
 				</div>
 			</div>
 		</section>
@@ -306,7 +280,6 @@ function Matrix(props: LiveProps): React.ReactNode {
 
 function App(): React.ReactNode {
 	const [events, setEvents] = useState<readonly string[]>([]);
-	const [layout, setLayout] = useState<SpaceBarLayout>('wrap');
 	const push = (what: string): void => {
 		setEvents((one) => [...one, what]);
 	};
@@ -317,11 +290,12 @@ function App(): React.ReactNode {
 				<h1>SpaceBar / 空间 chip 行</h1>
 				<p>
 					文案已合并成「当前空间」· 靠 emphasis 着色区分「你在这里 / 可以切过去」·
-					chip 点击 = 查看（不改激活）· 左侧<b>一个</b>按钮随「显示已归档」换语义
+					chip 点击 = 查看（不改激活）· 左侧<b>一个</b>按钮随「显示已归档」换语义 ·
+					<b>顺序换行，开头两个按钮也在换行流里</b>
 				</p>
 			</header>
 
-			<LayoutSection layout={layout} onChange={setLayout} onEvent={push} />
+			<WrapSection onEvent={push} />
 			<Live onEvent={push} />
 			<Matrix onEvent={push} />
 
