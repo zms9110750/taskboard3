@@ -54,22 +54,37 @@ node --test "packages/dsh-client/dev/test/*.test.ts"
 
 ## 当前 dev/ 清单
 
-| 文件 | 行数 | 状态 |
-|---|---|---|
-| `pure/filter-box.ts` | 195 | ✅ 可用（27 单测）|
-| `components/FilterBox.tsx` | 228 | ✅ 可用 |
-| `components/FilterRow.tsx` | 95 | ✅ 可用 |
-| `pure/card-view.ts` | 156 | ✅ 可用（28 单测）|
-| `components/StatusDot.tsx` | 42 | ✅ 可用 |
-| `components/StatusCell.tsx` | 36 | ✅ 可用 |
-| `components/CardRow.tsx` | 86 | ✅ 可用 |
-| `test/filter-box.test.ts` | 228 | 27 条 |
-| `test/card-view.test.ts` | 170 | 28 条 |
-| `pure/markdown-tokens.ts` | 899 | ✅ 可用（46 单测，含 12 条 XSS）|
-| `components/Markdown.tsx` | 108 | ✅ 可用 |
-| `test/markdown.test.ts` | 391 | 46 条 |
-| `preview/markdown/*` | 606 | 脚手架（GFM 样本 + XSS 样本 + CDP 断言）|
-| `preview/*` | 665 | 脚手架，长期保留 |
+> **⚠ 定稿的组件已经全部迁到 `src/` 了**（`2026-11-19`）。
+> 现在 `dev/` 里留的是**变体展厅和历史参考**，不是待迁的候选。
+
+### 展厅（用户挑变体用的记录）
+
+| 目录 | 内容 |
+|---|---|
+| `preview/gallery/` | 左栏 6 个变体（①同行 ②分行 ③下拉 ④三级联选 ⑤按钮折叠 ⑥手风琴）|
+| `components/create/` | 上面 6 个变体各自的组件实现 |
+
+⚠ **`components/create/` 里的是「冻结的展厅副本」** ——
+`src/renderers/create/` 里有对应的产品版（类名前缀 `tb3cc-`、类型对齐 `CreateDraft` / `TemplateSummary`），
+**两边不共享代码**。
+
+⇒ **改行为只改 `src/` 那份。** `dev/` 这份存在的理由是：让展厅还能构建、还能回看当时挑的是什么。
+
+⚠ `pure/create-meta.ts`（167 行）和 `pure/template-picker.ts`（219 行）同理 ——
+`src/pure/` 里有产品版，`dev/` 这份被 `preview/gallery/` import。
+
+### 预览脚手架（长期保留）
+
+| 目录 | 内容 |
+|---|---|
+| `preview/main.tsx` + `preview.css` | FilterBox / CardRow 的组件预览 |
+| `preview/markdown/` | Markdown 预览（含 12 条 XSS 样本）|
+| `preview/spacebar/` | SpaceBar 预览 |
+| `preview/statusmenu/` | StatusPill + StatusMenu 预览 |
+| `preview/section/` | Section 预览 |
+| `preview/carddetail/` | CardDetail 预览 |
+| `preview/cardcreate/` | **新建页**（用真的 `src/` 组件，完整可用）|
+| `preview/gallery/` | 左栏变体展厅 |
 
 ## 定稿迁移流程
 
@@ -96,3 +111,4 @@ node --test "packages/*/test/**/*.test.ts"
 
 原因：`src/` 里的代码会被 `tsc -b` 检验、被产品构建打包、被 npm 发布。
 **半成品进去一次，就得清理一次产物。**
+
