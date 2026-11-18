@@ -129,7 +129,20 @@ describe('CREATE_CSS —— 满屏布局的不变量', () => {
 
 		const here = dirname(fileURLToPath(import.meta.url));
 		const dir = join(here, '..', 'src', 'renderers', 'create');
-		const files = ['CardCreate.tsx', 'SectionFormList.tsx', 'SectionFormItem.tsx', 'CreateActions.tsx', 'TemplateHint.tsx'];
+		const files = [
+			'CardCreate.tsx',
+			'SectionFormList.tsx',
+			'SectionFormItem.tsx',
+			'CreateActions.tsx',
+			'TemplateHint.tsx',
+			/* 左栏定稿（用户 2026-11-19「用 245」）—— 这一组是新加的，必须一起查 */
+			'CreateLeftColumn.tsx',
+			'TemplateField.tsx',
+			'TemplatePickerPopover.tsx',
+			'MetaTabs.tsx',
+			'MetaPanelContent.tsx',
+			'CardPicker.tsx',
+		];
 
 		const used = new Set<string>();
 		for (const file of files) {

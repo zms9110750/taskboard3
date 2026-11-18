@@ -87,6 +87,113 @@ export const CREATE_CSS = `
 .tb3cc-tpl-hint__empty{color:var(--dsw-alias-text-secondary,#a6adb8)}
 .tb3cc-tpl-hint__usage{color:var(--dsw-alias-text-secondary,#4b5563);margin-bottom:6px;font-size:12px;line-height:1.55}
 .tb3cc-tpl-hint__meta{display:flex;justify-content:space-between;gap:10px;color:var(--dsw-alias-text-secondary,#6b7280);font-size:11px;flex-wrap:wrap}
+.tb3cc-tpl-hint__meta b{color:var(--dsw-alias-text-primary,#1f2328)}
+.tb3cc-tpl-hint__meta code{font-family:var(--font-mono,Consolas,"Courier New",monospace);font-size:11px}
+
+/*
+ * ── 左栏（定稿排法：标题 → 模板 → 父任务 → 关系|高级设置）──
+ *
+ * 宽度**不写在这里**：父层 .tb3cc-page__left 是 flex:0 0 320px。
+ * 左栏组件撑满即可，写死宽度换个容器就错位。
+ * ⚠ 这段在模板字符串里，注释里**不能出现反引号**（会提前结束字符串）。
+ */
+.tb3cc-leftcol{display:flex;flex-direction:column;gap:16px}
+.tb3cc-field{display:flex;flex-direction:column;gap:5px}
+.tb3cc-label{font-size:12px;font-weight:600;color:var(--dsw-alias-text-secondary,#3d444d)}
+.tb3cc-req{color:var(--dsw-alias-text-danger,#dc2626)}
+.tb3cc-input{width:100%;padding:8px 11px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);outline:none;font-family:inherit;font-size:13px;box-sizing:border-box}
+.tb3cc-input:focus{border-color:var(--dsw-alias-brand-primary,#2563eb)}
+.tb3cc-input.has-error{border-color:var(--dsw-alias-border-danger,#f0a8a8)}
+.tb3cc-field-err{color:var(--dsw-alias-text-danger,#b91c1c);font-size:11px;line-height:1.5;margin-top:4px}
+
+/* ── 模板 + 父任务（**分行**） ── */
+.tb3cc-tfield{display:flex;flex-direction:column;gap:12px}
+.tb3cc-tfield__cell{display:flex;flex-direction:column;gap:5px;min-width:0}
+
+/* ── 卡片选择器（combobox：输入即筛选，不是 select） ── */
+.tb3cc-picker{position:relative;width:100%}
+.tb3cc-picker__display{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 10px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);text-align:left;font-family:inherit;font-size:13px;cursor:pointer}
+.tb3cc-picker__display:hover{border-color:var(--dsw-alias-border-secondary,#b9bfc9)}
+.tb3cc-picker__display.is-open{border-color:var(--dsw-alias-brand-primary,#2563eb)}
+.tb3cc-picker__display.is-empty .tb3cc-picker__value{color:var(--dsw-alias-text-secondary,#a6adb8)}
+.tb3cc-picker__value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tb3cc-picker__caret{flex:0 0 auto;color:var(--dsw-alias-text-secondary,#8a919c);font-size:11px}
+/*
+ * 弹层挂在自己容器里（absolute），**不挂 body** ——
+ * 永远在建卡页的叠层语境里，不会被 fixed 的页面裁掉。
+ */
+.tb3cc-picker__pop{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;background:var(--dsw-alias-bg-primary,#fff);border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:9px;box-shadow:0 8px 24px rgb(0 0 0 / 14%);overflow:hidden}
+.tb3cc-picker__input{width:100%;padding:8px 11px;border:none;border-bottom:1px solid var(--dsw-alias-border-secondary,#eef1f5);outline:none;background:var(--dsw-alias-bg-secondary,#fafbfc);color:var(--dsw-alias-text-primary,#1f2328);font-family:inherit;font-size:13px;box-sizing:border-box}
+.tb3cc-picker__list{max-height:220px;overflow-y:auto;padding:4px}
+.tb3cc-picker__item{display:flex;align-items:baseline;gap:8px;width:100%;padding:6px 9px;border:none;border-radius:6px;background:transparent;text-align:left;color:var(--dsw-alias-text-primary,#1f2328);font-family:inherit;font-size:13px;cursor:pointer}
+.tb3cc-picker__item:hover{background:var(--dsw-alias-bg-secondary,#f1f3f6)}
+.tb3cc-picker__item--clear{color:var(--dsw-alias-text-secondary,#6b7280);font-style:italic}
+.tb3cc-picker__id{flex:0 0 auto;font-family:var(--font-mono,Consolas,"Courier New",monospace);font-size:11px;color:var(--dsw-alias-text-secondary,#6b7280);font-weight:700}
+.tb3cc-picker__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tb3cc-picker__empty{padding:10px;color:var(--dsw-alias-text-secondary,#8a919c);text-align:center}
+
+/* ── 模板三级联选弹层（独立组件 TemplatePickerPopover） ── */
+.tb3cc-tpick{position:relative;width:100%}
+.tb3cc-tpick__trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 10px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);text-align:left;font-family:inherit;font-size:13px;cursor:pointer}
+.tb3cc-tpick__trigger:hover{border-color:var(--dsw-alias-border-secondary,#b9bfc9)}
+.tb3cc-tpick__trigger.is-open{border-color:var(--dsw-alias-brand-primary,#2563eb)}
+.tb3cc-tpick__trigger.is-empty .tb3cc-tpick__value{color:var(--dsw-alias-text-secondary,#a6adb8)}
+.tb3cc-tpick__value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tb3cc-tpick__caret{flex:0 0 auto;color:var(--dsw-alias-text-secondary,#8a919c);font-size:11px}
+/*
+ * 三列弹层的宽度**大于 320px 左栏**是故意的：三列在 320 里每列只剩 ~100px，读不了。
+ *
+ * ⚠ 用 position:fixed + 由组件量触发器坐标（不是 absolute）——
+ *   左栏 .tb3cc-page__left 是 overflow-y:auto 的滚动容器，会**裁掉**任何溢出的
+ *   子元素。absolute 的后果实测：第三列被切掉一半 + 左栏底部冒出横向滚动条。
+ */
+.tb3cc-tpick__pop{position:fixed;z-index:6;width:470px;max-width:calc(100vw - 48px);background:var(--dsw-alias-bg-primary,#fff);border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:10px;box-shadow:0 12px 32px rgb(0 0 0 / 16%);overflow:hidden}
+.tb3cc-tpick__cols{display:grid;grid-template-columns:104px 104px 1fr}
+.tb3cc-tpick__col{padding:6px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.tb3cc-tpick__col + .tb3cc-tpick__col{border-left:1px solid var(--dsw-alias-border-secondary,#eef1f5)}
+/* 第三列（模板）占掉剩余宽度 —— 模板名比「领域 / 类别」长得多 */
+.tb3cc-tpick__col--wide{flex:1 1 auto}
+.tb3cc-tpick__col-head{padding:4px 8px 6px;color:var(--dsw-alias-text-secondary,#8a919c);font-size:11px;font-weight:600;letter-spacing:.04em}
+.tb3cc-tpick__opt{display:flex;align-items:center;gap:7px;width:100%;padding:6px 8px;border:none;border-radius:6px;background:transparent;text-align:left;color:var(--dsw-alias-text-primary,#1f2328);font-family:inherit;font-size:12.5px;cursor:pointer}
+.tb3cc-tpick__opt:hover{background:var(--dsw-alias-bg-secondary,#f1f3f6)}
+.tb3cc-tpick__opt.is-picked{background:var(--dsw-alias-bg-tertiary,#e8eefb);color:var(--dsw-alias-brand-primary,#1d4ed8);font-weight:600}
+.tb3cc-tpick__radio{flex:0 0 auto;font-size:9px;color:var(--dsw-alias-text-secondary,#b9bfc9);line-height:1}
+.tb3cc-tpick__opt.is-picked .tb3cc-tpick__radio{color:var(--dsw-alias-brand-primary,#2563eb)}
+.tb3cc-tpick__prefix{flex:0 0 auto;width:15px;text-align:center;font-family:var(--font-mono,Consolas,"Courier New",monospace);font-size:11px;font-weight:700;color:var(--dsw-alias-text-secondary,#8a919c)}
+.tb3cc-tpick__opt.is-picked .tb3cc-tpick__prefix{color:var(--dsw-alias-brand-primary,#1d4ed8)}
+.tb3cc-tpick__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tb3cc-tpick__empty{padding:8px;color:var(--dsw-alias-text-secondary,#a6adb8);font-size:12px}
+/* 底部说明 —— 选中之后才出现（**选完不关弹层**就是为了看这块） */
+.tb3cc-tpick__foot{padding:10px 12px;border-top:1px solid var(--dsw-alias-border-secondary,#eef1f5);background:var(--dsw-alias-bg-secondary,#fafbfc);display:flex;flex-direction:column;gap:4px}
+.tb3cc-tpick__foot-idle{color:var(--dsw-alias-text-secondary,#a6adb8);font-size:12px}
+.tb3cc-tpick__foot-title{font-weight:700;color:var(--dsw-alias-text-primary,#1f2328);font-size:12.5px}
+.tb3cc-tpick__foot-domain{margin-left:8px;padding:0 6px;border-radius:4px;background:var(--dsw-alias-bg-tertiary,#eef1f5);color:var(--dsw-alias-text-secondary,#6b7280);font-size:10.5px;font-weight:600}
+.tb3cc-tpick__foot-usage{color:var(--dsw-alias-text-secondary,#4b5563);font-size:11.5px;line-height:1.55}
+.tb3cc-tpick__foot-meta{display:flex;justify-content:space-between;gap:10px;color:var(--dsw-alias-text-secondary,#6b7280);font-size:11px;flex-wrap:wrap;margin-top:2px}
+.tb3cc-tpick__foot-meta b{color:var(--dsw-alias-text-primary,#1f2328)}
+.tb3cc-tpick__foot-meta code{font-family:var(--font-mono,Consolas,"Courier New",monospace);font-size:11px}
+
+/* ── 关系 | 高级设置：两个标签按钮 + 共用折叠区 ── */
+.tb3cc-meta{display:flex;flex-direction:column;gap:10px}
+.tb3cc-meta__tabs{display:flex;gap:8px}
+.tb3cc-meta__tab{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-secondary,#4b5563);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
+.tb3cc-meta__tab:hover{border-color:var(--dsw-alias-border-secondary,#b9bfc9)}
+.tb3cc-meta__tab.is-on{background:var(--dsw-alias-text-primary,#1f2328);border-color:var(--dsw-alias-text-primary,#1f2328);color:var(--dsw-alias-bg-primary,#fff)}
+.tb3cc-meta__count{min-width:16px;padding:0 4px;border-radius:9px;background:var(--dsw-alias-bg-tertiary,#eef1f5);color:var(--dsw-alias-text-secondary,#6b7280);font-size:10px;text-align:center;line-height:16px}
+.tb3cc-meta__tab.is-on .tb3cc-meta__count{background:rgb(255 255 255 / 24%);color:var(--dsw-alias-bg-primary,#fff)}
+/* 折叠区 —— 两个面板共用这一块位置（同一时间只可能有一个存在） */
+.tb3cc-meta__panel{padding:11px 12px;border:1px solid var(--dsw-alias-border-secondary,#e4e7ec);border-radius:9px;background:var(--dsw-alias-bg-secondary,#fafbfc);display:flex;flex-direction:column;gap:9px}
+.tb3cc-meta__hint{color:var(--dsw-alias-text-secondary,#6b7280);font-size:11px;line-height:1.5}
+.tb3cc-meta__empty{color:var(--dsw-alias-text-secondary,#8a919c)}
+.tb3cc-meta__empty-hint{color:var(--dsw-alias-text-secondary,#a6adb8);font-size:11px}
+.tb3cc-meta__panel--empty{align-items:flex-start}
+.tb3cc-meta__rel-list{display:flex;flex-direction:column;gap:6px}
+.tb3cc-meta__rel-row{display:grid;grid-template-columns:72px minmax(0,1fr) 20px;gap:6px;align-items:center;min-width:0}
+.tb3cc-meta__rel-kind{padding:6px 2px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:7px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);font-size:12px;outline:none;min-width:0;font-family:inherit}
+.tb3cc-meta__rel-del{border:none;background:transparent;color:var(--dsw-alias-text-secondary,#9aa1ad);font-size:13px;padding:0;border-radius:4px;cursor:pointer}
+.tb3cc-meta__rel-del:hover{color:var(--dsw-alias-text-danger,#dc2626)}
+.tb3cc-meta__rel-add{align-self:flex-start;padding:5px 11px;border-radius:7px;border:1px dashed var(--dsw-alias-border-primary,#c7ced8);background:transparent;color:var(--dsw-alias-text-secondary,#4b5563);font-size:12px;font-family:inherit;cursor:pointer}
+.tb3cc-meta__rel-add:hover{border-color:var(--dsw-alias-brand-primary,#2563eb);color:var(--dsw-alias-brand-primary,#2563eb)}
 `;
 
 /**

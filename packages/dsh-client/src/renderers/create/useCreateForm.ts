@@ -97,6 +97,24 @@ export interface CreateFormHandle {
 		setSectionKind: (sectionId: string, kind: SectionKind) => void;
 		/** 关系行整体替换（增删改都由它）。 */
 		setRelations: (relations: CreateDraft['relations']) => void;
+		/**
+		 * **整份替换草稿** —— 给 `CardCreate` 的 `onChange(next: CreateDraft)` 用。
+		 *
+		 * ## 为什么需要它
+		 *
+		 * `CardCreate` 的契约是「草稿整份换掉」（`onChange(next)`）。左栏组件
+		 * （`CreateLeftColumn`）也照这个契约写（`onChange({...draft, title})`）。
+		 * 上面那些细粒度 setter 不够用：一个 `onChange` 里可能同时改了 title 和
+		 * relations，没法拆成两个 setter 而保证只渲染一次。
+		 *
+		 * ## ⚠ 它**不重建章节**
+		 *
+		 * 换模板时章节要按新模板重建，而那要**模板详情**（`FormTemplate`，
+		 * 得先发请求取）。本 hook 拿不到那个请求的结果 ⇒ 重建由**调用方**在把
+		 * `options.template` 更新之后自己做（`sectionsOfTemplate()` 是导出的）。
+		 * 本动作只把传进来的 `sections` 原样收下 —— **不猜、不静默重建**。
+		 */
+		applyDraft: (next: CreateDraft) => void;
 		/** 点提交：先校验，通过才调 `onSubmit`。 */
 		submit: () => void;
 		/** 关掉「丢内容」提示。 */
@@ -216,6 +234,21 @@ export function useCreateForm(options: UseCreateFormOptions): CreateFormHandle {
 		options.onSubmit?.(toCreateSubmission(draft));
 	}, [draft, options]);
 
+	/**
+	 * 整份替换草稿 —— 给 `CardCreate` 的 `onChange` 用。
+	 *
+	 * ⚠ 只拆到各字段的 setter 里，**不做别的事**（不校验、不重建章节、不清错误）。
+	 *   那些都是「决定」，必须留在调用方。
+	 */
+	const applyDraft = useCallback((next: CreateDraft): void => {
+		setTitleState(next.title);
+		setTemplateRefState(next.templateRef);
+		setParentIdState(next.parentId);
+		setNoteState(next.note);
+		setRelationsState(next.relations);
+		setSections(next.sections);
+	}, []);
+
 	const dismissLostNotice = useCallback((): void => {
 		setLostNotice(undefined);
 	}, []);
@@ -232,6 +265,7 @@ export function useCreateForm(options: UseCreateFormOptions): CreateFormHandle {
 			setSectionPayload,
 			setSectionKind,
 			setRelations,
+			applyDraft,
 			submit,
 			dismissLostNotice,
 		},
