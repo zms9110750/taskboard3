@@ -26,23 +26,53 @@
 export const STYLE_ID = 'taskboard3-styles';
 
 /**
- * 建卡整页的样式 —— **单独一段，前缀 `tb3cc-`**。
+ * 建卡页的样式 —— **单独一段，前缀 `tb3cc-`**。
  *
  * ## 为什么不并进下面那张主表
  *
- * 主表的类名是 `tb3-*`，是**任务板面板内部**的（tab 里那套）。建卡页是
- * **`position: fixed` 的全屏页**，它盖在宿主上面 —— 两套样式的作用域完全不同。
+ * 主表的类名是 `tb3-*`，是**任务板面板内部**的（tab 里那套）。建卡页是一整页
+ * （顶栏 / 左右两栏 / 底栏）—— 两套样式的作用域不同。
  *
- * ⇒ 分开：出问题时能一眼看出「这条规则属于全屏页还是面板内」。
+ * ⇒ 分开：出问题时能一眼看出「这条规则属于建卡页还是面板内」。
  *
- * ## ⚠ 关键：`.tb3cc-body { min-height: 0 }`
+ * ## ⚠ 建卡页**填满它的父容器**（`height:100%` + `container-type:size`）
+ *
+ * 早期版本是 `position:fixed; inset:0`（「铺满浏览器」）。用户 `2026-11-19` 给了
+ * 三个真实尺寸（工作区 570×920 / 抽屉 1200×400 / 全屏 1600×1000）之后那就不成立了：
+ * **fixed 会脱离父容器**，挂在窄 tab 里也按整个窗口铺开。
+ * 现在靠 `container-type:size` 做容器查询，父容器给多高就多高。
+ *
+ * ## ⚠ 关键：`.tb3cc-page__body { min-height: 0 }`
  *
  * flex 子元素默认 `min-height: auto`，会被内容撑高 ⇒ 子元素的
  * `overflow-y: auto` **永远不生效** ⇒ 整页滚动、顶栏底栏跟着滚走。
  * 这是 flex 里最常见的坑，加注释钉住。
  */
 export const CREATE_CSS = `
-.tb3cc-page{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--dsw-alias-bg-primary,#fff);font-size:13px;line-height:1.5}
+/*
+ * ── 页面本体：**填满父容器**，不是铺满浏览器 ──
+ *
+ * 用户 2026-11-19 给了三个真实尺寸，旧版这里是 position:fixed + inset:0：
+ *
+ * | 场景 | 尺寸 |
+ * |---|---|
+ * | 工作区 | 570 × 920（窄、高）|
+ * | 抽屉 | 1200 × 400（宽、矮）|
+ * | 全屏 | 1600 × 1000（都够）|
+ *
+ * ⚠ position:fixed 会脱离父容器 —— 挂在 570 宽的 tab 里也按整个浏览器窗口铺开，
+ *   左右两栏被挤扁。⇒ 必须改成 height:100% 撑满父容器。
+ *
+ * ⚠ container-type:size 要求父容器给高度 —— 父层没高度时页会**塌成 0**。
+ *   预览里挂载点给了固定尺寸的舞台；产品里 tab body 必须是 height:100%。
+ *   这一条由 test/create-layout.test.ts 的反向断言 + 预览的三个尺寸舞台共同守护。
+ *
+ * ⚠ size 而不是 inline-size：要能同时查**宽**和**高**（两个维度是两件事，
+ *   见下面两条 @container）。
+ *
+ * ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**（会提前结束字符串）。
+ */
+.tb3cc-page{container-type:size;container-name:tb3cc;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-primary,#fff);font-size:13px;line-height:1.5}
 .tb3cc-page__top{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--dsw-alias-border-secondary,#e4e7ec)}
 .tb3cc-page__title{font-size:16px;margin:0}
 .tb3cc-page__close{border:none;background:transparent;font-size:20px;line-height:1;color:var(--dsw-alias-text-secondary,#8a919c);padding:2px 8px;border-radius:6px;cursor:pointer}
@@ -194,6 +224,72 @@ export const CREATE_CSS = `
 .tb3cc-meta__rel-del:hover{color:var(--dsw-alias-text-danger,#dc2626)}
 .tb3cc-meta__rel-add{align-self:flex-start;padding:5px 11px;border-radius:7px;border:1px dashed var(--dsw-alias-border-primary,#c7ced8);background:transparent;color:var(--dsw-alias-text-secondary,#4b5563);font-size:12px;font-family:inherit;cursor:pointer}
 .tb3cc-meta__rel-add:hover{border-color:var(--dsw-alias-brand-primary,#2563eb);color:var(--dsw-alias-brand-primary,#2563eb)}
+
+/*
+ * ══════════════════════════════════════════════════════════
+ * 响应式：三个真实尺寸 —— **两个维度，不是三个宽度档**
+ * ══════════════════════════════════════════════════════════
+ *
+ * 用户 2026-11-19 给的尺寸（产品里 CardCreate 会挂在三种容器里）：
+ *
+ * | 场景 | 尺寸 | 问题 |
+ * |---|---|---|
+ * | 工作区 | 570 × 920 | **横向**放不下左右分栏 ⇒ 堆叠 |
+ * | 抽屉 | 1200 × 400 | **纵向**放不下那么多行 ⇒ 收紧间距（**不能堆叠**）|
+ * | 全屏 | 1600 × 1000 | 都不用管 |
+ *
+ * ⚠ **判断依据是宽 / 高两个独立维度，不是面积。**
+ *   抽屉 1200 宽 × 400 高 —— 面积只有全屏的 30%，但它**宽**，横排好看得很；
+ *   一旦误判成「小 ⇒ 堆叠」，400 高里竖着塞两栏会死。
+ *   ⇒ 宽的门槛管**结构**（堆叠），高的门槛管**间距**（收紧），两者互不推断。
+ *
+ * ⚠ 容器查询只写**有差异的**属性。没列到的属性继承上面的基础规则 ——
+ *   否则「响应式」变成第二套样式表，改一处要改两遍。
+ */
+
+/*
+ * ── A. 窄（小于 700px）⇒ 上下堆叠 ──
+ *
+ * 门槛 700 的来由：左栏 320 + 右栏最小可用 340 + 边框 ≈ 660。
+ * 低于 700 时右栏会被挤到放不下一列章节卡，那比堆叠更难用。
+ */
+@container tb3cc (max-width: 700px) {
+  .tb3cc-page__body{flex-direction:column}
+  /*
+   * 堆叠后左栏在上、右栏在下。
+   *
+   * ⚠ max-height:46% 而不是 auto：左栏有 5 个字段 + 三列弹层触发器，
+   *   内容能到 500px+。给 auto 的话 570×920 里左栏一撑就把右栏挤到只剩一条缝。
+   *   46% 是「左栏五项都看得见、右栏还留一半屏」的平衡点（920 × 46% ≈ 423px）。
+   *   超出的部分自己滚（overflow-y:auto 的基础规则仍在）。
+   */
+  .tb3cc-page__left{flex:0 0 auto;max-height:46%;border-right:none;border-bottom:1px solid var(--dsw-alias-border-secondary,#e4e7ec)}
+  .tb3cc-page__right{flex:1 1 auto;min-height:0}
+}
+
+/*
+ * ── B. 矮（< 560px）⇒ 收紧纵向间距（**结构不动**）──
+ *
+ * 门槛 560 的来由：顶栏 ~50 + 底栏 ~50 + 右栏至少要露出两章（~230×2）。
+ * 抽屉 400 高 ⇒ 必须把垂直 padding / gap / 行高都压下来，否则一屏只能看半张章节卡。
+ */
+@container tb3cc (max-height: 560px) {
+  .tb3cc-page__top{padding:6px 14px}
+  .tb3cc-page__title{font-size:14px}
+  .tb3cc-page__left{padding:10px 14px}
+  .tb3cc-page__right{padding:10px 14px}
+  .tb3cc-actions{padding:6px 14px}
+  .tb3cc-btn{padding:4px 12px;font-size:12px}
+  .tb3cc-sec-list{gap:8px}
+  .tb3cc-sec__head{padding:6px 10px}
+  .tb3cc-sec__body{padding:8px 10px}
+  .tb3cc-leftcol{gap:10px}
+  .tb3cc-tfield{gap:8px}
+  /* 模板说明块在矮容器里只留一句话，省掉「编号前缀 / 共 N 段」那行 */
+  .tb3cc-tpl-hint{padding:6px 9px}
+  .tb3cc-tpl-hint__usage{margin-bottom:0;font-size:11px}
+  .tb3cc-tpl-hint__meta{display:none}
+}
 `;
 
 /**

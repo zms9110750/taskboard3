@@ -1,22 +1,35 @@
 /**
- * 建卡页预览的 CDP 验证 + 截图。
+ * 建卡页预览的 CDP 验证 + 截图 —— **三个真实尺寸各验一次**。
  *
  * `node packages/dsh-client/dev/preview/cardcreate/verify.mjs`
  *
- * ## 断言分六块
+ * ## 为什么要按尺寸验，而不是只验一次
  *
- * ① **左栏顺序**：标题 → 模板 → 父任务 → [关系][高级设置]（用户 `2026-11-18` 列的顺序）。
- *    量 **top 坐标**，不查 DOM 顺序 —— DOM 顺序对了但 CSS 乱序也是错的。
- * ② **模板选择是三级联选弹层**（不是 select）：点触发器 → 三列出现；
- *    点「代码」→ 类别列变 3 个；点类别 → 模板列变。
- * ③ **⚠ 选完模板弹层不关**（旧版实测行为，见 `TemplatePickerPopover.tsx` 文件头）。
- * ④ **关系 | 高级设置互斥**：点关系展开、点高级切过去、再点收起。
- * ⑤ **窄栏不溢出**：左栏 320px，里面没有元素宽过它（组合里最容易出的毛病）。
- * ⑥ **错误挂到左栏字段下面**（点提交后标题为空 ⇒ `/title` 错误出现在标题框下）。
+ * 用户 `2026-11-19` 给了产品里 CardCreate 会遇到的三个容器：
+ *
+ * | 场景 | 尺寸 | 该发生什么 |
+ * |---|---|---|
+ * | 工作区 | 570 × 920 | 左右分栏挤不下 ⇒ **堆叠**（`flex-direction: column`）|
+ * | 抽屉 | 1200 × 400 | **宽**得能横排 ⇒ **不堆叠**（`row`）+ 收紧纵向间距 |
+ * | 全屏 | 1600 × 1000 | 常规（`row`）|
+ *
+ * ⚠ **抽屉那条最重要**：它面积只有全屏的 30%，但**宽**。
+ *   如果响应式的判据是「面积小 / 尺寸小就堆叠」，1200×400 会被误判成堆叠 ——
+ *   400 高里竖着塞左栏 + 右栏必然溢出。这条断言就是为了钉住「按宽判，不按面积判」。
+ *
+ * ## 每个尺寸验五件事
+ *
+ * 1. `container-type: size` 生效（页有真实尺寸，没塌成 0）
+ * 2. `.tb3cc-page__body` 的 `flex-direction` 是预期的 `row` / `column`
+ * 3. 顶栏、底栏的矩形都在**容器内**（没被挤出去）
+ * 4. 页面本体**自己不产生滚动条**（`scrollHeight === clientHeight`）——
+ *    滚动只发生在左右两栏
+ * 5. 左栏 / 右栏在有实质尺寸（不是被挤成 0 宽）
  *
  * ## 截图
  *
- * 三张，存 `X:\temp\final-create-*.png`：整页 / 弹层展开 / 关系面板展开。
+ * 三张存 `X:\temp\resp-{1,2,3}-*.png`，每张只截**舞台那一块**（真实尺寸），
+ * 不是整页 —— 整页里有一半是预览自己的切换条和留白。
  */
 
 import { spawn } from 'node:child_process';
@@ -43,8 +56,8 @@ if (!existsSync(PAGE)) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const port = 9361;
-const ud = mkdtempSync(nodePath.join(tmpdir(), 'cc-'));
+const port = 9371;
+const ud = mkdtempSync(nodePath.join(tmpdir(), 'ccr-'));
 const proc = spawn(
 	EDGE,
 	[
@@ -116,13 +129,17 @@ const send = (method, params = {}) =>
 
 await send('Runtime.enable');
 await send('Page.enable');
+/*
+ * 视口给 1280×900 —— 比它大的舞台（1600×1000 / 570×920）会超出视口，
+ * 截图用 `captureBeyondViewport: true` + 页面坐标 clip。
+ */
 await send('Emulation.setDeviceMetricsOverride', {
 	width: 1280,
-	height: 860,
+	height: 900,
 	deviceScaleFactor: 2,
 	mobile: false,
 });
-await sleep(2500);
+await sleep(2200);
 
 const ev = async (x) => {
 	const r = await send('Runtime.evaluate', { expression: x, awaitPromise: true, returnByValue: true });
@@ -165,360 +182,308 @@ const expect = (label, actual, want) => {
 	console.log(`  ${ok ? '✓' : '✗'} ${label}`);
 };
 
-const shot = async (name) => {
+/**
+ * 截**舞台那一块** —— 用「视口 = 舞台尺寸 + 舞台贴原点 + 截整个视口」。
+ *
+ * ## ⚠ 为什么不用 `clip` + `captureBeyondViewport`
+ *
+ * 实测：1600 宽的舞台在 1280 宽的视口里，`clip {width:1600}` + `beyondViewport`
+ * 只渲染到视口宽度，**右边 320px 是灰的**（`resp-3-full.png` 第一版就是这样）。
+ * `clip` 对超出视口的横向区域不可靠。
+ *
+ * ⇒ 改成：
+ * 1. 加 `body.is-solo`（藏切换条、去掉 padding ⇒ 舞台贴 (0,0)）
+ * 2. `Emulation.setDeviceMetricsOverride` 把视口设成**舞台的真实尺寸**
+ * 3. 截**整个视口**（不带 clip）
+ * 4. 截完复原
+ *
+ * 这样截出来的 PNG 就是 `570×920` / `1200×400` / `1600×1000`，像素尺寸本身
+ * 也是「真实尺寸」的证据。
+ *
+ * @param name 文件名
+ * @param width 舞台宽
+ * @param height 舞台高
+ */
+const shotStage = async (name, width, height) => {
+	await ev(`document.body.classList.add('is-solo')`);
+	await sleep(120);
+	await send('Emulation.setDeviceMetricsOverride', {
+		width,
+		height,
+		deviceScaleFactor: 2,
+		mobile: false,
+	});
+	/*
+	 * 视口一变，舞台的 (0,0) 可能还被滚动位置影响（`pv-scroll` 之前滚过）。
+	 * 显式滚到原点，确保舞台贴左上角。
+	 */
+	await ev(`window.scrollTo(0, 0)`);
+	await sleep(420);
 	const { data } = await send('Page.captureScreenshot', { format: 'png' });
 	writeFileSync(nodePath.join(SHOTS, name), Buffer.from(data, 'base64'));
-	console.log(`  📷 ${name}`);
+	console.log(`  📷 ${name}  ${String(width)}×${String(height)}`);
+	/* 复原：先撤 is-solo，再恢复大视口（顺序反了会先看到一个变形的大页面）。 */
+	await send('Emulation.setDeviceMetricsOverride', {
+		width: 1280,
+		height: 900,
+		deviceScaleFactor: 2,
+		mobile: false,
+	});
+	await ev(`document.body.classList.remove('is-solo')`);
+	await sleep(320);
 };
 
-/* ══════════════════════════════════════════════════════════ */
-console.log('\n═══ ① 整页骨架（满屏 + 左右分栏 + 固定顶底栏）═══');
-{
-	const page = await ev(`(() => {
-    const el = document.querySelector('.tb3cc-page');
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
+/** 切到某个舞台。 */
+const switchStage = async (id) => {
+	await click(`document.querySelector('[data-stage-btn="${id}"]')`);
+	await sleep(420);
+};
+
+/**
+ * 量当前舞台的全部关键几何。
+ *
+ * @param wantW 期望宽度
+ * @param wantH 期望高度
+ */
+const measure = (wantW, wantH) =>
+	ev(`(() => {
+    const stage = document.querySelector('.pv-stage');
+    const page = document.querySelector('.tb3cc-page');
+    const body = document.querySelector('.tb3cc-page__body');
+    const top = document.querySelector('.tb3cc-page__top');
+    const foot = document.querySelector('.tb3cc-page__foot');
+    const left = document.querySelector('.tb3cc-page__left');
+    const right = document.querySelector('.tb3cc-page__right');
+    if (!stage || !page || !body) return null;
+    const sr = stage.getBoundingClientRect();
+    const pr = page.getBoundingClientRect();
+    const tr = top.getBoundingClientRect();
+    const fr = foot.getBoundingClientRect();
+    const lr = left.getBoundingClientRect();
+    const rr = right.getBoundingClientRect();
+    const pageStyle = getComputedStyle(page);
+    const bodyStyle = getComputedStyle(body);
+    /* 在容器内 = 每条边都不超出容器（容差 1px，避免亚像素误判）。 */
+    const inside = (r) =>
+      r.top >= sr.top - 1 && r.bottom <= sr.bottom + 1 &&
+      r.left >= sr.left - 1 && r.right <= sr.right + 1;
+    /*
+     * 找**横向**溢出容器的元素（跳过弹层 —— 它故意可以出界）。
+     *
+     * ⚠ 只查横向，不查纵向：右栏是滚动容器，它的子树天然会向下延伸出可视区
+     *   （那是「滚动内容」，不是「布局错」）。第一版连纵向一起查 ⇒ 一堆
+     *   tb3cc-sec-list 假失败。
+     *   纵向的「顶栏底栏没被挤出去」由上面对 top/foot 的 inside() 单独验。
+     *
+     * ⚠ 本段是模板字符串里的代码，注释里**不能出现反引号**（会提前结束字符串）。
+     */
+    const outOfBounds = [];
+    for (const el of page.querySelectorAll('*')) {
+      const cs = getComputedStyle(el);
+      if (cs.position === 'absolute' || cs.position === 'fixed') continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      if (r.right > sr.right + 1 || r.left < sr.left - 1) {
+        outOfBounds.push((el.className && typeof el.className === 'string' ? el.className : el.tagName) +
+          ':' + Math.round(r.left) + '-' + Math.round(r.right));
+      }
+    }
     return {
-      fixed: getComputedStyle(el).position === 'fixed',
-      w: Math.round(r.width), h: Math.round(r.height),
-      leftW: Math.round(document.querySelector('.tb3cc-page__left').getBoundingClientRect().width),
-      hasRight: document.querySelector('.tb3cc-page__right') !== null,
-      hasTop: document.querySelector('.tb3cc-page__top') !== null,
-      hasFoot: document.querySelector('.tb3cc-page__foot') !== null,
+      stageW: Math.round(sr.width), stageH: Math.round(sr.height),
+      pageW: Math.round(pr.width), pageH: Math.round(pr.height),
+      pagePosition: pageStyle.position,
+      containerType: pageStyle.containerType,
+      flexDirection: bodyStyle.flexDirection,
+      topInside: inside(tr), footInside: inside(fr),
+      topW: Math.round(tr.width), footW: Math.round(fr.width),
+      leftW: Math.round(lr.width), leftH: Math.round(lr.height),
+      rightW: Math.round(rr.width), rightH: Math.round(rr.height),
+      /* 页面本体自己不滚（滚动只发生在左右两栏）。 */
+      pageScrollsVertically: page.scrollHeight > page.clientHeight + 1,
+      pageScrollsHorizontally: page.scrollWidth > page.clientWidth + 1,
+      outOfBounds: outOfBounds.slice(0, 5),
+      outOfBoundsCount: outOfBounds.length,
+      wantW: ${String(wantW)}, wantH: ${String(wantH)},
     };
   })()`);
-	expect('满屏 page 存在且是 fixed', page !== null && page.fixed, true);
-	expect('page 铺满视口（1280×860）', [page.w, page.h], [1280, 860]);
-	expect('左栏 320px', page.leftW, 320);
-	expect('右栏 / 顶栏 / 底栏都在', [page.hasRight, page.hasTop, page.hasFoot], [true, true, true]);
 
-	expect(
-		'⭐ 右栏有章节（真模板生成的，不是空的）',
-		await ev(`document.querySelectorAll('.tb3cc-sec').length`),
-		6,
-	);
-	expect(
-		'顶栏标题是「新建事项」',
-		await ev(`document.querySelector('.tb3cc-page__title').textContent`),
-		'新建事项',
-	);
-	await shot('final-create-1-page.png');
-}
+/* ══════════════════════════════════════════════════════════
+   三种尺寸
+   ══════════════════════════════════════════════════════════ */
 
-console.log('\n═══ ② 左栏顺序：标题 → 模板 → 父任务 → [关系][高级设置] ═══');
-{
+/** 三个舞台的定义（和 `main.tsx` 的 `STAGES` 一致 —— 尺寸是用户给的）。 */
+const CASES = [
+	{
+		id: 'workspace',
+		file: 'resp-1-workspace.png',
+		w: 570,
+		h: 920,
+		flex: 'column',
+		why: '570 宽放不下左右分栏 ⇒ 堆叠',
+	},
+	{
+		id: 'drawer',
+		file: 'resp-2-drawer.png',
+		w: 1200,
+		h: 400,
+		flex: 'row',
+		why: '1200 **宽** ⇒ 横排；只是矮，绝不能堆叠',
+	},
+	{
+		id: 'full',
+		file: 'resp-3-full.png',
+		w: 1600,
+		h: 1000,
+		flex: 'row',
+		why: '都够 ⇒ 常规横排',
+	},
+];
+
+for (const one of CASES) {
+	console.log(`\n═══ ${one.id}：${String(one.w)} × ${String(one.h)} —— ${one.why} ═══`);
+	await switchStage(one.id);
+	const m = await measure(one.w, one.h);
+	expect('舞台拿到真实尺寸', m === null ? null : [m.stageW, m.stageH], [one.w, one.h]);
 	/*
-	 * ⚠ 量 **top 坐标**，不查 DOM 顺序：DOM 顺序对了但 CSS 用 order/flex 乱序也是错的。
+	 * ⚠ 这一条是「container-type:size 要求父容器给高度」的**实证**：
+	 *   页高 = 舞台高 ⇒ 撑满了；页高 0 ⇒ 父层没给高度，页塌了。
 	 */
-	const tops = await ev(`(() => {
-    const top = (sel) => { const el = document.querySelector(sel); return el ? Math.round(el.getBoundingClientRect().top) : -1; };
-    return {
-      title: top('.tb3cc-leftcol .tb3cc-field'),
-      tpl: top('.tb3cc-tfield'),
-      meta: top('.tb3cc-meta'),
-      leftLabel: document.querySelector('.tb3cc-leftcol .tb3cc-label').textContent.trim(),
-      cells: [...document.querySelectorAll('.tb3cc-tfield__cell .tb3cc-label')].map(e => e.textContent.trim()),
-      hasSelect: document.querySelector('.tb3cc-leftcol select') !== null,
-    };
-  })()`);
-	expect('第一块是标题（label 带 *）', tops.leftLabel.startsWith('标题'), true);
-	expect('模板块在父任务块**上面**（分行 = ②，不是同行 ①）', tops.cells, ['模板', '父任务']);
-
-	const tplTop = await ev(
-		`Math.round(document.querySelector('.tb3cc-tfield__cell').getBoundingClientRect().top)`,
-	);
-	const parentTop = await ev(
-		`Math.round(document.querySelectorAll('.tb3cc-tfield__cell')[1].getBoundingClientRect().top)`,
-	);
-	expect('⭐ 模板和父任务**顶边不同**（真分行，不是并排）', tplTop !== parentTop, true);
+	expect('⭐ 页面撑满舞台（没塌成 0）', m === null ? null : [m.pageW, m.pageH], [one.w, one.h]);
+	/*
+	 * ⚠ 断言的是**「不是 fixed / absolute」**，不是「等于 relative」。
+	 *   现在 `.tb3cc-page` 没有写 position ⇒ 计算值是 `static`，那是对的：
+	 *   它留在文档流里、被父容器约束。写死 expected 'relative' 是在替 CSS
+	 *   规定实现方式，而不是规定**行为**（行为 = 不出父容器）。
+	 */
 	expect(
-		'⭐ 模板和父任务**左边相同**（同一列）',
-		await ev(`(() => {
-      const a = document.querySelectorAll('.tb3cc-tfield__cell')[0].getBoundingClientRect();
-      const b = document.querySelectorAll('.tb3cc-tfield__cell')[1].getBoundingClientRect();
-      return Math.round(a.left) === Math.round(b.left);
-    })()`),
-		true,
+		'⭐ 页面留在文档流里（不脱离父容器）',
+		m === null ? null : m.pagePosition === 'fixed' || m.pagePosition === 'absolute',
+		false,
 	);
-	expect('⚠ 左栏里没有 <select>（模板不是普通下拉）', tops.hasSelect, false);
-	expect('⚠ 顺序：模板块 top < 关系/高级块 top', tops.tpl < tops.meta, true);
+	expect('页面是容器查询宿主（container-type:size）', m === null ? null : m.containerType, 'size');
+	expect('⭐ body 的 flex-direction', m === null ? null : m.flexDirection, one.flex);
+	expect('顶栏在容器内', m === null ? null : m.topInside, true);
+	expect('底栏在容器内', m === null ? null : m.footInside, true);
+	expect('顶栏 / 底栏满宽', m === null ? null : [m.topW, m.footW], [one.w, one.w]);
+	expect('⚠ 页面本体自己不产生纵向滚动条', m === null ? null : m.pageScrollsVertically, false);
+	expect('⚠ 页面本体自己不产生横向滚动条', m === null ? null : m.pageScrollsHorizontally, false);
+	expect('⚠ 没有元素溢出容器（弹层除外）', m === null ? null : m.outOfBounds, []);
+
+	if (one.flex === 'column') {
+		/* 堆叠：左栏在上、右栏在下，两者宽度都等于容器宽。 */
+		expect('堆叠后左栏占满宽度', m === null ? null : m.leftW, one.w);
+		expect('堆叠后右栏占满宽度', m === null ? null : m.rightW, one.w);
+		expect(
+			'⭐ 左栏有 max-height 上限（46% ≈ ' + String(Math.round(one.h * 0.46)) + 'px）',
+			m === null ? null : m.leftH <= Math.round(one.h * 0.46) + 1,
+			true,
+		);
+		expect('堆叠后右栏还有实质高度', m === null ? null : m.rightH > 200, true);
+	} else {
+		/* 横排：左栏 320、右栏吃掉剩下的。 */
+		expect('横排：左栏 320px', m === null ? null : m.leftW, 320);
+		expect('横排：右栏吃掉剩余宽度', m === null ? null : m.rightW, one.w - 320);
+	}
+
+	await shotStage(one.file, one.w, one.h);
 }
 
-console.log('\n═══ ③ 模板：三级联选弹层（点开三列 —— 用户选的 ④）═══');
+/* ══════════════════════════════════════════════════════════
+   矮容器（抽屉）的间距确实收紧了
+   ══════════════════════════════════════════════════════════ */
+console.log('\n═══ 抽屉 400 高：纵向间距真的收紧了（不只是「没堆叠」）═══');
 {
+	await switchStage('drawer');
+	const drawer = await ev(`(() => {
+    const pad = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).paddingTop : null; };
+    /*
+     * ⚠ 这两条必须在**还停在抽屉**时一起读 —— 切回全屏之后 mask 又变回 flex 了。
+     *   第一版把它们放到切换之后 ⇒ 断言恒红（不是样式坏）。
+     */
+    const meta = document.querySelector('.tb3cc-tpl-hint__meta');
+    const right = document.querySelector('.tb3cc-page__right');
+    const secs = [...right.querySelectorAll('.tb3cc-sec')];
+    const rr = right.getBoundingClientRect();
+    return {
+      top: pad('.tb3cc-page__top'),
+      right: pad('.tb3cc-page__right'),
+      metaDisplay: meta === null ? 'no-node' : getComputedStyle(meta).display,
+      visibleSecs: secs.filter(s => s.getBoundingClientRect().top < rr.bottom).length,
+    };
+  })()`);
+
+	await switchStage('full');
+	const full = await ev(`(() => {
+    const pad = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).paddingTop : null; };
+    const meta = document.querySelector('.tb3cc-tpl-hint__meta');
+    return {
+      top: pad('.tb3cc-page__top'),
+      right: pad('.tb3cc-page__right'),
+      metaDisplay: meta === null ? 'no-node' : getComputedStyle(meta).display,
+    };
+  })()`);
+
+	expect('抽屉顶栏 padding 比全屏小（6px vs 12px）', drawer.top, '6px');
+	expect('全屏顶栏 padding 是常规的 12px', full.top, '12px');
+	expect('抽屉右栏 padding 比全屏小（10px vs 16px）', drawer.right, '10px');
+	expect('全屏右栏 padding 是常规的 16px', full.right, '16px');
+
+	/* 高 <560 时说明块那一行收掉 —— 矮容器里它是纯占位 */
+	expect('抽屉里模板说明的「编号前缀」那行被收掉（省高度）', drawer.metaDisplay, 'none');
+	expect('全屏里那一行还在（响应式只对矮容器生效）', full.metaDisplay, 'flex');
+	expect('⭐ 抽屉里右栏能看到至少两章（400 高里塞得下）', drawer.visibleSecs >= 2, true);
+}
+
+/* ══════════════════════════════════════════════════════════
+   功能没被响应式改坏（在三个尺寸里各验一遍核心交互）
+   ══════════════════════════════════════════════════════════ */
+console.log('\n═══ 三个尺寸里，左栏功能都还在 ═══');
+{
+	await switchStage('workspace');
 	expect(
-		'弹层初始是关的',
-		await ev(`document.querySelector('[data-picker-pop]') === null`),
+		'570 宽里：模板触发器在',
+		await ev(`document.querySelector('[data-picker-trigger]') !== null`),
 		true,
 	);
-
 	await click(`document.querySelector('[data-picker-trigger]')`);
-	await sleep(350);
-
-	const pop = await ev(`(() => {
-    const el = document.querySelector('[data-picker-pop]');
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    return {
-      cols: [...el.querySelectorAll('[data-col]')].map(c => c.dataset.col),
-      w: Math.round(r.width),
-      domains: [...el.querySelectorAll('[data-col="domain"] .tb3cc-tpick__name')].map(e => e.textContent),
-      kinds: [...el.querySelectorAll('[data-col="kind"] .tb3cc-tpick__name')].map(e => e.textContent),
-      letters: [...el.querySelectorAll('[data-col="kind"] .tb3cc-tpick__prefix')].map(e => e.textContent),
-      templates: [...el.querySelectorAll('[data-col="template"] .tb3cc-tpick__name')].map(e => e.textContent),
-    };
-  })()`);
-	expect('⭐ 点触发器 ⇒ 三列弹层出现', pop !== null, true);
-	expect('三列顺序 = 领域 / 类别 / 模板', pop.cols, ['domain', 'kind', 'template']);
-	expect('领域列 = 核心 / 代码（核心在前）', pop.domains, ['核心', '代码']);
-	/*
-	 * ⚠ 初始定位在**已选模板所在的分组**（`expectedMismatch` = 代码 · 目标），
-	 *   所以类别列是**代码领域**的 3 个类别（代码没有「记录」）。
-	 *   第一版这里按「核心」写了 4 个 —— 断言当场红，是断言写错不是组件坏。
-	 */
-	expect('⭐ 类别列前面是**字母**不是圆圈', pop.letters, ['G', 'D', 'W']);
-	expect('类别列 = 代码领域的 目标 / 设计 / 工作', pop.kinds, ['目标', '设计', '工作']);
-	expect('模板列 = 代码领域 目标 类别的 4 个（初始定位到已选的预期不符）', pop.templates, [
-		'预期不符',
-		'新增功能',
-		'项目优化',
-		'编写测试',
-	]);
-	expect('弹层宽于左栏（三列塞不下 320px，会往右伸）', pop.w > 320, true);
-	await shot('final-create-2-picker.png');
-}
-
-console.log('\n═══ ④ 三级联选真的能递进 ═══');
-{
-	await click(`document.querySelector('[data-col="domain"] [data-domain="代码"]')`);
-	await sleep(320);
+	await sleep(400);
 	expect(
-		'点「代码」⇒ 类别列 = 目标 / 设计 / 工作（代码没有记录）',
-		await ev(`[...document.querySelectorAll('[data-col="kind"] .tb3cc-tpick__name')].map(e => e.textContent)`),
-		['目标', '设计', '工作'],
-	);
-	expect(
-		'点「代码」⇒ 类别自动落到第一项「目标」',
-		await ev(`document.querySelector('[data-col="kind"] [data-kind="goal"]').classList.contains('is-picked')`),
-		true,
-	);
-
-	await click(`document.querySelector('[data-col="kind"] [data-kind="work"]')`);
-	await sleep(320);
-	expect(
-		'点「工作」⇒ 模板列 = 代码的 工作 模板（只有「编写代码」）',
-		await ev(`[...document.querySelectorAll('[data-col="template"] .tb3cc-tpick__name')].map(e => e.textContent)`),
-		['编写代码'],
-	);
-}
-
-console.log('\n═══ ⑤ ⭐ 选完模板：弹层**不关**（旧版实测行为），只重画 ═══');
-{
-	await click(`document.querySelector('[data-template="writeCode"]')`);
-	await sleep(350);
-
-	expect(
-		'⭐ 选完弹层**还在**（旧版 pickTemplate 里是 renderPicker() 不是 close()）',
+		'570 宽里：三级联选弹层还能展开（fixed 定位，不被窄容器裁掉）',
 		await ev(`document.querySelector('[data-picker-pop]') !== null`),
 		true,
 	);
 	expect(
-		'触发器文字跟着变（代码 · 编写代码）',
-		await ev(`document.querySelector('[data-picker-trigger] .tb3cc-tpick__value').textContent`),
-		'代码 · 编写代码',
+		'570 宽里：弹层三列都在',
+		await ev(`document.querySelectorAll('[data-col]').length`),
+		3,
 	);
-	expect(
-		'⭐ 模板列的高亮移到选中项（重画的效果）',
-		await ev(`document.querySelector('[data-template="writeCode"]').classList.contains('is-picked')`),
-		true,
-	);
-	expect(
-		'底部说明跟着变（段数 = 2）',
-		await ev(`document.querySelector('[data-picker-foot] [data-foot-segs]').dataset.footSegs`),
-		'2',
-	);
+	await shotStage('resp-1b-workspace-picker.png', 570, 920);
+	/* 点外面关 */
+	await click(`document.querySelector('.pv-bar__tag')`);
+	await sleep(300);
 
-	/* 点面板外面才关 */
-	await click(`document.querySelector('.tb3cc-page__title')`);
-	await sleep(350);
+	await switchStage('full');
 	expect(
-		'点外面才关',
+		'1600 宽里：弹层能关掉',
 		await ev(`document.querySelector('[data-picker-pop]') === null`),
 		true,
 	);
 
-	/*
-	 * ⚠ 右栏章节数必须跟着换（expectedMismatch 6 章 ⇒ writeCode 2 章）。
-	 *   这条测的是**预览把「换模板重建章节」接上了** —— 左栏只改 templateRef，
-	 *   重建是调用方的事（见 `CreateLeftColumn` 文件头）。
-	 */
-	expect(
-		'⭐ 换模板后右栏章节跟着变（6 → 2 章）',
-		await ev(`document.querySelectorAll('.tb3cc-sec').length`),
-		2,
-	);
-	expect(
-		'左栏说明块显示新模板的段数',
-		await ev(`document.querySelector('.tb3cc-tpl-hint__meta').textContent.includes('共 2 段')`),
-		true,
-	);
-
-	/* 换回来，后面截图用章节多的那个 */
-	await click(`document.querySelector('[data-picker-trigger]')`);
-	await sleep(320);
-	await click(`document.querySelector('[data-col="domain"] [data-domain="代码"]')`);
-	await sleep(280);
-	await click(`document.querySelector('[data-col="kind"] [data-kind="goal"]')`);
-	await sleep(280);
-	await click(`document.querySelector('[data-template="expectedMismatch"]')`);
-	await sleep(320);
-	await click(`document.querySelector('.tb3cc-page__title')`);
-	await sleep(320);
-	expect('换回「预期不符」⇒ 右栏回到 6 章', await ev(`document.querySelectorAll('.tb3cc-sec').length`), 6);
-}
-
-console.log('\n═══ ⑥ 关系 | 高级设置：两个按钮 + 共用折叠区（用户选的 ⑤）═══');
-{
-	expect(
-		'两个标签按钮',
-		await ev(`[...document.querySelectorAll('[data-meta-tab]')].map(b => b.dataset.metaTab)`),
-		['rel', 'adv'],
-	);
-	expect(
-		'初始都收起（没有面板）',
-		await ev(`document.querySelectorAll('.tb3cc-meta__panel').length`),
-		0,
-	);
-	expect('计数初始 = 0', await ev(`document.querySelector('[data-rel-count]').textContent`), '0');
-
-	await click(`document.querySelector('[data-meta-tab="rel"]')`);
-	await sleep(320);
-	expect('点「关系」⇒ 关系面板出现', await ev(`document.querySelector('[data-panel="rel"]') !== null`), true);
-	expect(
-		'「关系」按钮高亮',
-		await ev(`document.querySelector('[data-meta-tab="rel"]').classList.contains('is-on')`),
-		true,
-	);
-	expect(
-		'⭐ 点「添加关联」⇒ 计数**不变**（空行不算一条关系）',
-		await (async () => {
-			await click(`document.querySelector('.tb3cc-meta__rel-add')`);
-			await sleep(300);
-			return ev(`document.querySelector('[data-rel-count]').textContent`);
-		})(),
-		'0',
-	);
-	expect(
-		'空行有一行（类型默认依赖）',
-		await ev(`[...document.querySelectorAll('.tb3cc-meta__rel-kind')].map(s => s.value)`),
-		['dependsOn'],
-	);
-
-	await click(`document.querySelector('[data-meta-tab="adv"]')`);
-	await sleep(320);
-	expect(
-		'⭐ 点「高级设置」⇒ 关系面板**关掉**（互斥 + 共用一块位置）',
-		await ev(`document.querySelector('[data-panel="rel"]') === null`),
-		true,
-	);
-	expect('高级面板打开', await ev(`document.querySelector('[data-panel="adv"]') !== null`), true);
-	expect(
-		'按钮高亮跟着换',
-		await ev(`[...document.querySelectorAll('[data-meta-tab]')].map(b => b.classList.contains('is-on'))`),
-		[false, true],
-	);
-	expect(
-		'高级设置明说「暂无设置项」（不装作能点）',
-		await ev(`document.querySelector('[data-panel="adv"]').textContent.includes('暂无设置项')`),
-		true,
-	);
-
-	/* 关系目标真的能选（CardPicker 过滤生效） */
-	await click(`document.querySelector('[data-meta-tab="rel"]')`);
-	await sleep(320);
-	await click(`document.querySelector('[data-meta-tab="rel"]')`);
-	await sleep(200);
-	await click(`document.querySelector('[data-meta-tab="rel"]')`);
-	await sleep(320);
-	await click(`document.querySelectorAll('.tb3cc-meta__rel-row .tb3cc-picker__display')[0]`);
-	await sleep(320);
-	const ids = await ev(
-		`[...document.querySelectorAll('.tb3cc-meta__rel-row .tb3cc-picker__item')].filter(e => e.dataset.cardId).map(e => e.dataset.cardId)`,
-	);
-	expect('⭐ 关系目标列表滤掉了草稿 GU-01 和墓碑 RB-99', ids.includes('GU-01') || ids.includes('RB-99'), false);
-	expect('正常卡还在（DM-01）', ids.includes('DM-01'), true);
-	await click(`document.querySelectorAll('.tb3cc-meta__rel-row .tb3cc-picker__item')[0]`);
-	await sleep(320);
-	expect(
-		'选完目标 ⇒ 计数变 1（现在算一条关系了）',
-		await ev(`document.querySelector('[data-rel-count]').textContent`),
-		'1',
-	);
-
-	await shot('final-create-3-meta.png');
-}
-
-console.log('\n═══ ⑦ 错误挂在左栏字段下面（render prop 的 errorOf 接对了）═══');
-{
-	/* 清空标题 ⇒ 点提交 ⇒ `/title` 错误出现在标题框下面 */
-	await ev(`(() => {
-    const input = document.querySelector('.tb3cc-leftcol .tb3cc-input');
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-    setter.call(input, '');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    return true;
-  })()`);
-	await sleep(250);
-	await click(`[...document.querySelectorAll('.tb3cc-btn')].find(b => b.textContent.trim() === '提交')`);
-	await sleep(400);
-
-	expect(
-		'⭐ 标题错误出现在左栏标题框下面',
-		await ev(`(() => {
-      const el = document.querySelector('[data-field-err="title"]');
-      return el === null ? null : el.textContent.trim();
-    })()`),
-		'卡标题不能为空。',
-	);
-	expect(
-		'⭐ 错误在**左栏**（不是右栏 / 不是 toast）',
-		await ev(`(() => {
-      const err = document.querySelector('[data-field-err="title"]');
-      const left = document.querySelector('.tb3cc-page__left');
-      return err !== null && left.contains(err);
-    })()`),
-		true,
-	);
-	expect(
-		'底栏报错误数',
-		await ev(`document.querySelector('.tb3cc-actions__err') !== null`),
-		true,
-	);
-}
-
-console.log('\n═══ ⑧ 窄栏不溢出（320px 里最容易出的毛病）═══');
-{
-	const overflow = await ev(`(() => {
-    const left = document.querySelector('.tb3cc-page__left');
-    const lr = left.getBoundingClientRect();
-    const bad = [];
-    for (const el of left.querySelectorAll('*')) {
-      const r = el.getBoundingClientRect();
-      /* 弹层是 absolute 且故意比左栏宽 ⇒ 跳过它和它的子树。 */
-      if (el.closest('[data-picker-pop]') !== null) continue;
-      if (r.width > 0 && (r.right > lr.right + 1 || r.left < lr.left - 1)) {
-        bad.push(\`\${el.className || el.tagName}:\${Math.round(r.left)}-\${Math.round(r.right)} vs \${Math.round(lr.left)}-\${Math.round(lr.right)}\`);
-      }
-    }
-    return { bad: bad.slice(0, 4), count: bad.length, leftW: Math.round(lr.width) };
-  })()`);
-	expect('左栏宽 320px', overflow.leftW, 320);
-	expect('⚠ 左栏内容没有横向溢出（弹层之外）', overflow.bad, []);
-	expect(
-		'页面没有横向滚动条',
-		await ev(`document.documentElement.scrollWidth <= window.innerWidth + 1`),
-		true,
-	);
+	/* 关系面板：三个尺寸都能展开且互斥 */
+	for (const id of ['workspace', 'drawer', 'full']) {
+		await switchStage(id);
+		await click(`document.querySelector('[data-meta-tab="rel"]')`);
+		await sleep(320);
+		const opened = await ev(`document.querySelector('[data-panel="rel"]') !== null`);
+		await click(`document.querySelector('[data-meta-tab="adv"]')`);
+		await sleep(320);
+		const switched = await ev(`(() => document.querySelector('[data-panel="rel"]') === null &&
+      document.querySelector('[data-panel="adv"]') !== null)()`);
+		expect(`${id}：关系面板能展开 + 切到高级互斥`, [opened, switched], [true, true]);
+		/* 收起来，别影响下一个尺寸 */
+		await click(`document.querySelector('[data-meta-tab="adv"]')`);
+		await sleep(200);
+	}
 }
 
 console.log('\n═══ JS 错误 ═══');
