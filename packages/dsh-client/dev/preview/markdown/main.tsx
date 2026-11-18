@@ -14,7 +14,7 @@
 import { StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { Markdown } from '../../components/Markdown.tsx';
+import { Markdown } from '../../../src/renderers/Markdown.tsx';
 
 /** 正常语法样本（GFM 特性逐条点名）。 */
 const NORMAL = `# 一级标题

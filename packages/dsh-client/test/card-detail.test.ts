@@ -25,8 +25,8 @@ import {
 	relationCountOf,
 	sectionsOf,
 	type HistoryEntryLike,
-} from '../pure/card-detail.ts';
-import type { Card } from '../../src/types.ts';
+} from '../src/pure/card-detail.ts';
+import type { Card } from '../src/types.ts';
 
 /* ── 夹具 ── */
 

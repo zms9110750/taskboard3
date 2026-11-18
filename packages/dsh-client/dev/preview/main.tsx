@@ -7,9 +7,9 @@
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { CardRow } from '../components/CardRow.tsx';
-import { StatusCell } from '../components/StatusCell.tsx';
-import { StatusDot } from '../components/StatusDot.tsx';
+import { CardRow } from '../../src/renderers/CardRow.tsx';
+import { StatusCell } from '../../src/renderers/StatusCell.tsx';
+import { StatusDot } from '../../src/renderers/StatusDot.tsx';
 import type { Card } from '../../src/types.ts';
 
 /* ── 夹具：分类 / 模板中文名（真实产品从模板清单查） ── */

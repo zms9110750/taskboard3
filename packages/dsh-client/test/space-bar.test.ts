@@ -18,8 +18,8 @@ import {
 	dispatchOf,
 	resolveViewingId,
 	visibleWorkspaces,
-} from '../pure/space-bar.ts';
-import type { Workspace } from '../../src/types.ts';
+} from '../src/pure/space-bar.ts';
+import type { Workspace } from '../src/types.ts';
 
 /* ── 夹具 ── */
 

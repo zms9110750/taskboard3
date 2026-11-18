@@ -20,7 +20,7 @@ import {
 	renderMarkdownNodes,
 	type MdElement,
 	type MdNode,
-} from '../pure/markdown-tokens.ts';
+} from '../src/pure/markdown-tokens.ts';
 
 /* ══════════════════════════════════════════════════════════
    断言小工具

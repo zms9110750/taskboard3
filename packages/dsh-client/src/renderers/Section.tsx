@@ -40,7 +40,7 @@ import {
 	type MarkdownToken,
 	type SectionView,
 } from '../pure/section.ts';
-import type { CardSection } from '../../src/types.ts';
+import type { CardSection } from '../types.ts';
 import { AskSection } from './AskSection.tsx';
 
 /** 组件属性（任务描述给的那一份，一个不多一个不少）。 */

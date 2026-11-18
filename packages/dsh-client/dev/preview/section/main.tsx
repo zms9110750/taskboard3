@@ -15,8 +15,8 @@
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { Section } from '../../components/Section.tsx';
-import { NO_ANSWER } from '../../pure/section.ts';
+import { Section } from '../../../src/renderers/Section.tsx';
+import { NO_ANSWER } from '../../../src/pure/section.ts';
 import type { CardSection } from '../../../src/types.ts';
 
 /* ── 夹具：payload 逐字抄自 packages/core/templates/*.yaml ── */

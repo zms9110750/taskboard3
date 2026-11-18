@@ -28,8 +28,8 @@ import {
 	payloadTypeOf,
 	sectionLabelOf,
 	sectionViewOf,
-} from '../pure/section.ts';
-import { extractText } from '../../src/pure.ts';
+} from '../src/pure/section.ts';
+import { extractText } from '../src/pure.ts';
 
 /* ══════════════════════════════════════════════════════════
    真实 payload 夹具（抄自 packages/core/templates/*.yaml）

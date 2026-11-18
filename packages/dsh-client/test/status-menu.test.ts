@@ -46,7 +46,7 @@ import {
 	sectionsOf,
 	toneOf,
 	type Rect,
-} from '../pure/status-menu.ts';
+} from '../src/pure/status-menu.ts';
 
 /* ── 夹具：手写按钮，不依赖按钮表的当前内容 ── */
 

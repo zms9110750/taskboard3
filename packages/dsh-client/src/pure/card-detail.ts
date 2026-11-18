@@ -47,8 +47,8 @@
  * ⇒ 折它不换回任何东西。
  */
 
-import { extractText } from '../../src/pure.ts';
-import type { Card, CardSection } from '../../src/types.ts';
+import { extractText } from '../pure.ts';
+import type { Card, CardSection } from '../types.ts';
 import { kindTone, stateLabel, fmtDateTime, type KnownKind } from './card-view.ts';
 
 /* ══════════════════════════════════════════════════════════

@@ -43,7 +43,7 @@
 import type { ReactNode } from 'react';
 
 import { cardTimes, fmtDateTime, isDraftStatus, kindTone, unreadSide } from '../pure/card-view.ts';
-import type { Card } from '../../src/types.ts';
+import type { Card } from '../types.ts';
 import { StatusCell } from './StatusCell.tsx';
 
 /** 组件属性。 */

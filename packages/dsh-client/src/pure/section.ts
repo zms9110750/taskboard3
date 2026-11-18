@@ -29,7 +29,7 @@
  * 判决（哪些形状怎么画）全在这里；组件只把这里给的字段原样画出来。
  */
 
-import { extractText } from '../../src/pure.ts';
+import { extractText } from '../pure.ts';
 
 /* ══════════════════════════════════════════════════════════
    基础：把 unknown 收窄

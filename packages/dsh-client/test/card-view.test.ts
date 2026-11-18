@@ -19,7 +19,7 @@ import {
 	stateLabel,
 	stateTone,
 	unreadSide,
-} from '../pure/card-view.ts';
+} from '../src/pure/card-view.ts';
 
 /* 常见状态全名，省得每处写长串 */
 const S = {

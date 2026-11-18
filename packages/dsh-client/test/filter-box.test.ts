@@ -20,8 +20,8 @@ import {
 	resolvePath,
 	selectionText,
 	segmentsOf,
-} from '../pure/filter-box.ts';
-import type { FilterNode } from '../pure/filter-box.ts';
+} from '../src/pure/filter-box.ts';
+import type { FilterNode } from '../src/pure/filter-box.ts';
 
 /* ── 夹具一：状态（两级） ── */
 
