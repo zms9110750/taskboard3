@@ -177,6 +177,36 @@ describe('CREATE_CSS —— 满屏布局的不变量', () => {
 		);
 	});
 
+	it('⚠⚠ 窄容器里左栏上限必须够大（≥65%），否则关系一展开就出滚动条', () => {
+		/*
+		 * 用户 `2026-11-19`：
+		 * > 「抽屉打滚动无所谓。**但是工作区打滚动就不行。**」
+		 *
+		 * 实测 570×920（左栏内容自然高，含 padding）：
+		 *
+		 * | 左栏状态 | 自然高 |
+		 * |---|---|
+		 * | 关系收起 | 341px |
+		 * | 关系展开（空）| 457px |
+		 * | 关系展开 + 1 行关联 | 471px |
+		 *
+		 * 第一版给 46%（≈376px）⇒ **关系一展开左栏就滚**，正是用户否掉的行为。
+		 * ⇒ 上限必须 ≥ 65%，让「关系展开 + 几行关联」这个典型状态装得下。
+		 *
+		 * ⚠ 这条不是「越大越好」：到 100% 右栏就没了。70% 是「典型状态不滚 + 右栏还露一截」的平衡。
+		 */
+		const block = containerBlockOf(CREATE_CSS, 'max-width: 700px');
+		const hit = /\.tb3cc-page__left\{[^}]*max-height:(\d+)%/.exec(block);
+		assert.notEqual(hit, null, `左栏的 max-height 应该是百分比（相对容器高）。实际：${block}`);
+		const percent = Number(hit?.[1]);
+		assert.ok(
+			percent >= 65,
+			`⚠ 左栏 max-height 只有 ${String(percent)}% —— 570×920 下关系一展开就会出滚动条` +
+				`（用户明确否掉「工作区打滚动」）。至少要 65%，现在是 70%。`,
+		);
+		assert.ok(percent <= 85, `左栏 max-height ${String(percent)}% 太大 —— 右栏会被挤没。`);
+	});
+
 	it('⭐ 高度查询**只改间距**（不改 flex-direction，否则等于偷偷堆叠）', () => {
 		const block = containerBlockOf(CREATE_CSS, 'max-height: 560px');
 		assert.equal(

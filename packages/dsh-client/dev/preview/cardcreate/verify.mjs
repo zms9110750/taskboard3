@@ -374,8 +374,8 @@ for (const one of CASES) {
 		expect('堆叠后左栏占满宽度', m === null ? null : m.leftW, one.w);
 		expect('堆叠后右栏占满宽度', m === null ? null : m.rightW, one.w);
 		expect(
-			'⭐ 左栏有 max-height 上限（46% ≈ ' + String(Math.round(one.h * 0.46)) + 'px）',
-			m === null ? null : m.leftH <= Math.round(one.h * 0.46) + 1,
+			'⭐ 左栏有 max-height 上限（70% ≈ ' + String(Math.round(one.h * 0.7)) + 'px）',
+			m === null ? null : m.leftH <= Math.round(one.h * 0.7) + 1,
 			true,
 		);
 		expect('堆叠后右栏还有实质高度', m === null ? null : m.rightH > 200, true);
@@ -386,6 +386,64 @@ for (const one of CASES) {
 	}
 
 	await shotStage(one.file, one.w, one.h);
+}
+
+/* ══════════════════════════════════════════════════════════
+   ⚠⚠ 工作区 570×920：**左栏任何典型状态都不许出滚动条**
+   ══════════════════════════════════════════════════════════ */
+console.log('\n═══ ⚠⚠ 工作区 570×920：左栏不许滚（用户明确要求）═══');
+{
+	/*
+	 * 用户 `2026-11-19`：
+	 * > 「抽屉打滚动无所谓。**但是工作区打滚动就不行。**」
+	 *
+	 * 左栏是主输入区 —— 滚起来就看不到自己刚填的字段。
+	 *
+	 * ⚠ 第一版 max-height 给 46% ⇒ 关系一展开（自然高 457px > 376px）就滚，
+	 *   正是用户否掉的行为。现在 70%（≈573px）。
+	 *   这条断言逐个状态量：只要有一个状态左栏 `scrollHeight > clientHeight` 就红。
+	 */
+	await switchStage('workspace');
+
+	const leftScrolls = () =>
+		ev(`(() => {
+      const el = document.querySelector('.tb3cc-page__left');
+      return {
+        scrolls: el.scrollHeight > el.clientHeight + 1,
+        clientH: el.clientHeight,
+        scrollH: el.scrollHeight,
+      };
+    })()`);
+
+	const closed = await leftScrolls();
+	expect('关系收起 ⇒ 左栏不滚', closed.scrolls, false);
+
+	await click(`document.querySelector('[data-meta-tab="rel"]')`);
+	await sleep(360);
+	const relOpen = await leftScrolls();
+	expect('⭐ 关系展开（空）⇒ 左栏不滚', relOpen.scrolls, false);
+
+	/* 加 3 行关联 —— 关系面板典型使用时的高度 */
+	for (let n = 0; n < 3; n += 1) {
+		await click(`document.querySelector('.tb3cc-meta__rel-add')`);
+		await sleep(240);
+	}
+	const rel3 = await leftScrolls();
+	expect('⭐ 关系展开 + 3 行关联 ⇒ 左栏不滚', rel3.scrolls, false);
+
+	/* 说明：给出行数上限的依据，方便以后判断「加更多行要不要收紧」 */
+	console.log(`     （左栏可视高 ${String(rel3.clientH)}px / 内容高 ${String(rel3.scrollH)}px）`);
+
+	/* 高级设置面板也要不滚 */
+	await click(`document.querySelector('[data-meta-tab="adv"]')`);
+	await sleep(320);
+	const adv = await leftScrolls();
+	expect('⭐ 高级设置展开 ⇒ 左栏不滚', adv.scrolls, false);
+
+	/* 收起来，别影响后面的截图 */
+	await click(`document.querySelector('[data-meta-tab="adv"]')`);
+	await sleep(220);
+	await shotStage('resp-1-workspace.png', 570, 920);
 }
 
 /* ══════════════════════════════════════════════════════════
