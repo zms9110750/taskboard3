@@ -35,41 +35,74 @@ const S = {
 } as const;
 
 /* ══════════════════════════════════════════════════════════ */
-describe('stateTone —— 状态的视觉档位', () => {
-	it('草稿 ⇒ draft', () => assert.equal(stateTone(S.draft), 'draft'));
+describe('stateTone —— 9 个状态 = 9 个视觉档位', () => {
+	/*
+	 * 用户 `2026-11-18`：
+	 * > 「颜色语义，我希望需要授权是紫色的。这个表示神秘的东西。绿色的成功，红色的失败，
+	 * >  黄色的需要信息。橙色的拒绝，褐色（棕色）的取消。青色的处理中，黑色的提交。
+	 * >  灰色的草稿。」
+	 *
+	 * ⇒ 一状态一色。**下面每条「两个必须不同」的断言，在改动之前都是「两个必须相同」** ——
+	 *   它们就是这个改动本身的验收。
+	 */
 
-	it('提交 / 处理中 ⇒ active（同一档，蓝色）', () => {
-		assert.equal(stateTone(S.submitted), 'active');
-		assert.equal(stateTone(S.working), 'active');
+	it('灰：未指定 ⇒ unspecified', () => {
+		assert.equal(stateTone(S.draft), 'unspecified');
 	});
 
-	it('需要信息 / 需要授权 ⇒ shelved（橙色）', () => {
-		assert.equal(stateTone(S.inputRequired), 'shelved');
-		assert.equal(stateTone(S.authRequired), 'shelved');
+	it('黑：提交 ⇒ submitted', () => {
+		assert.equal(stateTone(S.submitted), 'submitted');
 	});
 
-	it('⚠ 成功 ⇒ completed（绿），不和失败混', () => {
+	it('青：处理中 ⇒ working', () => {
+		assert.equal(stateTone(S.working), 'working');
+	});
+
+	it('黄：需要信息 ⇒ inputRequired', () => {
+		assert.equal(stateTone(S.inputRequired), 'inputRequired');
+	});
+
+	it('紫：需要授权 ⇒ authRequired', () => {
+		assert.equal(stateTone(S.authRequired), 'authRequired');
+	});
+
+	it('绿：成功 ⇒ completed', () => {
 		assert.equal(stateTone(S.completed), 'completed');
 	});
 
-	it('⚠ 失败 / 拒绝 ⇒ failed（红），两个同色', () => {
+	it('红：失败 ⇒ failed', () => {
 		assert.equal(stateTone(S.failed), 'failed');
-		assert.equal(stateTone(S.rejected), 'failed');
 	});
 
-	it('⚠ 取消 ⇒ canceled（灰），不掉进 failed', () => {
+	it('褐：取消 ⇒ canceled', () => {
 		assert.equal(stateTone(S.canceled), 'canceled');
 	});
 
-	it('未知状态 ⇒ draft（最淡，不引人注意）', () => {
-		assert.equal(stateTone('TASK_STATE_WAT'), 'draft');
-		assert.equal(stateTone(''), 'draft');
+	it('橙：拒绝 ⇒ rejected', () => {
+		assert.equal(stateTone(S.rejected), 'rejected');
 	});
 
-	it('⚠ 九个状态每个都有确定的档位，没有 undefined', () => {
+	it('⚠ 提交 ≠ 处理中（旧版同蓝，现在黑 / 青）', () => {
+		assert.notEqual(stateTone(S.submitted), stateTone(S.working));
+	});
+
+	it('⚠ 需要信息 ≠ 需要授权（旧版同橙，现在黄 / 紫）', () => {
+		assert.notEqual(stateTone(S.inputRequired), stateTone(S.authRequired));
+	});
+
+	it('⚠ 失败 ≠ 拒绝（旧版同红，现在红 / 橙）', () => {
+		assert.notEqual(stateTone(S.failed), stateTone(S.rejected));
+	});
+
+	it('⚠ 九个状态的档位**两两互不相同**（本次改动的核心验收）', () => {
 		const tones = Object.values(S).map((one) => stateTone(one));
-		assert.equal(tones.every((one) => one !== undefined), true);
 		assert.equal(tones.length, 9);
+		assert.equal(new Set(tones).size, 9);
+	});
+
+	it('未知状态 ⇒ unspecified（最淡，不引人注意）', () => {
+		assert.equal(stateTone('TASK_STATE_WAT'), 'unspecified');
+		assert.equal(stateTone(''), 'unspecified');
 	});
 });
 

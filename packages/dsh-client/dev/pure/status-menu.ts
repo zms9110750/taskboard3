@@ -52,8 +52,9 @@ import {
 	labelOf,
 	type ButtonAction,
 	type StatusGroup,
-	type TaskState,
 } from '@taskboard/protocol';
+
+import { stateTone, type StateTone } from './card-view.ts';
 
 /* ══════════════════════════════════════════════════════════
    词（全部照抄旧版，一个字不改）
@@ -148,27 +149,34 @@ export function hintOf(action: ButtonAction): string {
 }
 
 /* ══════════════════════════════════════════════════════════
-   装饰：危险色
+   装饰：着色
    ══════════════════════════════════════════════════════════ */
 
 /**
- * 哪些目标状态算「危险」。
+ * 菜单项的着色 —— **按目标状态的色相**，不是按「危险 / 不危险」二分。
+ *
+ * ## 为什么删掉 `isDangerAction()`
  *
  * 旧版 `danger: true` 标在 失败 / 取消 / 拒绝（否绝、否决、否认）/ 删除 上，
- * **成功与确认不标红**（`templates/src/actions.ts` 的 `endMove` 调用点）。
- * ⇒ 不能写成「进终结态就危险」：`COMPLETED` 也在终结态组里。
- */
-const DANGER_TARGETS: ReadonlySet<TaskState> = Object.freeze(
-	new Set<TaskState>([S.FAILED, S.CANCELED, S.REJECTED]),
-);
-
-/**
- * 这个按钮要不要标红。
+ * 用同一个红色。用户 `2026-11-18` 否了这个：
+ *
+ * > 「他们目前的红色看起来像个错误。可能有不正确的视觉引导」
+ *
+ * 他说得对：**取消是褐、拒绝是橙，本来就不该是红。红色只该给「失败」。**
+ *
+ * ## 为什么不保留 `danger: boolean` 再加一个 `tone`
+ *
+ * 两个字段回答同一个问题（「这项画什么颜色」）⇒ 两个真值来源 ⇒ 迟早不一致。
+ * 而 `danger` 是 **9 状态塌缩成 2**（红 / 非红）的有损映射 ——
+ * 有了 9 色之后，这个塌缩本身就是错的信息。
+ *
+ * ⇒ `isDangerAction()` / `DANGER_TARGETS` **整个删掉**，只留 `stateTone(action.to)`。
+ *   「是不是红」变成 `tone === 'failed'`，是色相的一个特例，不是独立概念。
  *
  * @param action 一个按钮
  */
-export function isDangerAction(action: ButtonAction): boolean {
-	return DANGER_TARGETS.has(action.to);
+export function toneOf(action: ButtonAction): StateTone {
+	return stateTone(action.to);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -198,8 +206,8 @@ export interface MenuItem {
 	readonly icon: string;
 	/** 右侧灰字（空串 = 不显示）。 */
 	readonly hint: string;
-	/** 是否标红。 */
-	readonly danger: boolean;
+	/** 视觉档位 —— 按**目标状态**取，决定文字色（见 `toneOf()` 的注释）。 */
+	readonly tone: StateTone;
 }
 
 /** 菜单的一段（组）。 */
@@ -236,7 +244,7 @@ export function sectionsOf(actions: readonly ButtonAction[]): readonly MenuSecti
 				action,
 				icon: iconOf(action),
 				hint: hintOf(action),
-				danger: isDangerAction(action),
+				tone: toneOf(action),
 			})),
 	})).filter((section) => section.items.length > 0);
 }

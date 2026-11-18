@@ -209,8 +209,7 @@ export function StatusMenu(props: StatusMenuProps): ReactNode {
 						{index > 0 ? <div className="menu__divider" /> : null}
 						{section.items.map((item) => {
 							const index2 = indexOfItem(item);
-							const cls = ['menu__item'];
-							if (item.danger) cls.push('is-danger');
+							const cls = ['menu__item', `menu__tone--${item.tone}`];
 							if (index2 === active) cls.push('is-active');
 
 							return (
@@ -222,7 +221,7 @@ export function StatusMenu(props: StatusMenuProps): ReactNode {
 									data-menu-item="1"
 									data-menu-to={item.action.to}
 									data-menu-method={item.action.method}
-									data-menu-danger={String(item.danger)}
+									data-menu-tone={item.tone}
 									onMouseEnter={() => setActive(index2)}
 									onClick={() => pick(item.action)}
 								>

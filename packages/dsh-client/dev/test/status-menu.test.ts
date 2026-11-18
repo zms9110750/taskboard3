@@ -38,13 +38,13 @@ import {
 	PILL_CARET,
 	hintOf,
 	iconOf,
-	isDangerAction,
 	isOutsideClick,
 	keyIntentOf,
 	menuModelOf,
 	nextIndex,
 	placeMenu,
 	sectionsOf,
+	toneOf,
 	type Rect,
 } from '../pure/status-menu.ts';
 
@@ -210,22 +210,53 @@ describe('③ 灰字：目标状态名，与按钮文案撞了留空', () => {
 });
 
 /* ══════════════════════════════════════════════════════════ */
-describe('④ 危险色：失败 / 取消 / 拒绝 标红，成功不标', () => {
-	it('失败 / 取消 / 拒绝 ⇒ 危险', () => {
-		assert.equal(isDangerAction(btn('失败', S.submitted, S.failed)), true);
-		assert.equal(isDangerAction(btn('取消', S.submitted, S.canceled)), true);
-		assert.equal(isDangerAction(btn('否绝', S.submitted, S.rejected)), true);
+describe('④ 着色：按目标状态的色相，不再「危险/不危险」二分', () => {
+	/*
+	 * 用户 `2026-11-18`：
+	 * > 「他们目前的红色看起来像个错误。可能有不正确的视觉引导」
+	 *
+	 * 旧版把 失败 / 取消 / 拒绝 都画成红 —— 但取消是**褐**、拒绝是**橙**。
+	 * ⇒ `isDangerAction()` 整个删掉，改成一状态一档。
+	 */
+
+	it('⭐ 失败 ⇒ failed（红）—— 红色**只**给失败', () => {
+		assert.equal(toneOf(btn('失败', S.submitted, S.failed)), 'failed');
 	});
 
-	it('⭐ 成功**不**危险 —— 不能写成「进终结态就危险」', () => {
-		assert.equal(isDangerAction(btn('成功', S.submitted, S.completed)), false);
+	it('⭐ 取消 ⇒ canceled（褐），不是红', () => {
+		assert.equal(toneOf(btn('取消', S.submitted, S.canceled)), 'canceled');
 	});
 
-	it('推进类（采纳 / 领取 / 搁置 / 重开）都不危险', () => {
-		assert.equal(isDangerAction(btn('采纳', S.draft, S.submitted, 'adopt')), false);
-		assert.equal(isDangerAction(btn('领取', S.submitted, S.working, 'claim')), false);
-		assert.equal(isDangerAction(btn('搁置', S.working, S.submitted, 'release')), false);
-		assert.equal(isDangerAction(btn('重开', S.canceled, S.submitted)), false);
+	it('⭐ 否绝 ⇒ rejected（橙），不是红', () => {
+		assert.equal(toneOf(btn('否绝', S.submitted, S.rejected)), 'rejected');
+	});
+
+	it('成功 ⇒ completed（绿）', () => {
+		assert.equal(toneOf(btn('成功', S.submitted, S.completed)), 'completed');
+	});
+
+	it('推进类各自按目标状态着色', () => {
+		assert.equal(toneOf(btn('采纳', S.draft, S.submitted, 'adopt')), 'submitted');
+		assert.equal(toneOf(btn('领取', S.submitted, S.working, 'claim')), 'working');
+		assert.equal(toneOf(btn('搁置', S.working, S.submitted, 'release')), 'submitted');
+		assert.equal(toneOf(btn('重开', S.canceled, S.submitted)), 'submitted');
+	});
+
+	it('⚠ 三个终结按钮的档位**两两不同**（旧版三个都是红）', () => {
+		const tones = [
+			toneOf(btn('失败', S.submitted, S.failed)),
+			toneOf(btn('取消', S.submitted, S.canceled)),
+			toneOf(btn('否绝', S.submitted, S.rejected)),
+		];
+		assert.equal(new Set(tones).size, 3);
+	});
+
+	it('⚠ 没有 danger 这个概念了（类型里不该再有）', () => {
+		const items = menuModelOf(buttonsOf('work', S.submitted, 'user')).sections
+			.flatMap((one) => one.items);
+		for (const item of items) {
+			assert.equal('danger' in item, false);
+		}
 	});
 });
 
@@ -251,7 +282,7 @@ describe('⑤ menuModelOf：整份渲染决定', () => {
 		assert.deepEqual(model.sections, []);
 	});
 
-	it('每一项都带齐 action / icon / hint / danger 四个字段', () => {
+	it('每一项都带齐 action / icon / hint / tone 四个字段', () => {
 		const model = menuModelOf([btn('取消', S.submitted, S.canceled)]);
 		const item = model.sections[0]?.items[0];
 		assert.ok(item !== undefined);
@@ -259,7 +290,7 @@ describe('⑤ menuModelOf：整份渲染决定', () => {
 			action: btn('取消', S.submitted, S.canceled),
 			icon: '⊘',
 			hint: '',
-			danger: true,
+			tone: 'canceled',
 		});
 	});
 });
@@ -331,13 +362,13 @@ describe('⑥ 真实按钮表：菜单文案 = protocol 的文案，一个字不
 		);
 	});
 
-	it('⭐ 终结态里「成功」不标红、其余三个标红（在真实表上再验一次）', () => {
+	it('⭐ 真实表上：红色只给失败，取消是褐、否绝是橙（在真实表上再验一次）', () => {
 		const items = sectionsOf(buttonsOf('work', S.submitted, 'user')).flatMap((one) => one.items);
-		const byLabel = new Map(items.map((one) => [one.action.label, one.danger]));
-		assert.equal(byLabel.get('成功'), false);
-		assert.equal(byLabel.get('失败'), true);
-		assert.equal(byLabel.get('取消'), true);
-		assert.equal(byLabel.get('否绝'), true);
+		const byLabel = new Map(items.map((one) => [one.action.label, one.tone]));
+		assert.equal(byLabel.get('成功'), 'completed');
+		assert.equal(byLabel.get('失败'), 'failed');
+		assert.equal(byLabel.get('取消'), 'canceled');
+		assert.equal(byLabel.get('否绝'), 'rejected');
 	});
 
 	it('⭐ 真实表里「取消」的灰字一律留空（三处取消按钮都撞名）', () => {
@@ -358,10 +389,10 @@ describe('⑥ 真实按钮表：菜单文案 = protocol 的文案，一个字不
 			(one) => one.items,
 		);
 		assert.deepEqual(
-			items.map((one) => [one.action.label, one.icon, one.danger]),
+			items.map((one) => [one.action.label, one.icon, one.tone]),
 			[
-				['确认', '✓', false],
-				['否认', '✕', true],
+				['确认', '✓', 'completed'],
+				['否认', '✕', 'failed'],
 			],
 		);
 	});

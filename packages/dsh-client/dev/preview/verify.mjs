@@ -128,21 +128,21 @@ expect('九行', rows.length, 9);
 expect('编号顺序', rows.map((r) => r.id), ['GU-01','DM-01','WW-01','WF-01','WS-01','RB-01','GT-01','GT-02','GT-03']);
 await shot('01-list.png');
 
-console.log('\n═══ ② 六档颜色 ═══');
-/* 按状态取 dot 颜色，检查六个档位互不相同、且符合预期 */
+console.log('\n═══ ② 九色（一个状态一个色）═══');
+/* 按状态取 dot 颜色，检查九个状态九种颜色（用户 2026-11-18 定） */
 const dotByStatus = {};
 for (const row of rows) dotByStatus[row.status] = row.dotColor;
 console.log('  ', JSON.stringify(dotByStatus));
 expect('未指定 = 灰 #9ca3af', dotByStatus['未指定'], 'rgb(156, 163, 175)');
-expect('提交 = 蓝 #2563eb', dotByStatus['提交'], 'rgb(37, 99, 235)');
-expect('处理中 = 蓝（同提交）', dotByStatus['处理中'], 'rgb(37, 99, 235)');
-expect('需要信息 = 橙 #f59e0b', dotByStatus['需要信息'], 'rgb(245, 158, 11)');
-expect('需要授权 = 橙（同需要信息）', dotByStatus['需要授权'], 'rgb(245, 158, 11)');
+expect('提交 = 黑 #111827', dotByStatus['提交'], 'rgb(17, 24, 39)');
+expect('处理中 = 青 #06b6d4', dotByStatus['处理中'], 'rgb(6, 182, 212)');
+expect('需要信息 = 黄 #eab308', dotByStatus['需要信息'], 'rgb(234, 179, 8)');
+expect('需要授权 = 紫 #8b5cf6', dotByStatus['需要授权'], 'rgb(139, 92, 246)');
 expect('成功 = 绿 #10b981', dotByStatus['成功'], 'rgb(16, 185, 129)');
 expect('失败 = 红 #ef4444', dotByStatus['失败'], 'rgb(239, 68, 68)');
-expect('取消 = 灰 #6b7280', dotByStatus['取消'], 'rgb(107, 114, 128)');
-expect('拒绝 = 红（同失败）', dotByStatus['拒绝'], 'rgb(239, 68, 68)');
-console.log('  → 成功绿 / 失败拒绝红 / 取消灰 —— 「完成」组内部三种色 ✅');
+expect('取消 = 褐 #92400e', dotByStatus['取消'], 'rgb(146, 64, 14)');
+expect('拒绝 = 橙 #f97316', dotByStatus['拒绝'], 'rgb(249, 115, 22)');
+expect('⚠ 九种颜色两两不同', new Set(Object.values(dotByStatus)).size, 9);
 
 console.log('\n═══ ③ 左侧正方形：编号在上、状态在下 ═══');
 const geo = await ev(`(() => {
@@ -162,7 +162,7 @@ const geo = await ev(`(() => {
   };
 })()`);
 console.log('  ', JSON.stringify(geo));
-expect('正方形固定 58px', geo.squareW, 58);
+expect('正方形固定 46px', geo.squareW, 46);
 expect('⚠ 状态在编号下面（top 更大）', geo.statusTop > geo.idTop, true);
 expect('⚠ 两者左对齐（同一竖列）', geo.sameLeft, true);
 expect('最后动过 90px', geo.whenW, 90);

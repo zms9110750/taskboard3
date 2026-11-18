@@ -117,8 +117,7 @@ function Matrix(): React.ReactNode {
 									<div key={section.group} data-menu-group={section.group}>
 										{index > 0 ? <div className="menu__divider" /> : null}
 										{section.items.map((item) => {
-											const cls = ['menu__item'];
-											if (item.danger) cls.push('is-danger');
+											const cls = ['menu__item', `menu__tone--${item.tone}`];
 											return (
 												<button
 													key={`${item.action.from}->${item.action.to}`}
@@ -126,7 +125,7 @@ function Matrix(): React.ReactNode {
 													className={cls.join(' ')}
 													data-menu-item="1"
 													data-menu-to={item.action.to}
-													data-menu-danger={String(item.danger)}
+													data-menu-tone={item.tone}
 												>
 													<span className="menu__icon">{item.icon}</span>
 													<span className="menu__label">{item.action.label}</span>

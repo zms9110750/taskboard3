@@ -175,7 +175,7 @@ const menuInfo = () =>
         icon: b.querySelector('.menu__icon').textContent,
         hint: b.querySelector('.menu__hint')?.textContent ?? '',
         to: b.dataset.menuTo,
-        danger: b.dataset.menuDanger === 'true',
+        tone: b.dataset.menuTone,
       })),
       empty: m.querySelector('[data-menu-empty]')?.textContent ?? null,
     };
@@ -220,7 +220,7 @@ console.log('\n═══ ① 打开：点胶囊 ⇒ 菜单出现 ═══');
         dot: p.querySelector('.dot').className,
       };
     })()`),
-		{ tag: 'BUTTON', caret: '⌄', label: '提交', dot: 'dot dot--active' },
+		{ tag: 'BUTTON', caret: '⌄', label: '提交', dot: 'dot dot--submitted' },
 	);
 
 	await click(LIVE_PILL);
@@ -245,12 +245,12 @@ console.log('\n═══ ① 打开：点胶囊 ⇒ 菜单出现 ═══');
 		'',
 		'拒绝',
 	]);
-	expect('⭐ 危险色：只有失败 / 取消 / 否绝', m?.items.map((x) => x.danger), [
-		false,
-		false,
-		true,
-		true,
-		true,
+	expect('⭐ 着色按目标状态：领取青 / 成功绿 / 失败红 / 取消褐 / 否绝橙', m?.items.map((x) => x.tone), [
+		'working',
+		'completed',
+		'failed',
+		'canceled',
+		'rejected',
 	]);
 	expect(
 		'胶囊 aria-expanded = true',
