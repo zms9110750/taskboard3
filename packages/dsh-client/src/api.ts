@@ -140,6 +140,23 @@ export interface TaskboardApi {
 		readonly workspaceId: string;
 		readonly request: ActionRequest;
 	}): Promise<ActionResult>;
+	/**
+	 * ① 接通时的渲染器检查 —— 把「UI 能画哪些 `$type`」报给 Host，
+	 * Host 比对模板需求后返回缺的。
+	 *
+	 * ⚠ **不阻塞、不白屏**：调用方用 `void … .then(…).catch(…)`，失败只记日志。
+	 *
+	 * @param registered 已注册的 `$type` 清单（来自 `registeredTypes()`）
+	 */
+	renderCheck(registered: readonly string[]): Promise<RenderCheckResult>;
+}
+
+/** `POST /render-check` 的响应。 */
+export interface RenderCheckResult {
+	/** 模板实际用到的 `$type`（去重、字母序）。 */
+	readonly required: readonly string[];
+	/** 需要但 UI 没注册的 `$type`（去重、字母序）。空数组 = 全都有。 */
+	readonly missing: readonly string[];
 }
 
 /**
@@ -221,6 +238,12 @@ export function createApi(fetchImpl?: FetchLike): TaskboardApi {
 			return request<ActionResult>(`cards/${encodeURIComponent(input.request.cardId)}/action`, {
 				method: 'POST',
 				body: { workspaceId: input.workspaceId, action: input.request.action },
+			});
+		},
+		async renderCheck(registered) {
+			return request<RenderCheckResult>('render-check', {
+				method: 'POST',
+				body: { registered: [...registered] },
 			});
 		},
 	};

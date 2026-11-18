@@ -425,6 +425,89 @@ describe('GET /api/templates', () => {
 	});
 });
 
+describe('POST /api/render-check', () => {
+	it('正常：全注册 ⇒ missing 为空', async () => {
+		const required = taskboard.requiredActions();
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/render-check`,
+			body: { registered: [...required] },
+		});
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { data: { required: string[]; missing: string[] } };
+		assert.deepEqual(payload.data.required, [...required]);
+		assert.deepEqual(payload.data.missing, []);
+	});
+
+	it('⚠ 缺一个 ⇒ missing 里正好有它（Host 侧真的算了差集）', async () => {
+		const required = taskboard.requiredActions();
+		const dropped = required[required.length - 1];
+		assert.notEqual(dropped, undefined);
+		if (dropped === undefined) return;
+
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/render-check`,
+			body: { registered: required.filter((one) => one !== dropped) },
+		});
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { data: { required: string[]; missing: string[] } };
+		assert.deepEqual(payload.data.missing, [dropped]);
+	});
+
+	it('空列表 ⇒ missing 等于全部 required（不是空）', async () => {
+		const required = taskboard.requiredActions();
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/render-check`,
+			body: { registered: [] },
+		});
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { data: { required: string[]; missing: string[] } };
+		assert.deepEqual(payload.data.missing, [...required]);
+	});
+
+	it('⚠ 请求体里混了非字符串 ⇒ 静默滤掉，不让整个检查失败', async () => {
+		const required = taskboard.requiredActions();
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/render-check`,
+			body: { registered: [...required, 42, null, { x: 1 }] },
+		});
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { data: { missing: string[] } };
+		assert.deepEqual(payload.data.missing, []);
+	});
+
+	it('⚠ 没有 registered 字段 ⇒ 当作空列表（不 400）', async () => {
+		/* ① 是预防性检查，不该因为 UI 版本不匹配就整条失效。 */
+		const required = taskboard.requiredActions();
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/render-check`,
+			body: {},
+		});
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { data: { missing: string[] } };
+		assert.deepEqual(payload.data.missing, [...required]);
+	});
+
+	it('GET ⇒ 405', async () => {
+		const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/render-check` });
+		assert.equal(out.status, 405);
+	});
+
+	it('鉴权拒绝 ⇒ 401（检查也要过鉴权）', async () => {
+		const deps = depsOf({ connection: { requestRejection: () => 401 } });
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/render-check`,
+			body: { registered: [] },
+		});
+		assert.equal(out.status, 401);
+	});
+});
+
 describe('PATCH /api/cards/:id', () => {
 	it('改标题成功', async () => {
 		const created = await taskboard.createWorkspace('改卡');

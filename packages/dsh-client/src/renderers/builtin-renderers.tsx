@@ -32,7 +32,8 @@
 import type { ReactNode } from 'react';
 
 import { sectionViewOf, type SectionKind } from '../pure/section.ts';
-import type { RendererProps } from '../render-registry.ts';
+import type { RendererComponent, RendererProps } from '../render-registry.ts';
+import type { BuiltinType } from './builtin-types.ts';
 import { Section } from './Section.tsx';
 
 /**
@@ -80,3 +81,57 @@ export const MarkdownRenderer = makeKindRenderer('markdown');
 
 /** `ask` payload 的渲染器。 */
 export const AskRenderer = makeKindRenderer('ask');
+
+/**
+ * **清单 → 组件** 的映射表。
+ *
+ * ## ⚠ 用 `satisfies` 而不是类型注解 —— 这是唯一能真正抓到错的一种写法
+ *
+ * 最初写的是：
+ *
+ * ```ts
+ * const RENDERER_BY_TYPE: Readonly<Record<BuiltinType, RendererComponent>> = Object.freeze({
+ *   text: TextRenderer, markdown: MarkdownRenderer, ask: AskRenderer,
+ * });
+ * ```
+ *
+ * **它抓不到多余的键。** 实测：把 `BUILTIN_TYPES` 改成 `['text','markdown']`
+ * （去掉 `ask`）之后 `tsc -b packages/dsh-client` **仍然 exit 0**。
+ *
+ * 原因：`Object.freeze({...})` 让对象字面量成了**函数实参**，
+ * 类型是 `Readonly<{text, markdown, ask}>`，它**可以**赋给
+ * `Readonly<Record<'text'|'markdown', …>>` —— 有多余属性是合法的，
+ * 而 TS 的「多余属性检查」只作用于**直接赋值的字面量**。
+ *
+ * ⇒ 改成 `satisfies`：字面量直接对着 `Record<BuiltinType, …>` 检查，
+ *   三个方向都会红：
+ *
+ * | 谁改了什么 | `tsc` |
+ * |---|---|
+ * | `BUILTIN_TYPES` 加了新 type | 这里缺键 ⇒ **红** |
+ * | 这里加了组件但 `BUILTIN_TYPES` 没有它 | 多余的键 ⇒ **红** |
+ * | 这里漏写一个组件 | 缺键 ⇒ **红** |
+ *
+ * ⚠ **这个坑值得记住**：`Object.freeze(... as Record<K,V>)` 这种写法
+ *   看起来像编译期保证，实际把多余键的检查关掉了。
+ *   之前注释里写「三情况都会 tsc 红」是**错的** —— 直到亲手做破坏性验证才发现。
+ *
+ * （`Object.freeze` 的运行时保护单独做，不参与类型检查。）
+ */
+const RENDERER_BY_TYPE = Object.freeze({
+	text: TextRenderer,
+	markdown: MarkdownRenderer,
+	ask: AskRenderer,
+} satisfies Record<BuiltinType, RendererComponent>);
+
+/**
+ * 导出给 `initRenderers()` 遍历用。
+ *
+ * 返回形如 `[['text', TextRenderer], …]` 的条目数组。
+ */
+export function builtinRendererEntries(): readonly (readonly [BuiltinType, RendererComponent])[] {
+	return (Object.entries(RENDERER_BY_TYPE) as [BuiltinType, RendererComponent][]).map(
+		([type, Comp]) => [type, Comp] as const,
+	);
+}
+
