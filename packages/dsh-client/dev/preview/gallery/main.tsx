@@ -33,14 +33,41 @@ import { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { StrictMode } from 'react';
 
+import { CardPicker } from '../../components/create/CardPicker.tsx';
 import { CreateLayoutA } from '../../components/create/CreateLayoutA.tsx';
 import { CreateLayoutB } from '../../components/create/CreateLayoutB.tsx';
 import { CreateLayoutC } from '../../components/create/CreateLayoutC.tsx';
+import { CreateLayoutFinal } from '../../components/create/CreateLayoutFinal.tsx';
+import { CreateMeta } from '../../components/create/CreateMeta.tsx';
 import { SectionBody } from '../../components/create/SectionBody.tsx';
 import { useCreateForm } from '../../components/create/useCreateForm.ts';
 import { ASK_OPTIONS, ASK_PICKED, TEMPLATES } from '../../components/create/data.ts';
+import type { PickableCard } from '../../components/create/CardPicker.tsx';
 import type { AskVariant } from '../../components/create/SectionBody.tsx';
 import type { AskOptionDraft } from '../../components/create/SectionEditorAskV2.tsx';
+
+/**
+ * 父任务 / 关系目标的候选卡（假数据）。
+ *
+ * ⚠ 故意混入两类**应该被滤掉**的：
+ * - `GU-01` 是草稿（`TASK_STATE_UNSPECIFIED`）⇒ 不能当父任务/关系目标
+ * - `RB-99` 已删除（`deleted: true`）⇒ 不列
+ *
+ * 这样截图里能直接看出过滤生效了。
+ */
+const PICKABLE_CARDS: readonly PickableCard[] = Object.freeze([
+	{ id: 'DM-01', title: '卡片的编号前缀怎么拼', status: 'TASK_STATE_SUBMITTED', deleted: false },
+	{ id: 'WW-01', title: '查一下分组为空的渲染路径', status: 'TASK_STATE_WORKING', deleted: false },
+	{ id: 'WF-01', title: '【验证】编号应带模板前缀', status: 'TASK_STATE_INPUT_REQUIRED', deleted: false },
+	{ id: 'WS-01', title: '现有任务板实现的调研', status: 'TASK_STATE_AUTH_REQUIRED', deleted: false },
+	{ id: 'RB-01', title: '查一下分组为空的渲染路径-记阻碍', status: 'TASK_STATE_COMPLETED', deleted: false },
+	{ id: 'GT-01', title: '补一条空分组的用例', status: 'TASK_STATE_FAILED', deleted: false },
+	{ id: 'GT-02', title: 'ask 交互隔离验收', status: 'TASK_STATE_CANCELED', deleted: false },
+	{ id: 'GT-03', title: '未选择头部验收', status: 'TASK_STATE_REJECTED', deleted: false },
+	/* ⚠ 下面两张应该被 CardPicker 滤掉 —— 用来验证过滤生效 */
+	{ id: 'GU-01', title: '把任务板的语义定清楚（草稿，不该出现）', status: 'TASK_STATE_UNSPECIFIED', deleted: false },
+	{ id: 'RB-99', title: '已删除的卡（墓碑，不该出现）', status: 'TASK_STATE_COMPLETED', deleted: true },
+]);
 
 /** 展厅里的一块。 */
 function Panel(props: {
@@ -139,6 +166,12 @@ function LayoutDemo(props: { readonly which: 'A' | 'B' | 'C'; readonly askVarian
 	return <CreateLayoutC handle={handle} askVariant={props.askVariant} />;
 }
 
+/** 最终布局（左右分栏 + 父任务 + 关系/高级设置折叠区）。 */
+function FinalDemo(): React.ReactNode {
+	const handle = useCreateForm();
+	return <CreateLayoutFinal handle={handle} askVariant="v2" cards={PICKABLE_CARDS} />;
+}
+
 /** 展厅页。 */
 function App(): React.ReactNode {
 	return (
@@ -151,12 +184,23 @@ function App(): React.ReactNode {
 			</header>
 
 			<nav className="g-index">
+				<a href="#block-final">★ · 定稿：左右分栏 + 父任务</a>
 				<a href="#block-a">A · 左右分栏</a>
 				<a href="#block-b">B · 单栏居中</a>
 				<a href="#block-c">C · 三段式</a>
 				<a href="#block-ask1">① · ask 旧版式</a>
 				<a href="#block-ask2">② · ask 设计稿 B</a>
 			</nav>
+
+			<Panel
+				id="block-final"
+				tag="★"
+				title="定稿方向 · 左右分栏（左栏：标题 / 模板 / 父任务 / [关系|高级设置]）"
+				note="严格按 2026-11-18 的裁定：左栏竖着四项，关系和高级设置是两个按钮、互斥、共用下面同一块折叠区、可再点收起。父任务是 combobox（输入即筛选），不是 select。"
+				height="700px"
+			>
+				<FinalDemo />
+			</Panel>
 
 			<Panel
 				id="block-a"
