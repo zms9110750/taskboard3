@@ -41,6 +41,33 @@ function ruleOf(css: string, selector: string): string {
 	return css.slice(bodyStart, end);
 }
 
+/**
+ * 取某条 `@container` 查询的**整块**内容（含嵌套规则）。
+ *
+ * 粗提取：从 `@container …` 找到下一个同名缩进层级的 `}`。够用 ——
+ * `CREATE_CSS` 是两个空格缩进的，块内没有其它顶层条目。
+ *
+ * @param css 整段 CSS
+ * @param condition 条件片段（如 `max-width: 700px`）
+ */
+function containerBlockOf(css: string, condition: string): string {
+	const at = css.indexOf(`@container tb3cc (${condition})`);
+	if (at < 0) return '';
+	/* 从 `{` 开始按花括号配对，配到 0 就是块尾。 */
+	const open = css.indexOf('{', at);
+	if (open < 0) return '';
+	let depth = 0;
+	for (let i = open; i < css.length; i += 1) {
+		const ch = css[i];
+		if (ch === '{') depth += 1;
+		else if (ch === '}') {
+			depth -= 1;
+			if (depth === 0) return css.slice(open + 1, i);
+		}
+	}
+	return '';
+}
+
 describe('CREATE_CSS —— 满屏布局的不变量', () => {
 	it('⚠ `.tb3cc-page__body` 必须有 `min-height:0`（否则子元素 overflow 失效、整页滚动）', () => {
 		const body = ruleOf(CREATE_CSS, '.tb3cc-page__body');
@@ -52,10 +79,113 @@ describe('CREATE_CSS —— 满屏布局的不变量', () => {
 		);
 	});
 
-	it('页面本体是 fixed inset:0（满屏，不是弹窗）', () => {
+	it('⚠ 页面本体**填满父容器**（height:100%），不是铺满浏览器', () => {
 		const page = ruleOf(CREATE_CSS, '.tb3cc-page').replace(/\s+/g, '');
-		assert.ok(page.includes('position:fixed'), page);
-		assert.ok(page.includes('inset:0'), page);
+		assert.ok(page.includes('height:100%'), `页面必须撑满父容器。实际：${page}`);
+		assert.ok(page.includes('min-height:0'), `撑满 + 可收缩，缺 min-height:0 会撑破父容器。实际：${page}`);
+	});
+
+	it('⚠⚠ 页面本体**不许有 position:fixed**（会脱离父容器、按浏览器窗口铺开）', () => {
+		/*
+		 * 这条以前是**正向**断言「满屏不是弹窗」：
+		 *
+		 * ```ts
+		 * assert.ok(page.includes('position:fixed'));
+		 * assert.ok(page.includes('inset:0'));
+		 * ```
+		 *
+		 * 用户 `2026-11-19` 给了三个真实尺寸后，那个断言的原意（「满屏」）是对的，
+		 * **但它的手段正是 bug**：
+		 *
+		 * > `position: fixed` 会脱离父容器 —— 挂在 570×920 的工作区 tab 里，
+		 * > 它也按整个浏览器窗口铺开 ⇒ 左右两栏被挤扁。
+		 *
+		 * ⇒ 断言反过来：
+		 *   · ✅ `height:100%`（撑满父容器，见上一条）
+		 *   · ❌ **不许有 `position:fixed`**（那会逃离父容器）
+		 *   · ❌ 也不许有 `position:absolute`（同样脱离文档流，父容器撑不住）
+		 *
+		 * 「满屏」这个诉求现在由 `container-type:size` + 父容器高度保证，
+		 * 不再靠 fixed。CDP 的三个尺寸断言（`cardcreate/verify.mjs`）钉住实际效果。
+		 */
+		const page = ruleOf(CREATE_CSS, '.tb3cc-page').replace(/\s+/g, '');
+		assert.equal(
+			page.includes('position:fixed'),
+			false,
+			`⚠ .tb3cc-page 不能 position:fixed —— 它会脱离父容器，` +
+				`在 570×920 的工作区里按整个浏览器窗口铺开。实际规则：${page}`,
+		);
+		assert.equal(
+			page.includes('position:absolute'),
+			false,
+			`⚠ .tb3cc-page 不能 position:absolute —— 同样脱离文档流。实际规则：${page}`,
+		);
+		assert.equal(
+			page.includes('inset:0'),
+			false,
+			`⚠ 不要用 inset:0 铺满浏览器。实际规则：${page}`,
+		);
+	});
+
+	it('⭐ 页面是容器查询的宿主（container-type:size + container-name）', () => {
+		/*
+		 * `container-type: size` 是响应式的前提：两条 `@container` 都查这个容器。
+		 *
+		 * ⚠ **`size` 而不是 `inline-size`** —— 要同时查宽和高：
+		 *   宽度决定「堆不堆叠」，高度决定「收不收间距」。两个维度是两件事。
+		 * ⚠ 代价：`container-type:size` 让元素**不再由内容撑开** ⇒ 必须给它高度
+		 *   （`height:100%`），父层没高度时页会塌成 0。这一条由预览的三个尺寸舞台实证。
+		 */
+		const page = ruleOf(CREATE_CSS, '.tb3cc-page').replace(/\s+/g, '');
+		assert.ok(
+			page.includes('container-type:size'),
+			`⚠ 缺 container-type:size ⇒ 两条 @container 全部失效、响应式静默不生效。实际：${page}`,
+		);
+		/* `container-name` 可以省略（匿名容器也能查），但查的时候得写对名字。 */
+		assert.ok(page.includes('container-name:tb3cc'), `缺 container-name。实际：${page}`);
+	});
+
+	it('⚠ 两条容器查询都在：宽 <700 堆叠、高 <560 收紧', () => {
+		/*
+		 * 这两条是三个真实尺寸的全部响应式逻辑。
+		 *
+		 * ⚠ **判断依据必须分开**：宽的门槛管**结构**（堆叠），高的门槛管**间距**。
+		 *   抽屉是 1200 **宽** × 400 高 —— 宽得能横排，只是矮。
+		 *   若把两个门槛合成「面积 / 小 ⇒ 堆叠」，1200×400 会被误判成堆叠，400 高竖着塞两栏必死。
+		 */
+		assert.ok(
+			/@container\s+tb3cc\s*\(max-width:\s*700px\)/.test(CREATE_CSS),
+			'缺宽度容器查询 `@container tb3cc (max-width: 700px)` —— 570 宽的工作区不会堆叠',
+		);
+		assert.ok(
+			/@container\s+tb3cc\s*\(max-height:\s*560px\)/.test(CREATE_CSS),
+			'缺高度容器查询 `@container tb3cc (max-height: 560px)` —— 400 高的抽屉不会收紧',
+		);
+	});
+
+	it('⭐ 宽度查询**只改结构**（body 变 column + 左栏改尺寸/边框）', () => {
+		const block = containerBlockOf(CREATE_CSS, 'max-width: 700px');
+		assert.ok(block.includes('flex-direction:column'), `缺「堆叠」这一条。实际：${block}`);
+		/*
+		 * ⚠ 左栏必须有 max-height：570×920 里左栏内容能到 500px+，
+		 *   不给上限会把右栏挤到只剩一条缝。
+		 */
+		assert.match(block, /max-height:/, `左栏要有 max-height 上限。实际：${block}`);
+		assert.ok(
+			block.includes('border-bottom'),
+			`堆叠后左右栏之间要有一条水平分隔线（原来的 border-right 要撤掉）。实际：${block}`,
+		);
+	});
+
+	it('⭐ 高度查询**只改间距**（不改 flex-direction，否则等于偷偷堆叠）', () => {
+		const block = containerBlockOf(CREATE_CSS, 'max-height: 560px');
+		assert.equal(
+			block.includes('flex-direction'),
+			false,
+			`⚠ 高度查询**不许**改 flex-direction —— 那等于按高度决定堆叠，` +
+				`抽屉 1200×400 会变成竖排（实测会死）。实际：${block}`,
+		);
+		assert.ok(block.length > 0, '高度查询块是空的');
 	});
 
 	it('⚠ 滚动只加在左右两栏，不加在 page / body 上', () => {
@@ -100,7 +230,16 @@ describe('CREATE_CSS —— 满屏布局的不变量', () => {
 	});
 
 	it('全部类名带 tb3cc- 前缀（避免和面板内的 tb3-* 相撞）', () => {
-		const selectors = [...CREATE_CSS.matchAll(/\.([a-zA-Z][\w-]*)[\s,:{]/g)].map((one) => one[1]);
+		/*
+		 * ⚠ **只扫「行首的 `.`」**（= 真正的规则选择器），不要扫全文里的 `\.\w+`。
+		 *
+		 * 全文扫会把**注释里的文件名**当成类名：注释写「见 `test/create-layout.test.ts`
+		 * 的反向断言」时，`.ts ` 后面跟着空格 ⇒ 正则抓到类名 `ts` ⇒ 报一条
+		 * 「类名 ts 没有 tb3cc- 前缀」的假错误（实测踩过）。
+		 *
+		 * 行首匹配同时能跳过注释行（注释行以 ` *` 开头，`.` 不在行首）。
+		 */
+		const selectors = [...CREATE_CSS.matchAll(/^\s*\.([a-zA-Z][\w-]*)/gm)].map((one) => one[1]);
 		assert.ok(selectors.length > 10, `只找到 ${selectors.length} 个选择器，提取可能有问题`);
 		for (const name of selectors) {
 			/*

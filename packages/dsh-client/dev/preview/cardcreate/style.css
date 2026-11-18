@@ -3,7 +3,7 @@
  *
  * ⚠ 产品样式（`tb3cc-*`）**不在这里**：它们由 `main.tsx` 调
  *   `injectStyles()` 注入（`src/styles.ts` 的 `CREATE_CSS`），预览和产品用同一份。
- *   上一版在这个文件里抄了一整套 `tb3cc-*` 规则 ⇒ 改产品样式时预览不跟着变，
+ *   早期版本在这个文件里抄了一整套 `tb3cc-*` 规则 ⇒ 改产品样式时预览不跟着变，
  *   会出现「预览是对的、产品是坏的」。
  */
 
@@ -13,6 +13,113 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
+/* 预览整体：顶部一条切换栏 + 下面可滚动的舞台区 */
+.pv {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.pv-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #1f2328;
+  color: #fff;
+  font-size: 12px;
+}
+.pv-bar__tag {
+  padding: 1px 8px;
+  border-radius: 5px;
+  background: #fff;
+  color: #1f2328;
+  font-weight: 700;
+}
+.pv-bar__btn {
+  padding: 4px 12px;
+  border-radius: 7px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  background: transparent;
+  color: #d5d9e0;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pv-bar__btn:hover {
+  border-color: #fff;
+  color: #fff;
+}
+.pv-bar__btn.is-on {
+  background: #fff;
+  border-color: #fff;
+  color: #1f2328;
+  font-weight: 700;
+}
+.pv-bar__note {
+  color: #9aa1ad;
+  font-size: 11.5px;
+}
+
+/*
+ * 舞台区 —— 可滚动。
+ *
+ * ⚠ 尺寸大于视口时（1600×1000 / 570×920）让它滚，**不要缩放**：
+ *   缩放会让 `position:fixed` 的弹层改用祖先的坐标系（transform 会创建
+ *   包含块），而弹层是靠 `getBoundingClientRect()` 定位的 —— 两套坐标系
+ *   混起来会错位。按真实 px 摆最诚实。
+ */
+.pv-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+/*
+ * ── 截图模式（`body.is-solo`）──
+ *
+ * 验证脚本切舞台截图时加这个 class：藏掉切换条、去掉外边距，
+ * 舞台就**贴在 (0,0)**。
+ *
+ * ⚠ 为什么必须这样：`Page.captureScreenshot` 的 `clip` 在「元素比视口大」时
+ *   并不可靠（`captureBeyondViewport` 对横向超宽只渲染到视口宽度 ——
+ *   实测 1600 宽的舞台截出来右边 320px 是灰的）。
+ *   ⇒ 改成「把浏览器视口设成舞台尺寸 + 舞台贴在原点」，截**整个视口**，
+ *     不用 clip、不用 beyond-viewport，尺寸就是真的。
+ */
+body.is-solo .pv-bar {
+  display: none;
+}
+body.is-solo .pv-scroll {
+  padding: 0;
+  overflow: visible;
+}
+
+/*
+ * 舞台本体 —— **尺寸就是真实尺寸**（行内 style 设 width/height）。
+ *
+ * ⚠ 边框用 `outline` 而不是 `border`：`border` 会吃掉 1px（内容宽变 568 × 918），
+ *   而用户给的 570×920 就是**容器内可用的尺寸**。`outline` 不参与布局，
+ *   舞台的内容盒精确等于那三个数字 —— 断言可以直接比 570 / 920。
+ *
+ * ⚠ 这里必须给 `CardCreate` 的父层一个**确定高度**：`.tb3cc-page` 是
+ *   `container-type: size`，它的尺寸完全由父层决定（不再被内容撑开）。
+ *   父层没高度 ⇒ 页塌成 0。这个舞台就是那个「给高度的父层」。
+ *   产品里对应的是 tab body / 抽屉 body，它们也必须是 `height:100%`。
+ */
+.pv-stage {
+  position: relative;
+  background: #fff;
+  outline: 1px solid #c9cfd9;
+  outline-offset: -1px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgb(20 26 38 / 10%);
+}
+
 /*
  * 丢内容的提示条 —— 调用方（预览）自己决定怎么提示。
  * 产品里这个决定在入口层，不在组件里（`CardCreate` 只上报 `onLostContent`）。
@@ -20,7 +127,7 @@ body {
 .demo-notice {
   position: fixed;
   left: 50%;
-  bottom: 80px;
+  bottom: 24px;
   transform: translateX(-50%);
   z-index: 90;
   display: flex;

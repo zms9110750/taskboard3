@@ -276,13 +276,62 @@ const CARDS: readonly PickableCard[] = Object.freeze([
 ]);
 
 /* ══════════════════════════════════════════════════════════
+   三种真实尺寸的舞台
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * 用户 `2026-11-19` 给的三个真实尺寸。
+ *
+ * ⚠ **这不是「三个宽度档」** —— 它是两个独立维度：
+ * - 570 **宽** ⇒ 横向放不下左右分栏 ⇒ 堆叠（结构变）
+ * - 400 **高** ⇒ 纵向放不下那么多行 ⇒ 收紧间距（结构不变）
+ *
+ * ⇒ 预览必须能**分别**演出这三档，否则「抽屉 1200×400 不该堆叠」这条约束
+ *   在开发时看不出来（全屏里横排，窄屏里堆叠，就它两头不靠）。
+ */
+interface Stage {
+	readonly id: string;
+	readonly label: string;
+	readonly note: string;
+	readonly width: number;
+	readonly height: number;
+}
+
+const STAGES: readonly Stage[] = Object.freeze([
+	{
+		id: 'workspace',
+		label: '工作区 570 × 920',
+		note: '窄、高 ⇒ 左右分栏挤不下 ⇒ 上下堆叠',
+		width: 570,
+		height: 920,
+	},
+	{
+		id: 'drawer',
+		label: '抽屉 1200 × 400',
+		note: '宽、矮 ⇒ **横排**（绝不能堆叠，否则 400 高里塞两栏会死）+ 收紧纵向间距',
+		width: 1200,
+		height: 400,
+	},
+	{
+		id: 'full',
+		label: '全屏 1600 × 1000',
+		note: '都够 ⇒ 什么都不用改',
+		width: 1600,
+		height: 1000,
+	},
+]);
+
+/* ══════════════════════════════════════════════════════════
    页面
    ══════════════════════════════════════════════════════════ */
 
 /** 预览页。 */
 function App(): React.ReactNode {
+	const [stageId, setStageId] = useState('full');
 	const [pickedRef, setPickedRef] = useState(INITIAL_REF);
 	const [notice, setNotice] = useState<string | undefined>(undefined);
+
+	const stage = STAGES.find((one) => one.id === stageId) ?? (STAGES[2] as Stage);
 
 	const template = useMemo(() => {
 		const entry = ENTRY_BY_REF.get(pickedRef);
@@ -324,43 +373,83 @@ function App(): React.ReactNode {
 	};
 
 	return (
-		<>
-			<CardCreate
-				draft={form.draft}
-				onChange={onChange}
-				errors={form.errors}
-				/*
-				 * 左栏插槽用**函数形态**才拿得到 `errorOf` —— 标题 / 模板的错误要显示在
-				 * 各自输入框下面（`/sections/*` 的错误由 `CardCreate` 自己挂在右栏）。
-				 */
-				leftPane={(ctx) => (
-					<CreateLeftColumn
+		<div className="pv">
+			{/*
+			 * 舞台切换条 —— **预览专属**，在产品外面。
+			 * ⚠ 它挂在舞台外面，所以产品截图里看不到它（截图只截舞台那块）。
+			 */}
+			<header className="pv-bar">
+				<span className="pv-bar__tag">CardCreate · 三种真实尺寸</span>
+				{STAGES.map((one) => (
+					<button
+						key={one.id}
+						type="button"
+						className={`pv-bar__btn${one.id === stage.id ? ' is-on' : ''}`}
+						data-stage-btn={one.id}
+						onClick={() => {
+							setStageId(one.id);
+						}}
+					>
+						{one.label}
+					</button>
+				))}
+				<span className="pv-bar__note">{stage.note}</span>
+			</header>
+
+			{/*
+			 * 舞台 —— 尺寸就是**真实尺寸**（不是缩放、不是近似）。
+			 *
+			 * ⚠ 用了 `transform: scale()` 缩小的话，`container-type:size` 的容器查询
+			 *   仍然按**未缩放**的逻辑尺寸算（CSS 像素），断言也能过；但
+			 *   `.tb3cc-tpick__pop` 是 `position:fixed` + 量 `getBoundingClientRect()`，
+			 *   而**祖先是 transform 时 fixed 会相对祖先定位**，两套坐标系混起来会错位。
+			 *   ⇒ 不用缩放：舞台按真实 px 摆，外层页面自己滚。这也最诚实 ——
+			 *   看到的就是产品在那种容器里真实的样子。
+			 */}
+			<div className="pv-scroll">
+				<div
+					className="pv-stage"
+					data-stage={stage.id}
+					style={{ width: `${String(stage.width)}px`, height: `${String(stage.height)}px` }}
+				>
+					<CardCreate
 						draft={form.draft}
 						onChange={onChange}
-						ctx={ctx}
-						templates={CATALOG}
-						cards={CARDS}
-						hintOf={(ref) => {
-							const entry = ENTRY_BY_REF.get(ref);
-							if (entry === undefined) return undefined;
-							return {
-								usage: entry.usage,
-								codePrefix: entry.codePrefix,
-								sectionCount: entry.sections.length,
-							};
+						errors={form.errors}
+						/*
+						 * 左栏插槽用**函数形态**才拿得到 `errorOf` —— 标题 / 模板的错误要显示在
+						 * 各自输入框下面（`/sections/*` 的错误由 `CardCreate` 自己挂在右栏）。
+						 */
+						leftPane={(ctx) => (
+							<CreateLeftColumn
+								draft={form.draft}
+								onChange={onChange}
+								ctx={ctx}
+								templates={CATALOG}
+								cards={CARDS}
+								hintOf={(ref) => {
+									const entry = ENTRY_BY_REF.get(ref);
+									if (entry === undefined) return undefined;
+									return {
+										usage: entry.usage,
+										codePrefix: entry.codePrefix,
+										sectionCount: entry.sections.length,
+									};
+								}}
+								kindLabelOf={(kind) => KIND_LABELS[kind] ?? kind}
+								kindLetterOf={(kind) => KIND_LETTERS[kind] ?? kind.slice(0, 1).toUpperCase()}
+							/>
+						)}
+						onSubmit={form.actions.submit}
+						onCancel={() => {
+							form.actions.dismissLostNotice();
 						}}
-						kindLabelOf={(kind) => KIND_LABELS[kind] ?? kind}
-						kindLetterOf={(kind) => KIND_LETTERS[kind] ?? kind.slice(0, 1).toUpperCase()}
+						onLostContent={(label) => {
+							setNotice(`「${label}」原来的内容已清空（新类型的数据结构与它不兼容）。`);
+						}}
 					/>
-				)}
-				onSubmit={form.actions.submit}
-				onCancel={() => {
-					form.actions.dismissLostNotice();
-				}}
-				onLostContent={(label) => {
-					setNotice(`「${label}」原来的内容已清空（新类型的数据结构与它不兼容）。`);
-				}}
-			/>
+				</div>
+			</div>
 
 			{notice === undefined ? null : (
 				<div className="demo-notice">
@@ -375,7 +464,7 @@ function App(): React.ReactNode {
 					</button>
 				</div>
 			)}
-		</>
+		</div>
 	);
 }
 
