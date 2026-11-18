@@ -24,6 +24,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 
 import { BoardBody } from './BoardBody.tsx';
+import { initRenderers } from './init-renderers.ts';
 import { injectStyles } from './styles.ts';
 
 /** 本实现的身份，也是 body 的 key。 */
@@ -49,6 +50,17 @@ export const inject = ['slots', 'sidebarRightTabs'];
  * @param ctx 客户端根上下文
  */
 export function apply(ctx: Context): void {
+	/*
+	 * ⚠ **第一件事**：注册 action 渲染器。
+	 *
+	 * 必须在建 React 树之前 —— ① 的检查（接通时比对模板需要的 vs 已注册的）
+	 * 要用 `registeredTypes()`，而它读的是此刻的注册表。
+	 *
+	 * **幂等**：`apply()` 可能被调多次（面板折叠/展开时 Cordis 重新 install），
+	 * 封盘后再调直接返回。见 `init-renderers.ts` 文件头。
+	 */
+	initRenderers();
+
 	/* 样式只插一次（幂等）。见 `styles.ts` 的 `injectStyles`。 */
 	injectStyles();
 
