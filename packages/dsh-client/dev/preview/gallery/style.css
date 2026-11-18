@@ -1,0 +1,383 @@
+/* ══════════════════════════════════════════════════════════
+   展厅外壳
+   ══════════════════════════════════════════════════════════ */
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+  font-size:13px;color:#1f2328;background:#eef0f4;line-height:1.5;
+}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+input,textarea,select{font-family:inherit;font-size:inherit}
+code{font-family:Consolas,"Courier New",monospace;font-size:11px}
+
+.gallery{max-width:1280px;margin:0 auto;padding:28px 24px 80px}
+
+.g-intro h1{font-size:21px;margin:0 0 8px}
+.g-intro p{margin:0 0 4px;color:#5b636e}
+.g-intro b{color:#1f2328}
+
+.g-index{
+  display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 8px;
+  position:sticky;top:0;z-index:20;background:#eef0f4;padding:10px 0;
+}
+.g-index a{
+  display:inline-block;padding:5px 12px;border-radius:20px;
+  background:#fff;border:1px solid #d7dbe2;color:#2b3138;text-decoration:none;font-weight:600;
+}
+.g-index a:hover{border-color:#2563eb;color:#2563eb}
+
+.g-block{margin:34px 0 0}
+.g-head{margin-bottom:10px}
+.g-tag{
+  display:inline-block;min-width:26px;padding:1px 8px;border-radius:6px;
+  background:#1f2328;color:#fff;font-weight:700;font-size:12px;text-align:center;
+}
+.g-title{display:inline;font-size:16px;margin:0 0 0 10px;vertical-align:middle}
+.g-note{margin:6px 0 0;color:#5b636e;max-width:900px}
+
+/* 每个变体的舞台 —— 白色底 + 圆角，让它看起来像一个独立页面 */
+.g-stage{
+  background:#fff;border:1px solid #d7dbe2;border-radius:12px;
+  overflow:hidden;position:relative;
+}
+
+.g-askbox{max-width:860px}
+
+.g-foot{margin-top:40px;padding-top:16px;border-top:1px solid #d7dbe2;color:#6b7280}
+
+/* ══════════════════════════════════════════════════════════
+   新建页 · 公共
+   ══════════════════════════════════════════════════════════ */
+
+/*
+ * ⚠ 三个布局都是「满屏」—— 用 absolute inset:0 铺满 .g-stage
+ *   （展厅里舞台有固定高度；产品里会是视口）
+ */
+.create{position:absolute;inset:0;display:flex;flex-direction:column;background:#fff}
+
+.create__h{font-size:16px;margin:0}
+.create__close{
+  border:none;background:transparent;font-size:20px;color:#8a919c;
+  line-height:1;padding:2px 6px;border-radius:6px;
+}
+.create__close:hover{background:#f1f3f6;color:#1f2328}
+
+.create__foot{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  padding:10px 18px;border-top:1px solid #e4e7ec;background:#fafbfc;
+}
+.create__hint{color:#6b7280}
+.create__buttons{display:flex;gap:8px}
+
+.btn{
+  padding:6px 16px;border-radius:7px;border:1px solid #d7dbe2;
+  background:#fff;color:#2b3138;font-weight:500;
+}
+.btn:hover{background:#f6f7f9}
+.btn--primary{background:#1f2328;border-color:#1f2328;color:#fff}
+.btn--primary:hover{background:#33383f}
+
+.ghost{
+  padding:5px 12px;border-radius:7px;border:1px solid #d7dbe2;
+  background:#fff;color:#4b5563;
+}
+.ghost:hover{border-color:#b9bfc9}
+
+.req{color:#dc2626}
+
+/* ── 标题输入（三个布局共用样式类 a__input） ── */
+.a__field,.b__field{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+.a__label{font-size:12px;font-weight:600;color:#3d444d}
+.a__input{
+  width:100%;padding:8px 11px;border:1px solid #d7dbe2;border-radius:8px;
+  background:#fff;color:#1f2328;outline:none;
+}
+.a__input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+
+/* ══════════════════════════════════════════════════════════
+   模板选择器（三个布局共用）
+   ══════════════════════════════════════════════════════════ */
+
+.tpl{display:flex;flex-direction:column;gap:8px}
+.tpl__row{display:flex;flex-direction:column;gap:5px}
+.tpl__label{font-size:12px;font-weight:600;color:#3d444d}
+.tpl__select{
+  width:100%;padding:8px 11px;border:1px solid #d7dbe2;border-radius:8px;
+  background:#fff;color:#1f2328;outline:none;
+}
+.tpl__select:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+
+/* 常驻说明 —— 不是弹层里看一次就没了 */
+.tpl__desc{
+  padding:9px 11px;border-radius:8px;background:#f6f8fb;border:1px solid #e6eaf0;
+}
+.tpl__usage{color:#4b5563;margin-bottom:6px}
+.tpl__meta{display:flex;justify-content:space-between;gap:10px;color:#6b7280;font-size:11px;flex-wrap:wrap}
+.tpl__code b{color:#1f2328}
+
+/* A/C 的紧凑模式：说明缩到一行 */
+.tpl--compact .tpl__usage{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+
+/* ══════════════════════════════════════════════════════════
+   章节外壳（三个布局共用）
+   ══════════════════════════════════════════════════════════ */
+
+.sec{
+  border:1px solid #e4e7ec;border-radius:10px;background:#fff;
+  margin-bottom:12px;overflow:hidden;
+}
+.sec__head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 13px;background:#fafbfc;border-bottom:1px solid #eef1f5;
+}
+.sec__title{display:flex;align-items:center;gap:8px;min-width:0}
+.sec__no{
+  flex:0 0 auto;width:19px;height:19px;border-radius:50%;
+  background:#e4e7ec;color:#4b5563;font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+.sec__label{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 内容类型入口 —— 产品词 + 括号英文小字（不出现 action: 字段名） */
+.sec__kind{
+  flex:0 0 auto;display:inline-flex;align-items:center;gap:2px;
+  padding:4px 10px;border-radius:7px;border:1px solid #d7dbe2;
+  background:#fff;color:#3d444d;font-size:12px;
+}
+.sec__kind:hover{border-color:#b9bfc9;background:#f6f7f9}
+.sec__kind-tag{color:#8a919c;font-size:11px}
+.sec__caret{color:#8a919c;margin-left:3px}
+
+.sec__body{padding:12px 13px}
+
+/* ══════════════════════════════════════════════════════════
+   编辑区 · text / markdown
+   ══════════════════════════════════════════════════════════ */
+
+.ed{width:100%}
+.ed--text{
+  width:100%;padding:9px 11px;border:1px solid #d7dbe2;border-radius:8px;
+  resize:vertical;outline:none;color:#1f2328;line-height:1.6;
+}
+.ed--text:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.ed--text::placeholder{color:#a6adb8}
+
+.ed--md{display:flex;flex-direction:column;gap:8px}
+.ed__tabs{display:flex;gap:4px}
+.ed__tab{
+  padding:3px 11px;border-radius:6px;border:1px solid transparent;
+  background:transparent;color:#6b7280;font-size:12px;
+}
+.ed__tab:hover{background:#f1f3f6}
+.ed__tab.is-on{background:#e8eefb;color:#1d4ed8;border-color:#c7d7f8;font-weight:600}
+
+.ed__source{
+  width:100%;padding:9px 11px;border:1px solid #d7dbe2;border-radius:8px;
+  font-family:Consolas,"Courier New",monospace;font-size:12px;line-height:1.65;
+  resize:vertical;outline:none;color:#1f2328;
+}
+.ed__source:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+
+.ed__preview{
+  padding:10px 12px;border:1px solid #e4e7ec;border-radius:8px;background:#fafbfc;
+  white-space:pre-wrap;color:#3d444d;min-height:120px;
+}
+.mono{font-family:Consolas,"Courier New",monospace;font-size:12px}
+
+/* ══════════════════════════════════════════════════════════
+   布局 A · 左右分栏
+   ══════════════════════════════════════════════════════════ */
+
+.create--a .create__top{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  padding:12px 18px;border-bottom:1px solid #e4e7ec;
+}
+.a__body{flex:1 1 auto;display:flex;min-height:0}
+
+.a__side{
+  flex:0 0 300px;padding:16px 18px;border-right:1px solid #e4e7ec;
+  background:#fafbfc;overflow-y:auto;
+}
+.a__extra{display:flex;gap:8px;margin-top:6px}
+
+/* 右栏独立滚动 —— 这是 A 的核心特点 */
+.a__main{flex:1 1 auto;padding:16px 20px;overflow-y:auto;min-width:0}
+
+/* ══════════════════════════════════════════════════════════
+   布局 B · 单栏居中
+   ══════════════════════════════════════════════════════════ */
+
+.create--b .b__scroll{flex:1 1 auto;overflow-y:auto}
+.b__col{max-width:760px;margin:0 auto;padding:26px 24px 40px}
+
+.b__top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.b__title{
+  width:100%;padding:0;border:none;border-bottom:1px solid transparent;
+  font-size:21px;font-weight:700;color:#1f2328;outline:none;background:transparent;
+}
+.b__title:focus{border-bottom-color:#2563eb}
+.b__title::placeholder{color:#b9bfc9;font-weight:600}
+
+.b__sections{margin-top:22px}
+.b__buttons{display:flex;justify-content:flex-end;gap:8px;margin-top:22px;padding-top:16px;border-top:1px solid #eef1f5}
+
+/* ══════════════════════════════════════════════════════════
+   布局 C · 三段式
+   ══════════════════════════════════════════════════════════ */
+
+.create--c .c__top{
+  flex:0 0 auto;padding:12px 18px 14px;border-bottom:1px solid #e4e7ec;background:#fafbfc;
+}
+.c__top-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.c__top-fields{display:flex;gap:14px;align-items:flex-start}
+.c__title{display:flex;flex-direction:column;gap:5px;flex:1 1 auto;min-width:0}
+.c__tpl{flex:0 0 320px}
+
+.c__scroll{flex:1 1 auto;overflow-y:auto;padding:16px 18px}
+/* 两列网格 —— 这是 C 的核心特点 */
+.c__grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;
+}
+
+/* ══════════════════════════════════════════════════════════
+   ask ① · 旧版式（含旧版毛病，故意）
+   ══════════════════════════════════════════════════════════ */
+
+.ask--v1{display:flex;flex-direction:column;gap:6px}
+
+/* 问题与选项同一套「行」—— 这是旧版的毛病 ① */
+.ask__row{
+  display:grid;grid-template-columns:18px 1fr 22px;gap:6px;align-items:center;
+}
+.ask__row--head{
+  grid-template-columns:1fr auto;gap:6px;padding-bottom:2px;border-bottom:1px dashed #e4e7ec;
+}
+.ask__question-inline,
+.ask__opt-inline{
+  width:100%;padding:7px 10px;border:1px solid #d7dbe2;border-radius:7px;
+  background:#fff;outline:none;color:#1f2328;
+}
+.ask__question-inline{font-weight:600}
+.ask__question-inline:focus,
+.ask__opt-inline:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+
+/* 「多选」飘在右上角 —— 旧版毛病 ② */
+.ask__multi-inline{display:flex;align-items:center;gap:4px;font-size:12px;color:#6b7280;white-space:nowrap}
+.ask__hit{margin:0;accent-color:#2563eb}
+
+/* 删除压在输入框边缘 —— 旧版毛病 ④ */
+.ask__del-inline{
+  border:none;background:transparent;color:#9aa1ad;font-size:15px;line-height:1;
+  padding:0;border-radius:4px;
+}
+.ask__del-inline:hover{color:#dc2626}
+
+.ask__add{
+  align-self:flex-start;padding:5px 11px;border-radius:7px;border:1px dashed #c7ced8;
+  background:transparent;color:#4b5563;font-size:12px;
+}
+.ask__add:hover{border-color:#2563eb;color:#2563eb}
+
+/* ══════════════════════════════════════════════════════════
+   ask ② · 设计稿 B
+   ══════════════════════════════════════════════════════════ */
+
+.ask--v2{display:flex;flex-direction:column;gap:14px}
+
+/* ① 块级单选/多选 */
+.ask2__mode{display:flex}
+.seg{display:inline-flex;border:1px solid #d7dbe2;border-radius:8px;overflow:hidden;background:#fff}
+.seg__one{
+  padding:5px 20px;border:none;background:transparent;color:#4b5563;font-size:12px;font-weight:600;
+}
+.seg__one + .seg__one{border-left:1px solid #d7dbe2}
+.seg__one.is-on{background:#1f2328;color:#fff}
+
+/* ② 问题 / 灰字提示各有 label 和一行 */
+.ask2__field{display:flex;flex-direction:column;gap:5px}
+.ask2__label{font-size:12px;font-weight:600;color:#3d444d}
+.ask2__label--sub{font-weight:400;color:#6b7280}
+.ask2__req{color:#dc2626}
+.ask2__input{
+  width:100%;padding:8px 11px;border:1px solid #d7dbe2;border-radius:8px;
+  background:#fff;outline:none;color:#1f2328;
+}
+.ask2__input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.ask2__input--soft{background:#fafbfc}
+
+/* ③ 选项区 */
+.ask2__opts{display:flex;flex-direction:column;gap:7px}
+.ask2__opts-head{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:12px;color:#6b7280;padding-bottom:2px;
+}
+.ask2__opts-head b{color:#1f2328}
+.ask2__add{
+  border:none;background:transparent;color:#2563eb;font-size:12px;font-weight:600;padding:0;
+}
+.ask2__add:hover{text-decoration:underline}
+
+.ask2__opt{
+  display:grid;
+  grid-template-columns:16px 18px 1fr 1fr auto auto;
+  gap:7px;align-items:center;
+}
+.ask2__grip{color:#b9bfc9;cursor:grab;text-align:center;font-size:13px;user-select:none}
+.ask2__no{
+  width:18px;height:18px;border-radius:50%;background:#eef1f5;color:#6b7280;
+  font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;
+}
+.ask2__opt-label,.ask2__opt-desc{
+  width:100%;padding:7px 10px;border:1px solid #d7dbe2;border-radius:7px;
+  background:#fff;outline:none;color:#1f2328;
+}
+.ask2__opt-desc{background:#fafbfc;color:#4b5563}
+.ask2__opt-label:focus,.ask2__opt-desc:focus{
+  border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1);
+}
+
+/* 常显的操作键（不再是压在边缘的小链接） */
+.ask2__opt-actions{display:flex;gap:2px}
+.ask2__mini{
+  width:22px;height:22px;border-radius:5px;border:1px solid #e4e7ec;background:#fff;
+  color:#6b7280;font-size:11px;line-height:1;padding:0;
+}
+.ask2__mini:hover{background:#f1f3f6;color:#1f2328}
+.ask2__mini--del:hover{background:#fdeaea;border-color:#f5c2c2;color:#dc2626}
+
+.ask2__pick{
+  padding:4px 10px;border-radius:6px;border:1px solid #d7dbe2;background:#fff;
+  color:#4b5563;font-size:11px;white-space:nowrap;
+}
+.ask2__pick.is-on{background:#e8eefb;border-color:#c7d7f8;color:#1d4ed8;font-weight:600}
+
+/* ④ 「其它（自己填）」是开关 */
+.ask2__custom{
+  padding:10px 12px;border:1px solid #e4e7ec;border-radius:9px;background:#fafbfc;
+  display:flex;flex-direction:column;gap:9px;
+}
+.ask2__custom-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ask2__custom-title{font-weight:600;color:#2b3138}
+.ask2__custom-hint{font-size:11px;color:#8a919c}
+
+.switch{
+  flex:0 0 auto;width:42px;height:23px;border-radius:12px;border:none;
+  background:#cfd5de;position:relative;padding:0;transition:background .15s;
+}
+.switch.is-on{background:#2563eb}
+.switch__knob{
+  position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s;
+}
+.switch.is-on .switch__knob{transform:translateX(19px)}
+
+/* ⑤ 「删除这组」在区块层 */
+.ask2__foot{display:flex;justify-content:flex-end;padding-top:2px}
+.ask2__drop-group{
+  border:none;background:transparent;color:#dc2626;font-size:12px;padding:4px 6px;border-radius:6px;
+}
+.ask2__drop-group:hover{background:#fdeaea}
