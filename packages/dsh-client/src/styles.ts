@@ -26,6 +26,70 @@
 export const STYLE_ID = 'taskboard3-styles';
 
 /**
+ * 建卡整页的样式 —— **单独一段，前缀 `tb3cc-`**。
+ *
+ * ## 为什么不并进下面那张主表
+ *
+ * 主表的类名是 `tb3-*`，是**任务板面板内部**的（tab 里那套）。建卡页是
+ * **`position: fixed` 的全屏页**，它盖在宿主上面 —— 两套样式的作用域完全不同。
+ *
+ * ⇒ 分开：出问题时能一眼看出「这条规则属于全屏页还是面板内」。
+ *
+ * ## ⚠ 关键：`.tb3cc-body { min-height: 0 }`
+ *
+ * flex 子元素默认 `min-height: auto`，会被内容撑高 ⇒ 子元素的
+ * `overflow-y: auto` **永远不生效** ⇒ 整页滚动、顶栏底栏跟着滚走。
+ * 这是 flex 里最常见的坑，加注释钉住。
+ */
+export const CREATE_CSS = `
+.tb3cc-page{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--dsw-alias-bg-primary,#fff);font-size:13px;line-height:1.5}
+.tb3cc-page__top{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--dsw-alias-border-secondary,#e4e7ec)}
+.tb3cc-page__title{font-size:16px;margin:0}
+.tb3cc-page__close{border:none;background:transparent;font-size:20px;line-height:1;color:var(--dsw-alias-text-secondary,#8a919c);padding:2px 8px;border-radius:6px;cursor:pointer}
+.tb3cc-page__close:hover{background:var(--dsw-alias-bg-secondary,#f1f3f6)}
+.tb3cc-page__body{flex:1 1 auto;display:flex;min-height:0}
+.tb3cc-page__left{flex:0 0 320px;padding:16px 18px;border-right:1px solid var(--dsw-alias-border-secondary,#e4e7ec);background:var(--dsw-alias-bg-secondary,#fafbfc);overflow-y:auto}
+.tb3cc-page__right{flex:1 1 auto;padding:16px 20px;overflow-y:auto;min-width:0}
+.tb3cc-page__foot{flex:0 0 auto;border-top:1px solid var(--dsw-alias-border-secondary,#e4e7ec);background:var(--dsw-alias-bg-secondary,#fafbfc)}
+
+.tb3cc-sec-list{display:flex;flex-direction:column;gap:12px}
+.tb3cc-sec-list__empty{color:var(--dsw-alias-text-secondary,#8a919c);padding:24px 0}
+.tb3cc-sec{border:1px solid var(--dsw-alias-border-secondary,#e4e7ec);border-radius:10px;background:var(--dsw-alias-bg-primary,#fff);overflow:hidden}
+.tb3cc-sec.has-error{border-color:var(--dsw-alias-border-danger,#f0a8a8)}
+.tb3cc-sec__head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 13px;background:var(--dsw-alias-bg-secondary,#fafbfc);border-bottom:1px solid var(--dsw-alias-border-secondary,#eef1f5)}
+.tb3cc-sec__title{display:flex;align-items:center;gap:8px;min-width:0}
+.tb3cc-sec__no{flex:0 0 auto;width:19px;height:19px;border-radius:50%;background:var(--dsw-alias-bg-tertiary,#e4e7ec);color:var(--dsw-alias-text-secondary,#4b5563);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.tb3cc-sec__label{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb3cc-sec__kind{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}
+.tb3cc-sec__kind-label{color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px;white-space:nowrap}
+.tb3cc-sec__kind-select{padding:4px 8px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:7px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);font-size:12px;outline:none;font-family:inherit}
+.tb3cc-sec__kind-select:focus{border-color:var(--dsw-alias-brand-primary,#2563eb)}
+.tb3cc-sec__body{padding:12px 13px}
+.tb3cc-sec__error{padding:7px 13px;background:var(--dsw-alias-bg-danger,#fdf2f2);border-top:1px solid var(--dsw-alias-border-danger,#f7d4d4);color:var(--dsw-alias-text-danger,#b91c1c);font-size:12px}
+.tb3cc-sec__input{width:100%;padding:9px 11px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;resize:vertical;outline:none;color:var(--dsw-alias-text-primary,#1f2328);line-height:1.6;font-family:inherit;font-size:13px;box-sizing:border-box}
+.tb3cc-sec__input:focus{border-color:var(--dsw-alias-brand-primary,#2563eb)}
+.tb3cc-sec__input--markdown{font-family:Consolas,"Courier New",monospace;font-size:12px;line-height:1.65}
+.tb3cc-sec__pending{padding:12px 13px;border-radius:8px;background:var(--dsw-alias-bg-secondary,#f4f5f7);border:1px dashed var(--dsw-alias-border-primary,#d7dbe2);color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px;line-height:1.55}
+
+.tb3cc-actions{display:flex;align-items:center;justify-content:space-between;padding:10px 18px}
+.tb3cc-actions__msg{color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px}
+.tb3cc-actions__err{color:var(--dsw-alias-text-danger,#b91c1c)}
+.tb3cc-actions__buttons{display:flex;gap:8px}
+
+.tb3cc-btn{padding:6px 16px;border-radius:7px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#2b3138);font-weight:500;font-family:inherit;font-size:13px;cursor:pointer}
+.tb3cc-btn:hover:not(:disabled){background:var(--dsw-alias-bg-secondary,#f6f7f9)}
+.tb3cc-btn:disabled{opacity:.55;cursor:default}
+.tb3cc-btn--primary{background:var(--dsw-alias-text-primary,#1f2328);border-color:var(--dsw-alias-text-primary,#1f2328);color:var(--dsw-alias-bg-primary,#fff)}
+.tb3cc-btn--primary:hover:not(:disabled){opacity:.88}
+
+.tb3cc-tpl-hint{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-secondary,#f6f8fb);border:1px solid var(--dsw-alias-border-secondary,#e6eaf0)}
+.tb3cc-tpl-hint.is-empty{border-style:dashed}
+.tb3cc-tpl-hint__empty{color:var(--dsw-alias-text-secondary,#a6adb8)}
+.tb3cc-tpl-hint__usage{color:var(--dsw-alias-text-secondary,#4b5563);margin-bottom:6px;font-size:12px;line-height:1.55}
+.tb3cc-tpl-hint__meta{display:flex;justify-content:space-between;gap:10px;color:var(--dsw-alias-text-secondary,#6b7280);font-size:11px;flex-wrap:wrap}
+`;
+
+/**
  * 全部类名 —— **单一来源**。
  *
  * 组件里只用 `CLS.xxx`，不写字面量。写错类名的后果是样式静默失效
@@ -364,6 +428,10 @@ export function injectStyles(): void {
 	if (document.getElementById(STYLE_ID) !== null) return;
 	const element = document.createElement('style');
 	element.id = STYLE_ID;
-	element.textContent = STYLES;
+	/*
+	 * ⚠ 两段都注入：`STYLES` 是面板内的（`tb3-*`），`CREATE_CSS` 是全屏建卡页的（`tb3cc-*`）。
+	 *   合成一个 `<style>` 而不是两个 —— 少一个 DOM 节点，而且去重逻辑只需要管一个 id。
+	 */
+	element.textContent = `${STYLES}\n${CREATE_CSS}`;
 	document.head.appendChild(element);
 }

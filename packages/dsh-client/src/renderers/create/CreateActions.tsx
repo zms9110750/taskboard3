@@ -39,17 +39,17 @@ export function CreateActions(props: CreateActionsProps): ReactNode {
 	const pending = props.pending === true;
 
 	return (
-		<div className="create-actions">
-			<div className="create-actions__msg">
+		<div className="tb3cc-actions">
+			<div className="tb3cc-actions__msg">
 				{props.errorCount === 0 ? null : (
-					<span className="create-actions__err">还有 {props.errorCount} 处要改</span>
+					<span className="tb3cc-actions__err">还有 {props.errorCount} 处要改</span>
 				)}
 			</div>
-			<div className="create-actions__buttons">
-				<button type="button" className="btn" disabled={pending} onClick={props.onCancel}>
+			<div className="tb3cc-actions__buttons">
+				<button type="button" className="tb3cc-btn" disabled={pending} onClick={props.onCancel}>
 					取消
 				</button>
-				<button type="button" className="btn btn--primary" disabled={pending} onClick={props.onSubmit}>
+				<button type="button" className="tb3cc-btn tb3cc-btn--primary" disabled={pending} onClick={props.onSubmit}>
 					{pending ? '提交中…' : '提交'}
 				</button>
 			</div>

@@ -37,14 +37,14 @@ export interface SectionFormListProps {
  */
 export function SectionFormList(props: SectionFormListProps): ReactNode {
 	if (props.sections.length === 0) {
-		return <div className="create-sec-list__empty">这个模板没有章节（或者还没选模板）。</div>;
+		return <div className="tb3cc-sec-list__empty">这个模板没有章节（或者还没选模板）。</div>;
 	}
 
 	/* 错误按 field 索引一次 —— 逐章查就不必每章扫一遍数组。 */
 	const errorByField = new Map(props.errors.map((one) => [one.field, one]));
 
 	return (
-		<div className="create-sec-list">
+		<div className="tb3cc-sec-list">
 			{props.sections.map((section, index) => (
 				<SectionFormItem
 					key={section.sectionId}
@@ -80,7 +80,7 @@ function SectionEditor(props: {
 		 *   假装的话用户填不了却不知道为什么提交不了。
 		 */
 		return (
-			<div className="create-sec__pending" data-pending-kind="ask">
+			<div className="tb3cc-sec__pending" data-pending-kind="ask">
 				⚠ 选项（ask）的编辑器还没迁进来（等左栏变体定稿后一起做）。
 				这一章暂时保持模板默认值。
 			</div>
@@ -90,7 +90,7 @@ function SectionEditor(props: {
 	/* text / markdown 共用同一个编辑框：差别只在渲染，不在输入。 */
 	return (
 		<textarea
-			className={`create-sec__input create-sec__input--${section.kind}`}
+			className={`tb3cc-sec__input tb3cc-sec__input--${section.kind}`}
 			value={valueOf(section.payload)}
 			placeholder={section.hint}
 			rows={section.kind === 'markdown' ? 6 : 3}
