@@ -344,9 +344,9 @@
 	background: #cbd5e1;
 	transform: translateY(-2px);
 }
-/* 作者着色：AI 蓝、用户 黑、系统 灰 */
+/* 作者着色：AI 蓝、用户 黑、系统 灰（**不是状态色**，别复用 --state-*） */
 .detail-history__item.is-ai .detail-history__dot {
-	background: var(--dot-active, #2563eb);
+	background: #2563eb;
 }
 .detail-history__item.is-user .detail-history__dot {
 	background: var(--text);

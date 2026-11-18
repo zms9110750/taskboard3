@@ -94,13 +94,27 @@
 	background: #f3f4f6;
 }
 
-.menu__item.is-danger {
-	color: var(--dot-failed, #ef4444);
+/*
+ * 菜单项着色 —— **按目标状态的色相**（用户 2026-11-18）。
+ *
+ * 删掉了 `.is-danger`：那是「9 状态塌缩成红/非红」的有损映射，
+ * 结果把「取消」（褐）和「拒绝」（橙）也画成红 ⇒ 用户说「红色看起来像个错误」。
+ *
+ * ⇒ 每个档位一个类，文字色用 `--state-*-fg`（比 dot 更深，保证对比度）。
+ *   红色只出现在 `menu__tone--failed` 上。
+ */
+.menu__item {
+	color: var(--text);
 }
-.menu__item.is-danger:hover,
-.menu__item.is-danger.is-active {
-	background: #fef2f2;
-}
+.menu__tone--unspecified { color: var(--state-unspecified-fg); }
+.menu__tone--submitted { color: var(--state-submitted-fg); }
+.menu__tone--working { color: var(--state-working-fg); }
+.menu__tone--inputRequired { color: var(--state-inputRequired-fg); }
+.menu__tone--authRequired { color: var(--state-authRequired-fg); }
+.menu__tone--completed { color: var(--state-completed-fg); }
+.menu__tone--failed { color: var(--state-failed-fg); }
+.menu__tone--canceled { color: var(--state-canceled-fg); }
+.menu__tone--rejected { color: var(--state-rejected-fg); }
 
 .menu__icon {
 	width: 15px;
@@ -109,8 +123,9 @@
 	font-size: 11px;
 	color: var(--text-weak, #9aa1ad);
 }
-.menu__item.is-danger .menu__icon {
-	color: var(--dot-failed, #ef4444);
+/* 图标跟文字同色 —— 一行里只有一种颜色，不制造第二个焦点。 */
+.menu__item[class*='menu__tone--'] .menu__icon {
+	color: inherit;
 }
 
 .menu__label {

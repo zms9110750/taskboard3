@@ -120,13 +120,32 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
 
 /* ══════════════════════════════════════════════════════════
-   状态圆点 —— 逐条对应旧版 styles.css:570-600
-   六个档位（四个组 + 完成组细分三种）
+   状态圆点 —— **9 个状态 = 9 色**（用户 2026-11-18 定）
    ══════════════════════════════════════════════════════════ */
 
+/*
+ * 每个状态两个色值：
+ *   `--state-*-dot` 给圆点 / 竖条 / 背景（饱和、显眼）
+ *   `--state-*-fg`  给文字（更深，保证对比度）
+ *
+ * ⚠ **黄 / 褐 / 橙三者都在暖色区**，靠**明度 + 饱和度**拉开，不是靠色相：
+ *   黄 #eab308（高亮高饱和，色相 45°）
+ *   橙 #f97316（中亮高饱和，色相 25°）
+ *   褐 #92400e（低亮低饱和，色相 25°，明度只有 30%）
+ *   ⇒ 黄 vs 橙 差 20° 色相；褐 vs 橙 差在明度（30% vs 65%）而非色相
+ */
 :root{
-  --dot-draft:#9ca3af; --dot-active:#2563eb; --dot-shelved:#f59e0b;
-  --dot-completed:#10b981; --dot-failed:#ef4444; --dot-canceled:#6b7280; --warn:#d97706;
+  --state-unspecified-dot:#9ca3af; --state-unspecified-fg:#6b7280;
+  --state-submitted-dot:#111827;   --state-submitted-fg:#111827;
+  --state-working-dot:#06b6d4;     --state-working-fg:#0e7490;
+  --state-inputRequired-dot:#eab308; --state-inputRequired-fg:#a16207;
+  --state-authRequired-dot:#8b5cf6;  --state-authRequired-fg:#6d28d9;
+  --state-completed-dot:#10b981;   --state-completed-fg:#047857;
+  --state-failed-dot:#ef4444;      --state-failed-fg:#b91c1c;
+  --state-canceled-dot:#92400e;    --state-canceled-fg:#78350f;
+  --state-rejected-dot:#f97316;    --state-rejected-fg:#c2410c;
+
+  --warn:#d97706;
   --kind-goal-fg:#7c3aed;   --kind-goal-bg:#f3e8ff;
   --kind-design-fg:#2563eb; --kind-design-bg:#dbeafe;
   --kind-work-fg:#0891b2;   --kind-work-bg:#cffafe;
@@ -137,13 +156,16 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 }
 
 .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;display:inline-block;
-  background:var(--dot-draft)}
-.dot--draft{background:var(--dot-draft)}
-.dot--active{background:var(--dot-active)}
-.dot--shelved{background:var(--dot-shelved)}
-.dot--completed{background:var(--dot-completed)}
-.dot--failed{background:var(--dot-failed)}
-.dot--canceled{background:var(--dot-canceled)}
+  background:var(--state-unspecified-dot)}
+.dot--unspecified{background:var(--state-unspecified-dot)}
+.dot--submitted{background:var(--state-submitted-dot)}
+.dot--working{background:var(--state-working-dot)}
+.dot--inputRequired{background:var(--state-inputRequired-dot)}
+.dot--authRequired{background:var(--state-authRequired-dot)}
+.dot--completed{background:var(--state-completed-dot)}
+.dot--failed{background:var(--state-failed-dot)}
+.dot--canceled{background:var(--state-canceled-dot)}
+.dot--rejected{background:var(--state-rejected-dot)}
 
 /* 编号：等宽 + 分类色 + 粗体 */
 .card-id{font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
@@ -608,9 +630,9 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	background: #cbd5e1;
 	transform: translateY(-2px);
 }
-/* 作者着色：AI 蓝、用户 黑、系统 灰 */
+/* 作者着色：AI 蓝、用户 黑、系统 灰（**不是状态色**，别复用 --state-*） */
 .detail-history__item.is-ai .detail-history__dot {
-	background: var(--dot-active, #2563eb);
+	background: #2563eb;
 }
 .detail-history__item.is-user .detail-history__dot {
 	background: var(--text);
@@ -17647,14 +17669,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		shelved: "搁置",
 		ended: "完成"
 	});
-	/**
-	* 每个状态属于哪个组。
-	*
-	* ⚠ 类型是 `Record<TaskState, StatusGroup>` ⇒ 九个状态**每个都必须有归属**，
-	* 漏一个就编译失败。这比「用四个 `is*Status` 函数各判断一次」更硬：
-	* 那种写法漏一个只会落到假分支，不会报错。
-	*/
-	const STATUS_GROUP_OF = Object.freeze({
+	Object.freeze({
 		[TaskState.UNSPECIFIED]: "draft",
 		[TaskState.SUBMITTED]: "active",
 		[TaskState.WORKING]: "active",
@@ -17712,23 +17727,28 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	* ⇒ 本文件只导出 `KIND_ORDER`（四个已知 kind 的**顺序**），
 	*   中文名由调用方从模板清单取；取不到就显示英文 id（不编中文）。
 	*/
-	/** 组 → 默认档位（组内不再细分时的回落）。 */
-	const TONE_OF_GROUP = Object.freeze({
-		draft: "draft",
-		active: "active",
-		shelved: "shelved",
-		ended: "canceled"
+	/** 状态 → 视觉档位的唯一真值表（9 条，一个状态一条）。 */
+	const TONE_OF_STATE = Object.freeze({
+		[TaskState.UNSPECIFIED]: "unspecified",
+		[TaskState.SUBMITTED]: "submitted",
+		[TaskState.WORKING]: "working",
+		[TaskState.INPUT_REQUIRED]: "inputRequired",
+		[TaskState.AUTH_REQUIRED]: "authRequired",
+		[TaskState.COMPLETED]: "completed",
+		[TaskState.FAILED]: "failed",
+		[TaskState.CANCELED]: "canceled",
+		[TaskState.REJECTED]: "rejected"
 	});
 	/**
 	* 状态 → 视觉档位。
 	*
-	* @param status A2A 状态全名；未知值回落 `draft`（最淡、最不引人注意）
+	* 就是查表；未知值回落 `unspecified`（最淡、最不引人注意）。
+	*
+	* @param status A2A 状态全名
 	*/
 	function stateTone(status) {
-		if (!isTaskState(status)) return "draft";
-		if (status === "TASK_STATE_COMPLETED") return "completed";
-		if (status === "TASK_STATE_FAILED" || status === "TASK_STATE_REJECTED") return "failed";
-		return TONE_OF_GROUP[STATUS_GROUP_OF[status]];
+		if (!isTaskState(status)) return "unspecified";
+		return TONE_OF_STATE[status];
 	}
 	/**
 	* 状态 → 中文名。未知状态回落协议名去掉前缀（**不编中文**）。

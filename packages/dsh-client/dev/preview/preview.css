@@ -114,13 +114,32 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 .filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
 
 /* ══════════════════════════════════════════════════════════
-   状态圆点 —— 逐条对应旧版 styles.css:570-600
-   六个档位（四个组 + 完成组细分三种）
+   状态圆点 —— **9 个状态 = 9 色**（用户 2026-11-18 定）
    ══════════════════════════════════════════════════════════ */
 
+/*
+ * 每个状态两个色值：
+ *   `--state-*-dot` 给圆点 / 竖条 / 背景（饱和、显眼）
+ *   `--state-*-fg`  给文字（更深，保证对比度）
+ *
+ * ⚠ **黄 / 褐 / 橙三者都在暖色区**，靠**明度 + 饱和度**拉开，不是靠色相：
+ *   黄 #eab308（高亮高饱和，色相 45°）
+ *   橙 #f97316（中亮高饱和，色相 25°）
+ *   褐 #92400e（低亮低饱和，色相 25°，明度只有 30%）
+ *   ⇒ 黄 vs 橙 差 20° 色相；褐 vs 橙 差在明度（30% vs 65%）而非色相
+ */
 :root{
-  --dot-draft:#9ca3af; --dot-active:#2563eb; --dot-shelved:#f59e0b;
-  --dot-completed:#10b981; --dot-failed:#ef4444; --dot-canceled:#6b7280; --warn:#d97706;
+  --state-unspecified-dot:#9ca3af; --state-unspecified-fg:#6b7280;
+  --state-submitted-dot:#111827;   --state-submitted-fg:#111827;
+  --state-working-dot:#06b6d4;     --state-working-fg:#0e7490;
+  --state-inputRequired-dot:#eab308; --state-inputRequired-fg:#a16207;
+  --state-authRequired-dot:#8b5cf6;  --state-authRequired-fg:#6d28d9;
+  --state-completed-dot:#10b981;   --state-completed-fg:#047857;
+  --state-failed-dot:#ef4444;      --state-failed-fg:#b91c1c;
+  --state-canceled-dot:#92400e;    --state-canceled-fg:#78350f;
+  --state-rejected-dot:#f97316;    --state-rejected-fg:#c2410c;
+
+  --warn:#d97706;
   --kind-goal-fg:#7c3aed;   --kind-goal-bg:#f3e8ff;
   --kind-design-fg:#2563eb; --kind-design-bg:#dbeafe;
   --kind-work-fg:#0891b2;   --kind-work-bg:#cffafe;
@@ -131,13 +150,16 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 }
 
 .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;display:inline-block;
-  background:var(--dot-draft)}
-.dot--draft{background:var(--dot-draft)}
-.dot--active{background:var(--dot-active)}
-.dot--shelved{background:var(--dot-shelved)}
-.dot--completed{background:var(--dot-completed)}
-.dot--failed{background:var(--dot-failed)}
-.dot--canceled{background:var(--dot-canceled)}
+  background:var(--state-unspecified-dot)}
+.dot--unspecified{background:var(--state-unspecified-dot)}
+.dot--submitted{background:var(--state-submitted-dot)}
+.dot--working{background:var(--state-working-dot)}
+.dot--inputRequired{background:var(--state-inputRequired-dot)}
+.dot--authRequired{background:var(--state-authRequired-dot)}
+.dot--completed{background:var(--state-completed-dot)}
+.dot--failed{background:var(--state-failed-dot)}
+.dot--canceled{background:var(--state-canceled-dot)}
+.dot--rejected{background:var(--state-rejected-dot)}
 
 /* 编号：等宽 + 分类色 + 粗体 */
 .card-id{font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;

@@ -21,8 +21,7 @@
 import {
 	STATUS_GROUP_OF,
 	STATE_LABELS,
-	type StatusGroup,
-	type TaskState,
+	TaskState,
 	isTaskState,
 } from '@taskboard/protocol';
 
@@ -31,44 +30,72 @@ import {
    ══════════════════════════════════════════════════════════ */
 
 /**
- * 状态的**视觉档位** —— 比四个组更细，因为「完成」组里要分三种颜色。
+ * 状态的**视觉档位** —— 现在是 **9 个状态 = 9 档**，一个状态一个色。
  *
- * | 档 | 成员 | 颜色 |
+ * | 档 | 状态 | 色相 |
  * |---|---|---|
- * | `draft` | 未指定 | 灰 |
- * | `active` | 提交、处理中 | 蓝 |
- * | `shelved` | 需要信息、需要授权 | 橙 |
+ * | `unspecified` | 未指定 | 灰 |
+ * | `submitted` | 提交 | 黑 |
+ * | `working` | 处理中 | 青 |
+ * | `inputRequired` | 需要信息 | 黄 |
+ * | `authRequired` | 需要授权 | 紫 |
  * | `completed` | 成功 | 绿 |
- * | `failed` | 失败、拒绝 | 红 |
- * | `canceled` | 取消 | 灰 |
+ * | `failed` | 失败 | 红 |
+ * | `canceled` | 取消 | 褐 |
+ * | `rejected` | 拒绝 | 橙 |
  *
- * ⚠ **旧版注释说这是「唯一按协议名硬编码的地方」**，理由是组只到「完成」这一层。
- *   v3 接受了这个判断：颜色是纯视觉，判错也只是颜色不对，不会错判状态。
- *   但它现在**只在 `stateTone()` 一个函数里**，不再散落。
+ * ## 用户原话（`2026-11-18`）
+ *
+ * > 「颜色语义，我希望需要授权是紫色的。这个表示神秘的东西。绿色的成功，红色的失败，
+ * >  黄色的需要信息。橙色的拒绝，褐色（棕色）的取消。青色的处理中，黑色的提交。
+ * >  灰色的草稿。」
+ *
+ * ## ⚠ 这个函数现在**几乎是恒等映射**
+ *
+ * 旧版是 9 状态 → 6 档（按组归并：提交和处理中同蓝、需要信息和需要授权同橙、
+ * 失败和拒绝同红）。用户要求一状态一色之后，归并这件事**没有了**。
+ *
+ * ⇒ 它现在唯一的职责是「未知状态 → `unspecified`」。
+ *   **不要装作它还在做映射。** 留成函数是因为调用方需要「未知值有确定的回落」，
+ *   而不是因为这里有映射逻辑。
+ *
+ * ⚠ **组语义完全没变**：`STATUS_GROUP_OF` 照旧，`isDraftStatus` / `isEndedStatus` / 筛选
+ *   全按组判。变的只是视觉档位。
  */
-export type StateTone = 'draft' | 'active' | 'shelved' | 'completed' | 'failed' | 'canceled';
+export type StateTone =
+	| 'unspecified'
+	| 'submitted'
+	| 'working'
+	| 'inputRequired'
+	| 'authRequired'
+	| 'completed'
+	| 'failed'
+	| 'canceled'
+	| 'rejected';
 
-/** 组 → 默认档位（组内不再细分时的回落）。 */
-const TONE_OF_GROUP: Readonly<Record<StatusGroup, StateTone>> = Object.freeze({
-	draft: 'draft',
-	active: 'active',
-	shelved: 'shelved',
-	/* 完成组默认「取消」的灰 —— 只有明确是成功/失败才换色。 */
-	ended: 'canceled',
+/** 状态 → 视觉档位的唯一真值表（9 条，一个状态一条）。 */
+const TONE_OF_STATE: Readonly<Record<TaskState, StateTone>> = Object.freeze({
+	[TaskState.UNSPECIFIED]: 'unspecified',
+	[TaskState.SUBMITTED]: 'submitted',
+	[TaskState.WORKING]: 'working',
+	[TaskState.INPUT_REQUIRED]: 'inputRequired',
+	[TaskState.AUTH_REQUIRED]: 'authRequired',
+	[TaskState.COMPLETED]: 'completed',
+	[TaskState.FAILED]: 'failed',
+	[TaskState.CANCELED]: 'canceled',
+	[TaskState.REJECTED]: 'rejected',
 });
 
 /**
  * 状态 → 视觉档位。
  *
- * @param status A2A 状态全名；未知值回落 `draft`（最淡、最不引人注意）
+ * 就是查表；未知值回落 `unspecified`（最淡、最不引人注意）。
+ *
+ * @param status A2A 状态全名
  */
 export function stateTone(status: string): StateTone {
-	if (!isTaskState(status)) return 'draft';
-
-	if (status === 'TASK_STATE_COMPLETED') return 'completed';
-	if (status === 'TASK_STATE_FAILED' || status === 'TASK_STATE_REJECTED') return 'failed';
-
-	return TONE_OF_GROUP[STATUS_GROUP_OF[status]];
+	if (!isTaskState(status)) return 'unspecified';
+	return TONE_OF_STATE[status];
 }
 
 /**
