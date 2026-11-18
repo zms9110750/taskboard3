@@ -133,7 +133,15 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   --state-submitted-dot:#111827;   --state-submitted-fg:#111827;
   --state-working-dot:#06b6d4;     --state-working-fg:#0e7490;
   --state-inputRequired-dot:#eab308; --state-inputRequired-fg:#a16207;
-  --state-authRequired-dot:#8b5cf6;  --state-authRequired-fg:#6d28d9;
+  /*
+   * 需要授权 = **紫**（用户 2026-11-18：「这个表示神秘的东西」）。
+   *
+   * ⚠ 第一版用了 `#8b5cf6`（violet-500），用户 2026-11-18 反馈：
+   *   「还不够紫，还是有点蓝」—— 实测那个色相是 **258°**，落在蓝紫之间，
+   *   眼睛先看到蓝。
+   *   现在换成 **271°**（purple-500 / purple-700），进到纯紫区。
+   */
+  --state-authRequired-dot:#a855f7;  --state-authRequired-fg:#7e22ce;
   --state-completed-dot:#10b981;   --state-completed-fg:#047857;
   --state-failed-dot:#ef4444;      --state-failed-fg:#b91c1c;
   --state-canceled-dot:#92400e;    --state-canceled-fg:#78350f;

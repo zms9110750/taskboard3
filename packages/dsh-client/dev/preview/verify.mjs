@@ -137,7 +137,7 @@ expect('未指定 = 灰 #9ca3af', dotByStatus['未指定'], 'rgb(156, 163, 175)'
 expect('提交 = 黑 #111827', dotByStatus['提交'], 'rgb(17, 24, 39)');
 expect('处理中 = 青 #06b6d4', dotByStatus['处理中'], 'rgb(6, 182, 212)');
 expect('需要信息 = 黄 #eab308', dotByStatus['需要信息'], 'rgb(234, 179, 8)');
-expect('需要授权 = 紫 #8b5cf6', dotByStatus['需要授权'], 'rgb(139, 92, 246)');
+expect('需要授权 = 紫 #a855f7（色相 271°，不是蓝紫）', dotByStatus['需要授权'], 'rgb(168, 85, 247)');
 expect('成功 = 绿 #10b981', dotByStatus['成功'], 'rgb(16, 185, 129)');
 expect('失败 = 红 #ef4444', dotByStatus['失败'], 'rgb(239, 68, 68)');
 expect('取消 = 褐 #92400e', dotByStatus['取消'], 'rgb(146, 64, 14)');
@@ -237,6 +237,7 @@ console.log(failures.length ? failures.join('\n') : '  全部通过');
 
 proc.kill();
 process.exit(failures.length > 0 || errors.length > 0 ? 1 : 0);
+
 
 
 
