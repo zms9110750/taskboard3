@@ -123,7 +123,7 @@ node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
 
 ---
 
-## 三、⚠ 六条「动笔之前先想」
+## 三、⚠ 七条「动笔之前先想」
 
 ### 3.1 删掉断言会编译失败吗？
 
@@ -204,6 +204,34 @@ type X = [Extract<(typeof POLICY_TOOLS)[number], ...>] extends [never] ? ... // 
 
 **真实案例**：`host-dev` 在 core 没导出 `READONLY_TOOLS` 时，绕法是「指向工具注册表 + 注释说明」。补上导出后它主动换了 —— **因为它报告了**，不是因为被抓住。
 另一次它用「白名单 + 差集断言」，core 补上后**测试自己变红**，逼着删白名单。后者更可靠。
+
+### 3.7 要检查「键集」必须用 `satisfies`，不能用 `as` / 类型标注
+
+```ts
+// ✅ 真的会红：少一个键 / 多一个键都报错
+const TABLE = { text: …, markdown: … } satisfies Record<BuiltinType, RendererComponent>;
+
+// ❌ 看起来像保证，实际把多余键检查关掉了
+const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
+  Object.freeze({ text: …, markdown: …, ask: … });
+```
+
+**为什么：** `Object.freeze({...})` 让对象字面量成了**函数实参**。
+实参位置的字面量**不受 TS 的多余属性检查约束** —— 多出来的键合法地赋给更窄的 Record。
+
+**所以「少一个键」会红，「多一个键」不会。** 而「多一个键」恰恰是
+「写了组件但忘了从表里删」这个方向的错。
+
+**真实案例**（`2026-11-19`）：`registry-design` 写注册器时用的是 `Object.freeze` + 类型标注，
+注释里写着「只在文件里多一个组件 ⇒ `tsc` 红」。它**自己做了破坏性验证**，
+把 `BUILTIN_TYPES` 从 3 个改成 2 个 ⇒ `tsc -b` **仍然 exit 0**。
+改成 `satisfies` 之后才真的红。
+
+⚠ **这是 AGENTS 3.5 说的同一类**：看起来像编译期保证，实际把检查关掉了。
+**区别是 3.5 是「断言判不出来」，这条是「断言判得出来但你没写」。**
+
+⚠ **推论**：凡是想让编译器「数键」的地方（注册表、映射表、常量表），
+一律用 `satisfies`，**不要**写类型标注 + `Object.freeze`。
 
 ---
 
@@ -294,5 +322,6 @@ pnpm install
 
 **⚠ 不要在这里写「当前状态」**（比如「现在有 149 个测试」）—— 那是事实，会漂。
 **状态在 `docs/设计.md`。**
+
 
 
