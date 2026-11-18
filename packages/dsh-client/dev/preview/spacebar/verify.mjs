@@ -498,117 +498,147 @@ console.log('\n═══ ⑪ 点「+」新建 ═══');
 	expect('⭐ 派发 create', await readEvents(), ['create']);
 }
 
-console.log('\n═══ ⑫ DOM 契约（其他组件/测试要依赖的钩子）═══');
+console.log('\n═══ ⑫ DOM 契约 + ⭐ 开头两按钮也在换行流里 ═══');
 {
+	/*
+	 * 用户 2026-11-18：
+	 * > 「最开头的那两个按钮，归档和激活空间，也在视图里，
+	 * >  也就是说换行不是从那两个按钮右边才开始换行。」
+	 *
+	 * ⇒ 四个东西（操作按钮 / 显示已归档 / 第一个 chip / 「+」）必须是
+	 *   `.space-bar` 的**直接子元素**，不能有三个在某个 actions 容器里。
+	 *   这一条如果红，说明又套回了「左边固定 + 右边换行」的两层结构。
+	 */
 	const hooks = await ev(`(() => {
     const box = document.querySelector('[data-live] .space-bar');
+    const action = box.querySelector('[data-space-action="1"]');
+    const toggle = box.querySelector('[data-archived-toggle="1"]');
+    const firstChip = box.querySelector('[data-chip-id]');
+    const add = box.querySelector('[data-create="1"]');
+    const style = getComputedStyle(box);
+    const kids = [...box.children];
     return {
       spaceBar: box.classList.contains('space-bar'),
-      hasActions: box.querySelector('.space-bar__actions') !== null,
-      hasChipScope: box.querySelector('[data-chip-scope]') !== null,
-      layout: box.dataset.layout,
-      actionCount: box.querySelectorAll('.space-bar__actions button').length,
+      flexWrap: style.flexWrap,
+      overflowX: style.overflowX,
+      hasActionsWrapper: box.querySelector('.space-bar__actions') !== null,
+      sameParent: [action, toggle, firstChip, add].every(el => el.parentElement === box),
+      actionIdx: kids.indexOf(action),
+      toggleIdx: kids.indexOf(toggle),
+      addIdx: kids.indexOf(add),
+      lastIdx: kids.length - 1,
+      childCount: kids.length,
+      chipCount: box.querySelectorAll('[data-chip-id]').length,
     };
   })()`);
+
 	expect('根 class = space-bar', hooks.spaceBar, true);
-	expect('左侧 actions 容器存在', hooks.hasActions, true);
-	expect('chip 容器存在（带 data-chip-scope）', hooks.hasChipScope, true);
-	expect('⭐ 默认布局 = wrap（换行，没有滚动条）', hooks.layout, 'wrap');
-	expect('⭐ 左侧恰好 2 个按钮：那**一个**操作按钮 + 「显示已归档」', hooks.actionCount, 2);
+	expect('⭐ `.space-bar` 自己就是换行容器（flex-wrap = wrap）', hooks.flexWrap, 'wrap');
+	expect('⭐ 没有 `.space-bar__actions` 包裹层了', hooks.hasActionsWrapper, false);
+	expect(
+		'⭐ 操作按钮 / 显示已归档 / 第一个 chip / 「+」四者的 parentElement 都是 .space-bar',
+		hooks.sameParent,
+		true,
+	);
+	expect('⭐ 顺序：操作按钮第 0 个', hooks.actionIdx, 0);
+	expect('⭐ 顺序：显示已归档第 1 个', hooks.toggleIdx, 1);
+	expect('⭐ 顺序：「+」在 DOM 上排最后', hooks.addIdx, hooks.lastIdx);
+	expect('⭐ 子元素数 = 2 个按钮 + chips + 1 个「+」', hooks.childCount, hooks.chipCount + 3);
+	expect('⚠ 不横向溢出（换行就是没有滚动条）', hooks.overflowX, 'visible');
 }
 
-console.log('\n═══ ⑬ 布局变体：四个都能切、都能用 ═══');
+console.log('\n═══ ⑬ ⭐ 窄窗口下真的换行（高度变大、无横向溢出）═══');
 {
-	for (const layout of ['wrap', 'scroll', 'arrows', 'compact']) {
-		await ev(`document.querySelector('[data-layout-option="${layout}"]').click()`);
-		await sleep(400);
-		const info = await ev(`(() => {
-      const box = document.querySelector('[data-layout-live] .space-bar');
-      const scope = box.querySelector('[data-chip-scope]');
-      const s = getComputedStyle(scope);
-      return {
-        layout: box.dataset.layout,
-        chipCount: box.querySelectorAll('[data-chip-id]').length,
-        overflowX: s.overflowX,
-        wrap: s.flexWrap,
-        hasArrows: box.querySelector('[data-arrow="prev"]') !== null,
-        hasExpand: box.querySelector('[data-expand="1"]') !== null,
-      };
-    })()`);
-		expect(`⭐ 切到 ${layout} ⇒ data-layout 跟上`, info.layout, layout);
-		expect(`${layout}: chip 还在（≥1）`, info.chipCount > 0, true);
-		expect(`${layout}: 滚动条上没有 overflow-hidden 的假象`, info.overflowX !== 'hidden', true);
+	const measure = async () => ev(`(() => {
+    const box = document.querySelector('[data-wrap-live] .space-bar');
+    const kids = [...box.children];
+    const tops = new Set(kids.map(el => Math.round(el.getBoundingClientRect().top)));
+    return {
+      rows: tops.size,
+      height: Math.round(box.getBoundingClientRect().height),
+      scrollW: box.scrollWidth,
+      clientW: box.clientWidth,
+      kids: kids.length,
+    };
+  })()`);
 
-		if (layout === 'wrap') {
-			expect('⭐ wrap: 换行 + 不横向滚动（用户要的「不用拖」）', [info.wrap, info.overflowX], ['wrap', 'visible']);
-		}
-		if (layout === 'scroll') {
-			expect('scroll: 单行 + 横向溢出', [info.wrap, info.overflowX], ['nowrap', 'auto']);
-		}
-		if (layout === 'arrows') {
-			expect('⭐ arrows: 有左右翻页按钮（点大目标，不用拖）', info.hasArrows, true);
-		}
-		if (layout === 'compact') {
-			expect('⭐ compact: 折叠 ⇒ 出现「全部 N」', info.hasExpand, true);
-		}
-	}
-	await ev(`document.querySelector('[data-layout-option="wrap"]').click()`);
+	/*
+	 * 三段测量 —— 证明「换行」是真的随窗口宽度变化的，不是横向滚动。
+	 *
+	 * ⚠ 1160px 时 13 个 chip 恰好能放下一行（h=38, rows=1）—— 那不是 bug，
+	 *   是夹具还不够宽。所以真正的换行证据放在 900px 和 320px 两档。
+	 */
+	const setW = async (width) => {
+		await send('Emulation.setDeviceMetricsOverride', {
+			width,
+			height: 1400,
+			deviceScaleFactor: 1,
+			mobile: false,
+		});
+		await sleep(600);
+	};
+
+	/* ① 宽屏：能放下一行，且无横向溢出 */
+	const wide = await measure();
+	console.log(`     1160px: rows=${wide.rows} h=${wide.height} scrollW=${wide.scrollW} clientW=${wide.clientW}`);
+	expect('⭐ 宽屏下无横向溢出（scrollWidth === clientWidth）', wide.scrollW, wide.clientW);
+
+	/* ② 900px：必须换行 —— 这是「换行真的发生了」的直接证据 */
+	await setW(900);
+	const mid = await measure();
+	console.log(`      900px: rows=${mid.rows} h=${mid.height} scrollW=${mid.scrollW} clientW=${mid.clientW}`);
+	expect('⭐ 900px 时换行成 2 行以上', mid.rows >= 2, true);
+	expect('⭐ 900px 时比宽屏高（真的占了多行）', mid.height > wide.height, true);
+	expect('⭐ 900px 时仍无横向溢出', mid.scrollW, mid.clientW);
+
+	/* ③ 320px：行数更多、更高 */
+	await setW(320);
+	const narrow = await measure();
+	console.log(`      320px: rows=${narrow.rows} h=${narrow.height} scrollW=${narrow.scrollW} clientW=${narrow.clientW}`);
+	expect('⭐ 320px 时行数比 900px 更多', narrow.rows > mid.rows, true);
+	expect('⭐ 320px 时整行高度更大', narrow.height > mid.height, true);
+	expect('⭐ 320px 时仍然无横向溢出', narrow.scrollW, narrow.clientW);
+
+	/* 恢复宽度 */
+	await setW(1160);
 	await sleep(300);
-	await shot('09-layouts.png');
+	await shot('09-wrap.png');
 }
 
 console.log('\n═══ ⑭ ⭐ 几何：按钮上下边框不被裁（用户说「条太窄」）═══');
 {
-	for (const layout of ['wrap', 'scroll', 'arrows', 'compact']) {
-		await ev(`document.querySelector('[data-layout-option="${layout}"]').click()`);
-		await sleep(400);
-		const g = await ev(`(() => {
-      const box = document.querySelector('[data-layout-live] .space-bar');
-      const action = box.querySelector('[data-space-action="1"]');
-      const scope = box.querySelector('[data-chip-scope]');
-      const viewing = box.querySelector('.space-chip.is-viewing');
-      const br = box.getBoundingClientRect();
-      const ar = action.getBoundingClientRect();
-      const chips = [...box.querySelectorAll('[data-chip-id]')];
-      /* chip 有没有越出它自己的容器（上下） */
-      const sr = scope.getBoundingClientRect();
-      const escaped = chips.filter(c => {
-        const r = c.getBoundingClientRect();
-        return r.top < sr.top - 0.5 || r.bottom > sr.bottom + 0.5;
-      }).length;
-      return {
-        barH: Math.round(br.height),
-        actionH: Math.round(ar.height),
-        topGap: Math.round(ar.top - br.top),
-        bottomGap: Math.round(br.bottom - ar.bottom),
-        inside: ar.top >= br.top - 0.5 && ar.bottom <= br.bottom + 0.5,
-        escaped,
-        viewingShadow: viewing ? getComputedStyle(viewing).boxShadow : null,
-        viewingOutline: viewing ? getComputedStyle(viewing).outlineWidth : null,
-      };
-    })()`);
-		expect(`⭐ ${layout}: 操作按钮完全在容器内（上下边框不被裁）`, g.inside, true);
-		expect(`⚠ ${layout}: 按钮上下都有留白（≥4px，用户说「太窄」）`, g.topGap >= 4 && g.bottomGap >= 4, true);
-		expect(`⚠ ${layout}: 没有 chip 越出容器（选中环不被裁）`, g.escaped, 0);
-		console.log(`     ${layout}: barH=${g.barH} actionH=${g.actionH} topGap=${g.topGap} bottomGap=${g.bottomGap}`);
-	}
-	await ev(`document.querySelector('[data-layout-option="wrap"]').click()`);
-	await sleep(300);
-}
-
-console.log('\n═══ ⑮ ⭐ 选中环用 inset 阴影而不是 outline（防被裁）═══');
-{
-	const ring = await ev(`(() => {
-    const chips = [...document.querySelectorAll('[data-layout-live] .space-chip.is-viewing')];
-    if (chips.length === 0) return null;
-    const s = getComputedStyle(chips[0]);
-    return { boxShadow: s.boxShadow, outlineWidth: s.outlineWidth, outlineStyle: s.outlineStyle };
+	const g = await ev(`(() => {
+    const box = document.querySelector('[data-wrap-live] .space-bar');
+    const action = box.querySelector('[data-space-action="1"]');
+    const br = box.getBoundingClientRect();
+    const ar = action.getBoundingClientRect();
+    const chips = [...box.querySelectorAll('[data-chip-id]')];
+    /* chip 有没有越出容器（上下左右） */
+    const escaped = chips.filter(c => {
+      const r = c.getBoundingClientRect();
+      return r.top < br.top - 0.5 || r.bottom > br.bottom + 0.5
+        || r.left < br.left - 0.5 || r.right > br.right + 0.5;
+    }).length;
+    const viewing = box.querySelector('.space-chip.is-viewing');
+    return {
+      barH: Math.round(br.height),
+      actionH: Math.round(ar.height),
+      topGap: Math.round(ar.top - br.top),
+      bottomGap: Math.round(br.bottom - ar.bottom),
+      inside: ar.top >= br.top - 0.5 && ar.bottom <= br.bottom + 0.5,
+      escaped,
+      viewingShadow: viewing ? getComputedStyle(viewing).boxShadow : null,
+      viewingOutline: viewing ? getComputedStyle(viewing).outlineStyle : null,
+    };
   })()`);
-	expect('存在 is-viewing 的 chip', ring !== null, true);
-	expect('⭐ 环是 inset box-shadow', ring.boxShadow.includes('inset'), true);
-	expect('⚠ 不画 outline（画在盒外会被 overflow 裁）', ring.outlineStyle, 'none');
-}
+	expect('⭐ 操作按钮完全在容器内（上下边框不被裁）', g.inside, true);
+	expect('⚠ 按钮上下都有留白（≥4px，用户说「太窄」）', g.topGap >= 4 && g.bottomGap >= 4, true);
+	expect('⚠ 没有 chip 越出容器（选中环不被裁）', g.escaped, 0);
+	console.log(`     barH=${g.barH} actionH=${g.actionH} topGap=${g.topGap} bottomGap=${g.bottomGap}`);
 
+	expect('⭐ 环是 inset box-shadow', g.viewingShadow !== null && g.viewingShadow.includes('inset'), true);
+	expect('⚠ 不画 outline（画在盒外会被 overflow 裁）', g.viewingOutline, 'none');
+}
 console.log('\n═══ JS 错误 ═══');
 console.log(errors.length ? errors.join('\n') : '  没有');
 console.log('\n═══ 断言结果 ═══');
