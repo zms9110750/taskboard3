@@ -52,7 +52,7 @@ import {
 	type DetailLabels,
 	type DetailSection,
 } from '../pure/card-detail.ts';
-import type { Card } from '../../src/types.ts';
+import type { Card } from '../types.ts';
 import { DetailHead } from './DetailHead.tsx';
 import { DetailHistory } from './DetailHistory.tsx';
 import { DetailNote } from './DetailNote.tsx';

@@ -69,7 +69,7 @@
  * 「按钮禁用但是没有说明信息很奇怪」）。
  */
 
-import type { Workspace } from '../../src/types.ts';
+import type { Workspace } from '../types.ts';
 
 /**
  * 左侧那个按钮**做哪件事**。

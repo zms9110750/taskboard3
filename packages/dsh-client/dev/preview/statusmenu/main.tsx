@@ -16,9 +16,9 @@ import { createRoot } from 'react-dom/client';
 
 import { buttonsOf, type ButtonAction } from '@taskboard/protocol';
 
-import { StatusPill } from '../../components/StatusPill.tsx';
-import { StatusMenu } from '../../components/StatusMenu.tsx';
-import { sectionsOf } from '../../pure/status-menu.ts';
+import { StatusPill } from '../../../src/renderers/StatusPill.tsx';
+import { StatusMenu } from '../../../src/renderers/StatusMenu.tsx';
+import { sectionsOf } from '../../../src/pure/status-menu.ts';
 
 /* ── ① 活的 ── */
 

@@ -57,7 +57,7 @@ import {
 	chipsOf,
 	dispatchOf,
 } from '../pure/space-bar.ts';
-import type { Workspace } from '../../src/types.ts';
+import type { Workspace } from '../types.ts';
 
 /** 组件属性。 */
 export interface SpaceBarProps {

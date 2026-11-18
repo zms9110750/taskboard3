@@ -17,7 +17,7 @@
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { SpaceBar } from '../../components/SpaceBar.tsx';
+import { SpaceBar } from '../../../src/renderers/SpaceBar.tsx';
 import type { Workspace } from '../../../src/types.ts';
 
 /* ── 夹具 ── */

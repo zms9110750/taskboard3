@@ -19,7 +19,7 @@
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { CardDetail } from '../../components/CardDetail.tsx';
+import { CardDetail } from '../../../src/renderers/CardDetail.tsx';
 import type { Card, HistoryEntry } from '../../../src/types.ts';
 
 /* ── 夹具 ── */
