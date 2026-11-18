@@ -56,16 +56,16 @@ export function SectionFormItem(props: SectionFormItemProps): ReactNode {
 	const hasError = props.error !== undefined;
 
 	return (
-		<section className={`create-sec${hasError ? ' has-error' : ''}`} data-section-id={section.sectionId}>
-			<header className="create-sec__head">
-				<div className="create-sec__title">
-					<span className="create-sec__no">{props.index}</span>
-					<span className="create-sec__label">{section.label}</span>
+		<section className={`tb3cc-sec${hasError ? ' has-error' : ''}`} data-section-id={section.sectionId}>
+			<header className="tb3cc-sec__head">
+				<div className="tb3cc-sec__title">
+					<span className="tb3cc-sec__no">{props.index}</span>
+					<span className="tb3cc-sec__label">{section.label}</span>
 				</div>
-				<label className="create-sec__kind">
-					<span className="create-sec__kind-label">内容类型：</span>
+				<label className="tb3cc-sec__kind">
+					<span className="tb3cc-sec__kind-label">内容类型：</span>
 					<select
-						className="create-sec__kind-select"
+						className="tb3cc-sec__kind-select"
 						value={section.kind}
 						onChange={(event) => {
 							props.onKindChange(section.sectionId, event.target.value as SectionKind);
@@ -80,9 +80,9 @@ export function SectionFormItem(props: SectionFormItemProps): ReactNode {
 				</label>
 			</header>
 
-			<div className="create-sec__body">{props.children}</div>
+			<div className="tb3cc-sec__body">{props.children}</div>
 
-			{hasError ? <div className="create-sec__error">{props.error.message}</div> : null}
+			{hasError ? <div className="tb3cc-sec__error">{props.error.message}</div> : null}
 		</section>
 	);
 }

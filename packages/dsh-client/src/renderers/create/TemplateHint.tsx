@@ -30,16 +30,16 @@ export function TemplateHint(props: TemplateHintProps): ReactNode {
 	const template = props.template;
 	if (template === undefined) {
 		return (
-			<div className="create-tpl-hint is-empty">
-				<span className="create-tpl-hint__empty">还没选模板。</span>
+			<div className="tb3cc-tpl-hint is-empty">
+				<span className="tb3cc-tpl-hint__empty">还没选模板。</span>
 			</div>
 		);
 	}
 
 	return (
-		<div className="create-tpl-hint">
-			<div className="create-tpl-hint__usage">{template.usage}</div>
-			<div className="create-tpl-hint__meta">
+		<div className="tb3cc-tpl-hint">
+			<div className="tb3cc-tpl-hint__usage">{template.usage}</div>
+			<div className="tb3cc-tpl-hint__meta">
 				<span>
 					编号前缀 <b>{template.codePrefix}</b> · 形如 <code>{template.codePrefix}-01</code>
 				</span>
