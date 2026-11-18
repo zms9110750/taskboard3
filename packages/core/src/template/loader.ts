@@ -106,6 +106,31 @@ function parseSections(raw: unknown, ref: string): { sections: SectionDef[] } | 
 				? String((value.default as { $type: string }).$type)
 				: undefined;
 
+		/*
+		 * ## ⚠ `action` 和 `default.$type` 必须一致（用户 2026-11-18 的注册表设计要求）
+		 *
+		 * 卡上存的 `CardSection` **只有 `{ label, payload }`，没有 `action` 字段**
+		 * （见 `card.ts`）。所以运行期只能从 `payload.$type` 反推 action：
+		 *
+		 *   ① 接通检查：按**模板的** `section.action` 算「需要哪些渲染器」
+		 *   ③ 真渲染时：按**卡上 payload 的** `$type` 查渲染器
+		 *
+		 * 若两者不一致（模板写 `action: text` 但 `default.$type: markdown`），
+		 * 则 ① 检查 `text`、③ 按 `markdown` 查 ⇒ **① 通过而 ③ 必然报错**。
+		 * 那不是「漏注册」，是**模板写错了**，而且永远修不好。
+		 *
+		 * ⇒ 在**加载期**就拒掉。这样 ① 和 ③ 用的必然是同一个字符串。
+		 *   错误走现有的 `templateErrors()` 出口（`{ file, message }`），不新造一套。
+		 */
+		if (declared !== undefined && fromDefault !== undefined && declared !== fromDefault) {
+			return {
+				error:
+					`模板「${ref}」的章节「${label}」action 与 default.$type 不一致：` +
+					`action: ${declared}，default.$type: ${fromDefault}。` +
+					'卡上只存 payload，运行期按 payload.$type 查渲染器 —— 两者不一致会让「缺渲染器」检查永远对不上。',
+			};
+		}
+
 		sections.push({
 			id,
 			label,

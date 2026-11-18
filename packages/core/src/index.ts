@@ -431,6 +431,23 @@ export interface Taskboard {
 	templateMeta(ref: string): TemplateMeta | undefined;
 	/** 上一次目录加载的错误。 */
 	templateErrors(): readonly { readonly file: string; readonly message: string }[];
+	/**
+	 * 所有模板**实际用到**的 action type（去重 + 排序）。
+	 *
+	 * ## 为什么需要这个
+	 *
+	 * 用户 `2026-11-18`：
+	 * > 「core看着模板，说我这里需要什么什么……
+	 * >  ui在和core接通的时候，core就看ui给的注册。如果没有对应的，就进行警告。」
+	 *
+	 * 现有 `listTemplates()` 返回的 `TemplateSummary` **不含 sections**
+	 * ⇒ 客户端拿不到「模板需要哪些 action」。这个方法补上那一半。
+	 *
+	 * ⚠ 是「**模板用到的**」，不是「`BUILTIN_ACTIONS` 里的」：
+	 *   某个 action 可能暂时没有模板用 —— 那种情况不需要渲染器，
+	 *   不该进 ① 的比对集合（否则会对 UI 喊「你缺一个没人用的渲染器」）。
+	 */
+	requiredActions(): readonly string[];
 
 	/** 关闭底层资源。 */
 	close(): Promise<void>;
@@ -986,6 +1003,20 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		templateErrors() {
 			return templates.errors();
 		},
+		requiredActions() {
+			/*
+			 * 从**全部已加载模板**收集 sections[].action。
+			 *
+			 * ⚠ 加载出错的文件不在 `templates.list()` 里（注册表只放成功的），
+			 *   所以「能用几个算几个」是自然结果，不需要额外处理。
+			 * ⚠ 去重后排序：输出稳定，方便和 UI 的注册清单逐行 diff。
+			 */
+			const types = new Set<string>();
+			for (const template of templates.list()) {
+				for (const section of template.sections) types.add(section.action);
+			}
+			return [...types].sort();
+		},
 
 		async close() {
 			schemas.stop();
@@ -1100,9 +1131,19 @@ export {
 /** 类别定义（`needsClaim` 由它声明）。 */
 export { BUILTIN_KINDS, KindRegistry, type KindDef } from './template/kinds.ts';
 
-
-
-
-
-
-
+/* ── 渲染注册表（core 侧：只比对字符串 / 只算描述，零 React）──
+ *
+ * 用户 `2026-11-18`：「core看着模板，说我这里需要什么什么……
+ * ui在和core接通的时候，core就看ui给的注册。如果没有对应的，就进行警告。
+ * ui真用了，而没有注册的时候，就报错。并core提供备用的渲染器：直接渲染只读的格式化json。」
+ *
+ * ⚠ 这两个是**纯函数**，能不能单测是设计的一部分 —— 所以它们不写日志、不抛。
+ */
+export {
+	missingRenderers,
+	jsonPreviewOf,
+	JSON_PREVIEW_MAX_ITEMS,
+	JSON_PREVIEW_MAX_DEPTH,
+	JSON_PREVIEW_MAX_STRING,
+	type JsonPreview,
+} from './render/registry.ts';
