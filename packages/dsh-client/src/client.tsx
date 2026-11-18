@@ -23,8 +23,10 @@
 
 import type { Context } from '@deepseek-ai/cordis';
 
+import { createApi } from './api.ts';
 import { BoardBody } from './BoardBody.tsx';
 import { initRenderers } from './init-renderers.ts';
+import { registeredTypes } from './render-registry.ts';
 import { injectStyles } from './styles.ts';
 
 /** 本实现的身份，也是 body 的 key。 */
@@ -60,6 +62,53 @@ export function apply(ctx: Context): void {
 	 * 封盘后再调直接返回。见 `init-renderers.ts` 文件头。
 	 */
 	initRenderers();
+
+	/*
+	 * ① 的**运行时检查** —— 把「UI 能画哪些 $type」报给 Host，让它比对模板需求。
+	 *
+	 * ## ⚠ 不 await
+	 *
+	 * `apply()` 是**同步**的（Cordis 的插件加载接口）。`await` 会阻塞插件加载 ——
+	 * 面板要等一个 HTTP 往返才能出现，而**这个检查的结果不影响面板能不能用**
+	 * （缺渲染器只让那几章降级，不是致命错误）。
+	 *
+	 * ⇒ `void … .then(…).catch(…)`。
+	 *
+	 * ## ⚠ catch 里必须打日志
+	 *
+	 * 网络失败时如果静默：① 的检查就**永远不生效**，而且没人知道。
+	 * 那和「检查通过」看起来一模一样 —— 这是最坏的一类静默。
+	 *
+	 * ## 为什么是 `void` 而不是留着 promise
+	 *
+	 * 没有调用方会等这个检查。`void` 明说「我故意丢弃这个 promise」，
+	 * 比留着未处理的 promise 更清楚（后者会被 lint 当成漏处理）。
+	 */
+	void createApi()
+		.renderCheck(registeredTypes())
+		.then((result) => {
+			if (result.missing.length === 0) return;
+			/*
+			 * ① 的警告 —— **浏览器侧一份**（Host 那份在 `http.ts` 的 route 里打）。
+			 *
+			 * 两边看的是**同一次计算**的结果，不是两套逻辑。
+			 * 插件开发者看 Host 日志；UI 开发者看 devtools。都该能看到。
+			 */
+			console.warn(
+				`[taskboard3] 有 ${String(result.missing.length)} 个 action 没有注册渲染器，` +
+					`相关章节会降级成 JSON：${result.missing.join('、')}`,
+			);
+		})
+		.catch((cause: unknown) => {
+			/*
+			 * ⚠ 不吞。① 的检查失败是个**事实**，要留痕 ——
+			 *   否则「没缺渲染器」和「检查没跑成」在日志里长得一样。
+			 */
+			console.warn(
+				'[taskboard3] 渲染器检查没跑成（面板不受影响）：',
+				cause instanceof Error ? cause.message : String(cause),
+			);
+		});
 
 	/* 样式只插一次（幂等）。见 `styles.ts` 的 `injectStyles`。 */
 	injectStyles();

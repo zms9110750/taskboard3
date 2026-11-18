@@ -28,6 +28,7 @@
  */
 
 import type { SearchCondition, Taskboard } from '@taskboard/core';
+import { missingRenderers } from '@taskboard/core';
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
@@ -161,7 +162,7 @@ function str(body: unknown, key: string): string | undefined {
 }
 
 /** 从已解析的 body 里取任意字段。 */
-function raw(body: unknown, key: string): unknown {
+function rawField(body: unknown, key: string): unknown {
 	if (typeof body !== 'object' || body === null) return undefined;
 	return (body as Record<string, unknown>)[key];
 }
@@ -276,6 +277,45 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			return;
 		}
 		sendOk(res, { template: meta });
+		return;
+	}
+
+	/* ── POST /api/render-check —— UI 报告它能渲染什么，Host 比对模板需求 ── */
+	if (tail === '/render-check') {
+		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
+
+		const body = await readJson(req);
+		/*
+		 * 请求体 `{ registered: string[] }`。
+		 *
+		 * ⚠ 不信 UI 传的任何东西的语义 —— 它只提供「我能画哪些 type」这一个事实，
+		 *   判定（缺了什么）在 Host 侧算。反过来让 UI 自己算就等于让它自证清白。
+		 *
+		 * ⚠ 非字符串项**静默滤掉**而不是报错：UI 版本不一致时多传一个怪值，
+		 *   不该让整个检查失败（那会让 ① 完全失效）。
+		 */
+		const raw = rawField(body, 'registered');
+		const registered = Array.isArray(raw)
+			? raw.filter((one): one is string => typeof one === 'string')
+			: [];
+
+		const required = taskboard.requiredActions();
+		const missing = missingRenderers(required, registered);
+
+		/*
+		 * ① 的警告 —— **Host 侧一份**。
+		 *
+		 * 为什么不在这里抛：这是**预防性检查**，不阻塞任何东西。
+		 * 面板照常能用，只是那几个 action 的章节会走 ③（红块 + JSON 兜底）。
+		 */
+		if (missing.length > 0) {
+			console.warn(
+				`[taskboard3] 有 ${String(missing.length)} 个 action 没有注册渲染器，` +
+					`相关章节会降级成 JSON：${missing.join('、')}`,
+			);
+		}
+
+		sendOk(res, { required, missing });
 		return;
 	}
 
@@ -400,7 +440,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
 		const body = await readJson(req);
 		const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
-		const content = raw(body, 'content');
+		const content = rawField(body, 'content');
 		const created = await taskboard.create({
 			workspaceId,
 			templateRef: str(body, 'templateRef') ?? '',
@@ -433,9 +473,9 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		if (method === 'PATCH') {
 			const body = await readJson(req);
 			const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
-			const title = raw(body, 'title');
-			const note = raw(body, 'note');
-			const content = raw(body, 'content');
+			const title = rawField(body, 'title');
+			const note = rawField(body, 'note');
+			const content = rawField(body, 'content');
 			/* 显式 `'user'`：浏览器里操作的人是用户。 */
 			const updated = await taskboard.update(
 				workspaceId,
