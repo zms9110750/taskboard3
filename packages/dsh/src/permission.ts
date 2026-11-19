@@ -4,36 +4,37 @@
  * ## core 给什么、这里做什么
  *
  * `@taskboard/core` 的 `permission.ts` 是**纯判定**（`judgeToolCall`），
- * 它不认识 dsh、不知道 agent、不算持有卡、不读预设。本文件做四件事：
+ * 它不认识 dsh、不知道 agent、不算持有卡。本文件做三件事：
  *
  * ```
  * ① 从 exec 取 agent
- * ② 读当前会话的权限预设名 → 映射成 core 的 BoardMode
- * ③ 收集这个 agent 持有的工作卡（core 要的 heldCards）
- * ④ 调 core.judgeToolCall，把拒绝理由作为 guard 的返回值
+ * ② 收集这个 agent 持有的工作卡（core 要的 heldCards）
+ * ③ 调 taskboard.judgeToolCall，把拒绝理由作为 guard 的返回值
  * ```
  *
- * ## ⚠ 核心语义：与 DSH 自己的权限**互斥**
+ * ## ⚠ 档位**不在这里读**（`2026-11-19` 两条正交轴定稿）
+ *
+ * 两条轴的档位（`CardActionLevel` / `ToolGuardLevel`）是任务板的**全局状态**，
+ * 由 core 实例自己从 kv 缓存读。`judgeToolCall` 的入参因此只有
+ * `{ toolName, heldCards }` —— **没有档位**。
+ *
+ * ⇒ dsh 侧不需要、也不该知道「当前是什么档」：
+ *   知道了就要在 HTTP / 工具 / guard 三处各拼一遍，三处会漂。
+ *   「用户能不能让 AI 领卡 / 采纳草稿」是 core 的判定，不是 dsh 的。
+ *
+ * ## ⚠ 与 DSH 自己的权限**互不干涉**
+ *
+ * 上一版把 DSH 的权限预设名映射成 core 的 `BoardMode`（只在任务板预设下生效）。
+ * 用户 `2026-11-19` 把模型改成两条正交轴之后，**预设表那一层整个删掉了** ——
+ * DSH 的预设只管 DSH 的 sandbox / approval，任务板只读自己的两个档位。
  *
  * 用户 `2026-11-14`：
  *
  * > 我说的是和dsh自己的权限互斥。只要开的是他自己或者别的插件提供的权限。
  * > 那么这个插件给的限制都不生效。
  *
- * ⇒ 我们**只认** core 的 `BOARD_PRESETS` 那三个预设名。不是那三个
- *   （含 `undefined` = 没装预设服务）⇒ `mode === undefined` ⇒ core 一律放行。
- *
- * 这就是「开发者权限」的实现：切到 DSH 出厂的「完全访问」，我们什么都不管，
- * AI 自然能改权限。**不新增第四个预设**（用户：「没有必要为此就让我们再开一个新的权限」）。
- *
- * ## ⚠ 一个身份，不是两个
- *
- * 上一版这里有 `scope`（根会话 UUID，给权限编辑开关用）和 `holder`
- * （agent 名字，给持有卡用）两个身份。现在**开关没了** ——
- * 改权限靠切预设，不靠内存开关 ⇒ `scope` 整个删除，只剩 `holder`。
- *
- * 这不是简化，是**删掉了一个已经不存在的概念**：
- * 开关是「纯内存、重启即关」的临时机制，用户把它换成了预设表里的三个档。
+ * 现在的对应关系：把宿主轴调到 `off`（「任务板不管理」）就是「不设防」——
+ * 那是宿主自己的选择，不再靠 DSH 预设名反推。
  *
  * ## ⚠ guard 是同步的
  *
@@ -41,7 +42,7 @@
  * （`dsh-tools/src/contracts.ts:410`）
  *
  * ⇒ 里面**不能 await**。本文件的取法全部同步：
- * `permissionPresets.current(session)` / `taskboard.list()` / `judgeToolCall()` 都是同步的。
+ * `taskboard.list()` / `taskboard.judgeToolCall()` 都是同步的。
  *
  * ## ⚠ 已知限制：只看「第一个工作空间」
  *
@@ -53,8 +54,8 @@
  * 或让调用方显式传 workspaceId。
  */
 
-import type { BoardMode, Card, Taskboard } from '@taskboard/core';
-import { boardModeOf, isHeldBy } from '@taskboard/core';
+import type { Card, Taskboard } from '@taskboard/core';
+import { isHeldBy } from '@taskboard/core';
 import { TaskState } from '@taskboard/protocol';
 
 /* ────────────────────────── 身份 ────────────────────────── */
@@ -145,57 +146,13 @@ export function heldWorkCardsOf(
 	return { cards, workspaceId: workspace.id };
 }
 
-/* ────────────────────────── 模式 ────────────────────────── */
-
-/** 预设名解析器（由 `index.ts` 注入 —— 本文件不 import `@deepseek-ai/*`）。 */
-export type PresetNameOf = (agent: unknown) => string | undefined;
-
-/**
- * 取当前会话的模式。
- *
- * @returns `undefined` = 不是任务板的预设（**含「没装预设服务」**）⇒ 一律放行
- *
- * ⚠ 任何一步失败都返回 `undefined`（放行方向）——
- *   取不到预设名说明我们不知道现在是什么模式，而**不知道就不该拦**：
- *   拦截错误的代价是用户完全不能用 dsh，放行的代价只是这一轮没设防。
- */
-export function modeOf(presetNameOf: PresetNameOf | undefined, agent: unknown): BoardMode | undefined {
-	if (presetNameOf === undefined) return undefined;
-	try {
-		return boardModeOf(presetNameOf(agent));
-	} catch {
-		return undefined;
-	}
-}
-
 /* ────────────────────────── guard ────────────────────────── */
-
-/**
- * 造一个「从 exec 读模式」的读取器。
- *
- * ⚠ 工具层（`tools.ts` 的 `taskboard_adopt`）也要读模式 ——
- *   但工具拿到的是 `exec`，而 `modeOf` 要的是 `agent`。
- *   本函数把这一层转换收口，避免两处各自拆 `exec.agent`。
- *
- * @returns 读取器；`presetNameOf` 缺席时恒返回 `undefined`（= 非任务板预设）
- */
-export function execModeReader(
-	presetNameOf: PresetNameOf | undefined,
-): (exec: unknown) => BoardMode | undefined {
-	return (exec: unknown) => modeOf(presetNameOf, agentOf(exec));
-}
 
 /** guard 的依赖。 */
 export interface GuardDeps {
 	readonly taskboard: Taskboard;
 	/** `ctx.subagents`；可缺席。 */
 	readonly subagents?: unknown;
-	/**
-	 * 读「当前会话的权限预设名」。
-	 *
-	 * ⚠ 由 `index.ts` 注入。`undefined` ⇒ 没有预设服务 ⇒ 模式取不到 ⇒ 一律放行。
-	 */
-	readonly presetNameOf?: PresetNameOf;
 }
 
 /** guard 的返回值（与 `dsh-tools` 的 `ToolGuard` 同形，但不 import 它的类型）。 */
@@ -209,11 +166,13 @@ export type GuardVerdict = string | undefined;
  * ```
  * ① 取 agent（缺席 ⇒ 放行：程序化调用不归我们管）
  * ② 取工具名（空 ⇒ 放行）
- * ③ 取模式（`undefined` ⇒ 放行：不是任务板的预设）
- * ④ 收集持有卡
- * ⑤ 调 core.judgeToolCall
- * ⑥ 拒绝 ⇒ 返回理由（guard 的返回值即拒绝理由）
+ * ③ 收集持有卡（core 要的 heldCards）
+ * ④ 调 taskboard.judgeToolCall({ toolName, heldCards })
+ * ⑤ 拒绝 ⇒ 返回理由（guard 的返回值即拒绝理由）
  * ```
+ *
+ * ⚠ **档位不在入参里**：core 的 `judgeToolCall` 自己从实例缓存读两条轴的档位。
+ *   本文件只提供「这个 agent 持有哪些工作卡」这一个事实。
  *
  * ⚠ **任何一步出错都不阻断**：guard 抛错会让整个工具调用失败，
  *   而权限判定的失败方向应该是「放行并记日志」还是「拒绝」？
@@ -226,7 +185,7 @@ export type GuardVerdict = string | undefined;
  *   （语义上的「没权限」），不走这条；只有**代码抛异常**才放行。
  */
 export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => GuardVerdict {
-	const { taskboard, subagents, presetNameOf } = deps;
+	const { taskboard, subagents } = deps;
 
 	return (exec: unknown): GuardVerdict => {
 		const agent = agentOf(exec);
@@ -236,10 +195,6 @@ export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => Guard
 		if (toolName === '') return undefined;
 
 		try {
-			const mode = modeOf(presetNameOf, agent);
-			/* ③ 不是任务板的预设 ⇒ 一律放行（互斥语义）。 */
-			if (mode === undefined) return undefined;
-
 			const { cards } = heldWorkCardsOf(taskboard, holderOf(subagents, exec));
 			/*
 			 * ⚠ core 要的是**窄形状**（只有 `templateRef`），不是完整 Card。
@@ -247,7 +202,7 @@ export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => Guard
 			 */
 			const heldCards = cards.map((card) => ({ templateRef: card.template.ref }));
 
-			const verdict = taskboard.judgeToolCall({ mode, toolName, heldCards });
+			const verdict = taskboard.judgeToolCall({ toolName, heldCards });
 			return verdict.ok ? undefined : `[任务板权限] ${verdict.reason}`;
 		} catch (error) {
 			/* 见上面 JSDoc：加装模块坏了不该让用户完全不能用 dsh，但必须看得见。 */

@@ -56,11 +56,10 @@ import { createBus, createTaskboard, type CardStore, type Taskboard } from '@tas
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
-import { createPermissionGuard, execModeReader } from './permission.ts';
-import { installBoardPresets } from './presets.ts';
+import { createPermissionGuard } from './permission.ts';
 import { createSseHub } from './sse.ts';
 import { createTools } from './tools.ts';
-import type { CommandsLike, ConnectionLike, PermissionPresetsLike, ToolsLike, WebServerLike } from './types.ts';
+import type { CommandsLike, ConnectionLike, ToolsLike, WebServerLike } from './types.ts';
 
 /** Cordis 插件名。 */
 export const name = 'taskboard3';
@@ -126,20 +125,6 @@ export type ApplyContext = {
 	 *   缺席时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
 	 */
 	readonly subagents?: unknown;
-	/**
-	 * `ctx.permissionPresets`（可选）—— 读模式 + **注册三个任务板预设**。
-	 *
-	 * ⚠ **不是硬依赖**：没装 `@deepseek-ai/dsh-permission-presets` 的 profile
-	 *   也该能用任务板。缺席时：预设注册不了、guard 取不到模式 ⇒ 一律放行
-	 *   （互斥语义：没有任务板预设 = 用户没让我们管权限）。
-	 */
-	readonly permissionPresets?: PermissionPresetsLike;
-	/**
-	 * `ctx.emit` —— 发 `permission-presets/catalog-changed` 用。
-	 *
-	 * ⚠ 不发这个事件，下拉栏的选项目录不会刷新 ⇒ **用户看不到新预设**。
-	 */
-	emit?(event: 'permission-presets/catalog-changed'): void;
 	effect?(dispose: () => void, label?: string): void;
 };
 
@@ -204,41 +189,17 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	});
 
 	/*
-	 * 注册三个任务板权限预设 —— **运行时改 DSH 的预设表**。
-	 *
-	 * ⚠ 只在权限预设服务存在时注册（`ctx.permissionPresets` 是可选依赖）：
-	 *   没装它的 profile 里，guard 取不到模式 ⇒ 一律放行 ⇒ 本插件等于不设防。
-	 *   那是**正确**的（互斥语义：没有任务板预设 = 用户没让我们管权限）。
-	 *
-	 * 见 `src/presets.ts` 文件头：为什么是改表而不是 patch 配置、
-	 * 为什么卸载只能删自己的键。
-	 */
-	const boardPresets =
-		ctx.permissionPresets === undefined
-			? undefined
-			: installBoardPresets(ctx.permissionPresets, () => {
-					ctx.emit?.('permission-presets/catalog-changed');
-				});
-
-	/*
 	 * 权限 guard —— **加装**在 dsh 的工具管线上。
 	 *
-	 * ⚠ 只认 core 的三个预设（互斥语义）：不是那三个 ⇒ 一律放行。
-	 *   切到 DSH 自己的「完全访问」时，AI 自然能改权限 —— 那就是「开发者权限」。
+	 * ⚠ 档位不在 dsh 侧：两条正交轴（`CardActionLevel` / `ToolGuardLevel`）
+	 *   是任务板的全局状态，`taskboard.judgeToolCall` 自己从 core 缓存读。
+	 *   guard 只提供「这个 agent 持有哪些工作卡」这一个事实。
+	 *
+	 * ⚠ **不再往 DSH 的权限预设表注册任何东西**（`2026-11-19`）。
+	 *   上一版的三个任务板预设 + `permissionPresets` 读取整个删掉 ——
+	 *   用户：「因为细节问题没必要给 dsh 开一堆权限」。
 	 */
-	const permissionGuard = createPermissionGuard({
-		taskboard,
-		subagents: ctx.subagents,
-		...(ctx.permissionPresets === undefined
-			? {}
-			: {
-					presetNameOf: (agent: unknown) => {
-						const session = (agent as { session?: unknown }).session;
-						if (session === undefined) return undefined;
-						return ctx.permissionPresets?.current(session);
-					},
-				}),
-	});
+	const permissionGuard = createPermissionGuard({ taskboard, subagents: ctx.subagents });
 	const disposeGuard = ctx.tools.guard(permissionGuard);
 
 	/* 工具：`defineTool` 来自 DSH 的 `@deepseek-ai/dsh-tools`。 */
@@ -247,22 +208,6 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		defineTool,
 		defaultWorkspaceId,
 		subagents: ctx.subagents,
-		/*
-		 * 工具也要读模式 —— 但**只有 `taskboard_adopt` 用得到**
-		 * （auto 模式下 AI 能不能自己采纳草稿）。
-		 *
-		 * ⚠ 其余工具的模式判定全在 guard 里（core 的 `judgeToolCall`）。
-		 *   工具里再判一遍就是两份真值。
-		 */
-		modeOf: execModeReader(
-			ctx.permissionPresets === undefined
-				? undefined
-				: (agent: unknown) => {
-						const session = (agent as { session?: unknown }).session;
-						if (session === undefined) return undefined;
-						return ctx.permissionPresets?.current(session);
-					},
-		),
 	});
 	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
 
@@ -270,17 +215,7 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 
 	const disposeAll = (): void => {
 		disposeRoutes();
-		/*
-		 * ⚠ **先撤预设，再摘 guard。**
-		 *
-		 * | 顺序 | 中间那一刻的状态 | 后果 |
-		 * |---|---|---|
-		 * | 先撤预设 | guard 还在，但用户选不到任务板档位了 | 无害（最多选不到） |
-		 * | 先摘 guard | 预设还在，用户能选一个**不设防**的档位 | **有害** |
-		 *
-		 * ⇒ 先撤预设。这条顺序是**安全要求**，不是整洁偏好。
-		 */
-		boardPresets?.dispose();
+		/* 先摘 guard，再清工具：卸载过程中不该再有机会按旧档位判定。 */
 		disposeGuard();
 		/*
 		 * ⚠ **先关 SSE 再清工具**：SSE 连接持有 bus 订阅，
@@ -312,15 +247,11 @@ export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
 export { holderOf, type ExecLike, type SubagentsLike } from './holder.ts';
 export {
 	createPermissionGuard,
-	execModeReader,
 	heldWorkCardsOf,
-	modeOf,
 	type GuardDeps,
 	type GuardVerdict,
-	type PresetNameOf,
 } from './permission.ts';
-export { installBoardPresets, presetSpecOf, type BoardPresetInstall, type PresetSpecLike } from './presets.ts';
-export { isAdoptTransition } from './actions.ts';
+export { adoptTargetOf, isAdoptTransition } from './actions.ts';
 /* ⚠ 原型期脚手架导出 —— 与 `core/src/bus.ts` 同生共死。 */
 export {
 	createSseHub,
