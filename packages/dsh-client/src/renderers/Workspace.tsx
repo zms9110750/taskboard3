@@ -8,7 +8,7 @@
  * | 空间 chip 行 | `SpaceBar` | 把 workspaces / current / viewing 原样传进去 |
  * | 工具栏 | **本文件** | 条数 / 关系图例 / 科技树⇄列表 / 新建（纯布局 + 文案）|
  * | 筛选行 | `FilterRow` + `FilterBox` | 建三棵树（状态 / 类别 / 领域）+ 尾部搜索框 |
- * | 列表 | `CardRow` × N | 排序（按最后动过）+ 空态 + 列名行 |
+ * | 列表 | `CardRow` × N | 排序（按最后动过）+ 筛选/搜索（**隐藏**不匹配的卡）+ 空态 |
  * | 详情 | `CardDetail` | 传 labels / 回调；**不碰**它的显示判决 |
  * | 状态菜单 | `StatusMenu` | 锚点是详情里那个状态格（`[data-meta="status"]`）|
  *
@@ -17,9 +17,11 @@
  * - **受控**（数据在外面）：workspaces / cards / templates / selectedId / 回调。
  *   和六个组件一样 —— 这个组件不拉数据、不发请求。
  * - **自持**（纯 UI 状态）：筛选的 picked、搜索框文字、科技树/列表切换、分隔条比例。
- *   ⚠ 筛选**不在这里过滤 cards**：它只把 `onFilterChange` 上报，
- *     真正过滤归数据层（V3 是视图，不是 store，见文件顶「只做拼装」）。
- *     预览里因此列表不随筛选变化 —— 这是**待接数据层**，不是视觉决定。
+ *   ⚠ 筛选/搜索的**判决**不在这里，在 `pure/card-filter.ts`；本文件只调
+ *     `applyCardQuery()` 把结果喂给列表 —— 不匹配的卡**根本不渲染**。
+ *     用户 `2026-11-19`：「筛选/搜索后，不匹配的卡要**隐藏**（不是变淡）。」
+ *   `onFilterChange` / `onSearchChange` 仍然上报（外面若有数据层要同步，照旧能接），
+ *   但**本地已经生效**，不再依赖外部过滤 —— 之前的「受控但不生效」到此结束。
  *
  * ## 布局（两个维度，不是两个宽度档）
  *
@@ -62,7 +64,17 @@ import { TASK_STATES, buttonsOf, isTaskState } from '@taskboard/protocol';
 import type { ButtonAction } from '@taskboard/protocol';
 
 import { KIND_ORDER, cardTimes, stateLabel } from '../pure/card-view.ts';
+import {
+	applyCardQuery,
+	emptyReasonOf,
+	filterOfPicked,
+	findCardByQuery,
+	isFilterActive,
+	isQueryActive,
+} from '../pure/card-filter.ts';
+import type { CardFilter, EmptyReason } from '../pure/card-filter.ts';
 import type { FilterNode, Picked } from '../pure/filter-box.ts';
+import { DEFAULT_SEARCH_PLACEHOLDER, submitQueryOf } from '../pure/search-box.ts';
 import type { Card, TemplateSummary, Workspace as SpaceEntity } from '../types.ts';
 import { CardDetail } from './CardDetail.tsx';
 import { CardRow } from './CardRow.tsx';
@@ -93,6 +105,33 @@ const LEGEND: readonly LegendItem[] = Object.freeze([
 	{ rel: 'related', label: '相关', title: '同一条线的工作' },
 	{ rel: 'references', label: '参考', title: '只是引用，不是依赖' },
 ]);
+
+/* ══════════════════════════════════════════════════════════
+   空态文案
+
+   设计图没画空态，但页面必须有。**空的原因不同，话不能一样** ——
+   筛出 0 条却写「这个空间还没有卡」会让人以为数据丢了。
+   ⚠ 判决（是哪种空）在 `pure/card-filter.ts` 的 `emptyReasonOf()`，这里只挑句子。
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * 按空的原因选一句文案。
+ *
+ * @param reason `emptyReasonOf()` 的返回值
+ * @param query 搜索框原始值（只用它的 `trim()` 后结果拼话）
+ */
+function emptyTextOf(reason: EmptyReason, query: string): string {
+	switch (reason) {
+		case 'space-empty':
+			return '这个空间还没有卡。';
+		case 'filter':
+			return '没有符合筛选条件的卡。';
+		case 'search':
+			return `没有匹配「${query.trim()}」的卡。`;
+		case 'both':
+			return `没有同时符合筛选和「${query.trim()}」的卡。`;
+	}
+}
 
 /* ══════════════════════════════════════════════════════════
    组件属性
@@ -197,6 +236,27 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 			),
 		[props.cards],
 	);
+
+	/** 三个筛选框的选中路径 → 筛选条件（形状见 `pure/card-filter.ts` 文件头）。 */
+	const filter = useMemo<CardFilter>(() => filterOfPicked(picked), [picked]);
+
+	/**
+	 * ⚠ **列表真正渲染的那一份**：先排序，再筛选 + 搜索。
+	 *
+	 * 不匹配的卡在 `applyCardQuery()` 里就被去掉了 ⇒ 渲染时**根本不存在**
+	 * （用户 `2026-11-19` 要的「隐藏」，不是 CSS 变淡）。计数 / 空态都跟着它走。
+	 */
+	const visibleCards = useMemo<readonly Card[]>(
+		() => applyCardQuery(sortedCards, filter, search),
+		[sortedCards, filter, search],
+	);
+
+	/** 有没有在筛 / 在搜 —— 只影响文案（计数、空态），判决不在这里。 */
+	const filtering = isFilterActive(filter);
+	const queryActive = filtering || isQueryActive(search);
+
+	/** 列表空了的原因（只在 `visibleCards.length === 0` 时才用得上）。 */
+	const emptyReason = emptyReasonOf(props.cards.length, filter, search);
 
 	const selectedCard = useMemo<Card | null>(
 		() => props.cards.find((one) => one.id === props.selectedId) ?? null,
@@ -395,8 +455,10 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					<div className="tb3w-toolbar" data-toolbar>
 						<span className="tb3w-toolbar__title">
 							任务
-							<span className="tb3w-toolbar__count">
-								共 {String(props.cards.length)} 条
+							<span className="tb3w-toolbar__count" data-count>
+								{queryActive
+									? `筛出 ${String(visibleCards.length)} / 共 ${String(props.cards.length)} 条`
+									: `共 ${String(props.cards.length)} 条`}
 							</span>
 						</span>
 
@@ -515,10 +577,29 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 											type="search"
 											data-search
 											value={search}
-											placeholder="搜标题，或输入完整编号后回车…"
+											placeholder={DEFAULT_SEARCH_PLACEHOLDER}
 											onChange={(event) => {
 												setSearch(event.target.value);
 												props.onSearchChange?.(event.target.value);
+											}}
+											/*
+											 * 回车 = 「前往」：输入**完整编号** ⇒ 打开那张卡的详情。
+											 *
+											 * 用户 `2026-11-19`：「输入完整编号后回车 ⇒ 打开那张卡的详情」。
+											 * 编号必须完整匹配（`findCardByQuery()`，大小写不敏感）；
+											 * 找不到就**什么都不做** —— 搜索词留着，列表的筛选结果照旧显示，
+											 * 不能把用户刚打的字吞掉（他会以为没生效）。
+											 *
+											 * ⚠ 列表是**实时**过滤的（上面 `visibleCards`），不靠回车；
+											 *   回车只多一件事：打开详情。
+											 */
+											onKeyDown={(event) => {
+												if (event.key !== 'Enter') return;
+												event.preventDefault();
+												const query = submitQueryOf(search);
+												if (query === null) return;
+												const hit = findCardByQuery(props.cards, query);
+												if (hit !== null) select(hit.id);
 											}}
 										/>
 									</label>
@@ -532,7 +613,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					<section className="tb3w-list" ref={listRef} style={listStyle} data-list>
 						<header className="tb3w-list__head">
 							<span className="tb3w-list__title">
-								列表 <em>· {String(props.cards.length)} 条</em>
+								列表 <em data-list-count>· {String(visibleCards.length)} 条</em>
 							</span>
 							<span className="tb3w-list__sort">
 								{view === 'tree' ? '科技树' : '按更新时间'}
@@ -551,10 +632,16 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 								<div className="tb3w-list__empty" data-tree-placeholder>
 									科技树视图还没做（V1）。
 								</div>
-							) : sortedCards.length === 0 ? (
-								<div className="tb3w-list__empty">这个空间还没有卡。</div>
+							) : visibleCards.length === 0 ? (
+								/*
+								 * 有卡但被筛/搜掉了 ⇒ 画空态。⚠ 文案按**原因**选，
+								 * 不能一律写「这个空间还没有卡」。
+								 */
+								<div className="tb3w-list__empty" data-list-empty={emptyReason}>
+									{emptyTextOf(emptyReason, search)}
+								</div>
 							) : (
-								sortedCards.map((card) => (
+								visibleCards.map((card) => (
 									<CardRow
 										key={card.id}
 										card={card}
