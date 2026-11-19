@@ -121,6 +121,33 @@ node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
 `exactOptionalPropertyTypes: true` 下不允许，必须省略 prop 而不是传 undefined。
 **这就是「不检查」的代价：它在 `dev/` 里躺了一整天。**
 
+### 规则 8：worktree **只能由 lead 创建**，子 AI 不碰
+
+```
+✅ lead: git worktree add X:\temp\dsh\开发\taskboard3-wt-x -b feat/x main
+✅ lead: git -C <worktree> reset --hard main      ← 建完 / 派活前自己收干净
+✅ 子 AI: 只在自己的 worktree 里干活
+❌ 子 AI: git worktree add / remove / prune
+❌ 子 AI: 自己换分支、自己找目录
+```
+
+**原因有三条：**
+
+1. **并发安全**：worktree 列表是仓库级共享状态，多个 agent 同时改会互相踩。
+2. **实测装不上**：新建的 worktree 里 `pnpm install` 会失败
+   （`ERR_PNPM_SYMLINK_FAILED [symlinkAllModules] Maximum call stack size exceeded`），
+   所以「派活时再建」这条路本来就不通 —— 必须在派活前由 lead 建好并确认能用。
+3. **责任边界**：谁建的谁保证基线干净（`reset --hard main` + 同步依赖），
+   否则子 AI 会拿着旧代码干活，然后在报告里说「我这边全绿」—— 而那是上一个版本。
+
+⚠ **现实约束**（`2026-11-19` 实测）：**不能再新建 worktree 了**，只能在现有
+`taskboard3-wt-{client,host,core,store,storage}` 之间轮转。新 worktree 装不上依赖。
+
+⚠ **`X:\temp\dsh` 是多 agent 共用目录**：写临时文件（commit message、测试输出）
+必须用**唯一文件名**（`X:\temp\dsh\msg-<谁>-<什么>.txt`）。
+用 `commit-msg.txt` 这种固定名会被别的 agent 覆盖 —— 已真实踩过一次
+（`ws-build` 的 commit message 变成了别人的 markdown 提交消息）。
+
 ---
 
 ## 三、⚠ 十条「动笔之前先想」
