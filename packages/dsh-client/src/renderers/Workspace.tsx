@@ -87,7 +87,6 @@ import { SearchBox } from './SearchBox.tsx';
 import { SpaceBar } from './SpaceBar.tsx';
 import { StatusMenu } from './StatusMenu.tsx';
 import { TechTree } from './TechTree.tsx';
-import { SegmentedControl } from './ui/SegmentedControl.tsx';
 
 /* ══════════════════════════════════════════════════════════
    关系图例
@@ -601,17 +600,36 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 									权限与约定
 								</button>
 							)}
-							{/* 视图切换：用定稿的分段组件（role=group + role=radio + 方向键） */}
-							<SegmentedControl
-								options={[
-									{ value: 'tree', label: '科技树', title: '科技树视图' },
-									{ value: 'list', label: '列表', title: '列表视图' },
-								]}
-								value={view}
-								onChange={setView}
-								label="视图切换"
-								dataAttr="view-btn"
-							/>
+							{/*
+							 * ⚠ 分段按钮**没有定稿组件**。这里是临时内联实现，
+							 *   候选在 `dev/components/buttons.tsx` 的 `SegmentedControl`
+							 *   —— 用户还没选，所以不接进产品（用户 2026-11-20：
+							 *   「这不是我当初选定的定稿组件」）。
+							 */}
+							<span className="tb3w-seg" role="group" aria-label="视图切换">
+								<button
+									type="button"
+									className={view === 'tree' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
+									data-view-btn="tree"
+									aria-pressed={view === 'tree'}
+									onClick={() => {
+										setView('tree');
+									}}
+								>
+									科技树
+								</button>
+								<button
+									type="button"
+									className={view === 'list' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
+									data-view-btn="list"
+									aria-pressed={view === 'list'}
+									onClick={() => {
+										setView('list');
+									}}
+								>
+									列表
+								</button>
+							</span>
 							<button
 								type="button"
 								className="tb3w-btn-primary"
