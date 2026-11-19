@@ -29,10 +29,13 @@ import type { Bus } from './bus.ts';
 import { buildCard, type CreateInput, type CreateResult } from './create.ts';
 import { createSearch, type SearchCondition } from './search.ts';
 import {
+	CARD_ACTION_OPTIONS,
+	TOOL_GUARD_OPTIONS,
 	effectiveToolsOf,
-	judgeToolCall,
-	type ToolCallJudgement,
+	judgeToolCall as judgeToolCallPure,
+	type CardActionLevel,
 	type ToolCallVerdict,
+	type ToolGuardLevel,
 	type ToolPolicyDelta,
 	type ToolPolicyStore,
 } from './permission.ts';
@@ -179,6 +182,48 @@ function emptyNameFailure(what: string): Failure {
 	});
 }
 
+/* ────────────────────────── 两条轴的档位 ────────────────────────── */
+
+/** UI 轴默认档位：**默认最严**（用户没配之前不放开领卡）。 */
+const DEFAULT_CARD_ACTION_LEVEL: CardActionLevel = 'no-claim';
+
+/** 宿主轴默认档位：**默认不管工具**（用户没配之前任务板不主动限制）。 */
+const DEFAULT_TOOL_GUARD_LEVEL: ToolGuardLevel = 'off';
+
+/** kv 键：UI 轴档位。 */
+const CARD_ACTION_LEVEL_KEY = 'taskboard.permission.cardActionLevel';
+
+/** kv 键：宿主轴档位。 */
+const TOOL_GUARD_LEVEL_KEY = 'taskboard.permission.toolGuardLevel';
+
+/*
+ * ⚠ 合法值**从选项常量派生**，不在这里再抄一份 ——
+ *   否则「选项表加一档、读取白名单没加」会让新档位永远读成脏值回落默认（静默）。
+ */
+const CARD_ACTION_LEVELS: readonly CardActionLevel[] = CARD_ACTION_OPTIONS.map((one) => one.value);
+const TOOL_GUARD_LEVELS: readonly ToolGuardLevel[] = TOOL_GUARD_OPTIONS.map((one) => one.value);
+
+/**
+ * 从不可信的 kv 值里读一个档位。
+ *
+ * ⚠ **脏值 ⇒ 回落默认 + `console.warn`，不抛错** ——
+ *   一条坏记录不该让整个插件挂掉（与 `readDelta` 的静默降级同一取舍，
+ *   区别是这里**要留痕**：档位错会影响安全边界，静默回落会掩盖配置问题）。
+ */
+function readLevel<T extends string>(
+	raw: string | undefined,
+	choices: readonly T[],
+	fallback: T,
+	key: string,
+): T {
+	if (raw === undefined) return fallback;
+	for (const choice of choices) if (choice === raw) return choice;
+	console.warn(
+		`[taskboard3-core] kv「${key}」的值「${raw}」不是合法档位，已回落默认「${fallback}」。`,
+	);
+	return fallback;
+}
+
 /** 任务板实例的公开面。 */
 export interface Taskboard {
 	/* ── 工作空间 ── */
@@ -289,11 +334,34 @@ export interface Taskboard {
 	removeGroup(groupName: string): Promise<{ readonly ok: true } | Failure>;
 
 	/**
-	 * 判定一次工具调用 —— **纯判定**，不读存储、不知 dsh。
+	 * 判定一次工具调用。
+	 *
+	 * ## ⚠ 调用方**不传档位**
+	 *
+	 * 两个档位（`cardActionLevel` / `toolGuardLevel`）是任务板的全局状态，
+	 * 由实例自己从内存缓存读 —— dsh / MCP 只需要给 `toolName` 和 `heldCards`。
+	 * 档位存在与否是 core 的内部实现，调用方不该知道（否则每个入口都要拼一遍）。
+	 *
+	 * 判定本身在 `permission.ts` 的**纯函数**里（`judgeToolCall`），
+	 * 本方法只做「读缓存档位 + 读四档策略 → 交给纯函数」。
 	 *
 	 * `heldCards` 由 dsh 的 guard 收集后传进来（core 不认识 dsh 的 agent）。
 	 */
-	judgeToolCall(input: ToolCallJudgement): ToolCallVerdict;
+	judgeToolCall(input: {
+		readonly toolName: string;
+		readonly heldCards: readonly { readonly templateRef: string }[];
+	}): ToolCallVerdict;
+
+	/* ── 两条轴的档位（持久化在 kv，默认 见 permission.ts） ── */
+
+	/** 读 UI 轴档位（用户授权 AI 能不能领卡 / 采纳草稿）。 */
+	getCardActionLevel(): CardActionLevel;
+	/** 写 UI 轴档位（落 kv，下次启动仍在）。 */
+	setCardActionLevel(level: CardActionLevel): Promise<void>;
+	/** 读宿主轴档位（任务板管不管工具调用）。 */
+	getToolGuardLevel(): ToolGuardLevel;
+	/** 写宿主轴档位（落 kv，下次启动仍在）。 */
+	setToolGuardLevel(level: ToolGuardLevel): Promise<void>;
 
 	/* ── 写 ── */
 	create(input: CreateInput): Promise<CreateResult>;
@@ -550,6 +618,30 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		await store.kvSet(TOOL_POLICY_KEY, JSON.stringify(toolPolicies));
 	};
 
+	/*
+	 * ── 两条正交轴的档位缓存 ──
+	 *
+	 * 与 `toolPolicies` 同一个模式：**初值从 kv 读一次**，写入时同步更新缓存 + 写回。
+	 *
+	 * 缓存理由同上：`judgeToolCall` 每次工具调用都要同步判定，不能每次 `kvGet`。
+	 *
+	 * ⚠ 与四档策略**分开存两个键** —— 它们是两件正交的事：
+	 *   档位 = 「用户/宿主授权到哪一档」，四档策略 = 「每张卡授予哪些工具」。
+	 *   混在一个 JSON 里，改档位会连带重写策略表，写放大且容易互相踩。
+	 */
+	let cardActionLevel: CardActionLevel = readLevel(
+		store.kvGet(CARD_ACTION_LEVEL_KEY),
+		CARD_ACTION_LEVELS,
+		DEFAULT_CARD_ACTION_LEVEL,
+		CARD_ACTION_LEVEL_KEY,
+	);
+	let toolGuardLevel: ToolGuardLevel = readLevel(
+		store.kvGet(TOOL_GUARD_LEVEL_KEY),
+		TOOL_GUARD_LEVELS,
+		DEFAULT_TOOL_GUARD_LEVEL,
+		TOOL_GUARD_LEVEL_KEY,
+	);
+
 	/**
 	 * 落库 + 返回。
 	 *
@@ -787,8 +879,40 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true };
 		},
 
+		/* ── 两条轴的档位 ── */
+
+		getCardActionLevel() {
+			return cardActionLevel;
+		},
+
+		async setCardActionLevel(level) {
+			cardActionLevel = level;
+			await store.kvSet(CARD_ACTION_LEVEL_KEY, level);
+		},
+
+		getToolGuardLevel() {
+			return toolGuardLevel;
+		},
+
+		async setToolGuardLevel(level) {
+			toolGuardLevel = level;
+			await store.kvSet(TOOL_GUARD_LEVEL_KEY, level);
+		},
+
 		judgeToolCall(input) {
-			return judgeToolCall(input, { policies: toolPolicies });
+			/*
+			 * 档位从缓存读，不让调用方传 —— 调用方（dsh / MCP）只需要知道
+			 * 工具名和持有卡；档位是任务板的全局状态。
+			 */
+			return judgeToolCallPure(
+				{
+					cardLevel: cardActionLevel,
+					toolLevel: toolGuardLevel,
+					toolName: input.toolName,
+					heldCards: input.heldCards,
+				},
+				{ policies: toolPolicies },
+			);
 		},
 
 		/* ── 写 ── */
@@ -1093,6 +1217,8 @@ export {
 	EXECUTION_TOOLS,
 	READONLY_TOOLS,
 	EMPTY_POLICY_STORE,
+	CARD_ACTION_OPTIONS,
+	TOOL_GUARD_OPTIONS,
 	judgeToolCall,
 	isBaseTool,
 	isPolicyTool,

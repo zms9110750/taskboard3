@@ -342,6 +342,64 @@ export type CardActionLevel = 'no-claim' | 'claim' | 'adopt';
  */
 export type ToolGuardLevel = 'off' | 'manage' | 'manage-edit';
 
+/**
+ * **UI 轴的全档位选项** —— 给任务板 UI 的下拉列表 / HTTP 路由直接渲染。
+ *
+ * ⚠ 这是档位的**唯一一份**定义：dsh 的 HTTP 路由不要自己再硬编码第二份
+ *   （`value` 拼错就是静默不生效，两处清单还会漂）。
+ *
+ * ⚠ 用 `as const satisfies`，不用类型标注：
+ *   · `satisfies` 让「`value` 写了个不存在的档位」编译失败；
+ *   · `as const` 保留字面量类型 ⇒ 下面「每档恰好出现一次」的编译期断言才判得出来
+ *     （AGENTS 3.5：类型标注会把元素 widen 成 union，断言静默失效）。
+ */
+export const CARD_ACTION_OPTIONS = [
+	{
+		value: 'no-claim',
+		label: '不允许领卡',
+		description: 'AI 不能领取工作卡，也不能采纳草稿。',
+	},
+	{
+		value: 'claim',
+		label: '允许领卡',
+		description: 'AI 可以领取工作卡；草稿仍由用户自己点采纳。',
+	},
+	{
+		value: 'adopt',
+		label: '允许采纳草稿',
+		description: 'AI 可以领取工作卡，也可以自己采纳草稿。',
+	},
+] as const satisfies readonly {
+	readonly value: CardActionLevel;
+	readonly label: string;
+	readonly description: string;
+}[];
+
+/**
+ * **宿主轴的全档位选项** —— 同上，给 UI / HTTP 路由用的唯一一份定义。
+ */
+export const TOOL_GUARD_OPTIONS = [
+	{
+		value: 'off',
+		label: '任务板不管理',
+		description: '任务板不拦截任何工具调用（领卡类动作仍受 UI 轴管）。',
+	},
+	{
+		value: 'manage',
+		label: '任务板管理权限',
+		description: '按 BASE / 持有卡 / 四档策略判定工具调用。',
+	},
+	{
+		value: 'manage-edit',
+		label: '允许编辑档位权限',
+		description: '在「管理权限」之上，额外允许 AI 读写档位权限工具。',
+	},
+] as const satisfies readonly {
+	readonly value: ToolGuardLevel;
+	readonly label: string;
+	readonly description: string;
+}[];
+
 /* ────────────────────────── 判定 ────────────────────────── */
 
 /**
@@ -538,6 +596,27 @@ type _PolicyNotExecution = [
 /** ⑤ `BASE_TOOLS` 恰好 11 个（用户裁定的数量）。 */
 type _BaseIsEleven = (typeof BASE_TOOL_NAMES)['length'] extends 11 ? true : false;
 
+/**
+ * ⑥ UI 轴选项表**覆盖全部档位且恰好 3 条**（没有漏档、没有重复档）。
+ *
+ * ⚠ 靠 `as const` 保留的字面量类型才判得出来：若漏了 `adopt`，
+ *   `Exclude<CardActionLevel, …>` 就是 `'adopt'` 而不是 `never` ⇒ 编译失败。
+ */
+type _CardOptionsCoverAll =
+	Exclude<CardActionLevel, (typeof CARD_ACTION_OPTIONS)[number]['value']> extends never
+		? (typeof CARD_ACTION_OPTIONS)['length'] extends 3
+			? true
+			: false
+		: false;
+
+/** ⑦ 宿主轴选项表**覆盖全部档位且恰好 3 条**（同上）。 */
+type _GuardOptionsCoverAll =
+	Exclude<ToolGuardLevel, (typeof TOOL_GUARD_OPTIONS)[number]['value']> extends never
+		? (typeof TOOL_GUARD_OPTIONS)['length'] extends 3
+			? true
+			: false
+		: false;
+
 export type _PERMISSION_VOCABULARY_CONSISTENT = AssertTrue<
 	[
 		_PolicyNotInBase,
@@ -545,7 +624,9 @@ export type _PERMISSION_VOCABULARY_CONSISTENT = AssertTrue<
 		_NoReadonlyInBase,
 		_PolicyNotExecution,
 		_BaseIsEleven,
-	] extends [true, true, true, true, true]
+		_CardOptionsCoverAll,
+		_GuardOptionsCoverAll,
+	] extends [true, true, true, true, true, true, true]
 		? true
 		: false
 >;

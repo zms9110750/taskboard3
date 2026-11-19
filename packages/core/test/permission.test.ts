@@ -592,11 +592,11 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 
 	it('通用档落库 + 生效', async () => {
 		assert.ok((await tb.setCommonPolicy(['commonTool'])).ok);
+		/* 实例判定用实例自己的档位：要吃到四档增量，宿主轴必须是 manage。 */
+		await tb.setToolGuardLevel('manage');
 		for (const ref of ['writeCode', 'research']) {
 			assert.ok(
 				tb.judgeToolCall({
-					cardLevel: 'claim',
-					toolLevel: 'manage',
 					toolName: 'commonTool',
 					heldCards: [{ templateRef: ref }],
 				}).ok,
@@ -612,18 +612,15 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 		assert.deepEqual(store.groupMembers['代码类'], ['writeCode', 'refactor']);
 		assert.deepEqual(store.groups['代码类'], ['groupTool']);
 
+		await tb.setToolGuardLevel('manage');
 		assert.ok(
 			tb.judgeToolCall({
-				cardLevel: 'claim',
-				toolLevel: 'manage',
 				toolName: 'groupTool',
 				heldCards: [{ templateRef: 'writeCode' }],
 			}).ok,
 		);
 		assert.equal(
 			tb.judgeToolCall({
-				cardLevel: 'claim',
-				toolLevel: 'manage',
 				toolName: 'groupTool',
 				heldCards: [{ templateRef: 'research' }],
 			}).ok,
@@ -673,47 +670,45 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 		assert.ok((await tb.setTemplatePolicy('writeCode', ['totally_made_up_tool'])).ok);
 	});
 
-	it('★ 实例的 judgeToolCall 接的是两条轴', () => {
+	it('★ 实例的 judgeToolCall 自己读两条轴档位（调用方不传）', async () => {
 		const base = { toolName: 'bash', heldCards: [] as const };
 
-		/* toolLevel=off ⇒ 一律放行（第二段）。 */
-		assert.ok(tb.judgeToolCall({ ...base, cardLevel: 'no-claim', toolLevel: 'off' }).ok);
+		/* 归零：前面的用例可能改过档位，本用例自己从默认档位开始。 */
+		await tb.setCardActionLevel('no-claim');
+		await tb.setToolGuardLevel('off');
 
-		/* toolLevel=manage + 无卡 + 非 BASE ⇒ 拒。 */
+		/* 默认档位：no-claim + off。 */
+		assert.equal(tb.getCardActionLevel(), 'no-claim');
+		assert.equal(tb.getToolGuardLevel(), 'off');
+		assert.ok(tb.judgeToolCall(base).ok, 'off ⇒ 第二段放行 bash');
 		assert.equal(
-			tb.judgeToolCall({ ...base, cardLevel: 'claim', toolLevel: 'manage' }).ok,
+			tb.judgeToolCall({ toolName: 'taskboard_claim', heldCards: [] }).ok,
 			false,
-		);
-
-		/* 第一段：off 也拦得住 no-claim 档的领卡。 */
-		assert.equal(
-			tb.judgeToolCall({
-				cardLevel: 'no-claim',
-				toolLevel: 'off',
-				toolName: 'taskboard_claim',
-				heldCards: [],
-			}).ok,
-			false,
+			'默认 no-claim ⇒ 第一段拒 claim（与 off 无关）',
 		);
 
-		/* 权限管理工具：manage 拒 / manage-edit 放行。 */
+		/* 宿主轴是实例状态：改成 manage 后，无卡的 bash 被拒。 */
+		await tb.setToolGuardLevel('manage');
+		assert.equal(tb.getToolGuardLevel(), 'manage');
+		assert.equal(tb.judgeToolCall(base).ok, false);
+
+		/* manage-edit 放开权限管理工具；但第一段的 adopt 仍只看 UI 轴。 */
+		await tb.setToolGuardLevel('manage-edit');
+		assert.ok(tb.judgeToolCall({ toolName: 'taskboard_tool_policy_set', heldCards: [] }).ok);
 		assert.equal(
-			tb.judgeToolCall({
-				cardLevel: 'claim',
-				toolLevel: 'manage',
-				toolName: 'taskboard_tool_policy_set',
-				heldCards: [],
-			}).ok,
+			tb.judgeToolCall({ toolName: 'taskboard_adopt', heldCards: [] }).ok,
 			false,
+			'adopt 仍受 UI 轴管（当前 no-claim）',
 		);
-		assert.ok(
-			tb.judgeToolCall({
-				cardLevel: 'claim',
-				toolLevel: 'manage-edit',
-				toolName: 'taskboard_tool_policy_set',
-				heldCards: [],
-			}).ok,
-		);
+
+		/* 改 UI 轴：adopt ⇒ claim / adopt 都放行。 */
+		await tb.setCardActionLevel('adopt');
+		assert.ok(tb.judgeToolCall({ toolName: 'taskboard_claim', heldCards: [] }).ok);
+		assert.ok(tb.judgeToolCall({ toolName: 'taskboard_adopt', heldCards: [] }).ok);
+
+		/* 恢复默认，别让同一 describe 后面的用例受档位影响。 */
+		await tb.setCardActionLevel('no-claim');
+		await tb.setToolGuardLevel('off');
 	});
 
 	it('effectiveToolsOf 走实例的策略', async () => {
