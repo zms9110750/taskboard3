@@ -51,13 +51,34 @@
  * ⇒ 组只是一个**命名的 templateRef 集合**。给它设一次策略，集合内都生效。
  *   它不参与判定优先级、不覆盖独立档 —— 四档全是**增量**，并集。
  *
+ * ## 两条正交轴（`2026-11-19` 定稿）
+ *
+ * 「AI 能不能领卡 / 采纳草稿」和「任务板管不管工具调用」是**两件事**，
+ * 各自有一条档位轴：
+ *
+ * | 轴 | 类型 | 取值 | 谁定 |
+ * |---|---|---|---|
+ * | UI 轴 | `CardActionLevel` | `no-claim` / `claim` / `adopt` | 用户（任务板 UI；MCP 也有） |
+ * | 宿主轴 | `ToolGuardLevel` | `off` / `manage` / `manage-edit` | 宿主（DSH 等） |
+ *
+ * **正交**的意思是判定分两段、各看各的轴：
+ *
+ * - **第一段 = 领卡类动作**（`claim` / `release` / `adopt`），**只看 `cardLevel`**，
+ *   **永远先跑且完全不看 `toolLevel`**；
+ * - **第二段 = 其它工具**（含 `BASE_TOOLS` / `POLICY_TOOLS` / 卡的增量），**只看 `toolLevel`**。
+ *
+ * ⚠ 第一段在第二段之前是**规则**，不是实现细节：
+ * 宿主把 `toolLevel` 设成 `off`（「任务板不管理工具」）时，`claim` 仍然要受
+ * `cardLevel` 管 —— 领卡是任务板的业务规则，宿主不管理工具不等于替用户授权领卡。
+ * 反过来，宿主 `manage-edit` 也不会让 `no-claim` 档能领卡。
+ *
  * ## 三条结构性决定
  *
  * | 决定 | 实现 |
  * |---|---|
  * | ① 工作权限必须是 BASE 的**超集** | 四档都是增量列表，生效永远 `= BASE ∪ …` ⇒ 结构上漏不掉 BASE |
  * | ② 基础策略是**常量**，不落库、不可配置 | `BASE_TOOLS` 是 `Object.freeze` 的常量，不进 kv、没有 setter |
- * | ③ 权限编辑开关**纯内存**，重启即关 | 进程内 `Set` —— 不写 kv、不写卡 |
+ * | ③ 档位权限编辑**只由宿主轴**决定 | 只有 `toolLevel === 'manage-edit'` 才放行 `POLICY_TOOLS` |
  *
  * ## 为什么决定 ① 必须由结构保证而不是配置
  *
@@ -68,7 +89,7 @@
  *
  * ## 这个文件是纯的
  *
- * 不读存储、不知 dsh、不做 I/O。策略与开关由调用方（`index.ts` / dsh 的 guard）
+ * 不读存储、不知 dsh、不做 I/O。策略与档位由调用方（`index.ts` / dsh 的 guard）
  * 通过参数传进来 —— 所以它是可穷举测试的纯函数。
  * ---
  */
@@ -132,7 +153,8 @@ const POLICY_TOOL_NAMES = [
 ] as const;
 
 /**
- * **权限管理工具** —— 只有权限编辑开关打开时才可用，且**永不在 `BASE_TOOLS` 里**。
+ * **权限管理工具** —— 只有宿主轴 `toolLevel === 'manage-edit'` 时才可用，
+ * 且**永不在 `BASE_TOOLS` 里**。
  *
  * ## 为什么单独一组
  *
@@ -141,9 +163,9 @@ const POLICY_TOOL_NAMES = [
  * ⇒ 这批工具能**改写权限本身**，等于「能给自己发权限」。它必须：
  *
  * 1. **不在 BASE 里** —— 否则任何没领卡的 AI 都能改权限，安全基线就没了；
- * 2. **不在任何档位的增量里生效**（结构上：`judgeToolCall` 第一步就判它们，
+ * 2. **不在任何档位的增量里生效**（结构上：`judgeToolCall` 第二段最先判它们，
  *    早于 BASE / 四档）⇒ 不可能通过领一张卡获得；
- * 3. **只受纯内存开关控制** —— 用户点 UI 打开，重启即关。
+ * 3. **只由宿主轴 `manage-edit` 放行** —— 用户把宿主档位调到那一档才允许。
  *
  * ## 三个工具
  *
@@ -292,119 +314,33 @@ export function effectiveToolsOf(store: ToolPolicyStore, templateRef: string): r
 	return [...out];
 }
 
-/* ────────────────────────── 三种任务板模式 ────────────────────────── */
+/* ────────────────────────── 两条正交轴 ────────────────────────── */
 
 /**
- * 任务板权限模式 —— 由 DSH 的权限预设名映射而来。
+ * UI 侧：用户对「AI 能不能做任务板动作」的授权档位。
  *
- * ## ⚠ 与 DSH 自己的权限**互斥**（用户原话）
+ * | 档位 | 领卡 | 采纳草稿 |
+ * |---|---|---|
+ * | `no-claim` | ❌ | ❌ |
+ * | `claim` | ✅ | ❌ |
+ * | `adopt` | ✅ | ✅ |
  *
- * > 我说的是和dsh自己的权限互斥。只要开的是他自己或者别的插件提供的权限。
- * > 那么这个插件给的限制都不生效。
- *
- * ⇒ `mode === undefined` = 「不是我们的预设」⇒ guard **一律放行**。
- *   我们只在用户明确选了任务板的三个预设之一时才介入。
+ * ⚠ 这是**用户**授权，不是宿主授权 —— 所以它不受 `ToolGuardLevel` 影响。
  */
-export type BoardMode = 'plan' | 'work' | 'auto';
-
-/** 预设的 sandbox 档。与 DSH 的权限预设同名词。 */
-export type BoardSandbox = 'read-only' | 'workspace-write';
-
-/** 一个预设的完整定义。dsh 注册预设时直接照抄这份。 */
-export interface BoardPreset {
-	/** DSH 权限预设的 key（下拉栏里选的就是它）。 */
-	readonly name: string;
-	readonly mode: BoardMode;
-	/** 下拉栏显示名。 */
-	readonly label: string;
-	/** 说明（下拉栏的第二行）。 */
-	readonly description: string;
-	readonly sandbox: BoardSandbox;
-	/**
-	 * 审批策略。三个模式统一 `ask` ——
-	 * 任务板管的是「这个工具给不给」，不管「要不要问用户」；
-	 * 需要确认的动作交给 DSH 的审批机制。
-	 */
-	readonly approval: 'ask';
-}
-
-/*
- * ⚠ 裸字面量元组 + widen 导出 —— 与 `BASE_TOOL_NAMES` / `POLICY_TOOL_NAMES` 同一个理由：
- *   直接标注 `readonly BoardPreset[]` 会让元素类型 widen，下面的编译期断言判不出来。
- *   见 AGENTS.md §3.5（已踩两次）。
- */
-const BOARD_PRESET_TABLE = [
-	{
-		name: 'taskboard-plan',
-		mode: 'plan',
-		label: '任务版（计划）',
-		description: '只读：不能创建、不能领取工作卡，因而拿不到文件与网络工具。要先和人把方向定清楚。',
-		sandbox: 'read-only',
-		approval: 'ask',
-	},
-	{
-		name: 'taskboard-work',
-		mode: 'work',
-		label: '任务版（工作）',
-		description: '领到工作卡才拿到该卡授予的工具权限。工作区外不可写；草稿采纳由用户点。',
-		sandbox: 'workspace-write',
-		approval: 'ask',
-	},
-	{
-		name: 'taskboard-auto',
-		mode: 'auto',
-		label: '任务版（自动工作）',
-		description: '同「工作」，区别是 AI 可以自己采纳草稿，不必等用户点。工具权限仍按工作卡授予。',
-		sandbox: 'workspace-write',
-		approval: 'ask',
-	},
-] as const;
+export type CardActionLevel = 'no-claim' | 'claim' | 'adopt';
 
 /**
- * 任务板的**三个**权限预设。
+ * 宿主侧：任务板管不管工具调用。
  *
- * ## 为什么是三个不是四个
+ * | 档位 | 管不管工具 | 能否改档位权限 |
+ * |---|---|---|
+ * | `off` | 不管（一律放行） | ❌ |
+ * | `manage` | 管（按 BASE / 四档 / 持有卡判） | ❌ |
+ * | `manage-edit` | 管 | ✅ |
  *
- * 用户 `2026-11-14`：
- *
- * > 能不能只留三个权限。开发者权限由dsh自己的完全权限去操作？
- * > 没有必要为此就让我们再开一个新的权限。
- *
- * ⇒ **「开发者」= DSH 出厂的 `danger-full-access`，我们不新增。**
- *   在那种权限下 `mode === undefined` ⇒ 我们一律放行，等于完全不干涉。
+ * ⚠ 它**只管第二段**（领卡类动作之外的工具）。
  */
-export const BOARD_PRESETS: readonly BoardPreset[] = Object.freeze(BOARD_PRESET_TABLE);
-
-/** 预设名 → 模式。不是我们的预设（含 `undefined` / 空串）⇒ `undefined`。 */
-export function boardModeOf(presetName: string | undefined): BoardMode | undefined {
-	if (presetName === undefined) return undefined;
-	for (const preset of BOARD_PRESET_TABLE) {
-		if (preset.name === presetName) return preset.mode;
-	}
-	return undefined;
-}
-
-/**
- * **计划模式下禁止的任务板工具** —— AI 不能创建、不能领取。
- *
- * 用户原话：「ai不能创建和领取任务」。
- *
- * ## ⚠ 只禁这两个（照字面实现）
- *
- * 没把 `update_content` / `transition` / `update_note` 列进来，因为：
- *   · 用户只说了「创建和领取」；
- *   · 设计卡 / 记录卡本来就要写内容 —— 禁掉就没法用了。
- *
- * `transition` 也留着：它管的是「这张卡走到哪个状态」，
- * 而计划模式下 AI 能碰到的卡都是已存在的，改状态不产生新任务。
- */
-export const PLAN_BLOCKED_TOOLS: readonly string[] = Object.freeze([
-	'taskboard_create',
-	'taskboard_claim',
-]);
-
-/** `PLAN_BLOCKED_TOOLS` 的集合形式。 */
-const PLAN_BLOCKED_SET: ReadonlySet<string> = new Set(PLAN_BLOCKED_TOOLS);
+export type ToolGuardLevel = 'off' | 'manage' | 'manage-edit';
 
 /* ────────────────────────── 判定 ────────────────────────── */
 
@@ -414,11 +350,10 @@ const PLAN_BLOCKED_SET: ReadonlySet<string> = new Set(PLAN_BLOCKED_TOOLS);
  * `heldCards` 由 dsh 的 guard 收集后传进来（core 不认识 dsh 的 agent）。
  */
 export interface ToolCallJudgement {
-	/**
-	 * 当前模式。**`undefined` = 不是任务板的预设**（DSH 自己的 / 别的插件的）
-	 * ⇒ 一律放行，我们不干涉。
-	 */
-	readonly mode: BoardMode | undefined;
+	/** UI 轴：用户对任务板动作的授权档位。 */
+	readonly cardLevel: CardActionLevel;
+	/** 宿主轴：任务板管不管工具调用。 */
+	readonly toolLevel: ToolGuardLevel;
 	readonly toolName: string;
 	/** 这个 agent 当前持有的工作卡。空的、或多于一张，都是有意义的状态。 */
 	readonly heldCards: readonly { readonly templateRef: string }[];
@@ -440,96 +375,113 @@ export interface PermissionFacts {
  *
  * ## 判定顺序（顺序本身是规则的一部分）
  *
+ * ### 第一段 · 领卡类动作（**永远生效，与 `toolLevel` 无关**）
+ *
  * | # | 条件 | 结果 |
  * |---|---|---|
- * | ① | `mode === undefined` | **放行**（互斥：不是我们的预设，不干涉） |
- * | ② | `mode !== undefined` 且 `toolName ∈ POLICY_TOOLS` | 拒绝：权限管理工具在任务板模式下不可用 |
- * | ③ | `mode === 'plan'` 且 `toolName ∈ PLAN_BLOCKED_TOOLS` | 拒绝：计划模式不能创建 / 领取 |
- * | ④ | `toolName ∈ BASE_TOOLS` | 放行（**不需要任何卡**） |
- * | ⑤ | `mode === 'plan'` | 拒绝：**计划模式只有 BASE**，不吃四档增量 |
- * | ⑥ | `heldCards` 为空 | 拒绝：需要先领一张工作卡 |
- * | ⑦ | `heldCards` 多于一张 | 拒绝：同时持有多张工作卡（违反一次一张） |
- * | ⑧ | `toolName ∈ effectiveToolsOf(那张卡)` | 放行 |
- * | ⑨ | 否则 | 拒绝：需要持有「<模板>」的工作卡 |
+ * | ① | `toolName === 'taskboard_release'` | **放行**（放手永远允许） |
+ * | ② | `toolName === 'taskboard_claim'` 且 `cardLevel === 'no-claim'` | 拒绝：当前档位不允许领卡 |
+ * | ③ | `toolName === 'taskboard_adopt'` 且 `cardLevel !== 'adopt'` | 拒绝：当前档位不允许采纳草稿 |
  *
- * ⚠ **① 在最前面** —— 互斥语义的实现。DSH 自己的 `danger-full-access` 下我们什么都不管。
+ * ### 第二段 · 其它工具（**只看 `toolLevel`**）
  *
- * ⚠ **② 独立于四档** —— 权限管理工具在任何任务板模式下一律拒绝。
- *   它们能改写权限本身（等于「给自己发权限」），只能靠**用户切到 DSH 自己的
- *   完全权限**（那时 `mode === undefined` ⇒ ①放行）来用。
- *   ⚠ 不能只依赖「不在 BASE、也不在四档里」—— 因为四档是**用户可配的**，
- *     有人把 `taskboard_tool_policy_set` 写进 common 就绕过去了。
+ * | # | 条件 | 结果 |
+ * |---|---|---|
+ * | ④ | `toolLevel === 'off'` | **放行**（任务板不管理工具） |
+ * | ⑤ | `toolName ∈ POLICY_TOOLS` | `manage-edit` ⇒ 放行；否则拒绝：改档位权限需要「允许编辑档位权限」 |
+ * | ⑥ | `toolName ∈ BASE_TOOLS` | **放行**（不需要任何卡） |
+ * | ⑦ | `heldCards` 为空 | 拒绝：需要先持有一张工作卡 |
+ * | ⑧ | `heldCards` 多于一张 | 拒绝：同时持有多张工作卡 |
+ * | ⑨ | `toolName ∈ effectiveToolsOf(那张卡的模板)` | **放行** |
+ * | ⑩ | 否则 | 拒绝：当前卡不授予该工具 |
  *
- * ⚠ **③ 在 ④ 之前** —— plan 模式要能禁掉 BASE 里的 `create` / `claim`，
- *   否则「不能创建」这条规则会被 BASE 那条先放行掉。
+ * ⚠ **第一段必须在第二段之前** —— 正交语义的实现。宿主 `toolLevel === 'off'`
+ *   只说明「宿主不管理工具」，不等于「用户放开了领卡」。
  *
- * ⚠ **⑤ 在 ⑥ 之前，且只在 plan** —— 用户原话「计划就是连网络访问和文件访问
- *   都受限的只读模式」。⇒ plan 下**不吃任何四档增量**，只有 BASE。
- *   这也封掉了「plan 模式强行持有一张卡就能拿执行权限」这条绕过路径
- *   （正常路径走不到，但库里可能有脏数据）。
+ * ⚠ **⑤ 在 ⑥ 之前** —— 权限管理工具能改写权限本身（等于「给自己发权限」）。
+ *   不能只依赖「不在 BASE、也不在四档里」—— 因为四档是**用户可配的**，
+ *   有人把 `taskboard_tool_policy_set` 写进 common 就绕过去了。
  *
- * ⚠ **④ 在 ⑥ 之前** —— 「基础权限不需要领卡」这条规则的实现。
+ * ⚠ **⑥ 在 ⑦ 之前** —— 「基础权限不需要领卡」这条规则的实现。
  *
- * ⚠ **⑦ 排在 ⑧ 前面**：多张卡时无法判断该用哪份权限。这个状态本身不该出现
+ * ⚠ **⑧ 排在 ⑨ 前面**：多张卡时无法判断该用哪份权限。这个状态本身不该出现
  *   （`claim` 的「一次一张」挡着），但**库里可能有** ⇒ 拒绝且说清，不猜。
  *
  * ⚠ **只校验工具名字，不校验是否存在**（用户原话）。
  */
 export function judgeToolCall(input: ToolCallJudgement, facts: PermissionFacts): ToolCallVerdict {
-	const { mode, toolName, heldCards } = input;
+	const { cardLevel, toolLevel, toolName, heldCards } = input;
 
-	/* ① 不是我们的预设 ⇒ 一律放行（互斥）。 */
-	if (mode === undefined) return ALLOW;
+	/* ── 第一段：领卡类动作。永远先跑，完全不看 toolLevel。 ── */
 
-	/* ② 权限管理工具：任何任务板模式下都不可用（改权限要靠切到完全权限）。 */
+	/* ① 放手永远允许 —— 否则 AI 可能被一张卡锁死。 */
+	if (toolName === 'taskboard_release') return ALLOW;
+
+	/* ② 领卡：`no-claim` 档拒绝，其它两档放行（adopt 也允许领卡）。 */
+	if (toolName === 'taskboard_claim') {
+		if (cardLevel === 'no-claim') {
+			return reject(
+				`「${toolName}」不能执行：当前档位不允许领卡。` +
+					'要领取工作卡，请把任务板档位调到「允许领卡」或「允许采纳草稿」。',
+			);
+		}
+		return ALLOW;
+	}
+
+	/* ③ 采纳草稿：只有 `adopt` 档放行。 */
+	if (toolName === 'taskboard_adopt') {
+		if (cardLevel !== 'adopt') {
+			return reject(
+				`「${toolName}」不能执行：当前档位不允许采纳草稿。` +
+					'只有「允许采纳草稿」档位才能由 AI 采纳草稿，其它档位要用户自己点采纳。',
+			);
+		}
+		return ALLOW;
+	}
+
+	/* ── 第二段：其它工具。只看 toolLevel。 ── */
+
+	/* ④ 宿主不管理工具 ⇒ 一律放行。 */
+	if (toolLevel === 'off') return ALLOW;
+
+	/* ⑤ 权限管理工具：只有 `manage-edit` 放行。 */
 	if (POLICY_SET.has(toolName)) {
+		if (toolLevel === 'manage-edit') return ALLOW;
 		return reject(
-			`「${toolName}」是权限管理工具，任务板权限模式下不可用。` +
-				'要改权限，请把会话切到 DSH 自己的「完全访问」权限（那里任务板不干涉任何工具）。',
+			`「${toolName}」是档位权限管理工具：改档位权限需要『允许编辑档位权限』。` +
+				'当前宿主档位只允许按已有权限判定，不允许改写权限本身。',
 		);
 	}
 
-	/* ③ plan 模式：AI 不能创建、不能领取。 */
-	if (mode === 'plan' && PLAN_BLOCKED_SET.has(toolName)) {
-		return reject(
-			`「${toolName}」在计划模式不可用 —— 计划模式下 AI 不能创建任务，也不能领取任务。` +
-				'先和人把方向定清楚，再切到「任务版（工作）」。',
-		);
-	}
-
-	/* ④ 基础策略：不需要任何卡。 */
+	/* ⑥ 基础策略：不需要任何卡。 */
 	if (BASE_SET.has(toolName)) return ALLOW;
 
-	/* ⑤ 计划模式只有 BASE —— 不吃四档增量。 */
-	if (mode === 'plan') {
-		return reject(
-			`「${toolName}」在计划模式不可用 —— 计划模式只读，只允许任务板自己的基础工具。` +
-				'要动文件 / 跑命令，请先切到「任务版（工作）」并领取一张工作卡。',
-		);
-	}
-
-	/* ⑥ 没有工作卡 ⇒ 拒绝。 */
+	/* ⑦ 没有工作卡 ⇒ 拒绝。 */
 	if (heldCards.length === 0) {
-		return reject(`「${toolName}」需要先领取一张工作卡；当前没有持有任何工作卡。`);
+		return reject(`「${toolName}」需要先持有一张工作卡；当前没有持有任何工作卡。`);
 	}
 
-	/* ⑦ 多张工作卡 ⇒ 无法判断该用哪一份权限，拒绝（不猜）。 */
+	/* ⑧ 多张工作卡 ⇒ 无法判断该用哪一份权限，拒绝（不猜）。 */
 	if (heldCards.length > 1) {
 		const refs = heldCards.map((one) => one.templateRef).join('、');
 		return reject(`同时持有多张工作卡（${refs}），无法判断该用哪一份额外权限；先释放到只剩一张。`);
 	}
 
-	/* ⑧ 那张卡的生效集含它 ⇒ 放行。 */
-	const card = heldCards[0] as { readonly templateRef: string };
+	/* ⑨ 那张卡的生效集含它 ⇒ 放行。 */
+	const card = heldCards[0];
+	/* 结构上走不到：上面已排除 0 张与多张。保留真实分支，不用 `as` 让编译器闭嘴。 */
+	if (card === undefined) {
+		return reject(`「${toolName}」需要先持有一张工作卡；当前没有持有任何工作卡。`);
+	}
 	const effective = effectiveToolsOf(facts.policies, card.templateRef);
 	if (effective.includes(toolName)) return ALLOW;
 
-	/* ⑨ 否则拒绝，并说清这张卡现在有哪些「额外」工具。 */
+	/* ⑩ 否则拒绝，并说清这张卡现在有哪些「额外」工具。 */
 	const extras = extrasOf(facts.policies, card.templateRef);
 	const available =
 		extras.length === 0 ? '（该模板没有额外权限）' : `（它有：${extras.join('、')}）`;
 	return reject(
-		`「${toolName}」需要持有「${card.templateRef}」工作卡授予的权限；当前那张卡没有这项${available}。`,
+		`「${toolName}」需要持有工作卡授予的权限：当前卡「${card.templateRef}」不授予该工具${available}。`,
 	);
 }
 
@@ -554,7 +506,7 @@ type AssertTrue<T extends true> = T;
  * ① `POLICY_TOOLS` 与 `BASE_TOOLS` **不相交**。
  *
  * 如果相交，权限管理工具就会「永远放行」（BASE 那条先命中），
- * 纯内存开关也就失效了 —— 而那是这个模型的安全边界。
+ * 宿主轴 `manage-edit` 也就失效了 —— 而那是这个模型的安全边界。
  */
 type _PolicyNotInBase = [Extract<(typeof POLICY_TOOL_NAMES)[number], (typeof BASE_TOOL_NAMES)[number]>] extends [
 	never,

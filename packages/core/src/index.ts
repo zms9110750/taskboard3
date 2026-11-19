@@ -343,13 +343,13 @@ export interface Taskboard {
 	 * |---|---|
 	 * | `actor === 'user'` | 照常放行（不管 `options`） |
 	 * | `actor === 'ai'` + `allowAiAdopt !== true` | 拒绝（`AI_CANNOT_ADOPT`） |
-	 * | `actor === 'ai'` + `allowAiAdopt === true` | 放行（auto 模式） |
+	 * | `actor === 'ai'` + `allowAiAdopt === true` | 放行（`cardLevel === 'adopt'`） |
 	 *
-	 * ⚠ **`allowAiAdopt` 由调用方按当前模式传**（`dsh` 侧：`{ allowAiAdopt: mode === 'auto' }`）。
-	 *   core 不认识「模式」，只认识这一个开关 —— 否则要把 `BoardMode` 灌进 core 的每个方法。
+	 * ⚠ **`allowAiAdopt` 由调用方按当前档位传**（`dsh` 侧：`{ allowAiAdopt: cardLevel === 'adopt' }`）。
+	 *   core 不认识「档位」，只认识这一个开关 —— 否则要把 `CardActionLevel` 灌进 core 的每个方法。
 	 *
 	 * ⚠ **`protocol` 的 `BUTTON_ACTIONS` 不改**：那张表是「谁可以点哪个按钮」的全局真值，
-	 *   在这里放开 AI 会让**所有场景**都允许 AI 采纳（包括 work 模式）。
+	 *   在这里放开 AI 会让**所有场景**都允许 AI 采纳（包括未允许采纳草稿的档位）。
 	 */
 	adopt(
 		workspaceId: WorkspaceId,
@@ -1086,27 +1086,23 @@ export type {
 /** 持有者工具（多人协作）。 */
 export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
 
-/** 工具权限（BASE 常量 + 四档增量 + 三种模式 + 纯判定）。 */
+/** 工具权限（BASE 常量 + 四档增量 + 两条正交轴 + 纯判定）。 */
 export {
 	BASE_TOOLS,
 	POLICY_TOOLS,
 	EXECUTION_TOOLS,
 	READONLY_TOOLS,
-	BOARD_PRESETS,
-	PLAN_BLOCKED_TOOLS,
 	EMPTY_POLICY_STORE,
-	boardModeOf,
 	judgeToolCall,
 	isBaseTool,
 	isPolicyTool,
 	effectiveToolsOf,
 	extrasOf,
-	type BoardMode,
-	type BoardPreset,
-	type BoardSandbox,
+	type CardActionLevel,
 	type PermissionFacts,
 	type ToolCallJudgement,
 	type ToolCallVerdict,
+	type ToolGuardLevel,
 	type ToolPolicyDelta,
 	type ToolPolicyGroup,
 	type ToolPolicyStore,
