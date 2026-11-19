@@ -1,0 +1,401 @@
+/*
+ * RelationPanel（关系折叠面板）预览页样式 —— 只在 `dev/preview/relation-panel/` 里用。
+ *
+ * 由 `dev/preview/build.mjs relation-panel` 追加在共享 `preview.css` **之后**。
+ *
+ * ⚠ 这里的产品样式在 `src/styles.ts` 的 `WORKSPACE_CSS` 里（带 `.tb3w-root` 前缀），
+ *   预览没有那个根节点 ⇒ 这里放一份**去掉前缀的同一套规则**。
+ *   两边漂了只有靠 review 看 —— 组件类名以 `rel-` 开头，一眼能对上。
+ */
+
+/* ── 预览页布局（与产品样式无关） ── */
+
+.rp-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 14px;
+	align-items: start;
+}
+
+.rp-col {
+	min-width: 0;
+}
+
+.rp-col__title {
+	margin: 0 0 2px;
+	font-size: 12.5px;
+	font-weight: 700;
+	color: var(--text);
+}
+
+.rp-col__note {
+	margin: 0 0 10px;
+	font-size: 11px;
+	line-height: 1.7;
+	color: var(--text-weak);
+	font-family: var(--mono);
+}
+
+.rp-stage {
+	padding: 12px;
+	border: 1px solid var(--border);
+	border-radius: 9px;
+	background: var(--bg-card);
+	min-width: 0;
+}
+
+.rp-facts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 10px;
+	font-size: 10.5px;
+	font-family: var(--mono);
+	color: var(--text-secondary);
+}
+
+.rp-facts code {
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: #f1f3f6;
+	color: #16181d;
+}
+
+.rp-facts .is-bad {
+	background: #fef2f2;
+	color: #b91c1c;
+}
+
+.rp-case {
+	margin-bottom: 18px;
+}
+
+.rp-case:last-child {
+	margin-bottom: 0;
+}
+
+.rp-case__note {
+	margin-bottom: 6px;
+	font-size: 11px;
+	color: var(--text-weak);
+	font-family: var(--mono);
+}
+
+.rp-events {
+	margin: 0 0 10px;
+	padding-left: 18px;
+	max-height: 150px;
+	overflow-y: auto;
+	font-size: 11.5px;
+	font-family: var(--mono);
+	color: #3f4652;
+}
+
+.rp-events__empty {
+	list-style: none;
+	margin-left: -18px;
+	color: var(--text-weak);
+	font-family: inherit;
+}
+
+/* 预览里的 ghost-btn（共享 preview.css 没有它；carddetail 页自带一份） */
+.ghost-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 9px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-size: 12px;
+	font-family: inherit;
+	color: var(--text-secondary);
+	background: var(--bg-card);
+	cursor: pointer;
+	white-space: nowrap;
+}
+.ghost-btn:hover:not(:disabled) {
+	border-color: var(--text-weak);
+	color: var(--text);
+}
+.ghost-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+/* ══════════════════════════════════════════════════════════
+   产品样式（src/styles.ts 的 WORKSPACE_CSS 去掉 .tb3w-root 前缀）
+   ══════════════════════════════════════════════════════════ */
+
+.rel-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+}
+.rel-head {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	min-width: 0;
+}
+.rel-head__spacer {
+	flex: 1 1 auto;
+}
+.rel-head__total {
+	display: inline-flex;
+	align-items: center;
+	padding: 4px 2px;
+	color: var(--text);
+	font-size: 12px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+.rel-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 4px 11px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: #f3f4f6;
+	color: var(--text);
+	font-family: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.12s;
+}
+.rel-toggle:hover {
+	background: #e5e7eb;
+}
+.rel-toggle.is-open {
+	background: #eef1f5;
+}
+.rel-toggle__caret {
+	flex: 0 0 auto;
+	color: var(--text-secondary);
+	font-size: 10px;
+}
+.rel-toggle__label {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+.rel-toggle__summary {
+	min-width: 0;
+	margin-left: 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--text-secondary);
+	font-weight: 400;
+	white-space: nowrap;
+}
+.rel-parent-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 260px;
+	min-width: 0;
+	padding: 3px 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-card);
+	color: var(--text);
+	font-family: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+.rel-parent-chip:hover {
+	border-color: var(--text-weak);
+}
+.rel-parent-chip__arrow {
+	flex: 0 0 auto;
+	color: var(--text-weak);
+	font-size: 11px;
+	white-space: nowrap;
+}
+.rel-table {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--bg-card);
+}
+.rel-columns {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	border-bottom: 1px solid #f2f4f7;
+	background: #f9fafb;
+}
+.rel-columns__cell {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	padding: 7px 10px;
+	border-top: 2px solid transparent;
+	border-right: 1px solid #f2f4f7;
+	color: var(--text-secondary);
+	font-size: 11.5px;
+	font-weight: 600;
+}
+.rel-columns__cell:last-child {
+	border-right: none;
+}
+.rel-columns__cell--active {
+	border-top-color: #2563eb;
+}
+.rel-columns__cell--shelved {
+	border-top-color: #f59e0b;
+}
+.rel-columns__cell--ended {
+	border-top-color: #10b981;
+}
+.rel-columns__dot {
+	flex: 0 0 auto;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+}
+.rel-columns__count {
+	color: var(--text-weak);
+	font-family: var(--font-mono);
+	font-size: 10.5px;
+	font-weight: 700;
+}
+.rel-group + .rel-group {
+	border-top: 1px solid #f2f4f7;
+}
+.rel-group__head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 10px 5px 8px;
+	border-left: 3px solid transparent;
+	color: var(--text);
+	font-size: 11.5px;
+	font-weight: 600;
+}
+.rel-group__line {
+	flex: 0 0 auto;
+	width: 12px;
+	height: 2px;
+}
+.rel-group__label {
+	flex: 0 0 auto;
+}
+.rel-group__count {
+	color: var(--text-secondary);
+	font-family: var(--font-mono);
+	font-size: 10.5px;
+}
+.rel-group__body {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+}
+.rel-group__col {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	min-width: 0;
+	padding: 8px 10px;
+	border-right: 1px solid #f2f4f7;
+}
+.rel-group__col:last-child {
+	border-right: none;
+}
+.rel-group__cards {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px 10px;
+}
+.rel-flat {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--bg-card);
+}
+.rel-chip {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	width: 100%;
+	min-width: 0;
+	padding: 4px 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-card);
+	color: var(--text);
+	font-family: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+.rel-chip:hover {
+	border-color: var(--text-weak);
+	background: #fafafa;
+}
+.rel-chip__arrow {
+	flex: 0 0 auto;
+	color: var(--text-weak);
+	font-size: 10px;
+}
+.rel-chip__id {
+	flex: 0 0 auto;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: -0.2px;
+}
+.rel-chip__title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text);
+}
+.rel-group__cards .rel-chip {
+	width: auto;
+	max-width: 100%;
+}
+.rel-group__cards .rel-chip__title {
+	max-width: 200px;
+}
+.rel-empty {
+	padding: 16px;
+	border: 1px dashed var(--border);
+	border-radius: 8px;
+	color: var(--text-weak);
+	font-size: 12px;
+	text-align: center;
+}
+.rel-foot {
+	display: flex;
+}
+.rel-add {
+	font-size: 11.5px;
+}
+
+/* 详情动作按钮（RelationPanel 卡头行里的「+ 派生子任务」要用） */
+.detail-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 11px;
+	font-size: 12px;
+}
+.detail-action__badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 17px;
+	height: 17px;
+	padding: 0 4px;
+	border-radius: 9px;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 1;
+	background: #eef1f5;
+	color: var(--text-secondary);
+}

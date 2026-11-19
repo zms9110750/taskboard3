@@ -52,6 +52,7 @@ import {
 	type DetailLabels,
 	type DetailSection,
 } from '../pure/card-detail.ts';
+import type { RelationsView } from '../pure/relations-block.ts';
 import type { Card } from '../types.ts';
 import { DetailHead } from './DetailHead.tsx';
 import { DetailHistory } from './DetailHistory.tsx';
@@ -70,6 +71,15 @@ export interface CardDetailProps {
 	readonly onAddRelation: () => void;
 	/** 点「+ 派生子任务」。 */
 	readonly onDerive: () => void;
+	/**
+	 * 关系面板数据（`relationsOf(card, allCards, statusGroupOf)`）。
+	 *
+	 * ⚠ 由**调用方**算（本组件只有一张卡，反查入边需要全量卡列表）。
+	 *   省略 ⇒ `DetailHead` 退回旧的「关系」按钮行（老预览不受影响）。
+	 */
+	readonly relations?: RelationsView;
+	/** 点关系卡 / 父任务卡。省略 = 面板里的卡不跳转。 */
+	readonly onJumpRelation?: (cardId: string) => void;
 	/** 备注失焦提交（值没变时不调）。 */
 	readonly onNoteChange: (text: string) => void;
 	/**
@@ -100,10 +110,23 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 
 	return (
 		<div className="detail" data-card-detail data-card-id={props.card.id}>
+			{/*
+			 * ⚠ `key={card.id}`：关系面板的展开态是**组件自持**的（未受控），
+			 *   切卡时重挂一次才会收起 —— 和原版 `renderDetail` 重跑时
+			 *   `expanded` 自然归 false 一致。标题/meta 没有 state，重挂无副作用。
+			 */}
+			{/*
+			 * 两个「可省略」的 props 在 `CardDetail` 上是 `?:`，到 `DetailHead` 上
+			 * 写成「必选但可为 undefined」（`exactOptionalPropertyTypes` 的经典写法，
+			 * 见 `onClose` 的注释）⇒ 这里直接透传，不用条件展开。
+			 */}
 			<DetailHead
+				key={props.card.id}
 				head={table.head}
 				onAddRelation={props.onAddRelation}
 				onDerive={props.onDerive}
+				relations={props.relations}
+				onJumpRelation={props.onJumpRelation}
 				onClose={props.onClose}
 				onExpand={props.onExpand}
 			/>

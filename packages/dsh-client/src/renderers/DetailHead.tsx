@@ -14,9 +14,16 @@
  * detail-head
  *  ├ detail-title-row    h2 标题 ……………… ⧉ ×   ← 只有标题 + 图标按钮
  *  ├ detail-meta-row     固定宽度状态列 │ 编号 │ 类别 领域 模板
- *  ├ detail-actions      关系 N（primary）  + 派生子任务
+ *  ├ RelationPanel       卡头行：关系 N │ 父任务 chip … + 派生子任务（可展开）
  *  └ detail-banner       墓碑说明（有才显示）
  * ```
+ *
+ * ## 关系面板接在哪（`2026-11-20`）
+ *
+ * 传了 `relations`（`relationsOf()` 的产物）时，第三行**整体**换成
+ * `RelationPanel` —— 它的卡头行就是原版 `header.js:94-99` 那一行
+ * （`▸ 关系 N` + 父任务 chip + `+ 派生子任务`），展开的正文接在下面。
+ * 没传时退回旧的按钮行，老预览不受影响。
  *
  * 标题和 meta **不在同一个父容器的同一行**里 —— 这是结构保证，
  * 不是「CSS 让它看起来像两行」。CDP 断言会量两者的矩形是否纵向重叠。
@@ -50,6 +57,8 @@
 import type { ReactNode } from 'react';
 
 import type { DetailAction, DetailHeadView, DetailMetaItem } from '../pure/card-detail.ts';
+import type { RelationsView } from '../pure/relations-block.ts';
+import { RelationPanel, type RelationDeriveAction } from './RelationPanel.tsx';
 import { StatusCell } from './StatusCell.tsx';
 
 /** 组件属性。 */
@@ -60,6 +69,20 @@ export interface DetailHeadProps {
 	readonly onAddRelation: () => void;
 	/** 点「+ 派生子任务」。 */
 	readonly onDerive: () => void;
+	/**
+	 * 关系面板数据（`relationsOf()` 的产物）。
+	 *
+	 * 传了 ⇒ 动作行由 `RelationPanel` 接管（它的卡头行就是原版
+	 * `header.js:94-99` 那一行：关系 N + 父任务 + 派生子任务），
+	 * 不再渲染旧的「关系」按钮。
+	 * 不传 ⇒ 退回旧的按钮行（`dev/preview/carddetail/` 那种老场景仍然可渲染）。
+	 *
+	 * 类型是「必选但可为 undefined」，和 `onClose` 同一个理由
+	 * （`exactOptionalPropertyTypes` 下可选属性不能显式传 `undefined`）。
+	 */
+	readonly relations: RelationsView | undefined;
+	/** 点关系卡 / 父任务卡。`undefined` = 面板里的卡不跳转。 */
+	readonly onJumpRelation: ((cardId: string) => void) | undefined;
 	/** 点「×」；`undefined` = 不显示这个按钮。 */
 	readonly onClose: (() => void) | undefined;
 	/** 点「⧉」（放大）；`undefined` = 不显示这个按钮。 */
@@ -88,6 +111,15 @@ export function DetailHead(props: DetailHeadProps): ReactNode {
 		}
 		props.onDerive();
 	};
+
+	/*
+	 * 动作行接进 RelationPanel 时透传的两个展示决定（仍由 pure 判）：
+	 *   · derive 的 label / disabled / title；
+	 *   · 「+ 添加关系」是否禁用（卡已删除）。
+	 * 找不到就省略对应 prop（`exactOptionalPropertyTypes` 下不能传 undefined）。
+	 */
+	const deriveAction = deriveActionOf(head.actions);
+	const relationsAction = relationsActionOf(head.actions);
 
 	return (
 		<div className="detail-head">
@@ -138,32 +170,56 @@ export function DetailHead(props: DetailHeadProps): ReactNode {
 				))}
 			</div>
 
-			{/* ③ 动作行：关系（primary）+ 派生子任务 */}
-			<div className="detail-actions" data-detail-actions>
-				{head.actions.map((action) => (
-					<button
-						key={action.kind}
-						type="button"
-						className={[
-							'ghost-btn',
-							'detail-action',
-							action.emphasis === 'primary' ? 'is-primary' : '',
-						]
-							.filter((one) => one !== '')
-							.join(' ')}
-						data-action-kind={action.kind}
-						data-emphasis={action.emphasis}
-						disabled={action.disabled}
-						title={action.title}
-						onClick={() => runAction(action)}
-					>
-						<span className="detail-action__label">{action.label}</span>
-						{action.badge === null ? null : (
-							<span className="detail-action__badge">{action.badge}</span>
-						)}
-					</button>
-				))}
-			</div>
+			{/*
+			 * ③ 动作行：关系（折叠面板头）+ 派生子任务。
+			 *
+			 * 传了 `relations` ⇒ **整个动作行由 `RelationPanel` 接管**：
+			 * 面板的卡头行就是原版 `header.js:94-99` 那一行
+			 * （`关系 N` + 父任务 chip + `+ 派生子任务`），
+			 * 展开后正文接在下面。这也是用户 `2026-11-11`
+			 * 「父任务栏要在外面（卡头那一行）」的结构保证 ——
+			 * 关系和父任务不是浮层里的东西。
+			 *
+			 * 没传 `relations` ⇒ 退回旧的按钮行（老预览 / 回归场景）。
+			 * 两种情况下「派生子任务」**都在**（任务书：不许删）。
+			 */}
+			{props.relations === undefined ? (
+				<div className="detail-actions" data-detail-actions>
+					{head.actions.map((action) => (
+						<button
+							key={action.kind}
+							type="button"
+							className={[
+								'ghost-btn',
+								'detail-action',
+								action.emphasis === 'primary' ? 'is-primary' : '',
+							]
+								.filter((one) => one !== '')
+								.join(' ')}
+							data-action-kind={action.kind}
+							data-emphasis={action.emphasis}
+							disabled={action.disabled}
+							title={action.title}
+							onClick={() => runAction(action)}
+						>
+							<span className="detail-action__label">{action.label}</span>
+							{action.badge === null ? null : (
+								<span className="detail-action__badge">{action.badge}</span>
+							)}
+						</button>
+					))}
+				</div>
+			) : (
+				<RelationPanel
+					variant="a"
+					relations={props.relations}
+					onJump={props.onJumpRelation ?? noop}
+					onAddRelation={props.onAddRelation}
+					onDerive={props.onDerive}
+					{...(deriveAction === null ? {} : { derive: deriveAction })}
+					{...(relationsAction === null ? {} : { addRelationDisabled: relationsAction.disabled })}
+				/>
+			)}
 
 			{/* ④ 墓碑横幅：`banner` 为 null 时不渲染（pure 判的） */}
 			{head.banner === null ? null : (
@@ -173,6 +229,40 @@ export function DetailHead(props: DetailHeadProps): ReactNode {
 			)}
 		</div>
 	);
+}
+
+/**
+ * 空回调 —— `onJumpRelation` 省略时给 `RelationPanel` 的 `onJump`。
+ *
+ * 面板必须能独立渲染（用户要单独看），所以 `onJump` 是必选 prop；
+ * 接进详情时调用方总会传（`Workspace` 传 `onSelect`）。
+ */
+function noop(): void {
+	/* 故意为空：省略跳转能力的场景（预览 / 回归）点关系卡不做事。 */
+}
+
+/**
+ * 从动作表里取「+ 派生子任务」的展示决定。
+ *
+ * 判决在 `pure/card-detail.ts` 的 `actionsOf()`，这里只是**形状转换**：
+ * `DetailAction` → `RelationDeriveAction`（面板不依赖 card-detail 的类型）。
+ *
+ * @param actions `head.actions`
+ */
+function deriveActionOf(actions: readonly DetailAction[]): RelationDeriveAction | null {
+	const found = actions.find((one) => one.kind === 'derive');
+	if (found === undefined) return null;
+	return { label: found.label, disabled: found.disabled, title: found.title };
+}
+
+/**
+ * 从动作表里取「关系」那条 —— 只为把 `disabled`（卡已删除）传给面板的
+ * 「+ 添加关系」按钮。
+ *
+ * @param actions `head.actions`
+ */
+function relationsActionOf(actions: readonly DetailAction[]): DetailAction | null {
+	return actions.find((one) => one.kind === 'relations') ?? null;
 }
 
 /**

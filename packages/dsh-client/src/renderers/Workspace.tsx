@@ -76,6 +76,7 @@ import {
 } from '../pure/card-filter.ts';
 import type { CardFilter, EmptyReason } from '../pure/card-filter.ts';
 import type { FilterNode, Picked } from '../pure/filter-box.ts';
+import { relationsOf, statusGroupOf } from '../pure/relations-block.ts';
 import { visibleCardIds } from '../pure/tree-filter.ts';
 import type { TreeFilterCriteria } from '../pure/tree-filter.ts';
 import type { Card, TemplateSummary, Workspace as SpaceEntity } from '../types.ts';
@@ -485,6 +486,15 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 				}}
 				onDerive={() => {
 					props.onDerive?.(card.id);
+				}}
+				/*
+				 * 关系面板：入边（谁把我当 parent / 谁指向我）要扫全量卡
+				 * ⇒ 在**这里**算，`CardDetail` 只有一张卡。
+				 * 草稿剔除、三列落位都在 `relationsOf` 里（用户 `2026-11-09 08:45`）。
+				 */
+				relations={relationsOf(card, props.cards, statusGroupOf)}
+				onJumpRelation={(cardId) => {
+					select(cardId);
 				}}
 				onNoteChange={(text) => {
 					props.onNoteChange?.(card.id, text);

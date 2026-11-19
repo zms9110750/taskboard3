@@ -689,6 +689,64 @@ export const WORKSPACE_CSS = `
 .tb3w-root .detail-history__text{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
 .tb3w-root .detail-history__time{flex:0 0 auto;color:var(--text-weak);font-family:var(--font-mono);font-size:10.5px}
 
+/*
+ * ── RelationPanel（关系折叠面板） ──
+ *
+ * 用户 2026-11-20：「关系的折叠面板。你也没有做独立组件给我看给我选。没有接入。」
+ *
+ * 结构（变体 A，原版形态）：
+ *   .rel-head   [折叠头 关系 N] [父任务 chip] [spacer] [+ 派生子任务]
+ *   .rel-table
+ *     .rel-columns  进行 / 搁置 / 完成 三列表头（带计数）
+ *     .rel-group    每个关系类型一条组横条 + 三列（卡按自身 status 落列）
+ *
+ * 组横条的线色/底色、三列表头的圆点色都是**内联 style** —— 值来自
+ * pure/relations-block.ts（原版 relations.js:118-125 的颜色），
+ * CSS 里不写第二份（写第二份就会漂）。
+ */
+.tb3w-root .rel-panel{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tb3w-root .rel-head{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+.tb3w-root .rel-head__spacer{flex:1 1 auto}
+.tb3w-root .rel-head__total{display:inline-flex;align-items:center;padding:4px 2px;color:var(--text);font-size:12px;font-weight:600;white-space:nowrap}
+.tb3w-root .rel-toggle{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid var(--border);border-radius:6px;background:#f3f4f6;color:var(--text);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background .12s}
+.tb3w-root .rel-toggle:hover{background:#e5e7eb}
+.tb3w-root .rel-toggle.is-open{background:#eef1f5}
+.tb3w-root .rel-toggle__caret{flex:0 0 auto;color:var(--text-secondary);font-size:10px}
+.tb3w-root .rel-toggle__label{flex:0 0 auto;white-space:nowrap}
+.tb3w-root .rel-toggle__summary{min-width:0;margin-left:2px;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary);font-weight:400;white-space:nowrap}
+.tb3w-root .rel-parent-chip{display:inline-flex;align-items:center;gap:6px;max-width:260px;min-width:0;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12px;text-align:left;cursor:pointer}
+.tb3w-root .rel-parent-chip:hover{border-color:var(--text-weak)}
+.tb3w-root .rel-parent-chip__arrow{flex:0 0 auto;color:var(--text-weak);font-size:11px;white-space:nowrap}
+.tb3w-root .rel-table{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-card)}
+.tb3w-root .rel-columns{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #f2f4f7;background:#f9fafb}
+.tb3w-root .rel-columns__cell{display:flex;align-items:center;gap:5px;padding:7px 10px;border-top:2px solid transparent;border-right:1px solid #f2f4f7;color:var(--text-secondary);font-size:11.5px;font-weight:600}
+.tb3w-root .rel-columns__cell:last-child{border-right:none}
+.tb3w-root .rel-columns__cell--active{border-top-color:#2563eb}
+.tb3w-root .rel-columns__cell--shelved{border-top-color:#f59e0b}
+.tb3w-root .rel-columns__cell--ended{border-top-color:#10b981}
+.tb3w-root .rel-columns__dot{flex:0 0 auto;width:6px;height:6px;border-radius:50%}
+.tb3w-root .rel-columns__count{color:var(--text-weak);font-family:var(--font-mono);font-size:10.5px;font-weight:700}
+.tb3w-root .rel-group + .rel-group{border-top:1px solid #f2f4f7}
+.tb3w-root .rel-group__head{display:flex;align-items:center;gap:6px;padding:5px 10px 5px 8px;border-left:3px solid transparent;color:var(--text);font-size:11.5px;font-weight:600}
+.tb3w-root .rel-group__line{flex:0 0 auto;width:12px;height:2px}
+.tb3w-root .rel-group__label{flex:0 0 auto}
+.tb3w-root .rel-group__count{color:var(--text-secondary);font-family:var(--font-mono);font-size:10.5px}
+.tb3w-root .rel-group__body{display:grid;grid-template-columns:repeat(3,1fr)}
+.tb3w-root .rel-group__col{display:flex;flex-direction:column;gap:5px;min-width:0;padding:8px 10px;border-right:1px solid #f2f4f7}
+.tb3w-root .rel-group__col:last-child{border-right:none}
+.tb3w-root .rel-group__cards{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px}
+.tb3w-root .rel-flat{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-card)}
+.tb3w-root .rel-chip{display:flex;align-items:center;gap:5px;width:100%;min-width:0;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12px;text-align:left;cursor:pointer}
+.tb3w-root .rel-chip:hover{border-color:var(--text-weak);background:#fafafa}
+.tb3w-root .rel-chip__arrow{flex:0 0 auto;color:var(--text-weak);font-size:10px}
+.tb3w-root .rel-chip__id{flex:0 0 auto;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:-.2px}
+.tb3w-root .rel-chip__title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.tb3w-root .rel-group__cards .rel-chip{width:auto;max-width:100%}
+.tb3w-root .rel-group__cards .rel-chip__title{max-width:200px}
+.tb3w-root .rel-empty{padding:16px;border:1px dashed var(--border);border-radius:8px;color:var(--text-weak);font-size:12px;text-align:center}
+.tb3w-root .rel-foot{display:flex}
+.tb3w-root .rel-add{font-size:11.5px}
+
 /* ── StatusMenu（portal 到 body ⇒ 用 data-menu 作用域） ── */
 [data-menu="status"]{position:fixed;z-index:150;width:280px;min-width:250px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);box-shadow:0 10px 30px rgb(0 0 0 / 14%);overflow-y:auto;color:var(--text);font-size:13px;line-height:1.5}
 [data-menu="status"] .menu__title{padding:4px 8px 6px;color:var(--text-weak);font-size:11px;font-weight:600}
