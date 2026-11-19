@@ -46,7 +46,7 @@
  * ⇒ 视觉上是「方块按钮变宽露出内容」，不是「内容把布局挤开」。
  */
 
-import { Fragment, useLayoutEffect, useRef } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 import { collapsedCrumbs, segmentsOf } from '../pure/filter-box.ts';
@@ -54,7 +54,7 @@ import type { FilterNode, PickItem, Picked } from '../pure/filter-box.ts';
 
 /** 组件属性。 */
 export interface FilterBoxProps {
-	/** 稳定 id（`FilterRow` 用它做互斥；同时写到 DOM 的 `data-box-id`）。 */
+	/** 稳定 id（写到 DOM 的 `data-box-id`，预览 / 验证脚本用它定位）。 */
 	readonly boxId: string;
 	/** 方框标题（`状态` / `类别` / `领域`）。它本身就是第 0 级。 */
 	readonly title: string;
@@ -83,6 +83,37 @@ export function FilterBox(props: FilterBoxProps): ReactNode {
 	const crumbs = collapsedCrumbs(props.nodes, props.picked);
 	const segments = segmentsOf(props.nodes, props.picked);
 	const hasValue = crumbs.length > 0;
+
+	/*
+	 * 「点外面收起」是**本组件自己的职责**（用户 2026-11-20）：
+	 *
+	 * > 「哪怕是同一行的别的这个筛选框。只要不是点他自己身上，他就要收起。
+	 * >   他管焦点在不在他自己身上难道都管不到嘛？还要父容器去监听？」
+	 *
+	 * ⇒ 不再由 `FilterRow` 挂 document 监听。每个框自己盯自己的 DOM 边界
+	 *   （`boxRef`），点到自己身外（含同一行的其他框、行内空白、页面任何地方）
+	 *   就请求收起。这样组件挂在哪都成立，父容器不需要知道别的框存在。
+	 */
+	const onOpenChangeRef = useRef(props.onOpenChange);
+	onOpenChangeRef.current = props.onOpenChange;
+
+	useEffect(() => {
+		if (!props.open) return;
+		const onDocPointerDown = (event: PointerEvent): void => {
+			const root = boxRef.current;
+			if (root === null) return;
+			/* 点在自身内部（按钮 / 展开的面板 / 面包屑）⇒ 不算外面。 */
+			if (event.target instanceof Node && root.contains(event.target)) return;
+			onOpenChangeRef.current(false);
+		};
+		/*
+		 * capture 阶段：抢在别处的 click 之前收起，视觉上不会「先展开另一个再收自己」。
+		 */
+		document.addEventListener('pointerdown', onDocPointerDown, true);
+		return () => {
+			document.removeEventListener('pointerdown', onDocPointerDown, true);
+		};
+	}, [props.open]);
 
 	/**
 	 * **唯一的动作**：选中一条路径，并展开。

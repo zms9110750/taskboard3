@@ -29,7 +29,7 @@
  *   冒泡到 document 时 `box.contains(target)` 已是 `false`。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { FilterBox } from './FilterBox.tsx';
@@ -59,33 +59,24 @@ export interface FilterRowProps {
  */
 export function FilterRow(props: FilterRowProps): ReactNode {
 	const [openId, setOpenId] = useState<string | null>(null);
-	const rowRef = useRef<HTMLDivElement>(null);
 
 	const handleOpenChange = useCallback((id: string, next: boolean) => {
 		/* 打开时把 openId 设成自己 —— 别的方框因此必然是 false。 */
 		setOpenId(next ? id : null);
 	}, []);
 
-	useEffect(() => {
-		if (openId === null) return;
-
-		const onDocClick = (event: MouseEvent): void => {
-			const row = rowRef.current;
-			if (row === null) return;
-			const openBox = row.querySelector(`[data-box-id="${openId}"]`);
-			if (openBox === null) return;
-			if (event.composedPath().includes(openBox)) return;
-			setOpenId(null);
-		};
-
-		document.addEventListener('click', onDocClick);
-		return () => {
-			document.removeEventListener('click', onDocClick);
-		};
-	}, [openId]);
+	/*
+	 * ⚠ 「点外面收起」不在这一层（用户 2026-11-20）：
+	 *
+	 * > 「哪怕是同一行的别的这个筛选框。只要不是点他自己身上，他就要收起。
+	 * >   他管焦点在不在他自己身上难道都管不到嘛？还要父容器去监听？」
+	 *
+	 * ⇒ 由每个 `FilterBox` 自己监听自己的 DOM 边界。这里只保留 `openId`
+	 *   （同一时刻只有一个框 open，纯粹是渲染控制），不再挂 document 监听。
+	 */
 
 	return (
-		<div ref={rowRef} className="filter-row">
+		<div className="filter-row">
 			{props.filters.map((spec) => (
 				<FilterBox
 					key={spec.id}
