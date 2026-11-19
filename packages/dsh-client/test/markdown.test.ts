@@ -233,8 +233,25 @@ describe('基本功 —— 白名单标签', () => {
 		assert.equal(dump(renderMarkdownNodes('B\n---')), '<h2>B</h2>');
 	});
 
-	it('硬换行 ⇒ br（breaks:false 时 两个空格 才有）', () => {
+	it('硬换行 ⇒ br（两个空格或反斜杠，breaks:true 之后单换行也是 br）', () => {
 		assert.equal(dump(renderMarkdownNodes('a  \nb')), '<p>a<br>b</p>');
+	});
+
+	it('⚠ 单换行 = 换行（GFM / GitHub / 旧版行为，不是严格 CommonMark 的「空格并成一段」）', () => {
+		/* 用户可见的退步回归点：`breaks:false` 时这里是 `<p>a b</p>`（一个空格、一段）。 */
+		assert.equal(dump(renderMarkdownNodes('a\nb')), '<p>a<br>b</p>');
+		/* 不是「把两行拼成一段」—— 钉死「单换行不产生空格」。 */
+		assert.notEqual(dump(renderMarkdownNodes('a\nb')), '<p>a b</p>');
+	});
+
+	it('单换行多次出现 ⇒ 每行之间都有 br', () => {
+		assert.equal(dump(renderMarkdownNodes('a\nb\nc')), '<p>a<br>b<br>c</p>');
+	});
+
+	it('空行 = 分段 ⇒ 两个 <p>（不是两个 br）', () => {
+		const nodes = renderMarkdownNodes('a\n\nb');
+		assert.equal(dump(nodes), '<p>a</p><p>b</p>');
+		assert.deepEqual(tags(nodes), ['p', 'p']);
 	});
 
 	it('无序 / 有序 / 嵌套列表', () => {
