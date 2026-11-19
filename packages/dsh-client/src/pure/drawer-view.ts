@@ -1,83 +1,318 @@
 /**
- * 抽屉（V4）的**纯逻辑** —— 零 React、零 DOM、零网络。
+ * 抽屉（V5 重做）的**纯逻辑** —— 零 React、零 DOM、零网络。
  *
- * ## 这个文件管什么
+ * ## 为什么整个重做
+ *
+ * V4 交的是「1200 × 400、居中于工作区、挂 `shell.overlay` 的浮层」。
+ * 用户 `2026-11-20` 否了：**方向全错**。真实设计是：
+ *
+ * ```
+ *    ┌──────────────────────────────┐
+ *    │  抽屉面板（从输入框上方向外展开）│  ← 宽度 = 输入框宽，高度 ≈ 屏幕一半
+ *    └──────────────────────────────┘
+ *            ↑ 面板底边贴输入框上边缘
+ *  ┌─┐ ┌────────────────────────┬───┐
+ *  │▣│ │ 发消息或创建任务…        │ ➤ │  ← 正方形入口在输入框左外侧、和 + 同一行
+ *  └─┘ └────────────────────────┴───┘
+ * ```
+ *
+ * ## ⚠ 挂载点证据（对运行中的 DSH `app.asar` 复核过，`2026-11-20`）
+ *
+ * 不是猜的 —— 下面每条都能在 `B:\DeepSeek Harness\0.2.2-rc2\resources\app.asar`
+ * 里按原文搜到（本文件只引原文，不引行号：asar 里没有行号）：
+ *
+ * | 搜索串 | 原文 | 结论 |
+ * |---|---|---|
+ * | `conversation.input.left` | "Compact controls at the left of the composer tool row; fixed overlays must portal to the document body…" | **入口按钮**挂这里（list / session）|
+ * | `conversation.input.overlay` | "Floating entries rendered inside the resident composer card…" | **抽屉面板**挂这里（list / session）|
+ * | `conversation.input.overlay` 的实例 | `scope.slots.inject('conversation.input.overlay', () => scope.slots.register({name, id:'command-popup', order:1, locale:NS, inject:sessionId => …}, PopupSelectView))` | 斜杠命令菜单的写法 —— 本包照抄 |
+ * | `overlayAnchor` | `.GRgSLq_overlayAnchor{height:0;position:absolute;inset:0 0 auto}` + 注释 "entries position themselves against the card (bottom: 100% + gap)" | 面板底边 = 卡片上边 + gap，**宽度 = 卡片宽** |
+ * | `.GRgSLq_card` | `…display:flex;position:relative` | 卡片是 `position:relative` ⇒ 入口按钮可以 absolute 贴到卡片左外侧 |
+ * | `.GRgSLq_row` | `…padding:2px 8px 6px;…display:flex` | composer 工具行（`+` / 权限 / 左槽 / 右槽 / 发送）|
+ * | `.GRgSLq_tools` | `…gap:12px`；`.GRgSLq_add{width:28px;height:28px}` | `+` 是 28px 圆钮 ⇒ 入口正方形与它对中心 |
+ *
+ * ⇒ **不用 `shell.overlay`**（那是整帧浮层，会横跨窗口；V4 就是这么错的）。
+ *
+ * ## 这个文件管什么 / 不管什么
  *
  * | 管 | 不管（在组件 / CSS 里）|
  * |---|---|
- * | 开合状态机（toggle / open / close / Esc / 点外部）| 监听器怎么挂、怎么卸（`Drawer.tsx` 的 effect）|
- * | 三个入口（Chevron / 工具栏 / 详情 ⧉）派发**同一个动作** | 按钮怎么画（`DrawerToggle` / `Workspace` 的 ⧉）|
- * | 400 高时的纵向间距档位（数值表）| 数值怎么落成 CSS（`styles.ts` 的 `DRAWER_CSS` 由本表插值生成）|
- * | 「点外部」的命中判决 | `element.closest()` 的 DOM 读取（组件把布尔值传进来）|
+ * | 3 个候选形态的**数值表**（图标 / 间距 / 圆角 / 高度 / 遮罩 / 动画）| 怎么画 SVG、怎么排 DOM（`Drawer.tsx`）|
+ * | 「高度 ≈ 屏幕一半」的**具体公式**（`min(50vh, 480px)` 或 `50vh`）| CSS 字符串（`styles.ts` 由本文件插值生成）|
+ * | 开合状态机 + 共享 store（两个槽必须看同一个 `open`）| `useSyncExternalStore` 怎么接（组件里一行）|
+ * | Esc / 点外部的**判决** | DOM 事件监听怎么挂（组件的 effect）|
+ * | 面板内容的压缩间距表（数值单一来源）| 具体覆盖哪些类（`DRAWER_CSS` 里插值）|
  *
- * ## ⚠ 挂载点 —— 查证结果，不是猜的（2026-11-20）
+ * ## 为什么 3 个形态都留在产品代码里
  *
- * 设计图（`X:\temp\view-4-drawer.svg`：257 行）自己写着「挂 **shell.overlay**（root scope）」。
- * 直接对**运行中的 DSH** 的 `app.asar` 做字节搜索
- * （`B:\DeepSeek Harness\0.2.2-rc2\resources\app.asar`，198.5 MB）——
- * 注意：DSH 的包大部分**打包在 asar 里**，只搜 `app.asar.unpacked` / node_modules
- * 会得出「不存在」的假结论（我第一版就差点这么写）。
- *
- * | 搜索串 | app.asar 命中 | 结论 |
- * |---|---|---|
- * | `shell.overlay` | 165 处 | **槽存在** |
- * | `sidebar.right.pane.tab` | 206 处 | 本包当前注册的右栏 tab 槽存在 |
- * | `sidebarRightTabs` | 88 处 | 服务存在 |
- * | `drawer` | 334 处 | 只出现在「<768px 左侧导航抽屉」文案里 ⇒ **没有底部抽屉组件** |
- *
- * 从 asar 里摘到的原文：
- *
- * - 槽目录 doc：「Frame-wide floating layer, above every column and outside their scroll
- *   containers. Deliberately generic and unowned by any feature… The layer itself is
- *   click-through — entries opt back into pointer events」。
- * - 层实现 CSS：`.mP3x-q_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}`
- *   —— **absolute，不是 fixed**；子元素才 `pointer-events:auto`。
- * - 官方指引：「Use `shell.overlay` only when the request needs an overlay and its placement
- *   is known.」
- * - 另有 `shell.bottom`（single / root）：它**占走底部并让三栏缩高**
- *   （原文「the columns shrink by that height」）⇒ 违反设计图 ①「浮层不压缩工作区宽度」
- *   ⇒ **不用它**，用 `shell.overlay`。
- *
- * ⇒ **方案 A 成立**：抽屉挂帧级 overlay、用 `position:absolute` 贴底，
- *   **不需要 `position:fixed`**（用户 `2026-11-19` 明确否掉 fixed：会逃出父容器）。
- *
- * ⚠ 但**本任务只交组件 + 预览**：产品里 `client.tsx` 往 `shell.overlay` 注册的那一步
- *   没做（它现在注册的是右栏 tab body，那是另一个挂载点）。组件是纯受控的 ——
- *   宿主把 `<Drawer>` 挂进 `shell.overlay` 即可，见 `Drawer.tsx` 文件头。
- *   `shell.overlay` 是一条 **list** 槽：官方示例是先 `ctx.slots.inject('shell.overlay', …)`
- *   再 `ctx.slots.register({ name: 'shell.overlay', id: 'taskboard3-drawer', … }, Drawer)`。
- *
- * ## 为什么开合状态机要「纯」
- *
- * 设计图 ② 要求：输入框 Chevron / 工具栏 / 右栏入口**共用同一个 open 状态**、
- * 派生**同一个动作** —— 不是三套各写一遍 `setOpen(!open)`。
- * 把判决钉在这里之后，`Drawer.tsx` 只做机械映射；单测能把「三个入口动作相等」
- * 这类规则**逐个断言**，而不是靠「组件里看起来是同一个函数」。
+ * 用户原话：「组件要把所有候选形态给我过目」「我没有授权你选哪一个实现」。
+ * ⇒ **不能替用户选**。三个形态各是一份完整的数值配置，组件按 `variant` prop 渲染；
+ * 预览页三列并排给他看，他挑了之后只改 `DRAWER_DEFAULT_VARIANT_ID`。
  */
 
 /* ══════════════════════════════════════════════════════════
-   0. 尺寸常量 —— 设计图 1:1 标注
+   0. 尺寸常量
    ══════════════════════════════════════════════════════════ */
-
-/** 抽屉设计宽（`view-4-drawer-only.svg` 顶部标注「1:1 · 1200 × 400」）。 */
-export const DRAWER_WIDTH = 1200;
-
-/** 抽屉设计高。 */
-export const DRAWER_HEIGHT = 400;
 
 /**
- * 「矮容器」档位的上限 —— 设计图注：「高 400 ⇒ 只收紧纵向间距（`@container max-height:560`）」。
+ * 面板高度 = 屏幕高 × 这个比例（用户原话「高度 ≈ 屏幕一半」）。
  *
- * ⚠ 抽屉固定 400 高 ⇒ **永远落在 compact 档**；560 这个数留着是因为设计图把它
- *   写成了一条容器查询的边界，将来宿主给更高抽屉时行为仍然一致。
+ * ⚠ 这是**用户给的规格**，不是我们量出来的（CDP 不可用，量不了）。
+ *   它的可信度来自「用户原话」这一层，不来自测量 —— 报告里会写明。
  */
-export const DRAWER_COMPACT_MAX_HEIGHT = 560;
+export const DRAWER_HEIGHT_RATIO = 0.5;
+
+/**
+ * 面板高度上限（px）—— 候选维度里的 `min(50vh, 480px)`。
+ *
+ * 为什么是 480：任务书把 `min(50vh, 480px)` 列为候选值之一；
+ * 它要解决的问题是「屏幕很高时别让面板吃掉整段对话」。
+ * **480 本身没有测量依据**（沙箱里起不来浏览器），如实标注。
+ */
+export const DRAWER_HEIGHT_CAP_PX = 480;
+
+/** 入口正方形边长（px）。和 composer 工具行里 `+` 的 28px 同量级。 */
+export const DRAWER_ENTRY_SIZE_PX = 32;
+
+/**
+ * 入口按钮相对 composer 卡片左边线的横向偏移（px）。
+ *
+ * `0` = 正方形**右边缘贴输入框左边缘**（用户画图那一条）。
+ * 正值 = 留缝；组件用 `left:-边长` 实现，所以这里是「额外缝宽」。
+ */
+export const DRAWER_ENTRY_GAP_PX = 0;
+
+/** composer 工具行（`.GRgSLq_row`）的下内边距 —— asar 原文 `padding:2px 8px 6px`。 */
+export const DRAWER_TOOL_ROW_PAD_BOTTOM_PX = 6;
+
+/** composer 工具行里 `+` 的直径 —— asar 原文 `.GRgSLq_add{width:28px;height:28px}`。 */
+export const DRAWER_TOOL_ROW_BUTTON_PX = 28;
+
+/**
+ * 入口按钮底边距卡片底边的距离（px）—— 让 32px 正方形与 28px 的 `+` **垂直居中**。
+ *
+ * `6 + (28 - 32) / 2 = 4`。算出来而不是猜：行底 padding 6、`+` 高 28、按钮高 32。
+ */
+export const DRAWER_ENTRY_BOTTOM_PX =
+	DRAWER_TOOL_ROW_PAD_BOTTOM_PX + (DRAWER_TOOL_ROW_BUTTON_PX - DRAWER_ENTRY_SIZE_PX) / 2;
 
 /* ══════════════════════════════════════════════════════════
-   1. 开合状态机
+   1. 三个候选形态（用户要「全部过目」的那三份）
    ══════════════════════════════════════════════════════════ */
 
-/** 抽屉状态。只有一个比特 —— 它没有「半开」「加载中」这种中间态。 */
+/** 候选形态 id。`a` / `b` / `c` 对应预览页三列。 */
+export const DRAWER_VARIANT_IDS = ['a', 'b', 'c'] as const;
+
+/** 候选形态 id 的类型。 */
+export type DrawerVariantId = (typeof DRAWER_VARIANT_IDS)[number];
+
+/** 入口图标候选。 */
+export type DrawerIconId = 'square' | 'arrow-up' | 'dots';
+
+/** 高度候选：`capped-half` = `min(50vh, 480px)`；`half` = `50vh`。 */
+export type DrawerHeightMode = 'capped-half' | 'half';
+
+/** 面板阴影档。 */
+export type DrawerShadow = 'none' | 'soft' | 'strong';
+
+/** 一个完整候选形态。 */
+export interface DrawerVariant {
+	/** 形态 id（和表里的键必须一致，单测会查）。 */
+	readonly id: DrawerVariantId;
+	/** 预览页列头的中文名。 */
+	readonly label: string;
+	/** 一句话差异说明（预览页列头第二行）。 */
+	readonly summary: string;
+	/** 入口图标。 */
+	readonly icon: DrawerIconId;
+	/** 面板底边与输入框上边缘的间距（px）。 */
+	readonly gapPx: number;
+	/** 面板圆角（px）。 */
+	readonly radiusPx: number;
+	/** 面板高度规则。 */
+	readonly heightMode: DrawerHeightMode;
+	/** 面板阴影档。 */
+	readonly shadow: DrawerShadow;
+	/** 是否画半透明遮罩（点击遮罩 = 点外部 = 关）。 */
+	readonly mask: boolean;
+	/** 是否有 180ms 上滑动画。 */
+	readonly animated: boolean;
+}
+
+/**
+ * 三个候选形态 —— **每组是一个完整组合**，不是在一个基线上换一个数。
+ *
+ * | 形态 | 图标 | 间距 | 圆角 | 高度 | 阴影 | 遮罩 | 动画 |
+ * |---|---|---|---|---|---|---|---|
+ * | A `a` | ▣ 方块 | 0（紧贴）| 0（贴边）| `min(50vh, 480px)` | 无 | 无 | 无 |
+ * | B `b` | ▲ 上箭头 | 6px | 12px | `min(50vh, 480px)` | 轻 | 无 | 180ms 上滑 |
+ * | C `c` | ⋯ 三点 | 12px | 16px | `50vh` | 强 | 半透明 | 180ms 上滑 |
+ *
+ * ⚠ 用 `satisfies` 而不是类型标注：少一个形态 / 多一个形态都让 `tsc` 红
+ *   （AGENTS 3.7；`Object.freeze` 当实参会关掉多余属性检查）。
+ *   深冻结由 `freezeVariants` 做（`Object.freeze` 是浅的）。
+ */
+export const DRAWER_VARIANTS = freezeVariants({
+	a: {
+		id: 'a',
+		label: 'A · 贴边',
+		summary: '▣ 方块 · 间距 0 · 无圆角 · min(50vh,480px) · 无遮罩 · 无动画',
+		icon: 'square',
+		gapPx: 0,
+		radiusPx: 0,
+		heightMode: 'capped-half',
+		shadow: 'none',
+		mask: false,
+		animated: false,
+	},
+	b: {
+		id: 'b',
+		label: 'B · 圆角',
+		summary: '▲ 上箭头 · 间距 6px · 圆角 12px · min(50vh,480px) · 轻阴影 · 180ms 上滑',
+		icon: 'arrow-up',
+		gapPx: 6,
+		radiusPx: 12,
+		heightMode: 'capped-half',
+		shadow: 'soft',
+		mask: false,
+		animated: true,
+	},
+	c: {
+		id: 'c',
+		label: 'C · 重阴影 + 遮罩',
+		summary: '⋯ 三点 · 间距 12px · 圆角 16px · 50vh · 强阴影 · 半透明遮罩 · 180ms 上滑',
+		icon: 'dots',
+		gapPx: 12,
+		radiusPx: 16,
+		heightMode: 'half',
+		shadow: 'strong',
+		mask: true,
+		animated: true,
+	},
+} satisfies Record<DrawerVariantId, DrawerVariant>);
+
+/**
+ * 深冻结一张「形态表」：外层 + 每个形态都钉住（`Object.freeze` 是浅的）。
+ *
+ * @param table 形态表
+ */
+function freezeVariants<T extends object>(table: T): Readonly<T> {
+	for (const value of Object.values(table)) {
+		if (typeof value === 'object' && value !== null) Object.freeze(value);
+	}
+	return Object.freeze(table);
+}
+
+/**
+ * 默认形态 —— **占位，不是裁定**。
+ *
+ * 用户明确说「我没有授权你选哪一个实现」⇒ 产品接线前必须由用户定。
+ * 预览页三列并排给他选；这里先写 `a` 只为让组件有可运行的默认值。
+ */
+export const DRAWER_DEFAULT_VARIANT_ID: DrawerVariantId = 'a';
+
+/**
+ * 取一个形态。
+ *
+ * @param id 形态 id
+ */
+export function drawerVariantOf(id: DrawerVariantId): DrawerVariant {
+	return DRAWER_VARIANTS[id];
+}
+
+/* ══════════════════════════════════════════════════════════
+   2. 尺寸 → CSS（`styles.ts` 的 `DRAWER_CSS` 由这些函数插值生成）
+   ══════════════════════════════════════════════════════════ */
+
+/** 数值 → `Npx`。 */
+function px(value: number): string {
+	return `${String(value)}px`;
+}
+
+/** 面板高度（CSS 表达式）。 */
+export function drawerHeightCssOf(variant: DrawerVariant): string {
+	/*
+	 * `--tb3d-vh`：产品里不设 ⇒ 默认 `100vh`（屏幕高）；
+	 * 预览页三列并排时设成「模拟屏高」，否则三列共用浏览器 vh、高度维度看不出差别。
+	 */
+	const half = `calc(var(--tb3d-vh,100vh) * ${String(DRAWER_HEIGHT_RATIO)})`;
+	return variant.heightMode === 'capped-half'
+		? `min(${half}, ${px(DRAWER_HEIGHT_CAP_PX)})`
+		: half;
+}
+
+/**
+ * 面板高度（px 数值）—— 给「模拟屏高 → 实际多高」的表和单测用。
+ *
+ * ⚠ 浏览器里**最终高度还是 CSS 算的**（因为有 `vh` + `min()`）；
+ *   这个函数只是同一公式的数值版，用来断言公式没漂。
+ *
+ * @param variant 形态
+ * @param viewportHeightPx 屏幕高（px）
+ */
+export function drawerHeightPxOf(variant: DrawerVariant, viewportHeightPx: number): number {
+	const half = viewportHeightPx * DRAWER_HEIGHT_RATIO;
+	return Math.round(variant.heightMode === 'capped-half' ? Math.min(half, DRAWER_HEIGHT_CAP_PX) : half);
+}
+
+/** 阴影档 → CSS 值。 */
+export function drawerShadowCssOf(shadow: DrawerShadow): string {
+	switch (shadow) {
+		case 'none':
+			return 'none';
+		case 'soft':
+			return '0 10px 24px rgb(15 23 42 / 16%)';
+		case 'strong':
+			return '0 22px 48px rgb(15 23 42 / 32%)';
+	}
+}
+
+/**
+ * 面板的几何声明（CSS 声明串，落在 `.tb3d-panel[data-drawer-variant="…"]` 里）。
+ *
+ * 四件事：贴输入框上边缘（`bottom:calc(100% + gap)`）、圆角、高度、阴影；
+ * 有动画的形态再追加 `animation`。
+ *
+ * @param variant 形态
+ */
+export function drawerPanelCssOf(variant: DrawerVariant): string {
+	const parts = [
+		`bottom:calc(100% + ${px(variant.gapPx)})`,
+		`border-radius:${px(variant.radiusPx)}`,
+		`height:${drawerHeightCssOf(variant)}`,
+		`box-shadow:${drawerShadowCssOf(variant.shadow)}`,
+	];
+	if (variant.animated) parts.push('animation:tb3d-rise .18s ease-out');
+	return parts.join(';');
+}
+
+/**
+ * 入口正方形的定位声明。
+ *
+ * `left = -(边长 + 缝)`：正方形的**右边缘**正好落在卡片左边线上
+ * （`position:absolute` 的包含块是 composer 卡片 —— asar 原文
+ * `.GRgSLq_card{…position:relative}`；本组件由 `conversation.input.left`
+ * 槽渲染在工具行里，所以卡片就是最近的定位祖先）。
+ */
+export function drawerEntryCssOf(): string {
+	return [
+		`left:${px(-DRAWER_ENTRY_SIZE_PX - DRAWER_ENTRY_GAP_PX)}`,
+		`bottom:${px(DRAWER_ENTRY_BOTTOM_PX)}`,
+		`width:${px(DRAWER_ENTRY_SIZE_PX)}`,
+		`height:${px(DRAWER_ENTRY_SIZE_PX)}`,
+	].join(';');
+}
+
+/** 遮罩的声明（CSS 声明串；只有 `mask: true` 的形态才渲染遮罩）。 */
+export function drawerMaskCssOf(): string {
+	return 'position:fixed;inset:0;background:rgb(15 23 42 / 28%)';
+}
+
+/* ══════════════════════════════════════════════════════════
+   3. 开合状态机 + 共享 store
+   ══════════════════════════════════════════════════════════ */
+
+/** 抽屉状态。只有一个比特 —— 没有「半开」「加载中」。 */
 export interface DrawerState {
 	/** 是否打开。 */
 	readonly open: boolean;
@@ -90,129 +325,79 @@ export const DRAWER_CLOSED: DrawerState = Object.freeze({ open: false });
 export const DRAWER_OPEN: DrawerState = Object.freeze({ open: true });
 
 /**
- * 开合状态机的事件。
+ * 两个槽共用的**可订阅 store**。
  *
- * | type | 来自 |
- * |---|---|
- * | `toggle` | Chevron 按钮 / 工具栏入口 / 详情 ⧉（三处**同一个**动作）|
- * | `open` | 宿主主动打开（例如恢复上次状态）|
- * | `close` | 宿主主动关（例如切换会话）|
- * | `escape` | Esc 键 |
- * | `outside` | 点抽屉外部 |
- */
-export type DrawerEventType = 'toggle' | 'open' | 'close' | 'escape' | 'outside';
-
-/** 一条事件（只有类型，没有 payload）。 */
-export interface DrawerEvent {
-	readonly type: DrawerEventType;
-}
-
-/** 共享的「开」事件。 */
-export const DRAWER_OPEN_EVENT: DrawerEvent = Object.freeze({ type: 'open' });
-
-/** 共享的「关」事件。 */
-export const DRAWER_CLOSE_EVENT: DrawerEvent = Object.freeze({ type: 'close' });
-
-/**
- * **三个入口派发的同一个动作** —— 就是这一个对象。
+ * 为什么需要它：入口按钮注册在 `conversation.input.left`、面板注册在
+ * `conversation.input.overlay`，**是两个独立的 slot 条目**（可能渲染在不同位置），
+ * 不能靠 React props 共享状态。宿主也没有义务给我们一个 pinia。
  *
- * ⚠ 这是「共用同一个 open 状态」的结构性保证：`triggerEventOf()` 的返回值
- *   只有这一个，写不出第二个开合逻辑。
+ * ⇒ 注册代码按 session 各造一个 store，两个槽的 `inject(sessionId)` 拿**同一个对象**
+ *   （`register-drawer.tsx` 里用 Map 绑）。组件用 `useSyncExternalStore` 订阅。
  */
-export const DRAWER_TOGGLE_EVENT: DrawerEvent = Object.freeze({ type: 'toggle' });
-
-/**
- * 初始状态。
- *
- * @param open 初始是否打开（默认关）
- */
-export function initialDrawerState(open = false): DrawerState {
-	return open ? DRAWER_OPEN : DRAWER_CLOSED;
+export interface DrawerStore {
+	/** 这个 session 的形态（形态是配置，运行期不变）。 */
+	readonly variant: DrawerVariantId;
+	/** 当前快照。同一状态返回同一对象 ⇒ `useSyncExternalStore` 不会空转。 */
+	getSnapshot(): DrawerState;
+	/** 订阅；返回取消订阅。 */
+	subscribe(listener: () => void): () => void;
+	/** 开合翻面。 */
+	toggle(): void;
+	/** 只开（幂等，无变化不通知）。 */
+	open(): void;
+	/** 只关（幂等，无变化不通知）。 */
+	close(): void;
 }
 
 /**
- * 状态转移 —— **唯一的开合判决**。
+ * 造一个抽屉 store。
  *
- * `toggle` 翻面；`open` / `close` / `escape` / `outside` 是幂等的（已经那样就不动）。
- * 无变化时**返回原对象**（不是新对象）⇒ React 的 `setState` 会按引用相同直接跳过重渲染。
- *
- * @param state 当前状态
- * @param event 事件
+ * @param variant 形态（默认 `a` 占位，等用户选）
+ * @param initialOpen 初始是否打开（预览用；产品里默认关）
  */
-export function reduceDrawer(state: DrawerState, event: DrawerEvent): DrawerState {
-	switch (event.type) {
-		case 'open':
-			return state.open ? state : DRAWER_OPEN;
-		case 'toggle':
-			return state.open ? DRAWER_CLOSED : DRAWER_OPEN;
-		case 'close':
-		case 'escape':
-		case 'outside':
-			return state.open ? DRAWER_CLOSED : state;
-	}
-}
+export function createDrawerStore(
+	variant: DrawerVariantId = DRAWER_DEFAULT_VARIANT_ID,
+	initialOpen = false,
+): DrawerStore {
+	let state: DrawerState = initialOpen ? DRAWER_OPEN : DRAWER_CLOSED;
+	const listeners = new Set<() => void>();
 
-/**
- * 抽屉现在是不是开的。
- *
- * @param state 状态
- */
-export function isDrawerOpen(state: DrawerState): boolean {
-	return state.open;
+	/** 改状态 + 通知；引用没变直接返回（不空转）。 */
+	const setOpen = (open: boolean): void => {
+		if (state.open === open) return;
+		state = open ? DRAWER_OPEN : DRAWER_CLOSED;
+		for (const listener of [...listeners]) listener();
+	};
+
+	return Object.freeze({
+		variant,
+		getSnapshot: (): DrawerState => state,
+		subscribe: (listener: () => void): (() => void) => {
+			listeners.add(listener);
+			return (): void => {
+				listeners.delete(listener);
+			};
+		},
+		toggle: (): void => {
+			setOpen(!state.open);
+		},
+		open: (): void => {
+			setOpen(true);
+		},
+		close: (): void => {
+			setOpen(false);
+		},
+	});
 }
 
 /* ══════════════════════════════════════════════════════════
-   2. 三个入口 = 同一个动作
-   ══════════════════════════════════════════════════════════ */
-
-/**
- * 抽屉的入口（设计图 ②：「输入框左侧 Chevron；工具栏 / 右栏入口派发同一个动作」）。
- *
- * | 值 | 位置 | 谁画 |
- * |---|---|---|
- * | `chevron` | 输入框左侧的 Chevron | `DrawerToggle`（宿主挂进 composer 附近的槽）|
- * | `toolbar` | 工作区工具栏 | 宿主 / `Workspace` 的工具栏扩展位 |
- * | `detail-expand` | 详情右上角 ⧉ | `Workspace` 已有的 `onExpandDetail`（V4 预留）|
- */
-export type DrawerTriggerSource = 'chevron' | 'toolbar' | 'detail-expand';
-
-/** 全部入口（顺序 = 设计图 ② 的列举顺序）。 */
-export const DRAWER_TRIGGER_SOURCES: readonly DrawerTriggerSource[] = Object.freeze([
-	'chevron',
-	'toolbar',
-	'detail-expand',
-]);
-
-/**
- * 某个入口按下时该发什么事件。
- *
- * ⚠ 入参不参与判决 —— 三个入口**恒**返回同一个 `DRAWER_TOGGLE_EVENT`。
- *   参数留着是为了调用点自己说明「我是哪个入口」，也让单测能逐个入口断言。
- *
- * @param _source 入口（不参与判决）
- */
-export function triggerEventOf(_source: DrawerTriggerSource): DrawerEvent {
-	return DRAWER_TOGGLE_EVENT;
-}
-
-/**
- * 某个入口按下后的新状态。
- *
- * @param source 入口
- * @param state 当前状态
- */
-export function triggeredDrawerState(source: DrawerTriggerSource, state: DrawerState): DrawerState {
-	return reduceDrawer(state, triggerEventOf(source));
-}
-
-/* ══════════════════════════════════════════════════════════
-   3. 关闭条件（Esc / 点外部）
+   4. 关闭条件（Esc / 点外部）
    ══════════════════════════════════════════════════════════ */
 
 /**
  * 这个按键是不是「关抽屉」。
  *
- * - 只认 `Escape`（设计图 ②：「Esc ⇒ 关」）。
+ * - 只认 `Escape`。
  * - **输入法组字中不关**（中文输入法按 Esc 是取消候选词，不是关抽屉）。
  *
  * @param key `KeyboardEvent.key`
@@ -228,7 +413,7 @@ export function isDrawerCloseKey(key: string, composing = false): boolean {
  * | 字段 | 含义 |
  * |---|---|
  * | `inPanel` | 点在抽屉面板里 |
- * | `inTrigger` | 点在「触发器」上（它自己会 toggle，不能再抢先关一次）|
+ * | `inTrigger` | 点在入口按钮上（它自己 toggle，不能再抢先关一次）|
  * | `inStatusMenu` | 点在工作区的状态菜单里（菜单 portal 到 body，在面板外，但它属于抽屉）|
  */
 export interface DrawerHitTarget {
@@ -240,9 +425,10 @@ export interface DrawerHitTarget {
 /**
  * 这一下点击要不要关抽屉。
  *
- * ⚠ **不渲染遮罩层**：设计图里抽屉下方的输入框「仍可用」（`view-4-drawer.svg:126`），
- *   而遮罩会拦掉滚轮 / 点击 ⇒ 违反 ② 的「不抢焦点、不锁页面滚动」。
- *   所以「点外部关」靠 document 上的 pointerdown 判决，**不拦事件**（点了就点了）。
+ * ⚠ 三种「不关」例外都是**功能必需**，不是心软：
+ *   · 面板内 —— 不然点一下列表就没了；
+ *   · 入口按钮 —— 它自己 `toggle`，document 捕获阶段再关一次会「关了又开」；
+ *   · 状态菜单 —— 它 portal 到 body，DOM 上在面板外，但语义上属于抽屉。
  *
  * @param hit 命中位置
  */
@@ -251,15 +437,15 @@ export function closesDrawerOn(hit: DrawerHitTarget): boolean {
 }
 
 /* ══════════════════════════════════════════════════════════
-   4. 纵向间距档位（400 高怎么压）
+   5. 面板内容的压缩间距（高度 ≈ 屏幕一半 ⇒ 内容区仍要压）
    ══════════════════════════════════════════════════════════ */
 
 /**
  * 抽屉里的纵向间距表（px）—— **CSS 由这张表插值生成**（`styles.ts` 的 `DRAWER_CSS`）。
  *
- * ⚠ 只收**纵向**，横向一列都不动（设计图 ③：「宽 1200 ⇒ 横向分栏不变形」）。
- *   数值来源见 `DRAWER_COMPACT_SPACING` 每条注释，都是「为了 400 高里多露一行」
- *   量出来的（400 高里 list 只有 ~316px，一行卡 56px ⇒ 收 2px 就多露半行）。
+ * 数值沿用 V4 定稿表（那张表是照 400px 高量的：400 高里列表内容区只有 ~316px、
+ * 一张卡 56px ⇒ 每收 1px 都多露一点）。现在面板高 ~430–480px，比 400 略高，
+ * **只会更宽松，不会放不下**；等用户选定形态后再按真实高度复量一次。
  */
 export interface DrawerSpacing {
 	/** 抽屉顶栏高度（标题 / 刷新 / 关闭）。 */
@@ -268,10 +454,8 @@ export interface DrawerSpacing {
 	readonly pagePadY: number;
 	/** Workspace 页面横向内边距。 */
 	readonly pagePadX: number;
-	/** 工具栏（若与 chip 行并排则用 0；这里指 `margin-top`）。 */
+	/** 工具栏与上面一行的纵向间距。 */
 	readonly toolbarGap: number;
-	/** 筛选行 margin-top（抽屉里整行隐藏，值留档）。 */
-	readonly filtersGap: number;
 	/** 两栏主区 `margin-top`。 */
 	readonly mainGap: number;
 	/** 列表头 padding-top / bottom。 */
@@ -293,30 +477,16 @@ export interface DrawerSpacing {
 	readonly detailGap: number;
 	/** 详情里章节与章节之间 gap。 */
 	readonly sectionGap: number;
-	/** 抽屉宽版下左列固定宽（设计图：列表 316px）。 */
+	/** 抽屉宽版下左列固定宽。 */
 	readonly listWidth: number;
 }
 
-/**
- * 400 高（compact 档）的间距表。
- *
- * | 位置 | 工作区（regular，`WORKSPACE_CSS`）| 抽屉（compact）| 省 |
- * |---|---|---|---|
- * | 页面纵向 padding | 16 | 6 | 20 |
- * | 主区 margin-top | 12 | 6 | 6 |
- * | 列表头 padding | 11 / 7 | 6 / 4 | 8 |
- * | 列表滚动区 padding | 8 / 12 | 4 / 8 | 8 |
- * | 卡间距 / 卡 padding | 6 / 8 | 4 / 6 | 4 |
- * | 详情 padding / gap | 16 / 14 | 8 / 7 | 15 |
- * | 章节 gap | 12 | 8 | 4 |
- * | **合计** | — | — | **约 65px**（≈ 多露 1.2 张卡）|
- */
+/** 抽屉内容的压缩间距表（单一来源；CSS 插值读这里）。 */
 export const DRAWER_COMPACT_SPACING: DrawerSpacing = Object.freeze({
 	headerHeight: 36,
 	pagePadY: 6,
 	pagePadX: 12,
 	toolbarGap: 0,
-	filtersGap: 4,
 	mainGap: 6,
 	listHeadPadTop: 6,
 	listHeadPadBottom: 4,
@@ -331,61 +501,3 @@ export const DRAWER_COMPACT_SPACING: DrawerSpacing = Object.freeze({
 	sectionGap: 8,
 	listWidth: 320,
 });
-
-/**
- * 这个高度该走哪一档。
- *
- * @param height 抽屉内容高（px）
- */
-export function drawerTierOf(height: number): 'compact' | 'regular' {
-	return height <= DRAWER_COMPACT_MAX_HEIGHT ? 'compact' : 'regular';
-}
-
-/**
- * 这个高度该用哪张间距表。
- *
- * @param height 抽屉内容高（px）
- * @returns compact 档的间距表；`null` = 不覆盖，用 `Workspace` 自己的 CSS
- *   （regular 档的数值**只在 `WORKSPACE_CSS` 里有一份**，这里不抄第二份）
- */
-export function drawerSpacingOf(height: number): DrawerSpacing | null {
-	return drawerTierOf(height) === 'compact' ? DRAWER_COMPACT_SPACING : null;
-}
-
-/**
- * 抽屉里有哪几块 chrome 要收掉（compact 档）。
- *
- * 依据是设计图 `view-4-drawer-only.svg`：1200×400 的抽屉里**没有**筛选行、
- * 没有图例、列表也没有列名行 —— 这三块在 400 高里只吃纵向/横向空间。
- */
-export interface DrawerChrome {
-	/** 筛选行（状态 / 类别 / 领域 + 搜索）。 */
-	readonly showFilters: boolean;
-	/** 工具栏里那条关系图例。 */
-	readonly showLegend: boolean;
-	/** 列表列名行（编号 + 状态 / 分类 · 领域 · 模板 / 标题 / 最后动过）。 */
-	readonly showListCols: boolean;
-}
-
-/** 工作区（regular）的 chrome —— 三块都在。 */
-export const DRAWER_CHROME_FULL: DrawerChrome = Object.freeze({
-	showFilters: true,
-	showLegend: true,
-	showListCols: true,
-});
-
-/** 抽屉（compact）的 chrome —— 三块都收掉。 */
-export const DRAWER_CHROME_COMPACT: DrawerChrome = Object.freeze({
-	showFilters: false,
-	showLegend: false,
-	showListCols: false,
-});
-
-/**
- * 这个高度该露哪几块 chrome。
- *
- * @param height 抽屉内容高（px）
- */
-export function drawerChromeOf(height: number): DrawerChrome {
-	return drawerTierOf(height) === 'compact' ? DRAWER_CHROME_COMPACT : DRAWER_CHROME_FULL;
-}

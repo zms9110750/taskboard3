@@ -1,0 +1,173 @@
+/*
+ * 单栏模拟页 —— 只写预览外壳。
+ *
+ * 产品样式（`.tb3d-*` / `.tb3w-*`）与 mock composer 结构样式分别由
+ * `injectStyles()` / `injectMockStyles()` 注入（和产品、和候选对比页同一份）。
+ *
+ * 本文件：切换条 / 滚动区 / 一个「像 DSH 对话页」的窗口 / 提示条。
+ */
+
+body {
+  margin: 0;
+  background: #eef0f4;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.pv {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ══════════════════════════════════════════════════════════
+   顶部切换条（和候选对比页同款）
+   ══════════════════════════════════════════════════════════ */
+
+.pv-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #1f2328;
+  color: #fff;
+  font-size: 12px;
+}
+.pv-bar__tag {
+  padding: 1px 8px;
+  border-radius: 5px;
+  background: #fff;
+  color: #1f2328;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pv-bar__note {
+  color: #9aa1ad;
+  font-size: 11.5px;
+}
+.pv-bar__label {
+  color: #9aa1ad;
+  font-size: 11.5px;
+}
+.pv-bar__btn {
+  padding: 4px 12px;
+  border-radius: 7px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  background: transparent;
+  color: #d5d9e0;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pv-bar__btn:hover {
+  border-color: #fff;
+  color: #fff;
+}
+.pv-bar__btn.is-on {
+  background: #fff;
+  border-color: #fff;
+  color: #1f2328;
+  font-weight: 700;
+}
+.pv-bar__sep {
+  width: 1px;
+  height: 18px;
+  background: rgb(255 255 255 / 18%);
+}
+
+/* ══════════════════════════════════════════════════════════
+   一个「DSH 对话页」窗口
+   ══════════════════════════════════════════════════════════ */
+
+.pv-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  padding: 14px;
+}
+
+/*
+ * 窗口高度 = 切换条以外的高度；**不给 `--tb3d-vh`** ⇒ 面板高度走真实 50vh。
+ * 宽度取 DSH 对话列那档（约 1040），composer 卡片最宽 760。
+ */
+.pvs-window {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: min(1040px, 100%);
+  background: #fff;
+  border-radius: 12px;
+  outline: 1px solid #d5dae1;
+  outline-offset: -1px;
+  box-shadow: 0 8px 26px rgb(20 26 38 / 10%);
+  overflow: hidden;
+}
+
+.pvs-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px 10px;
+  border-bottom: 1px solid #eef0f3;
+}
+.pvs-head__title {
+  color: #1f2328;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pvs-head__chip {
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: #f1f3f6;
+  color: #6b7280;
+  font-size: 10px;
+}
+.pvs-head__muted {
+  color: #9ca3af;
+  font-size: 10.5px;
+}
+.pvs-head__state {
+  margin-left: auto;
+  color: #b0b7c1;
+  font-size: 10px;
+  max-width: 52%;
+  text-align: right;
+}
+
+/* ══════════════════════════════════════════════════════════
+   提示条
+   ══════════════════════════════════════════════════════════ */
+
+.pv-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(640px, calc(100vw - 48px));
+  padding: 9px 14px;
+  border-radius: 9px;
+  border: 1px solid #f5d0a9;
+  background: #fff7ed;
+  color: #92400e;
+  font-size: 12px;
+  box-shadow: 0 6px 20px rgb(20 26 38 / 12%);
+}
+.pv-toast button {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #92400e;
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}

@@ -1,88 +1,126 @@
 /**
- * 抽屉预览 —— 三个舞台，全部用**真实组件 + 真实尺寸**。
+ * 抽屉 **候选形态对比页** —— 用户要的「3 个变体并排，让我选」。
  *
- * | 舞台 | 尺寸 | 看什么 |
- * |---|---|---|
- * | 远景 `full` | 1600 × 1000 | 抽屉盖在 DSH 窗口上：左栏 / 对话区 / 右栏工作区都在，抽屉横在对话+工作区上方 |
- * | 抽屉本体 `panel` | 1200 × 400 | 1:1 看抽屉本身（顶栏 / 左列表 / 右详情 / 两栏各自滚）|
- * | 工作区 `narrow` | 570 × 920 | 真实 tab 尺寸的 Workspace（**没有抽屉** —— 它是帧级浮层，不属于这个 tab）|
+ * ## 看什么
+ *
+ * 三列各是一个**完整的小 composer + 抽屉**（不是三个孤零零的面板）：
+ * 入口正方形相对输入框的位置、面板底边贴输入框上边缘、面板宽度跟输入框一致
+ * —— 这些**位置关系**只有把 composer 画出来才看得见（用户原话：
+ * 「不要 handcraft 一个跟真 composer 无关的 mock」）。
+ *
+ * | 列 | 形态 |
+ * |---|---|
+ * | A | ▣ 方块 · 间距 0 · 无圆角 · `min(50vh,480px)` · 无遮罩 · 无动画 |
+ * | B | ▲ 上箭头 · 间距 6px · 圆角 12px · 轻阴影 · 180ms 上滑 |
+ * | C | ⋯ 三点 · 间距 12px · 圆角 16px · `50vh` · 强阴影 · 半透明遮罩 · 180ms 上滑 |
+ *
+ * ## 怎么玩
+ *
+ * - 点每列 composer 左下那颗**正方形入口**：开 / 合（三个入口图标各不相同）。
+ * - **Esc** 或 **点面板外**：关。
+ * - 顶部「模拟屏高」切 900 / 1200：高度候选 `min(50vh,480px)` 与 `50vh`
+ *   只在屏高 > 960 时有差别（如实；别的地方没有差别）。
+ * - 「全部打开 / 全部关闭」：三列一起。
  *
  * ## 真 / 假
  *
- * - **真**：`Drawer` / `DrawerToggle` / `Workspace` 以及里面全部定稿组件都是 `src/` 的同一份；
- *   样式来自 `injectStyles()`（产品和预览同一份 CSS）。
- * - **假**：没有服务端（回调只弹一条回执）；左侧栏 / 对话 / 输入框是**预览壳**，
- *   产品里由宿主渲染，这里画出来只为展示抽屉和它们的位置关系。
- * - **数据**：`fixtures.ts`（和 SSR 断言同一份）。
- *
- * ## 两个入口共用同一个 open 状态（设计图 ②）
- *
- * 输入框左侧的 `<DrawerToggle>` 和右栏详情的 ⧉（`Workspace` 的 `onExpandDetail`）
- * 都拿**同一个** `drawer.toggle` —— 不是各写一套。顶部还有一颗预览按钮，
- * 同样调它（第三个入口，演示「派生同一个动作」）。
+ * - **真**：`DrawerEntry` / `Drawer` / 面板里的 `<Workspace />` 全是 `src/` 同一份；
+ *   产品 CSS 由 `injectStyles()` 注入（与产品同一份）。
+ * - **假**：对话内容、`+`、发送键是 mock（没有服务端）。
+ * - 每列容器带 `transform:translateZ(0)`：把候选 C 的 `position:fixed` 遮罩
+ *   **关在本列里**（真实 DSH 里它铺满视口）。这是预览的模拟手段，不是产品行为。
  */
 
-import { StrictMode, useState } from 'react';
+import { StrictMode, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import type { ButtonAction } from '@taskboard/protocol';
-
 import { initRenderers } from '../../../src/init-renderers.ts';
-import type { Picked } from '../../../src/pure/filter-box.ts';
-import { Drawer, DrawerToggle, useDrawerState } from '../../../src/renderers/Drawer.tsx';
-import type { WorkspaceProps } from '../../../src/renderers/Workspace.tsx';
-import { Workspace } from '../../../src/renderers/Workspace.tsx';
+import {
+	DRAWER_VARIANTS,
+	DRAWER_VARIANT_IDS,
+	createDrawerStore,
+	drawerHeightPxOf,
+} from '../../../src/pure/drawer-view.ts';
+import type { DrawerStore, DrawerVariantId } from '../../../src/pure/drawer-view.ts';
+import { useDrawerStore } from '../../../src/renderers/Drawer.tsx';
 import { injectStyles } from '../../../src/styles.ts';
-import { CARDS, KIND_LABELS, PAGE_DEFAULT_PICKED, TEMPLATES, WORKSPACES } from './fixtures.ts';
+import { MockComposer, injectMockStyles, screenVarStyle } from './mock-composer.tsx';
+import { mockWorkspaceProps } from './mock-workspace.ts';
+
+/** 「模拟屏高」两档：900（高度候选无差别）与 1200（差别可见）。 */
+const SCREEN_HEIGHTS = [900, 1200] as const;
+
+/** 一档模拟屏高。 */
+type ScreenHeight = (typeof SCREEN_HEIGHTS)[number];
 
 /* ══════════════════════════════════════════════════════════
-   舞台
+   一列 = 一个完整形态
    ══════════════════════════════════════════════════════════ */
 
-/** 舞台 id。 */
-type StageId = 'full' | 'panel' | 'narrow';
-
-/** 一个舞台。 */
-interface Stage {
-	readonly id: StageId;
-	readonly label: string;
-	readonly note: string;
-	readonly width: number;
-	readonly height: number;
+/** 一列的属性。 */
+interface VariantColumnProps {
+	readonly variantId: DrawerVariantId;
+	readonly screenHeight: ScreenHeight;
+	readonly store: DrawerStore;
+	readonly onSay: (message: string) => void;
 }
 
-const STAGES: readonly Stage[] = Object.freeze([
-	{
-		id: 'full',
-		label: '远景 1600 × 1000',
-		note: '抽屉盖在 DSH 窗口上；底边在输入框上方 8px（设计图对齐），水平居中于「对话 + 工作区」',
-		width: 1600,
-		height: 1000,
-	},
-	{
-		id: 'panel',
-		label: '抽屉本体 1200 × 400',
-		note: '1:1；两栏各自滚（面板自己不滚）',
-		width: 1200,
-		height: 400,
-	},
-	{
-		id: 'narrow',
-		label: '工作区 570 × 920',
-		note: '真实 tab 尺寸 —— 抽屉是帧级浮层，在这个 tab 里不会出现',
-		width: 570,
-		height: 920,
-	},
-]);
+/**
+ * 一列：列头 + 完整 composer（真入口 + 真面板 + 压缩版 Workspace）。
+ *
+ * @param props 见 `VariantColumnProps`
+ */
+function VariantColumn(props: VariantColumnProps): React.ReactNode {
+	const variant = DRAWER_VARIANTS[props.variantId];
+	const drawer = useDrawerStore(props.store);
+	const [selectedId, setSelectedId] = useState<string | null>('GU-02');
 
-/** 抽屉底边距（远景舞台）：设计图里抽屉下缘比输入框上缘高 8px。 */
-const FULL_BOTTOM_OFFSET = 136;
+	/* `mockWorkspaceProps` 每次都造新对象 ⇒ useMemo 只为让 Workspace 少重渲染一次。 */
+	const workspace = useMemo(
+		() =>
+			mockWorkspaceProps({
+				selectedId,
+				onSelect: setSelectedId,
+				onSay: props.onSay,
+			}),
+		[selectedId, props.onSay],
+	);
 
-/** 侧栏宽（设计图 280）。 */
-const SIDEBAR_WIDTH = 280;
+	/* 同一公式的数值版：告诉用户这一档屏高下实际多高。 */
+	const heightPx = drawerHeightPxOf(variant, props.screenHeight);
 
-/** 右栏工作区宽（设计图 570）。 */
-const PANE_WIDTH = 570;
+	return (
+		<section
+			className="pvc"
+			data-variant-column={props.variantId}
+			data-screen-height={String(props.screenHeight)}
+			style={screenVarStyle(props.screenHeight)}
+		>
+			<header className="pvc__head">
+				<div className="pvc__titleline">
+					<span className="pvc__tag" data-variant-label={props.variantId}>
+						{variant.label}
+					</span>
+					<span className="pvc__height" data-variant-height={String(heightPx)}>
+						面板高 {heightPx}px
+					</span>
+				</div>
+				<div className="pvc__summary">{variant.summary}</div>
+			</header>
+			<MockComposer
+				variant={variant}
+				open={drawer.open}
+				onToggle={drawer.toggle}
+				onClose={drawer.close}
+				workspace={workspace}
+				title="任务板"
+				onRefresh={() => {
+					props.onSay('抽屉：刷新（预览：没有服务端）');
+				}}
+			/>
+		</section>
+	);
+}
 
 /* ══════════════════════════════════════════════════════════
    页面
@@ -90,348 +128,91 @@ const PANE_WIDTH = 570;
 
 /** 预览页。 */
 function App(): React.ReactNode {
-	const [stageId, setStageId] = useState<StageId>('full');
-	/** 远景舞台的抽屉对齐：设计图 = 居中于「对话 + 工作区」；另一档 = 居中于整帧。 */
-	const [align, setAlign] = useState<'pane' | 'frame'>('pane');
+	const [screenHeight, setScreenHeight] = useState<ScreenHeight>(1200);
 	const [notice, setNotice] = useState<string | undefined>(undefined);
 
-	/* ── 两个 Workspace 实例的状态**各一份**（设计图 ④：状态独立） ── */
+	/*
+	 * 三列各一个 store。用 `useMemo` 只造一次 —— 屏高切换不能把开合状态清掉，
+	 * 否则用户每点一次「模拟屏高」三个抽屉全关上。
+	 */
+	const stores = useMemo((): Readonly<Record<DrawerVariantId, DrawerStore>> => {
+		const created = {} as Record<DrawerVariantId, DrawerStore>;
+		for (const id of DRAWER_VARIANT_IDS) {
+			created[id] = createDrawerStore(id, true);
+		}
+		return created;
+	}, []);
 
-	/* 页签实例（远景里右栏那个） */
-	const [pageCurrent, setPageCurrent] = useState('default');
-	const [pageViewing, setPageViewing] = useState('default');
-	const [pageShowArchived, setPageShowArchived] = useState(false);
-	const [pageSelected, setPageSelected] = useState<string | null>('GU-01');
-
-	/* 抽屉实例（第二个实例） */
-	const [drawerCurrent, setDrawerCurrent] = useState('default');
-	const [drawerViewing, setDrawerViewing] = useState('default');
-	const [drawerShowArchived, setDrawerShowArchived] = useState(false);
-	const [drawerSelected, setDrawerSelected] = useState<string | null>('GU-02');
-
-	/* 开合状态：输入框 Chevron / 右栏 ⧉ / 顶部预览按钮 **共用这一个** */
-	const drawer = useDrawerState(true);
-
-	const stage = STAGES.find((one) => one.id === stageId) ?? (STAGES[0] as Stage);
-
-	/** 假回执（预览没有服务端）。 */
-	const say = (message: string): void => {
-		setNotice(message);
+	/** 三列一起开 / 关。 */
+	const setAll = (open: boolean): void => {
+		for (const id of DRAWER_VARIANT_IDS) {
+			const store = stores[id];
+			if (open) store.open();
+			else store.close();
+		}
 	};
-
-	/** 状态菜单选了某项。 */
-	const onAction = (kind: '页签' | '抽屉') => (cardId: string, action: ButtonAction): void => {
-		say(`${kind}：状态转移 ${cardId} →「${action.label}」（预览：不发请求、不落库）`);
-	};
-
-	/** 空间操作。 */
-	const spaceCallbacks = (
-		which: '页签' | '抽屉',
-	): Pick<
-		WorkspaceProps,
-		| 'onView'
-		| 'onActivate'
-		| 'onToggleArchived'
-		| 'onToggleShowArchived'
-		| 'onCreateWorkspace'
-	> => ({
-		onView: which === '页签' ? setPageViewing : setDrawerViewing,
-		onActivate: (id) => {
-			(which === '页签' ? setPageCurrent : setDrawerCurrent)(id);
-			say(`${which}：「${id}」现在是当前空间（预览：不落库）`);
-		},
-		onToggleArchived: (id) => {
-			say(`${which}：切换「${id}」归档态（预览：不落库）`);
-		},
-		onToggleShowArchived: () => {
-			(which === '页签' ? setPageShowArchived : setDrawerShowArchived)((prev) => !prev);
-		},
-		onCreateWorkspace: () => {
-			say(`${which}：新建任务板（预览：没有服务端）`);
-		},
-	});
-
-	const commonCallbacks = (
-		which: '页签' | '抽屉',
-	): Pick<
-		WorkspaceProps,
-		| 'onSelect'
-		| 'onCreateCard'
-		| 'onFilterChange'
-		| 'onSearchChange'
-		| 'onAction'
-		| 'onAddRelation'
-		| 'onDerive'
-		| 'onNoteChange'
-		| 'onOpenPermission'
-	> => ({
-		onSelect: (cardId) => {
-			(which === '页签' ? setPageSelected : setDrawerSelected)(cardId);
-		},
-		onCreateCard: () => {
-			say(`${which}：打开建卡页（预览：入口没接）`);
-		},
-		onFilterChange: (id: string, next: Picked) => {
-			say(`${which}：筛选 ${id} → ${next.length === 0 ? '（清空）' : next.join(' / ')}`);
-		},
-		onSearchChange: () => {
-			say(`${which}：搜索（预览：过滤在本组件内已生效）`);
-		},
-		onAction: onAction(which),
-		onAddRelation: (cardId) => {
-			say(`${which}：打开 ${cardId} 的关系浮层（关系区还没做）`);
-		},
-		onDerive: (cardId) => {
-			say(`${which}：从 ${cardId} 派生子任务（预览：入口没接）`);
-		},
-		onNoteChange: (cardId) => {
-			say(`${which}：备注已提交 ${cardId}（预览：不落库）`);
-		},
-		onOpenPermission: () => {
-			say(`${which}：权限与约定面板（V2 在别的任务里做）`);
-		},
-	});
-
-	/** 页签实例的 props。 */
-	const pageProps: WorkspaceProps = {
-		workspaces: WORKSPACES,
-		currentId: pageCurrent,
-		viewingId: pageViewing,
-		showArchived: pageShowArchived,
-		cards: CARDS,
-		templates: TEMPLATES,
-		selectedId: pageSelected,
-		defaultPicked: PAGE_DEFAULT_PICKED,
-		kindLabelOf: (kind) => KIND_LABELS[kind] ?? kind,
-		aiUnreadCount: 1,
-		aiUpdatedCount: 2,
-		...spaceCallbacks('页签'),
-		...commonCallbacks('页签'),
-		/* 右栏详情的 ⧉ ⇒ 用**同一个** toggle 打开抽屉（设计图 ② 的「右栏入口」） */
-		onExpandDetail: drawer.toggle,
-	};
-
-	/** 抽屉实例的 props（**第二个实例**，状态独立）。 */
-	const drawerProps: WorkspaceProps = {
-		workspaces: WORKSPACES,
-		currentId: drawerCurrent,
-		viewingId: drawerViewing,
-		showArchived: drawerShowArchived,
-		cards: CARDS,
-		templates: TEMPLATES,
-		selectedId: drawerSelected,
-		kindLabelOf: (kind) => KIND_LABELS[kind] ?? kind,
-		aiUnreadCount: 1,
-		aiUpdatedCount: 2,
-		...spaceCallbacks('抽屉'),
-		...commonCallbacks('抽屉'),
-	};
-
-	/** 顶栏预览控制条。 */
-	const bar = (
-		<header className="pv-bar">
-			<span className="pv-bar__tag">V4 Drawer · 抽屉视图</span>
-			{STAGES.map((one) => (
-				<button
-					key={one.id}
-					type="button"
-					className={`pv-bar__btn${one.id === stage.id ? ' is-on' : ''}`}
-					data-stage-btn={one.id}
-					onClick={() => {
-						setStageId(one.id);
-					}}
-				>
-					{one.label}
-				</button>
-			))}
-			<span className="pv-bar__sep" />
-			<button
-				type="button"
-				className={`pv-bar__btn${drawer.open ? ' is-on' : ''}`}
-				data-drawer-toggle="1"
-				onClick={drawer.toggle}
-			>
-				{drawer.open ? '抽屉：开' : '抽屉：关'}
-			</button>
-			{stage.id === 'full' ? (
-				<>
-					<span className="pv-bar__sep" />
-					<button
-						type="button"
-						className={`pv-bar__btn${align === 'pane' ? ' is-on' : ''}`}
-						data-align-btn="pane"
-						onClick={() => {
-							setAlign('pane');
-						}}
-					>
-						对齐：对话 + 工作区（设计图）
-					</button>
-					<button
-						type="button"
-						className={`pv-bar__btn${align === 'frame' ? ' is-on' : ''}`}
-						data-align-btn="frame"
-						onClick={() => {
-							setAlign('frame');
-						}}
-					>
-						对齐：整帧
-					</button>
-				</>
-			) : null}
-			<span className="pv-bar__note">{stage.note}</span>
-		</header>
-	);
 
 	return (
 		<div className="pv">
-			{bar}
+			<header className="pv-bar">
+				<span className="pv-bar__tag">抽屉 V5 · 候选形态对比（3 选 1）</span>
+				<span className="pv-bar__note">
+					点每列 composer 左下角的入口开合；Esc / 点面板外关闭。宽度 = 输入框宽，高度 ≈ 屏幕一半。
+				</span>
+				<span className="pv-bar__sep" />
+				<span className="pv-bar__label">模拟屏高</span>
+				{SCREEN_HEIGHTS.map((height) => (
+					<button
+						key={height}
+						type="button"
+						className={`pv-bar__btn${height === screenHeight ? ' is-on' : ''}`}
+						data-screen-btn={String(height)}
+						onClick={() => {
+							setScreenHeight(height);
+						}}
+					>
+						{height}px
+					</button>
+				))}
+				<span className="pv-bar__sep" />
+				<button
+					type="button"
+					className="pv-bar__btn"
+					data-all-btn="open"
+					onClick={() => {
+						setAll(true);
+					}}
+				>
+					全部打开
+				</button>
+				<button
+					type="button"
+					className="pv-bar__btn"
+					data-all-btn="close"
+					onClick={() => {
+						setAll(false);
+					}}
+				>
+					全部关闭
+				</button>
+			</header>
 
 			<div className="pv-scroll">
-				<div
-					className={`pv-stage${stage.id === 'panel' ? ' pv-stage--panel' : ''}`}
-					data-stage={stage.id}
-					style={{ width: `${String(stage.width)}px`, height: `${String(stage.height)}px` }}
-				>
-					{stage.id === 'narrow' ? (
-						/* ── 570×920：真实 tab 尺寸的 Workspace（没有抽屉） ── */
-						<>
-							<div className="pv-tabbar">
-								<span>▦ 任务板 · 工作区</span>
-								<span className="pv-tabbar__hint">570 × 920 · 真实 tab 尺寸</span>
-							</div>
-							<div className="pv-pane__body">
-								<Workspace {...pageProps} />
-							</div>
-						</>
-					) : stage.id === 'panel' ? (
-						/* ── 1200×400：抽屉本体 1:1 ── */
-						<>
-							{drawer.open ? (
-								<div className="pv-overlay pv-overlay--solo">
-									<Drawer
-										open
-										onClose={drawer.close}
-										workspace={drawerProps}
-										bottomOffset={0}
-										onRefresh={() => {
-											say('抽屉：刷新（预览：没有服务端）');
-										}}
-									/>
-								</div>
-							) : (
-								<div className="pv-panel-hint" data-panel-hint="1">
-									抽屉关着 —— 点顶部「抽屉：关」打开
-								</div>
-							)}
-						</>
-					) : (
-						/* ── 1600×1000：远景（DSH 窗口 + 帧级抽屉） ── */
-						<>
-							<div className="pv-shell">
-								{/* 左侧栏（mock：产品里是宿主画的） */}
-								<aside className="pv-sidebar" style={{ width: `${String(SIDEBAR_WIDTH)}px` }}>
-									<div className="pv-sidebar__brand">
-										deepseek <b>HARNESS</b>
-									</div>
-									<div className="pv-sidebar__newchat">＋ 新会话</div>
-									<div className="pv-sidebar__row">◇　插件</div>
-									<div className="pv-sidebar__row">◷　自动化任务</div>
-									<div className="pv-sidebar__row">▦　更多</div>
-									<div className="pv-sidebar__label">工作区</div>
-									<div className="pv-sidebar__row">▤　petSystem2</div>
-									<div className="pv-sidebar__row">▤　petSystem</div>
-									<div className="pv-sidebar__row is-active">▤　dsh</div>
-									<div className="pv-sidebar__label">默认工作区</div>
-									<div className="pv-sidebar__hint">使用任务板查看当前卡片</div>
-									<div className="pv-sidebar__hint">查看任务板2 并阅读提示</div>
-									<div className="pv-sidebar__hint">用工具查看自身插件</div>
-									<div className="pv-sidebar__foot">⚙　设置</div>
-								</aside>
-
-								{/* 对话区（mock：抽屉的触发点在它的输入框左侧） */}
-								<main className="pv-conv">
-									<div className="pv-conv__head">
-										<span className="pv-conv__title">重构 taskboard2 项目代码</span>
-										<span className="pv-conv__chip">标准模式</span>
-										<span className="pv-conv__muted">28 个子智能体</span>
-									</div>
-									<div className="pv-conv__body">
-										<div className="pv-conv__tag">自动化任务 · 06:00</div>
-										<div className="pv-conv__line">已完成，用时 40 秒 ▾</div>
-										<div className="pv-conv__line">
-											我上一份汇报里说 src/create/ 12 个文件可能重复，这个判断是错的，抱歉。
-										</div>
-										<div className="pv-conv__line is-strong">精确统计结果：</div>
-										<div className="pv-conv__code">
-											<div>src/           12 个 + 顶栏（入口、store、api、styles、注册表）</div>
-											<div>src/renderers/ 20 个 + 组件      src/views/ 5 个 + MVP 半成品</div>
-										</div>
-									</div>
-
-									{/* 输入框（mock；左侧 Chevron 是**真组件** DrawerToggle） */}
-									<div className="pv-composer">
-										<div className="pv-composer__toggle">
-											<DrawerToggle open={drawer.open} onToggle={drawer.toggle} />
-										</div>
-										<div className="pv-composer__card">
-											<div className="pv-composer__placeholder">
-												发消息或创建任务 / 调用指令，@ 文件或对话
-											</div>
-											<div className="pv-composer__row">
-												<span className="pv-composer__pill">＋</span>
-												<span className="pv-composer__muted">完全权限 ▾</span>
-												<span className="pv-composer__model">DeepSeek V4.1 Flash Default ▾</span>
-												<span className="pv-composer__send">↑</span>
-											</div>
-										</div>
-									</div>
-								</main>
-
-								{/* 右栏工作区（mock tab 头 + **真 Workspace**，570 宽） */}
-								<aside className="pv-pane" style={{ width: `${String(PANE_WIDTH)}px` }}>
-									<div className="pv-tabbar">
-										<span className="pv-tabbar__active">任务板</span>
-										<span className="pv-tabbar__tab">文件</span>
-										<span className="pv-tabbar__hint">570 × 920 · 真实 tab 宽</span>
-									</div>
-									<div className="pv-pane__body">
-										<Workspace {...pageProps} />
-									</div>
-								</aside>
-							</div>
-
-							{/*
-							 * 帧级 overlay 的**模拟**：真实产品里这一层由 DSH 的 AppFrame 提供
-							 * （`shell.overlay`：absolute、inset:0、pointer-events:none）。
-							 * 这里的 `.pv-overlay--pane` 只是把「设计图居中于对话+工作区」演出来；
-							 * 「整帧」那档就是真实 overlay 的 0 偏移。
-							 */}
-							<div
-								className={`pv-overlay${align === 'pane' ? ' pv-overlay--pane' : ''}`}
-								data-overlay={align}
-								style={
-									align === 'pane'
-										? { left: `${String(SIDEBAR_WIDTH)}px` }
-										: undefined
-								}
-							>
-								<Drawer
-									open={drawer.open}
-									onClose={drawer.close}
-									workspace={drawerProps}
-									bottomOffset={FULL_BOTTOM_OFFSET}
-									onRefresh={() => {
-										say('抽屉：刷新（预览：没有服务端）');
-									}}
-								/>
-							</div>
-						</>
-					)}
+				<div className="pv-columns">
+					{DRAWER_VARIANT_IDS.map((id) => (
+						<VariantColumn
+							key={id}
+							variantId={id}
+							screenHeight={screenHeight}
+							store={stores[id]}
+							onSay={setNotice}
+						/>
+					))}
 				</div>
 			</div>
 
 			{notice === undefined ? null : (
-				<div className="pv-toast" data-pv-toast>
+				<div className="pv-toast" data-pv-toast="1">
 					<span>{notice}</span>
 					<button
 						type="button"
@@ -450,6 +231,7 @@ function App(): React.ReactNode {
 /* 产品样式和预览是同一份 —— 不在预览的 style.css 里抄一份。 */
 initRenderers();
 injectStyles();
+injectMockStyles();
 
 const root = document.getElementById('root');
 if (root !== null) {
