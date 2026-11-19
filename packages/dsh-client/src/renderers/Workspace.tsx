@@ -62,7 +62,8 @@
 import { useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 
-import { TASK_STATES, buttonsOf, isTaskState } from '@taskboard/protocol';
+import { GROUP_LABELS, TASK_STATES, buttonsOf, isTaskState, statesInGroup } from '@taskboard/protocol';
+import type { StatusGroup } from '@taskboard/protocol';
 import type { ButtonAction } from '@taskboard/protocol';
 
 import { KIND_ORDER, cardTimes, stateLabel } from '../pure/card-view.ts';
@@ -95,6 +96,24 @@ import { TechTree } from './TechTree.tsx';
    ⚠ 图例的颜色**不是状态色**（那是 9 状态一状态一色那套）。六种关系各一个
    色相/线型，和旧版一致；数值抄设计图 view-3-workspace.svg 的图例段。
    ══════════════════════════════════════════════════════════ */
+
+/**
+ * 四个状态组的展示顺序（草稿 / 进行 / 搁置 / 完成）。
+ *
+ * ⚠ 顺序跟着 `GROUP_LABELS` 的定义顺序（原版 `relations-block.js` 的注释：
+ *   「组顺序按用户原话，别按字典排」）。组名和归属都来自 protocol，UI 不造词。
+ *
+ * `satisfies` 保证每个值都是合法组；下面的长度断言保证没漏组。
+ */
+const STATUS_GROUP_ORDER = [
+	'draft',
+	'active',
+	'shelved',
+	'ended',
+] as const satisfies readonly StatusGroup[];
+
+/** 少一个组时这里编译失败（`StatusGroup` 正好 4 个）。 */
+const _GROUP_ORDER_COUNT: 4 = STATUS_GROUP_ORDER.length;
 
 /** 图例一项。`rel` 只用于 CSS 选择颜色/线型（`data-rel`）。 */
 interface LegendItem {
@@ -338,8 +357,29 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 	/* ── 三棵筛选树 ── */
 
+	/*
+	 * 状态筛选：**两级**（用户 2026-11-20：「我授权的状态筛选，是展示4个组，
+	 * 以及选择组以后展示二级子项的版本」）。
+	 *
+	 * 一级 = 4 个组（草稿 / 进行 / 搁置 / 完成），二级 = 组下的具体状态。
+	 * 组的名字和归属都来自 `@taskboard/protocol`，**UI 不造词**：
+	 *   `GROUP_LABELS` / `STATUS_GROUP_OF` / `statesInGroup()`
+	 *
+	 * ⚠ 组本身也是一个有效筛选依据 —— 选组 = 该组下所有状态都匹配，
+	 *   由 `card-filter.ts` 的路径前缀判决实现（卡的状态路径是
+	 *   `[组, 状态]`，选 `[组]` 时它正是前缀）。
+	 *
+	 * 参照原版 `taskboard2/packages/browser/src/views/card-list/filter-row.ts:7-9`：
+	 *   点开 → 草稿 | 进行 | 搁置 | 完成
+	 *   点组 → 组高亮 + 该组子项
+	 */
 	const statusNodes = useMemo<readonly FilterNode[]>(
-		() => TASK_STATES.map((state) => ({ value: state, label: stateLabel(state) })),
+		() =>
+			STATUS_GROUP_ORDER.map((group) => ({
+				value: group,
+				label: GROUP_LABELS[group],
+				children: statesInGroup(group).map((state) => ({ value: state, label: stateLabel(state) })),
+			})),
 		[],
 	);
 

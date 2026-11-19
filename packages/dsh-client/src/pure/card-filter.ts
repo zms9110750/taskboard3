@@ -23,7 +23,7 @@
  *
  * | boxId | 路径的含义（`Workspace.tsx` 建树的方式）|
  * |---|---|
- * | `status` | `[TASK_STATE_*]` —— 状态框**一层平铺** |
+ * | `status` | `[组]` / `[组, 状态]` —— **两级**（用户 2026-11-20）|
  * | `kind` | `[kind]` —— 类别框一层平铺 |
  * | `domain` | `[领域]` / `[领域, 类别]` / `[领域, 类别, 模板 ref]` —— 三层 |
  *
@@ -31,7 +31,7 @@
  *
  * 一张卡在每棵树里的位置是确定的：
  *
- * - 状态：`[card.status]`
+ * - 状态：`[STATUS_GROUP_OF[card.status], card.status]`
  * - 类别：`[card.template.kind]`
  * - 领域：`[card.template.domain, card.template.kind, card.template.ref]`
  *
@@ -39,12 +39,9 @@
  * ——「选了 核心›设计」= 领域是核心、类别是设计（模板不限），
  * 这正是面包屑筛选的语义。空路径 = 不约束。
  *
- * ⚠ **状态框现在是一层平铺**，所以卡的状态路径就是 `[card.status]`。
- *   哪天状态框改成「组 › 状态」两层（`草稿 / 进行 / 搁置 / 完成` 下面挂状态），
- *   只需要改 `cardPathsOf()` 里的一处：把状态路径写成
- *   `[STATUS_GROUP_OF[status], status]`。本文件其它地方不用动。
- *
- * ## 搜索匹配哪些字段
+ * **状态是两级**（用户 2026-11-20：「展示 4 个组，以及选择组以后展示二级子项」）：
+ *   选 `[组]` 时它是 `[组, 状态]` 的前缀 ⇒ 该组下所有状态都匹配（组本身
+ *   就是一个有效筛选依据）；选 `[组, 状态]` 时精确匹配。 搜索匹配哪些字段
  *
  * | 字段 | 规则 | 为什么 |
  * |---|---|---|
@@ -73,6 +70,8 @@
  * 绝不回落成「全部返回」。空结果是能看见的（`Workspace` 画空态），
  * 悄悄返回全部会让人以为筛选坏了。
  */
+
+import { STATUS_GROUP_OF, isTaskState } from '@taskboard/protocol';
 
 import type { Card } from '../types.ts';
 import type { Picked } from './filter-box.ts';
@@ -159,13 +158,24 @@ interface CardPaths {
 /**
  * 取卡的位置路径。
  *
- * ⚠ **状态那一行是「状态框改成两层」时唯一要改的地方**（见文件头）。
+ * 状态是**两级**（用户 2026-11-20）：
+ *   `[组, 状态]` —— 选组（路径 `[组]`）时它正是前缀 ⇒ 该组下所有状态都匹配；
+ *   选具体状态（路径 `[组, 状态]`）时精确匹配。
+ *
+ * 组的归属来自 `STATUS_GROUP_OF`（protocol 的 `Record<TaskState, StatusGroup>`，
+ * 九个状态每个都必须有归属），**不在这里硬编码状态名**。
  *
  * @param card 一张卡
  */
 function cardPathsOf(card: Card): CardPaths {
+	/*
+	 * `Card.status` 在 client 侧是 `string`（服务端来的），不是 `TaskState`。
+	 * ⇒ 用 `isTaskState` 守卫：合法状态才查组；不合法时退化成一层的 `[status]`
+	 *   （匹配不到组，但仍能按状态精确匹配 —— 不会因为脏数据把卡藏掉）。
+	 */
+	const statusGroup = isTaskState(card.status) ? STATUS_GROUP_OF[card.status] : card.status;
 	return {
-		status: [card.status],
+		status: [statusGroup, card.status],
 		kind: [card.template.kind],
 		domain: [card.template.domain, card.template.kind, card.template.ref],
 	};

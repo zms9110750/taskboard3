@@ -41,6 +41,8 @@ import {
 	searchCards,
 } from '../src/pure/card-filter.ts';
 import type { CardFilter } from '../src/pure/card-filter.ts';
+
+import { groupOf } from '@taskboard/protocol';
 import type { Card } from '../src/types.ts';
 
 /* ── 状态全名（省得每处写长串；与 `protocol` 的 `TaskState` 同值） ── */
@@ -186,7 +188,36 @@ describe('filterCards —— 筛选（不匹配的卡直接不在结果里）', 
 	});
 
 	it('只看状态 ⇒ 只留该状态的两张', () => {
-		assert.deepEqual(ids(filterCards(CARDS, filterOf({ status: [S.submitted] }))), ['U-01', 'T-06']);
+		assert.deepEqual(
+			ids(filterCards(CARDS, filterOf({ status: [groupOf(S.submitted), S.submitted] }))),
+			['U-01', 'T-06'],
+		);
+	});
+
+	/*
+	 * 状态两级（用户 2026-11-20：「展示4个组，以及选择组以后展示二级子项」）。
+	 *
+	 * 选组 = 该组下所有状态都匹配（组本身就是一个有效筛选依据）——
+	 * 靠路径前缀判决实现：卡的状态路径是 [组, 状态]，选 [组] 时它是前缀。
+	 */
+	it('只选组（第 1 层）⇒ 该组下所有状态的卡都留', () => {
+		/*
+		 * active 组只含 SUBMITTED / WORKING（`protocol/status.ts:115-123`）——
+		 * AUTH_REQUIRED 属于 shelved（搁置），别凭直觉猜。
+		 * ⇒ U-01 / F-02 / S-05 / T-06 / D-09
+		 */
+		assert.deepEqual(
+			ids(filterCards(CARDS, filterOf({ status: [groupOf(S.submitted)] }))),
+			['U-01', 'F-02', 'S-05', 'T-06', 'D-09'],
+		);
+	});
+
+	it('选组 + 具体状态 ⇒ 精确到那个状态', () => {
+		/* active 组下 working 的：F-02 / S-05 / D-09 */
+		assert.deepEqual(
+			ids(filterCards(CARDS, filterOf({ status: [groupOf(S.working), S.working] }))),
+			['F-02', 'S-05', 'D-09'],
+		);
 	});
 
 	it('只看类别 ⇒ 只留 design 两张', () => {
@@ -220,7 +251,7 @@ describe('filterCards —— 筛选（不匹配的卡直接不在结果里）', 
 			ids(
 				filterCards(
 					CARDS,
-					filterOf({ status: [S.submitted], kind: ['goal'], domain: ['代码'] }),
+					filterOf({ status: [groupOf(S.submitted), S.submitted], kind: ['goal'], domain: ['代码'] }),
 				),
 			),
 			['T-06'],
@@ -380,8 +411,8 @@ describe('isCardInFilter / isCardMatched —— 单卡判决（filterCards 的�
 	it('状态 / 类别 / 领域 三层都要满足', () => {
 		const target = CARDS[2] as Card; /* C-03：authRequired / design / 核心 / decision */
 		assert.equal(isCardInFilter(target, EMPTY_FILTER), true);
-		assert.equal(isCardInFilter(target, filterOf({ status: [S.authRequired] })), true);
-		assert.equal(isCardInFilter(target, filterOf({ status: [S.submitted] })), false);
+		assert.equal(isCardInFilter(target, filterOf({ status: [groupOf(S.authRequired), S.authRequired] })), true);
+		assert.equal(isCardInFilter(target, filterOf({ status: [groupOf(S.submitted), S.submitted] })), false);
 		assert.equal(isCardInFilter(target, filterOf({ domain: ['核心', 'design'] })), true);
 		assert.equal(isCardInFilter(target, filterOf({ domain: ['代码'] })), false);
 	});
