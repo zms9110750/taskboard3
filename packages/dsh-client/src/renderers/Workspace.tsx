@@ -87,6 +87,7 @@ import { SearchBox } from './SearchBox.tsx';
 import { SpaceBar } from './SpaceBar.tsx';
 import { StatusMenu } from './StatusMenu.tsx';
 import { TechTree } from './TechTree.tsx';
+import { SegmentedControl } from './ui/SegmentedControl.tsx';
 
 /* ══════════════════════════════════════════════════════════
    关系图例
@@ -202,6 +203,23 @@ export interface WorkspaceProps {
 	readonly onOpenPermission?: () => void;
 	/** 详情右上角 ⧉（放大成抽屉，V4）。不传 = 不画这个按钮。 */
 	readonly onExpandDetail?: () => void;
+	/**
+	 * chrome 密度（用户 `2026-11-20`）。
+	 *
+	 * 原话：「有些按钮要收起的。有些东西要常驻的。不能交互只能看的东西就当装饰品常驻。
+	 * 需要点但是用不上的东西要折叠。」
+	 *
+	 * - `full`（默认）：原样 —— 空间 chip 行常驻、权限按钮常驻、AI chip 常驻（三行）
+	 * - `compact`：压成**两行** ——
+	 *   · 空间 chip 行折叠，第一行只留一个「工作空间 ▾」按钮，点开展开成一行
+	 *   · 权限与约定、AI chip 折叠掉（低频/用不上）
+	 *
+	 * 只读不交互的东西（任务计数、关系图例）**照样常驻** —— 它们是装饰品。
+	 *
+	 * ⚠ 这是**布局密度**，不是视口尺寸：调用方按自己那块视口的高度决定传哪个。
+	 *   1200×476 的抽屉视口和 570×920 的页签视口都可以各自选。
+	 */
+	readonly density?: 'full' | 'compact';
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -216,6 +234,12 @@ export interface WorkspaceProps {
 export function Workspace(props: WorkspaceProps): ReactNode {
 	/* ── 纯 UI 状态 ── */
 	const [view, setView] = useState<'list' | 'tree'>(() => props.defaultView ?? 'list');
+	/*
+	 * `density === 'compact'` 时空间 chip 行默认折叠（用户 2026-11-20：
+	 * 「需要点但是用不上的东西要折叠」）。点「工作空间 ▾」展开成一行。
+	 */
+	const compact = props.density === 'compact';
+	const [spaceOpen, setSpaceOpen] = useState(false);
 	const [search, setSearch] = useState<string>('');
 	/** 科技树里正 hover 的卡（`TechTree` 的 hover 是受控 prop，见组件文件头）。 */
 	const [treeHoverId, setTreeHoverId] = useState<string | null>(null);
@@ -479,21 +503,29 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 		menu !== null && menu.cardId === (selectedCard?.id ?? '') ? menu.cardId : null;
 
 	return (
-		<div className="tb3w-root" data-view={view} data-detail={detailOpen ? 'open' : 'closed'}>
+		<div
+			className="tb3w-root"
+			data-view={view}
+			data-detail={detailOpen ? 'open' : 'closed'}
+			data-density={compact ? 'compact' : 'full'}
+		>
 			<div className="tb3w-page">
 				<div className="tb3w-chrome">
-					<SpaceBar
-						workspaces={props.workspaces}
-						currentId={props.currentId}
-						viewingId={props.viewingId}
-						showArchived={props.showArchived}
-						cardCount={props.cards.length}
-						onView={props.onView}
-						onActivate={props.onActivate}
-						onToggleArchived={props.onToggleArchived}
-						onToggleShowArchived={props.onToggleShowArchived}
-						onCreate={props.onCreateWorkspace}
-					/>
+					{/* full：空间 chip 行常驻在最上面；compact：折叠成工具栏里的一个按钮 */}
+					{compact ? null : (
+						<SpaceBar
+							workspaces={props.workspaces}
+							currentId={props.currentId}
+							viewingId={props.viewingId}
+							showArchived={props.showArchived}
+							cardCount={props.cards.length}
+							onView={props.onView}
+							onActivate={props.onActivate}
+							onToggleArchived={props.onToggleArchived}
+							onToggleShowArchived={props.onToggleShowArchived}
+							onCreate={props.onCreateWorkspace}
+						/>
+					)}
 
 					<div className="tb3w-toolbar" data-toolbar>
 						<span className="tb3w-toolbar__title">
@@ -522,7 +554,22 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						</span>
 
 						<span className="tb3w-toolbar__actions">
-							{props.onOpenPermission === undefined ? null : (
+							{/* 紧凑：空间切换收成一个按钮；点开展开成一行（用户 2026-11-20） */}
+							{compact ? (
+								<button
+									type="button"
+									className="ghost-btn tb3w-space-toggle"
+									data-space-toggle
+									aria-expanded={spaceOpen}
+									onClick={() => {
+										setSpaceOpen((prev) => !prev);
+									}}
+								>
+									{spaceOpen ? '工作空间 ▴' : '工作空间 ▾'}
+								</button>
+							) : null}
+							{/* 紧凑：权限与约定收起来（低频、用不上 —— 用户 2026-11-20「要折叠」） */}
+							{compact || props.onOpenPermission === undefined ? null : (
 								<button
 									type="button"
 									className="ghost-btn tb3w-toolbar__perm"
@@ -531,30 +578,17 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 									权限与约定
 								</button>
 							)}
-							<span className="tb3w-seg" role="group" aria-label="视图切换">
-								<button
-									type="button"
-									className={view === 'tree' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
-									data-view-btn="tree"
-									aria-pressed={view === 'tree'}
-									onClick={() => {
-										setView('tree');
-									}}
-								>
-									科技树
-								</button>
-								<button
-									type="button"
-									className={view === 'list' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
-									data-view-btn="list"
-									aria-pressed={view === 'list'}
-									onClick={() => {
-										setView('list');
-									}}
-								>
-									列表
-								</button>
-							</span>
+							{/* 视图切换：用定稿的分段组件（role=group + role=radio + 方向键） */}
+							<SegmentedControl
+								options={[
+									{ value: 'tree', label: '科技树', title: '科技树视图' },
+									{ value: 'list', label: '列表', title: '列表视图' },
+								]}
+								value={view}
+								onChange={setView}
+								label="视图切换"
+								dataAttr="view-btn"
+							/>
 							<button
 								type="button"
 								className="tb3w-btn-primary"
@@ -566,13 +600,32 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						</span>
 					</div>
 
+					{/* 紧凑 + 展开：chip 行单独一行，横向滚动（40 个空间也不撑高） */}
+					{compact && spaceOpen ? (
+						<div className="tb3w-space-row">
+							<SpaceBar
+							workspaces={props.workspaces}
+							currentId={props.currentId}
+							viewingId={props.viewingId}
+							showArchived={props.showArchived}
+							cardCount={props.cards.length}
+							onView={props.onView}
+							onActivate={props.onActivate}
+							onToggleArchived={props.onToggleArchived}
+							onToggleShowArchived={props.onToggleShowArchived}
+							onCreate={props.onCreateWorkspace}
+						/>
+						</div>
+					) : null}
+
 					<div className="tb3w-filters">
 						<FilterRow
 							filters={filters}
 							onChange={changeFilter}
 							trailing={
 								<span className="tb3w-filters__tail">
-									{props.aiUnreadCount !== undefined && props.aiUnreadCount > 0 ? (
+									{/* 紧凑：AI chip 收起（低频、用不上 —— 用户 2026-11-20「要折叠」） */}
+									{compact || props.aiUnreadCount === undefined || props.aiUnreadCount <= 0 ? null : (
 										<span
 											className="tb3w-ai-chip"
 											data-ai-chip="unread"
@@ -580,8 +633,8 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 										>
 											AI未读 <b>{String(props.aiUnreadCount)}</b>
 										</span>
-									) : null}
-									{props.aiUpdatedCount !== undefined && props.aiUpdatedCount > 0 ? (
+									)}
+									{compact || props.aiUpdatedCount === undefined || props.aiUpdatedCount <= 0 ? null : (
 										<span
 											className="tb3w-ai-chip"
 											data-ai-chip="updated"
@@ -589,7 +642,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 										>
 											AI 更新过 <b>{String(props.aiUpdatedCount)}</b>
 										</span>
-									) : null}
+									)}
 									<SearchBox
 										value={search}
 										onChange={(next) => {

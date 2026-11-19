@@ -457,6 +457,14 @@ export const WORKSPACE_CSS = `
 .tb3w-chrome{flex:0 0 auto;display:flex;flex-direction:column;min-width:0}
 .tb3w-main{flex:1 1 auto;display:flex;flex-direction:row;min-height:0;min-width:0;margin-top:12px}
 
+/* ── 紧凑密度（data-density="compact"，用户 2026-11-20） ──
+   常驻的：任务计数 / 关系图例（只读装饰）、视图切换 / 新建（高频）
+   折叠的：空间 chip 行（点开才显示）、权限与约定、AI chip
+   目标：chrome 只占两行 —— 第 1 行工具、第 2 行筛选。 */
+.tb3w-space-toggle{flex:0 0 auto;margin-top:10px;padding:3px 10px;border-radius:7px}
+.tb3w-space-row{flex:0 0 auto;display:flex;min-width:0;margin-top:4px;overflow-x:auto}
+.tb3w-space-row > .space-bar{flex:0 1 auto;padding-left:2px;padding-right:2px}
+
 /* SpaceBar 自己带 6px 上下 padding ⇒ 这里只补左右对齐 */
 .tb3w-chrome > .space-bar{padding-left:2px;padding-right:2px}
 
