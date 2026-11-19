@@ -30,7 +30,7 @@ import { defineConfig } from 'tsdown';
  *
  * ⚠ tsdown 默认会把 workspace 依赖当 external。必须显式 `alwaysBundle`。
  */
-export default defineConfig({
+const browserConfig = defineConfig({
 	entry: { client: 'src/client.tsx' },
 	outDir: 'lib',
 	outExtensions: () => ({ js: '.js' }),
@@ -71,3 +71,40 @@ export default defineConfig({
 	].join('\n'),
 	footer: ['    return module.exports;', '  },', '});'].join('\n'),
 });
+
+/**
+ * ## Host 半的入口（第二个构建）
+ *
+ * `package.json` 的 `main` 指向 `./lib/index.js`，`cordis.patch.yml` 又让
+ * DSH 加载本包 —— **这个文件必须存在**，否则 Host 侧 loader 加载那一行时
+ * 会找不到入口，整个 bundle 装不上。
+ *
+ * ## 为什么不能用上面那个配置顺带产出
+ *
+ * 上面那份的 `banner` / `footer` 把产物包进 `window.__ModuleLoader__.load`，
+ * 那是**浏览器半**的加载协议。Host 半是 Node 侧 ESM 模块，被 DSH 的
+ * loader 直接 `import` —— 套上那一层会立刻在 Node 里炸（`window` 不存在）。
+ *
+ * ## 为什么 tsc 不产出它
+ *
+ * `tsconfig.json` 开了 `emitDeclarationOnly: true`（tsc 只出 `.d.ts`，
+ * JS 交给 tsdown）。所以 `lib/index.js` 只能由 tsdown 出 ⇒ 就是这里。
+ *
+ * ⚠ 顺序要求：这一项**必须在浏览器半之后**（同一个 `outDir`，
+ *   `clean: false` 不会互相删；反过来的话浏览器半的 `clean` 行为
+ *   可能把刚写好的 `index.js` 带走）。
+ */
+export const hostConfig = defineConfig({
+	entry: { index: 'src/index.ts' },
+	outDir: 'lib',
+	outExtensions: () => ({ js: '.js' }),
+	format: 'esm',
+	platform: 'node',
+	target: 'es2022',
+	sourcemap: true,
+	clean: false,
+	dts: false,
+});
+
+/** 两个构建：浏览器半（ModuleLoader CJS）+ Host 半（Node ESM）。 */
+export default [browserConfig, hostConfig];
