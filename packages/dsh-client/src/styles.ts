@@ -26,6 +26,21 @@
 export const STYLE_ID = 'taskboard3-styles';
 
 /**
+ * 抽屉的纵向间距**数值表**从纯逻辑模块 import —— 单一来源。
+ *
+ * ⚠ 为什么 CSS 不自己写死这些数：`DRAWER_CSS` 用这张表**插值生成**，
+ *   于是「间距是多少」只在 `pure/drawer-view.ts` 里有一份；
+ *   改了表，CSS 跟着变，单测也能断言。反例：CSS 写死一份、报告里再写一份，
+ *   两边漂了没人发现（这个仓库已经踩过「文档写的数和实现漂了」）。
+ */
+import { DRAWER_COMPACT_SPACING } from './pure/drawer-view.ts';
+
+/** 数值 → `Npx`（模板字符串里复用）。 */
+function px(value: number): string {
+	return `${String(value)}px`;
+}
+
+/**
  * 建卡页的样式 —— **单独一段，前缀 `tb3cc-`**。
  *
  * ## 为什么不并进下面那张主表
@@ -740,11 +755,152 @@ export const WORKSPACE_CSS = `
 }
 `;
 
+/* ══════════════════════════════════════════════════════════
+   抽屉（V4）—— 前缀 `tb3d-`
+
+   ## 为什么不并进 `WORKSPACE_CSS`
+
+   它是 V3 那套的**第二实例 + 压缩**：`.tb3w-*` 的规则一条不改，
+   压缩全部在 `.tb3d-panel` 作用域下覆盖（CSS 优先级更高，天然只在抽屉里生效）。
+   合在一起会让「V3 页面看到的样式」和「抽屉里看到的样式」混在一处，改错就一起坏。
+
+   ## 三条硬约束写在这里的理由
+
+   1. **不用 `position:fixed`** —— 层/面板都是 `absolute`，贴在父容器底边。
+      （用户 `2026-11-19`：fixed 会逃出父容器，旧版踩过。）
+   2. **两栏各自滚，面板自己不滚** —— `.tb3d-body{overflow:hidden}`，
+      滚动只发生在 `.tb3w-list__body` / `.tb3w-detail > .detail` 里（V3 已有）。
+   3. **只收纵向间距** —— 第 6 段所有数值来自 `DRAWER_COMPACT_SPACING`
+      （`pure/drawer-view.ts`），横向一列不动。
+
+   ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**（会提前结束字符串）。
+   ══════════════════════════════════════════════════════════ */
+
+export const DRAWER_CSS = `
+/* ── 0. 令牌（没宿主主题时用设计图那套兜底色） ── */
+.tb3d-layer{
+  --tb3d-border:#d5dae1; --tb3d-border-weak:#eceff2; --tb3d-head-bg:#fbfcfd;
+  --tb3d-bg:#fff; --tb3d-text:#16181d; --tb3d-text-secondary:#6b7280;
+}
+
+/*
+ * ── 1. 层：absolute 撑满父容器、自身穿透 ──
+ *
+ * 这正是 DSH shell.overlay 的约定：层是 position:absolute;inset:0;pointer-events:none，
+ * 子元素才 opt-in 指针事件。
+ * ⇒ 挂进帧级 overlay 就是帧级浮层；挂进舞台就是 tab 内浮起。同一个组件、同一份 CSS。
+ */
+.tb3d-layer{position:absolute;inset:0;z-index:1;pointer-events:none}
+
+/*
+ * ── 2. 面板：贴底、水平居中（**不是 fixed**）──
+ *
+ * 宽度 = min(设计宽 1200, 父容器宽 - 32)；高度固定 400，父容器更矮时按
+ * max-height 收（小窗口不溢出）。底边距走 --tb3d-bottom（组件传，默认 16）。
+ */
+.tb3d-panel{
+  position:absolute;left:50%;bottom:var(--tb3d-bottom,16px);transform:translateX(-50%);
+  display:flex;flex-direction:column;
+  width:min(${px(1200)},calc(100% - 32px));height:${px(400)};
+  max-height:calc(100% - var(--tb3d-bottom,16px) - 12px);
+  border:1px solid var(--tb3d-border);border-radius:14px;background:var(--tb3d-bg);
+  box-shadow:0 18px 26px rgb(15 23 42 / 28%);
+  overflow:hidden;pointer-events:auto;animation:tb3d-rise .18s ease-out;
+}
+@media (prefers-reduced-motion:reduce){.tb3d-panel{animation:none}}
+@keyframes tb3d-rise{
+  from{transform:translate(-50%,14px);opacity:.6}
+  to{transform:translate(-50%,0);opacity:1}
+}
+
+/* ── 3. 顶栏：标题 / 刷新 / 关闭 ── */
+.tb3d-head{
+  flex:0 0 auto;display:flex;align-items:center;gap:8px;height:${px(DRAWER_COMPACT_SPACING.headerHeight)};
+  padding:0 10px 0 16px;background:var(--tb3d-head-bg);border-bottom:1px solid var(--tb3d-border-weak);
+}
+.tb3d-head__title{
+  flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--tb3d-text);font-size:13.5px;font-weight:700;letter-spacing:.01em;
+}
+.tb3d-head__actions{flex:0 0 auto;display:flex;align-items:center;gap:6px}
+.tb3d-iconbtn{
+  display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;
+  border:1px solid #e2e5ea;border-radius:6px;background:#fff;color:#6b7280;
+  font-family:inherit;line-height:1;cursor:pointer;transition:color .12s,border-color .12s,background .12s;
+}
+.tb3d-iconbtn:hover{color:#1f2328;border-color:#cfd5dd;background:#f8fafc}
+
+/* ── 4. 主体：装第二个 Workspace；面板自己不滚（两栏各自滚） ── */
+.tb3d-body{flex:1 1 auto;display:flex;min-height:0;overflow:hidden}
+.tb3d-body > .tb3w-root{flex:1 1 auto;min-width:0;min-height:0}
+
+/* ── 5. 触发器：输入框左侧 Chevron（设计图 ②） ── */
+.tb3d-trigger{
+  display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;
+  border:1.5px solid #2563eb;border-radius:8px;background:#fff;color:#2563eb;
+  cursor:pointer;transition:background .12s,color .12s;
+}
+.tb3d-trigger:hover{background:#eff6ff}
+.tb3d-trigger[data-drawer-open="true"]{background:#2563eb;color:#fff}
+.tb3d-trigger__icon{display:block}
+
+/*
+ * ── 6. 压缩：**只收纵向间距**（数值全部来自 DRAWER_COMPACT_SPACING）──
+ *
+ * 400 高里 list 内容区只有 ~316px，一张卡 56px ⇒ 每收 1px 都是「多露一点」。
+ * 设计图 ③ 的原话：「高 400 ⇒ 只收紧纵向间距，结构不动」。
+ */
+.tb3d-panel .tb3w-page{padding:${px(DRAWER_COMPACT_SPACING.pagePadY)} ${px(DRAWER_COMPACT_SPACING.pagePadX)}}
+
+/* chip 行 + 工具栏并成一行（设计图顶栏就一条）——只调布局，不改 Workspace 自己的文件 */
+.tb3d-panel .tb3w-chrome{flex-direction:row;flex-wrap:wrap;align-items:center;gap:0 10px}
+.tb3d-panel .tb3w-chrome > .space-bar{flex:0 1 auto;min-width:0;padding:2px 2px;gap:5px}
+.tb3d-panel .tb3w-toolbar{flex:1 1 auto;justify-content:flex-end;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)};gap:4px 8px}
+/* 抽屉里标题在顶栏、条数在列表头 ⇒ 工具栏里那条「任务 共 N 条」不重复画 */
+.tb3d-panel .tb3w-toolbar__title{display:none}
+.tb3d-panel .tb3w-toolbar__legend{display:none}
+.tb3d-panel .tb3w-toolbar__perm{display:none}
+/* 筛选行整行收掉（设计图的 1200×400 抽屉里没有它） */
+.tb3d-panel .tb3w-filters{display:none}
+.tb3d-panel .tb3w-main{margin-top:${px(DRAWER_COMPACT_SPACING.mainGap)}}
+
+/* 控件小一号（高度不变形，只影响视觉密度） */
+.tb3d-panel .tb3w-root .space-chip{padding:2px 9px;font-size:11px}
+.tb3d-panel .tb3w-root .space-action{min-width:0;padding:2px 9px;font-size:11px}
+.tb3d-panel .tb3w-root .ghost-btn{padding:2px 9px;font-size:11px}
+.tb3d-panel .tb3w-seg__btn{padding:2px 9px;font-size:10.5px}
+.tb3d-panel .tb3w-btn-primary{padding:3px 10px;font-size:10.5px}
+
+/* 列表 */
+.tb3d-panel .tb3w-list__head{padding:${px(DRAWER_COMPACT_SPACING.listHeadPadTop)} 12px ${px(DRAWER_COMPACT_SPACING.listHeadPadBottom)}}
+.tb3d-panel .tb3w-list__cols{display:none}
+.tb3d-panel .tb3w-list__body{padding:${px(DRAWER_COMPACT_SPACING.listBodyPadTop)} ${px(DRAWER_COMPACT_SPACING.listBodyPadX)} ${px(DRAWER_COMPACT_SPACING.listBodyPadBottom)}}
+.tb3d-panel .tb3w-root .task-card{margin-bottom:${px(DRAWER_COMPACT_SPACING.cardGap)};padding:${px(DRAWER_COMPACT_SPACING.cardPadY)} 10px}
+
+/* 详情 */
+.tb3d-panel .tb3w-root .detail{padding:${px(DRAWER_COMPACT_SPACING.detailPadY)} ${px(DRAWER_COMPACT_SPACING.detailPadX)};gap:${px(DRAWER_COMPACT_SPACING.detailGap)}}
+.tb3d-panel .tb3w-root .detail-sections{gap:${px(DRAWER_COMPACT_SPACING.sectionGap)}}
+.tb3d-panel .tb3w-root .detail-title{font-size:14px}
+.tb3d-panel .tb3w-root .detail-history{gap:5px}
+.tb3d-panel .tb3w-root .detail-history__item{font-size:10.5px}
+.tb3d-panel .tb3w-root .detail-action{padding:3px 9px;font-size:11px}
+
+/*
+ * ── 7. 宽版：左列固定 320（设计图：列表 316px、详情吃剩余）──
+ *
+ * ⚠ 只在容器宽 ≥ 700 时生效：窄于 700 时 Workspace 自己会切上下堆叠
+ *   （@container tb3w (max-width:700px)），这时再钉死 320 宽会把堆叠挤坏。
+ */
+@container tb3w (min-width: 700px) {
+  .tb3d-panel .tb3w-list{flex:0 0 ${px(DRAWER_COMPACT_SPACING.listWidth)}}
+  .tb3d-panel .tb3w-detail{flex:1 1 0;min-width:0;max-width:none}
+}
+`;
+
 /* 科技树的 CSS 单独放在 pure/techtree-css.ts —— 组件和本文件共用同一份真值（曾复制两份，无自动检查会红）。 */
 import { TECHTREE_CSS } from './pure/techtree-css.ts';
 
 export { TECHTREE_CSS };
-
 
 /**
  * 全部类名 —— **单一来源**。
@@ -1086,17 +1242,21 @@ export function injectStyles(): void {
 	const element = document.createElement('style');
 	element.id = STYLE_ID;
 	/*
-	 * ⚠ 五段都注入：`STYLES` 是旧面板内的（`tb3-*`），`CREATE_CSS` 是全屏建卡页的
-	 *   （`tb3cc-*`），`WORKSPACE_CSS` 是 V3 工作区的（`tb3w-*` + 六个定稿组件），
-	 *   `SEARCHBOX_CSS` 是工作区尾部搜索框的（`.search-box`），
-	 *   `TECHTREE_CSS` 是科技树的（`tb3t-*`，**复制**自 `TechTree.tsx`，原因见那段注释）。
-	 *   合成一个 `<style>` 而不是五个 —— 少四个 DOM 节点，去重逻辑只需要管一个 id。
+	/*
+	 * ⚠ 六段都注入：
+	 *   STYLES         旧面板内的（tb3-*）
+	 *   CREATE_CSS     全屏建卡页（tb3cc-*）
+	 *   WORKSPACE_CSS  V3 工作区（tb3w-* + 六个定稿组件）
+	 *   SEARCHBOX_CSS  工作区尾部搜索框（.search-box）
+	 *   DRAWER_CSS     V4 抽屉（tb3d-* + 抽屉作用域下的纵向压缩）
+	 *   TECHTREE_CSS   科技树（tb3t-*，来自 pure/techtree-css.ts）
+	 *   合成一个 style 标签而不是六个 —— 少五个 DOM 节点，去重逻辑只需要管一个 id。
 	 *
-	 * ⚠ 顺序有约束：`TECHTREE_CSS` 放最后。它里面 `.tb3t-card .card-id` /
-	 *   `.tb3t-card .badge` 与 `WORKSPACE_CSS` 的 `.tb3w-root .card-id` /
-	 *   `.tb3w-root .badge` **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
-	 *   科技树自己的规格（颜色仍是 `WORKSPACE_CSS` 那一份真值）。
+	 * ⚠ 顺序有约束：TECHTREE_CSS 放最后。它里面 .tb3t-card .card-id /
+	 *   .tb3t-card .badge 与 WORKSPACE_CSS 的 .tb3w-root .card-id /
+	 *   .tb3w-root .badge **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
+	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
-	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SEARCHBOX_CSS}\n${TECHTREE_CSS}`;
+	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${TECHTREE_CSS}`;
 	document.head.appendChild(element);
 }
