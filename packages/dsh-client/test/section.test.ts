@@ -23,7 +23,6 @@ import {
 	canEditOf,
 	emptyHintOf,
 	jsonPreviewOf,
-	markdownLinesOf,
 	payloadKindOf,
 	payloadTypeOf,
 	sectionLabelOf,
@@ -194,104 +193,6 @@ describe('sectionViewOf —— text', () => {
    markdown
    ══════════════════════════════════════════════════════════ */
 
-describe('markdownLinesOf —— 临时最小子集', () => {
-	it('空源码 / 非字符串 ⇒ 零行', () => {
-		assert.deepEqual(markdownLinesOf(''), []);
-		assert.deepEqual(markdownLinesOf(undefined), []);
-		assert.deepEqual(markdownLinesOf(42), []);
-		assert.deepEqual(markdownLinesOf(null), []);
-	});
-
-	it('换行切行；空行标 blank', () => {
-		const lines = markdownLinesOf('第一行\n\n第三行');
-		assert.equal(lines.length, 3);
-		assert.deepEqual(
-			lines.map((one) => one.blank),
-			[false, true, false],
-		);
-		assert.deepEqual(lines[0]?.tokens, [{ kind: 'text', text: '第一行' }]);
-		assert.deepEqual(lines[1]?.tokens, []);
-		assert.deepEqual(lines[2]?.tokens, [{ kind: 'text', text: '第三行' }]);
-	});
-
-	it('⚠ CRLF / CR 都归一成 LF（Windows 里写的内容也得对）', () => {
-		assert.equal(markdownLinesOf('a\r\nb').length, 2);
-		assert.equal(markdownLinesOf('a\rb').length, 2);
-		assert.deepEqual(markdownLinesOf('a\r\nb')[1]?.tokens, [{ kind: 'text', text: 'b' }]);
-	});
-
-	it('**粗体** 切成 strong', () => {
-		assert.deepEqual(markdownLinesOf('前 **粗** 后')[0]?.tokens, [
-			{ kind: 'text', text: '前 ' },
-			{ kind: 'strong', text: '粗' },
-			{ kind: 'text', text: ' 后' },
-		]);
-	});
-
-	it('`代码` 切成 code', () => {
-		assert.deepEqual(markdownLinesOf('用 `npm i` 装')[0]?.tokens, [
-			{ kind: 'text', text: '用 ' },
-			{ kind: 'code', text: 'npm i' },
-			{ kind: 'text', text: ' 装' },
-		]);
-	});
-
-	it('两种标记混在一行，按出现顺序', () => {
-		assert.deepEqual(markdownLinesOf('**A** 和 `B`')[0]?.tokens, [
-			{ kind: 'strong', text: 'A' },
-			{ kind: 'text', text: ' 和 ' },
-			{ kind: 'code', text: 'B' },
-		]);
-	});
-
-	it('⚠ 不闭合的标记保持字面（用户写的 2 * 3 不该变成半截粗体）', () => {
-		assert.deepEqual(markdownLinesOf('2 ** 3')[0]?.tokens, [{ kind: 'text', text: '2 ** 3' }]);
-		assert.deepEqual(markdownLinesOf('未闭合 ` 反引号')[0]?.tokens, [
-			{ kind: 'text', text: '未闭合 ` 反引号' },
-		]);
-		assert.deepEqual(markdownLinesOf('**')[0]?.tokens, [{ kind: 'text', text: '**' }]);
-	});
-
-	it('⚠ 开标记后是空白 ⇒ 不是粗体（`2 ** 3` 这类算式不被切开）', () => {
-		/* CDP 验证抓到的真 bug：第一版只找闭合 **，把 `** 和 ` 当成了开标记。 */
-		assert.deepEqual(markdownLinesOf('2 ** 3 = 8')[0]?.tokens, [
-			{ kind: 'text', text: '2 ** 3 = 8' },
-		]);
-		assert.deepEqual(markdownLinesOf('** 和 ** 保持字面')[0]?.tokens, [
-			{ kind: 'text', text: '** 和 ** 保持字面' },
-		]);
-	});
-
-	it('⚠ 闭标记前是空白 ⇒ 不是粗体（`**x **` 不吞掉空格）', () => {
-		assert.deepEqual(markdownLinesOf('**x **')[0]?.tokens, [{ kind: 'text', text: '**x **' }]);
-	});
-
-	it('⚠ 一段里既有真粗体又有字面 ** ⇒ 只切真粗体', () => {
-		assert.deepEqual(markdownLinesOf('**真** 和 2 ** 3')[0]?.tokens, [
-			{ kind: 'strong', text: '真' },
-			{ kind: 'text', text: ' 和 2 ** 3' },
-		]);
-	});
-
-	it('⚠ 单星号不是标记（只有 ** 是粗体）', () => {
-		assert.deepEqual(markdownLinesOf('*不是斜体*')[0]?.tokens, [
-			{ kind: 'text', text: '*不是斜体*' },
-		]);
-	});
-
-	it('⚠ HTML 标签原样当文字 —— 绝不解析', () => {
-		const tokens = markdownLinesOf('<img src=x onerror=alert(1)>')[0]?.tokens;
-		assert.deepEqual(tokens, [{ kind: 'text', text: '<img src=x onerror=alert(1)>' }]);
-	});
-
-	it('粗体里的反引号不嵌套（先到先得，不递归）', () => {
-		/* 现在是最小实现：** 与 ` 谁先出现谁先切，不处理嵌套。文档里写明。 */
-		assert.deepEqual(markdownLinesOf('**a`b`**')[0]?.tokens, [
-			{ kind: 'strong', text: 'a`b`' },
-		]);
-	});
-});
-
 describe('sectionViewOf —— markdown', () => {
 	it('草稿态（只有 placeholder）⇒ empty = true', () => {
 		const view = sectionViewOf(MARKDOWN_EMPTY);
@@ -301,30 +202,24 @@ describe('sectionViewOf —— markdown', () => {
 			source: '',
 			placeholder: '把要保留的资料放在这里',
 			empty: true,
-			lines: [],
 		});
 	});
 
-	it('填写态 ⇒ 带 lines', () => {
+	it('填写态 ⇒ source 原样带出（解析不在这一层）', () => {
 		const view = sectionViewOf(MARKDOWN_FILLED);
 		assert.equal(view.kind, 'markdown');
 		if (view.kind !== 'markdown') return;
 		assert.equal(view.empty, false);
-		assert.equal(view.lines.length, 4);
-		assert.deepEqual(view.lines[0]?.tokens, [{ kind: 'text', text: '第一行' }]);
-		assert.deepEqual(view.lines[1]?.blank, true);
-		assert.deepEqual(view.lines[2]?.tokens, [
-			{ kind: 'strong', text: '粗体' },
-			{ kind: 'text', text: ' 和 ' },
-			{ kind: 'code', text: '代码' },
-		]);
+		/* 本层**不解析** markdown：源码逐字交给 `<Markdown>`（marked 那一层负责）。 */
+		assert.equal(view.source, MARKDOWN_FILLED.value);
 	});
 
 	it('⚠ markdown 与 text 的 payload 形状相同，区别只在渲染', () => {
 		const asText = sectionViewOf({ $type: 'text', value: '**x**' });
 		const asMarkdown = sectionViewOf({ $type: 'markdown', value: '**x**' });
 		assert.equal(asText.kind === 'text' && asText.value, '**x**');
-		assert.equal(asMarkdown.kind === 'markdown' && asMarkdown.lines[0]?.tokens[0]?.kind, 'strong');
+		/* markdown 的源码**不做任何预处理**（`**x**` 原样留着，交给渲染器）。 */
+		assert.equal(asMarkdown.kind === 'markdown' && asMarkdown.source, '**x**');
 	});
 });
 
