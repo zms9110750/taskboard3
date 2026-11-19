@@ -1,0 +1,221 @@
+/*
+ * SearchBox（任务板搜索框）的样式 —— 只在 `dev/preview/searchbox/` 里用。
+ *
+ * 由 `dev/preview/build.mjs searchbox` 追加在共享 `preview.css` **之后**
+ * ⇒ 可以用共享变量（`--bg-card` / `--border` / `--accent` / `--text` /
+ *   `--text-secondary` / `--text-weak`），但**不要改共享的类名**。
+ *
+ * ⚠ 这些是**待用户审的视觉细节**。逐条列在预览页第 ③ 块里。
+ *
+ * ## 布局
+ *
+ * ```
+ * .search-box          一行：field + 按钮（都没换行，都在同一行）
+ * └─ .search-box__field   有边框的输入框；图标绝对定位在左内边距里
+ *    └─ .search-box__input  铺满 field
+ * └─ .search-box__go     贴住 field 右边的「前往」
+ * ```
+ *
+ * ⚠ field 和按钮是**贴在一起**的（field 右侧无圆角、按钮左侧无圆角，
+ *   用 1px 重叠消掉双边框）—— 对应任务书里那张 `┌────┬────┐` 的图。
+ */
+
+/* ── 一行 ── */
+.search-box {
+	display: flex;
+	align-items: stretch;
+	min-width: 0;
+	/*
+	 * 组件本身没有固定宽度：field 是 `flex: 1` ⇒ 由调用方决定整行多宽
+	 * （任务板列表页顶部就是整列宽）。预览里套了个 `max-width` 的壳。
+	 */
+}
+
+/* ── 输入框（带边框的那个「框」）── */
+.search-box__field {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 36px;
+	border: 1px solid var(--border);
+	border-right: 0;
+	border-radius: 8px 0 0 8px;
+	background: var(--bg-card);
+	transition:
+		border-color 0.12s,
+		background 0.12s;
+}
+
+/* 焦点：只换边框颜色（跟仓库里 `.tb3cc-input:focus` 一个做法，不加光环） */
+.search-box__field:focus-within {
+	border-color: var(--accent);
+}
+
+/* 框内图标：绝对定位在左内边距区 ⇒ 与 input 的 border-box 重叠（「框内」） */
+.search-box__icon {
+	position: absolute;
+	left: 11px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-weak);
+	pointer-events: none;
+}
+
+/* ⚠ 左内边距 33px = 图标左 11px + 图标 14px + 间距 8px —— 文字不会压到图标 */
+.search-box__input {
+	width: 100%;
+	height: 100%;
+	padding: 0 12px 0 33px;
+	border: 0;
+	border-radius: 8px 0 0 8px;
+	outline: none;
+	background: transparent;
+	font-family: inherit;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--text);
+}
+
+.search-box__input::placeholder {
+	color: var(--text-weak);
+}
+
+.search-box__input:disabled {
+	cursor: not-allowed;
+}
+
+/* ── 「前往」按钮 ── */
+.search-box__go {
+	flex: 0 0 auto;
+	height: 36px;
+	padding: 0 20px;
+	border: 1px solid var(--accent);
+	/* 左侧 -1px：压住 field 的右边线 ⇒ 中间只有一条 1px 分隔线，不是双线 */
+	margin-left: -1px;
+	border-radius: 0 8px 8px 0;
+	background: var(--accent);
+	color: #fff;
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	cursor: pointer;
+	transition:
+		background 0.12s,
+		border-color 0.12s,
+		color 0.12s;
+}
+
+.search-box__go:hover:not(:disabled) {
+	background: #1d4ed8;
+	border-color: #1d4ed8;
+}
+
+.search-box__go:active:not(:disabled) {
+	background: #1e40af;
+	border-color: #1e40af;
+}
+
+/*
+ * 空输入 / 禁用 ⇒ 视觉弱化：灰底、灰字、灰边，**看起来就不能点**。
+ * 它是真 `disabled`（键盘也点不了），不是只换了颜色。
+ */
+.search-box__go:disabled {
+	background: #f1f3f6;
+	border-color: var(--border);
+	color: var(--text-weak);
+	cursor: default;
+}
+
+/* ── 整框禁用：field 也灰掉（输入框本体已 disabled，这里只是视觉跟着）── */
+.search-box[data-search-disabled='true'] .search-box__field {
+	background: #f7f8fa;
+	border-color: var(--border);
+}
+
+/* ══════════════════════════════════════════════════════════
+   预览页自己的零件（不参与组件本身）
+   ══════════════════════════════════════════════════════════ */
+
+/* 三个状态切换按钮组 */
+.sb-modes {
+	display: inline-flex;
+	gap: 6px;
+	margin: 0 0 14px;
+}
+
+.sb-modes__btn {
+	padding: 4px 12px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg-card);
+	color: var(--text-secondary);
+	font-family: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	transition:
+		border-color 0.12s,
+		color 0.12s,
+		background 0.12s;
+}
+
+.sb-modes__btn:hover {
+	border-color: var(--text-weak);
+	color: var(--text);
+}
+
+/* 当前选中的那个（哪个状态正在舞台上） */
+.sb-modes__btn.is-on {
+	border-color: var(--accent);
+	background: #eff6ff;
+	color: var(--accent);
+	font-weight: 600;
+}
+
+/* 舞台：模拟任务板里搜索框的可用宽度 */
+.sb-stage {
+	width: 560px;
+	max-width: 100%;
+}
+
+/* 回调日志（复制自 spacebar/style.css —— 每个预览只加载共享 CSS + 自己的，不跨目录） */
+.pv-events {
+	margin: 0 0 10px;
+	padding-left: 18px;
+	font-size: 11.5px;
+	font-family: var(--mono, ui-monospace, Consolas, monospace);
+	color: #3f4652;
+	max-height: 150px;
+	overflow-y: auto;
+}
+
+.pv-events__empty {
+	list-style: none;
+	margin-left: -18px;
+	color: var(--text-weak, #9aa1ad);
+	font-family: inherit;
+}
+
+/* 固定状态矩阵里每一行 */
+.sb-scenario {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 10px;
+}
+
+.sb-scenario__label {
+	flex: 0 0 auto;
+	width: 74px;
+	font-size: 11px;
+	color: var(--text-weak);
+}
+
+.sb-scenario__box {
+	width: 560px;
+	max-width: 100%;
+}
