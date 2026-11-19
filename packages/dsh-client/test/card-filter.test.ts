@@ -8,13 +8,19 @@
  * 「隐藏」在本层就是**不在返回数组里**。所以下面每条过滤 / 搜索断言，
  * 判据都是「结果数组里到底有哪几张卡」，而不是 class、不是 opacity。
  *
- * ## 编号与标题是两条不同的规则
+ * ## 搜索过滤 vs 回车跳转：两种匹配强度（别混）
  *
- * - 编号：**完整匹配**（用户：「输入完整编号后回车 ⇒ 打开那张卡的详情」）
- * - 标题：子串
+ * | 用途 | 匹配方式 | 函数 |
+ * |---|---|---|
+ * | 搜索过滤（决定哪些卡可见）| 标题子串 + **编号子串** | `searchCards()` |
+ * | 回车 / 「前往」跳转（决定打开哪张）| **编号精确** | `findCardByQuery()` |
  *
- * 这两个规则的区别在 `searchCards` 的「半截编号不命中」那条测试里钉死 ——
- * 那是最容易被后人「顺手改成 includes」的地方。
+ * 理由（接线裁决 `2026-11-20`）：用户打 `C-0` 想看所有 `C-0x`，这是合法意图
+ * （继续打字就收敛）；「输入完整编号后回车」是指认**唯一一张**，输一半不能跳。
+ *
+ * ⚠ 列表视图和科技树视图是同一产品的两个视图，搜索过滤必须给**同一结果集**
+ *   （`pure/tree-filter.ts` 的 `matchesSearch()` 也是编号子串）。
+ *   过滤与跳转的两种强度分别由各自的测试钉住。
  */
 
 import assert from 'node:assert/strict';
@@ -245,7 +251,7 @@ describe('filterCards —— 筛选（不匹配的卡直接不在结果里）', 
 });
 
 /* ══════════════════════════════════════════════════════════ */
-describe('searchCards —— 标题子串 / 编号完整', () => {
+describe('searchCards —— 标题子串 / 编号子串', () => {
 	it('空词 ⇒ **原样返回**（同一个数组引用，不过滤）', () => {
 		assert.equal(searchCards(CARDS, ''), CARDS);
 	});
@@ -264,7 +270,7 @@ describe('searchCards —— 标题子串 / 编号完整', () => {
 		assert.deepEqual(ids(searchCards(CARDS, 'NARROW')), ['Q-07']);
 	});
 
-	it('⭐ 编号精确匹配：输入完整编号命中所属那张卡', () => {
+	it('⭐ 完整编号命中（子串规则的特例：编号全等当然包含）', () => {
 		assert.deepEqual(ids(searchCards(CARDS, 'C-03')), ['C-03']);
 	});
 
@@ -273,15 +279,29 @@ describe('searchCards —— 标题子串 / 编号完整', () => {
 		assert.deepEqual(ids(searchCards(CARDS, '  C-03  ')), ['C-03']);
 	});
 
-	it('⚠ 半截编号**不**命中（编号只认完整，避免指认不唯一）', () => {
+	it('⭐ 半截编号也命中（编号是子串，和科技树视图一致）', () => {
 		/*
-		 * ⚠ 用「带连字符的半截编号」而不是单个字母 `C`：
-		 *   标题是**子串**匹配，`C` 会正当命中英文标题 `SpaceBar`（`spacebar` 里有 `c`）
-		 *   —— 那不是 bug，是标题规则。要钉的是「编号这一路必须完整」，
-		 *   所以取一个**任何标题里都不出现**的半截编号。
+		 * 裁决 `2026-11-20`：搜索过滤的编号从「精确」改成「子串」
+		 * （原来这条断言叫「半截编号不命中」，期望是错的，已改）。
+		 *
+		 * 理由：用户打 `C-0` 想看所有 `C-0x` 是合法意图；且列表 / 科技树两个
+		 * 视图必须给同一结果集 —— `tree-filter.ts` 的 `matchesSearch()` 本来就是子串。
+		 *
+		 * ⚠ 「跳转」仍然精确 —— 见下面 `findCardByQuery` 的「半截编号 ⇒ null」。
 		 */
-		assert.deepEqual(searchCards(CARDS, 'C-0'), []);
-		assert.deepEqual(searchCards(CARDS, 'Q-0'), []);
+		assert.deepEqual(ids(searchCards(CARDS, 'C-0')), ['C-03']);
+		assert.deepEqual(ids(searchCards(CARDS, 'Q-0')), ['Q-07']);
+		/* 多个命中：`0` 在 8 张卡的编号里出现（A-11 没有 0）—— 子串是真过滤，不是只认全等。 */
+		assert.deepEqual(ids(searchCards(CARDS, '0')), [
+			'U-01',
+			'F-02',
+			'C-03',
+			'W-04',
+			'Q-07',
+			'S-05',
+			'T-06',
+			'D-09',
+		]);
 	});
 
 	it('搜不到 ⇒ 空数组（不是返回全部）', () => {
@@ -327,7 +347,7 @@ describe('applyCardQuery —— 先筛选后搜索', () => {
 });
 
 /* ══════════════════════════════════════════════════════════ */
-describe('findCardByQuery —— 回车「前往」用（完整编号 ⇒ 那张卡）', () => {
+describe('findCardByQuery —— 回车「前往」用（**编号精确** ⇒ 那张卡）', () => {
 	it('完整编号 ⇒ 那张卡', () => {
 		assert.equal(findCardByQuery(CARDS, 'C-03')?.id, 'C-03');
 	});
@@ -341,7 +361,7 @@ describe('findCardByQuery —— 回车「前往」用（完整编号 ⇒ 那张
 		assert.equal(findCardByQuery(CARDS, '   '), null);
 	});
 
-	it('半截编号 ⇒ null', () => {
+	it('半截编号 ⇒ null（跳转是**精确**匹配，和搜索过滤的编号子串相反）', () => {
 		assert.equal(findCardByQuery(CARDS, 'C'), null);
 		assert.equal(findCardByQuery(CARDS, 'C-0'), null);
 	});
@@ -366,11 +386,12 @@ describe('isCardInFilter / isCardMatched —— 单卡判决（filterCards 的�
 		assert.equal(isCardInFilter(target, filterOf({ domain: ['代码'] })), false);
 	});
 
-	it('标题子串命中 / 编号完整命中 / 空词恒真', () => {
+	it('标题子串命中 / 编号子串命中（含半截）/ 空词恒真', () => {
 		const target = CARDS[2] as Card;
 		assert.equal(isCardMatched(target, ''), true);
 		assert.equal(isCardMatched(target, '关系按钮'), true);
 		assert.equal(isCardMatched(target, 'c-03'), true);
+		assert.equal(isCardMatched(target, 'c-0'), true);
 		assert.equal(isCardMatched(target, '不存在的词'), false);
 	});
 });

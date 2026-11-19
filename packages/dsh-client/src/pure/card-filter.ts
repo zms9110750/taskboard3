@@ -49,14 +49,24 @@
  * | 字段 | 规则 | 为什么 |
  * |---|---|---|
  * | 标题 `card.title` | **子串**，大小写不敏感 | 「搜标题」是搜索框的默认预期 |
- * | 编号 `card.id` | **完整匹配**（trim + 大小写不敏感）| 用户 `2026-11-19`：「输入完整编号后回车 ⇒ 打开那张卡的详情」 |
- *
- * ⚠ 编号**故意不做子串匹配**：编号形如 `C-03` / `GU01`，输入半截 `C` 会命中
- *   一串卡，而「输入编号」这个动作的意图就是**指认唯一一张**。
- *   半截子串留给标题（那是模糊找）。
+ * | 编号 `card.id` | **子串**，大小写不敏感 | 打 `C-0` 想看所有 `C-0x`，合法意图；和 `tree-filter.ts` 一致 |
  *
  * ⚠ 大小写不敏感：编号是**大写字母 + 数字**（`core/src/ids.ts` 的 `nextId`），
  *   用户手打小写 `c-03` 也应该命中。标题里中文 `toLowerCase()` 是恒等，无副作用。
+ *
+ * ## ⚠ 搜索过滤 vs 回车跳转：**两种匹配强度**（接线裁决 `2026-11-20`）
+ *
+ * | 用途 | 匹配方式 | 函数 |
+ * |---|---|---|
+ * | 搜索过滤（决定哪些卡可见）| 标题子串 + **编号子串** | `searchCards()` |
+ * | 回车 / 点「前往」跳转（决定打开哪张）| **编号精确** | `findCardByQuery()` |
+ *
+ * 理由：搜索过滤时用户打 `C-0` 想看所有 `C-0x`，这是**正常**行为（继续打字
+ * 就收敛）；而「输入完整编号后回车」的意图是**指认唯一一张**，输一半不能跳。
+ *
+ * ⚠ 列表视图和科技树视图是同一个产品的两个视图，**搜索过滤必须给同一结果集**
+ *   —— 否则切视图会「怎么少了几张」（不报错的那种坏）。所以过滤这边对齐
+ *   `pure/tree-filter.ts` 的 `matchesSearch()`（编号也是子串）；跳转保持精确。
  *
  * ## 搜不到 ⇒ **空数组**
  *
@@ -212,7 +222,8 @@ export function isQueryActive(query: string): boolean {
 /**
  * 这张卡命中搜索词吗。
  *
- * 规则见文件头：标题**子串**、编号**完整**，都大小写不敏感。
+ * 规则见文件头：标题**子串**、编号**子串**，都大小写不敏感。
+ * （跳转用的 `findCardByQuery()` 是**编号精确**，那是另一套强度，别混。）
  *
  * @param card 一张卡
  * @param query 输入框原始值
@@ -220,8 +231,7 @@ export function isQueryActive(query: string): boolean {
 export function isCardMatched(card: Card, query: string): boolean {
 	const wanted = normalizeQuery(query);
 	if (wanted === '') return true;
-	if (card.id.toLowerCase() === wanted) return true;
-	return card.title.toLowerCase().includes(wanted);
+	return card.id.toLowerCase().includes(wanted) || card.title.toLowerCase().includes(wanted);
 }
 
 /**

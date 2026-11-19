@@ -1,5 +1,5 @@
 /**
- * 工作区（V3）—— 把六个**已定稿**组件拼成一个完整页面。
+ * 工作区（V3）—— 把**已定稿**的组件拼成一个完整页面。
  *
  * ## 它只做「拼装 + 布局」
  *
@@ -7,8 +7,9 @@
  * |---|---|---|
  * | 空间 chip 行 | `SpaceBar` | 把 workspaces / current / viewing 原样传进去 |
  * | 工具栏 | **本文件** | 条数 / 关系图例 / 科技树⇄列表 / 新建（纯布局 + 文案）|
- * | 筛选行 | `FilterRow` + `FilterBox` | 建三棵树（状态 / 类别 / 领域）+ 尾部搜索框 |
+ * | 筛选行 | `FilterRow` + `FilterBox` | 建三棵树（状态 / 类别 / 领域）+ 尾部搜索框（定稿的 `SearchBox`）|
  * | 列表 | `CardRow` × N | 排序（按最后动过）+ 筛选/搜索（**隐藏**不匹配的卡）+ 空态 |
+ * | 科技树 | `TechTree` | `view=tree` 时占满列表栏；原样传 cards / 选中 / 筛选（判决在 `pure/tree-filter.ts`）|
  * | 详情 | `CardDetail` | 传 labels / 回调；**不碰**它的显示判决 |
  * | 状态菜单 | `StatusMenu` | 锚点是详情里那个状态格（`[data-meta="status"]`）|
  *
@@ -16,7 +17,8 @@
  *
  * - **受控**（数据在外面）：workspaces / cards / templates / selectedId / 回调。
  *   和六个组件一样 —— 这个组件不拉数据、不发请求。
- * - **自持**（纯 UI 状态）：筛选的 picked、搜索框文字、科技树/列表切换、分隔条比例。
+ * - **自持**（纯 UI 状态）：筛选的 picked、搜索框文字、科技树/列表切换、
+ *   科技树 hover（`TechTree` 的 hover 是受控的）、分隔条比例。
  *   ⚠ 筛选/搜索的**判决**不在这里，在 `pure/card-filter.ts`；本文件只调
  *     `applyCardQuery()` 把结果喂给列表 —— 不匹配的卡**根本不渲染**。
  *     用户 `2026-11-19`：「筛选/搜索后，不匹配的卡要**隐藏**（不是变淡）。」
@@ -50,7 +52,7 @@
  *   定稿组件里它就是不可点的）。菜单必须有个锚点 ⇒ 这里**不新增按钮**，
  *   用事件委托把详情里的状态格变成触发器（`.tb3w-detail [data-meta="status"]`），
  *   CSS 给它 hover 底色 + `⌄` 角标。改的是**样式钩子**，没改 `CardDetail` 的行为。
- * - **空详情 / 空列表 / 科技树占位**：设计图没画空态，但页面必须有。
+ * - **空详情 / 空列表**：设计图没画空态，但页面必须有。
  *
  * ## 相对导入带后缀
  *
@@ -74,14 +76,17 @@ import {
 } from '../pure/card-filter.ts';
 import type { CardFilter, EmptyReason } from '../pure/card-filter.ts';
 import type { FilterNode, Picked } from '../pure/filter-box.ts';
-import { DEFAULT_SEARCH_PLACEHOLDER, submitQueryOf } from '../pure/search-box.ts';
+import { visibleCardIds } from '../pure/tree-filter.ts';
+import type { TreeFilterCriteria } from '../pure/tree-filter.ts';
 import type { Card, TemplateSummary, Workspace as SpaceEntity } from '../types.ts';
 import { CardDetail } from './CardDetail.tsx';
 import { CardRow } from './CardRow.tsx';
 import type { FilterSpec } from './FilterRow.tsx';
 import { FilterRow } from './FilterRow.tsx';
+import { SearchBox } from './SearchBox.tsx';
 import { SpaceBar } from './SpaceBar.tsx';
 import { StatusMenu } from './StatusMenu.tsx';
+import { TechTree } from './TechTree.tsx';
 
 /* ══════════════════════════════════════════════════════════
    关系图例
@@ -161,6 +166,14 @@ export interface WorkspaceProps {
 	 *   产品里不传 = 三个框都没选。
 	 */
 	readonly defaultPicked?: Readonly<Record<string, Picked>>;
+	/**
+	 * 科技树 / 列表的**初始**视图（`defaultValue` 语义，默认 `'list'`）。
+	 *
+	 * ⚠ 和 `defaultPicked` 同一套理由：挂载后由本组件自持、按用户点击变。
+	 *   存在的目的是让**静态渲染**（SSR 断言 / 预览）能直接画出科技树视图 ——
+	 *   `view` 是内部状态，静态渲染点不了按钮。
+	 */
+	readonly defaultView?: 'list' | 'tree';
 	/** 分类中文名。不传就显示英文 id（`card-view.ts` 的口径：不编中文）。 */
 	readonly kindLabelOf?: (kind: string) => string;
 	/** AI 未读条数（P4 未接，只显示计数）。`0` / 不传 = 不显示这颗 chip。 */
@@ -202,8 +215,10 @@ export interface WorkspaceProps {
  */
 export function Workspace(props: WorkspaceProps): ReactNode {
 	/* ── 纯 UI 状态 ── */
-	const [view, setView] = useState<'list' | 'tree'>('list');
+	const [view, setView] = useState<'list' | 'tree'>(() => props.defaultView ?? 'list');
 	const [search, setSearch] = useState<string>('');
+	/** 科技树里正 hover 的卡（`TechTree` 的 hover 是受控 prop，见组件文件头）。 */
+	const [treeHoverId, setTreeHoverId] = useState<string | null>(null);
 	const [picked, setPicked] = useState<Readonly<Record<string, Picked>>>(
 		() => props.defaultPicked ?? {},
 	);
@@ -239,6 +254,31 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 	/** 三个筛选框的选中路径 → 筛选条件（形状见 `pure/card-filter.ts` 文件头）。 */
 	const filter = useMemo<CardFilter>(() => filterOfPicked(picked), [picked]);
+
+	/**
+	 * 科技树的筛选条件 —— **和列表同一套 `picked` + `search`**。
+	 *
+	 * `CardFilter` 的三个 `Picked` 和 `TreeFilterCriteria` 同形状（见
+	 * `pure/tree-filter.ts` 文件头的路径表），直接搬；「隐藏不匹配的卡」的判决
+	 * 在 `visibleCardIds()`，本组件不判第二遍。
+	 */
+	const treeFilter = useMemo<TreeFilterCriteria>(
+		() => ({ status: filter.status, kind: filter.kind, domain: filter.domain, search }),
+		[filter, search],
+	);
+
+	/**
+	 * 科技树视图下「筛出多少条」—— **按科技树自己的判决算**。
+	 *
+	 * 工具栏计数必须跟当前视图一致（列表视图用 `visibleCards`，科技树视图用这个）。
+	 * 搜索语义已统一（标题子串 + 编号子串，见 `card-filter.ts` / `tree-filter.ts`
+	 * 文件头），两份判决现在等价；仍按视图取数，是为了「计数永远等于当前视图
+	 * 真正显示的东西」，而不是依赖两个模块长期保持一致。
+	 */
+	const treeVisibleCount = useMemo(
+		() => (view === 'tree' ? visibleCardIds(props.cards, treeFilter).size : 0),
+		[view, props.cards, treeFilter],
+	);
 
 	/**
 	 * ⚠ **列表真正渲染的那一份**：先排序，再筛选 + 搜索。
@@ -396,6 +436,9 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 	/* ── 渲染 ── */
 
+	/** 工具栏计数用哪一份：列表视图用列表的判决，科技树视图用科技树的判决。 */
+	const shownCount = view === 'tree' ? treeVisibleCount : visibleCards.length;
+
 	const detailOpen = selectedCard !== null;
 
 	/**
@@ -457,7 +500,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							任务
 							<span className="tb3w-toolbar__count" data-count>
 								{queryActive
-									? `筛出 ${String(visibleCards.length)} / 共 ${String(props.cards.length)} 条`
+									? `筛出 ${String(shownCount)} / 共 ${String(props.cards.length)} 条`
 									: `共 ${String(props.cards.length)} 条`}
 							</span>
 						</span>
@@ -547,62 +590,30 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 											AI 更新过 <b>{String(props.aiUpdatedCount)}</b>
 										</span>
 									) : null}
-									<label className="tb3w-search">
-										<svg
-											className="tb3w-search__icon"
-											width="12"
-											height="12"
-											viewBox="0 0 12 12"
-											aria-hidden="true"
-										>
-											<circle
-												cx="5"
-												cy="5"
-												r="3.4"
-												fill="none"
-												stroke="currentColor"
-												strokeWidth="1.2"
-											/>
-											<line
-												x1="7.6"
-												y1="7.6"
-												x2="10.4"
-												y2="10.4"
-												stroke="currentColor"
-												strokeWidth="1.2"
-												strokeLinecap="round"
-											/>
-										</svg>
-										<input
-											type="search"
-											data-search
-											value={search}
-											placeholder={DEFAULT_SEARCH_PLACEHOLDER}
-											onChange={(event) => {
-												setSearch(event.target.value);
-												props.onSearchChange?.(event.target.value);
-											}}
-											/*
-											 * 回车 = 「前往」：输入**完整编号** ⇒ 打开那张卡的详情。
-											 *
-											 * 用户 `2026-11-19`：「输入完整编号后回车 ⇒ 打开那张卡的详情」。
-											 * 编号必须完整匹配（`findCardByQuery()`，大小写不敏感）；
-											 * 找不到就**什么都不做** —— 搜索词留着，列表的筛选结果照旧显示，
-											 * 不能把用户刚打的字吞掉（他会以为没生效）。
-											 *
-											 * ⚠ 列表是**实时**过滤的（上面 `visibleCards`），不靠回车；
-											 *   回车只多一件事：打开详情。
-											 */
-											onKeyDown={(event) => {
-												if (event.key !== 'Enter') return;
-												event.preventDefault();
-												const query = submitQueryOf(search);
-												if (query === null) return;
-												const hit = findCardByQuery(props.cards, query);
-												if (hit !== null) select(hit.id);
-											}}
-										/>
-									</label>
+									<SearchBox
+										value={search}
+										onChange={(next) => {
+											setSearch(next);
+											props.onSearchChange?.(next);
+										}}
+										/*
+										 * 回车 / 点「前往」⇒ **打开完整编号对应的详情**。
+										 *
+										 * 用户 `2026-11-19`：「输入完整编号后回车 ⇒ 打开那张卡的详情」。
+										 * “空 / 纯空格算不算提交” 的判决在 `pure/search-box.ts`
+										 * （`canSubmitOf` / `submitQueryOf`），进来的一定是 trim 过的值。
+										 * 编号必须**完整**匹配（`findCardByQuery()`，大小写不敏感）；
+										 * 找不到就**什么都不做** —— 搜索词留着，列表的筛选结果照旧显示，
+										 * 不能把用户刚打的字吞掉（他会以为没生效）。
+										 *
+										 * ⚠ 列表是**实时**过滤的（上面 `visibleCards`），不靠回车；
+										 *   回车只多一件事：打开详情。
+										 */
+										onSubmit={(query) => {
+											const hit = findCardByQuery(props.cards, query);
+											if (hit !== null) select(hit.id);
+										}}
+									/>
 								</span>
 							}
 						/>
@@ -611,48 +622,65 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 				<div className="tb3w-main" ref={mainRef} data-main>
 					<section className="tb3w-list" ref={listRef} style={listStyle} data-list>
-						<header className="tb3w-list__head">
-							<span className="tb3w-list__title">
-								列表 <em data-list-count>· {String(visibleCards.length)} 条</em>
-							</span>
-							<span className="tb3w-list__sort">
-								{view === 'tree' ? '科技树' : '按更新时间'}
-							</span>
-						</header>
+						{view === 'tree' ? (
+							/*
+							 * 科技树视图：整栏交给定稿的 `TechTree`（它自带画布滚动 + 页脚图例）。
+							 *
+							 * ⚠ cards 传**全量**、筛选条件用 `treeFilter` —— 「不匹配的卡隐藏」
+							 *   的判决在 `TechTree` 内部（`pure/tree-filter.ts`），本组件不先筛一遍。
+							 *   hover 是 `TechTree` 的**受控** prop ⇒ 由本组件持状态。
+							 */
+							<div className="tb3w-tree" data-tree-body>
+								<TechTree
+									cards={props.cards}
+									selectedId={props.selectedId}
+									hoverId={treeHoverId}
+									filter={treeFilter}
+									kindLabelOf={kindLabel}
+									onSelect={select}
+									onHoverChange={setTreeHoverId}
+								/>
+							</div>
+						) : (
+							<>
+								<header className="tb3w-list__head">
+									<span className="tb3w-list__title">
+										列表 <em data-list-count>· {String(visibleCards.length)} 条</em>
+									</span>
+									<span className="tb3w-list__sort">按更新时间</span>
+								</header>
 
-						<div className="tb3w-list__cols" aria-hidden="true">
-							<span>编号 + 状态</span>
-							<span>分类 · 领域 · 模板</span>
-							<span>标题</span>
-							<span>最后动过</span>
-						</div>
+								<div className="tb3w-list__cols" aria-hidden="true">
+									<span>编号 + 状态</span>
+									<span>分类 · 领域 · 模板</span>
+									<span>标题</span>
+									<span>最后动过</span>
+								</div>
 
-						<div className="tb3w-list__body" data-list-body>
-							{view === 'tree' ? (
-								<div className="tb3w-list__empty" data-tree-placeholder>
-									科技树视图还没做（V1）。
+								<div className="tb3w-list__body" data-list-body>
+									{visibleCards.length === 0 ? (
+										/*
+										 * 有卡但被筛/搜掉了 ⇒ 画空态。⚠ 文案按**原因**选，
+										 * 不能一律写「这个空间还没有卡」。
+										 */
+										<div className="tb3w-list__empty" data-list-empty={emptyReason}>
+											{emptyTextOf(emptyReason, search)}
+										</div>
+									) : (
+										visibleCards.map((card) => (
+											<CardRow
+												key={card.id}
+												card={card}
+												selected={card.id === props.selectedId}
+												kindLabel={kindLabel(card.template.kind)}
+												templateLabel={templateLabel(card.template.ref)}
+												onSelect={select}
+											/>
+										))
+									)}
 								</div>
-							) : visibleCards.length === 0 ? (
-								/*
-								 * 有卡但被筛/搜掉了 ⇒ 画空态。⚠ 文案按**原因**选，
-								 * 不能一律写「这个空间还没有卡」。
-								 */
-								<div className="tb3w-list__empty" data-list-empty={emptyReason}>
-									{emptyTextOf(emptyReason, search)}
-								</div>
-							) : (
-								visibleCards.map((card) => (
-									<CardRow
-										key={card.id}
-										card={card}
-										selected={card.id === props.selectedId}
-										kindLabel={kindLabel(card.template.kind)}
-										templateLabel={templateLabel(card.template.ref)}
-										onSelect={select}
-									/>
-								))
-							)}
-						</div>
+							</>
+						)}
 					</section>
 
 					{detailOpen ? (
