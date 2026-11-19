@@ -40,6 +40,23 @@ import { BUTTON_ACTIONS } from '@taskboard/protocol';
 import type { TaskState } from '@taskboard/protocol';
 
 /**
+ * 某个类别、某个状态下的**采纳目标状态**。
+ *
+ * `taskboard_adopt` 工具（AI 侧）只需要「我在草稿态，采纳会去哪」，
+ * 它不接收目标状态参数 —— 目标由类别定。
+ *
+ * ⚠ 这是「查采纳目标」的唯一实现：`isAdoptTransition` 也走它，
+ *   不在这里再抄一遍 `BUTTON_ACTIONS` 的查询条件（第二份判据会漂）。
+ *
+ * @returns `undefined` ⇒ 这个 (类别, 状态) 没有采纳按钮
+ */
+export function adoptTargetOf(kind: string, from: TaskState): TaskState | undefined {
+	return BUTTON_ACTIONS.find(
+		(action) => action.kind === kind && action.from === from && action.method === 'adopt',
+	)?.to;
+}
+
+/**
  * 这次转移是不是「采纳」按钮。
  *
  * @param kind 类别 id（`goal` / `work` / `design` / `record`）
@@ -48,21 +65,5 @@ import type { TaskState } from '@taskboard/protocol';
  * @returns `true` ⇒ 调用方应走 `taskboard.adopt()` 而不是 `transition()`
  */
 export function isAdoptTransition(kind: string, from: TaskState, to: TaskState): boolean {
-	return BUTTON_ACTIONS.some(
-		(action) => action.kind === kind && action.from === from && action.to === to && action.method === 'adopt',
-	);
-}
-
-/**
- * 某个类别、某个状态下的**采纳目标状态**。
- *
- * `taskboard_adopt` 工具（AI 侧）只需要「我在草稿态，采纳会去哪」，
- * 它不接收目标状态参数 —— 目标由类别定。
- *
- * @returns `undefined` ⇒ 这个 (类别, 状态) 没有采纳按钮
- */
-export function adoptTargetOf(kind: string, from: TaskState): TaskState | undefined {
-	return BUTTON_ACTIONS.find(
-		(action) => action.kind === kind && action.from === from && action.method === 'adopt',
-	)?.to;
+	return adoptTargetOf(kind, from) === to;
 }
