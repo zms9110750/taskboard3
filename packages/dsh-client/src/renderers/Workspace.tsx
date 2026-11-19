@@ -554,19 +554,42 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						</span>
 
 						<span className="tb3w-toolbar__actions">
-							{/* 紧凑：空间切换收成一个按钮；点开展开成一行（用户 2026-11-20） */}
+							{/*
+							 * 紧凑：空间切换是**下拉面板** —— 点开在按钮下方弹出，
+							 * 覆盖在内容上，不推挤布局。
+							 * 用户 `2026-11-20`：「是菜单往下打开区域的，不是在菜单身上就展开的」。
+							 */}
 							{compact ? (
-								<button
-									type="button"
-									className="ghost-btn tb3w-space-toggle"
-									data-space-toggle
-									aria-expanded={spaceOpen}
-									onClick={() => {
-										setSpaceOpen((prev) => !prev);
-									}}
-								>
-									{spaceOpen ? '工作空间 ▴' : '工作空间 ▾'}
-								</button>
+								<span className="tb3w-space-wrap">
+									<button
+										type="button"
+										className="ghost-btn tb3w-space-toggle"
+										data-space-toggle
+										aria-expanded={spaceOpen}
+										aria-haspopup="true"
+										onClick={() => {
+											setSpaceOpen((prev) => !prev);
+										}}
+									>
+										{spaceOpen ? '工作空间 ▴' : '工作空间 ▾'}
+									</button>
+									{spaceOpen ? (
+										<div className="tb3w-space-pop" role="dialog" aria-label="切换工作空间">
+											<SpaceBar
+												workspaces={props.workspaces}
+												currentId={props.currentId}
+												viewingId={props.viewingId}
+												showArchived={props.showArchived}
+												cardCount={props.cards.length}
+												onView={props.onView}
+												onActivate={props.onActivate}
+												onToggleArchived={props.onToggleArchived}
+												onToggleShowArchived={props.onToggleShowArchived}
+												onCreate={props.onCreateWorkspace}
+											/>
+										</div>
+									) : null}
+								</span>
 							) : null}
 							{/* 紧凑：权限与约定收起来（低频、用不上 —— 用户 2026-11-20「要折叠」） */}
 							{compact || props.onOpenPermission === undefined ? null : (
@@ -599,24 +622,6 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							</button>
 						</span>
 					</div>
-
-					{/* 紧凑 + 展开：chip 行单独一行，横向滚动（40 个空间也不撑高） */}
-					{compact && spaceOpen ? (
-						<div className="tb3w-space-row">
-							<SpaceBar
-							workspaces={props.workspaces}
-							currentId={props.currentId}
-							viewingId={props.viewingId}
-							showArchived={props.showArchived}
-							cardCount={props.cards.length}
-							onView={props.onView}
-							onActivate={props.onActivate}
-							onToggleArchived={props.onToggleArchived}
-							onToggleShowArchived={props.onToggleShowArchived}
-							onCreate={props.onCreateWorkspace}
-						/>
-						</div>
-					) : null}
 
 					<div className="tb3w-filters">
 						<FilterRow

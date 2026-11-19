@@ -461,9 +461,11 @@ export const WORKSPACE_CSS = `
    常驻的：任务计数 / 关系图例（只读装饰）、视图切换 / 新建（高频）
    折叠的：空间 chip 行（点开才显示）、权限与约定、AI chip
    目标：chrome 只占两行 —— 第 1 行工具、第 2 行筛选。 */
-.tb3w-space-toggle{flex:0 0 auto;margin-top:10px;padding:3px 10px;border-radius:7px}
-.tb3w-space-row{flex:0 0 auto;display:flex;min-width:0;margin-top:4px;overflow-x:auto}
-.tb3w-space-row > .space-bar{flex:0 1 auto;padding-left:2px;padding-right:2px}
+.tb3w-space-wrap{position:relative;display:inline-flex}
+.tb3w-space-toggle{flex:0 0 auto;padding:3px 10px;border-radius:7px}
+/* 下拉面板：浮在内容上，不推挤布局（用户 2026-11-20）。40 个空间在面板内部滚动。 */
+.tb3w-space-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:min(560px,88vw);max-height:min(320px,60vh);overflow:auto;padding:8px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-card,#fff);box-shadow:0 12px 32px rgb(15 23 42 / 16%)}
+.tb3w-space-pop > .space-bar{flex-wrap:wrap;padding:0}
 
 /* SpaceBar 自己带 6px 上下 padding ⇒ 这里只补左右对齐 */
 .tb3w-chrome > .space-bar{padding-left:2px;padding-right:2px}
