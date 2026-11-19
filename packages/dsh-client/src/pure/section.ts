@@ -88,139 +88,6 @@ export function payloadKindOf(payload: unknown): SectionKind {
 }
 
 /* ══════════════════════════════════════════════════════════
-   markdown —— **临时最小子集**
-   ══════════════════════════════════════════════════════════ */
-
-/**
- * markdown 的一个行内片段。
- *
- * ⚠ 这是**渲染用的 token**，不是 HTML。组件按 `kind` 建元素（`strong` / `code`），
- *   文字一律走 `textContent` ⇒ **结构上没有 innerHTML 这条路**。
- */
-export type MarkdownToken =
-	| { readonly kind: 'text'; readonly text: string }
-	| { readonly kind: 'strong'; readonly text: string }
-	| { readonly kind: 'code'; readonly text: string };
-
-/** markdown 的一行（行内已 token 化）。 */
-export interface MarkdownLine {
-	readonly tokens: readonly MarkdownToken[];
-	/** 空行（只有空白）—— 渲染成留白，不是一段文字。 */
-	readonly blank: boolean;
-}
-
-/** 空白（含行尾）：`**` 的 flanking 判定要用。 */
-function isBlankChar(char: string | undefined): boolean {
-	return char === undefined || char === ' ' || char === '\t';
-}
-
-/**
- * 把一行切成 token。
- *
- * 支持的两种标记：`` `代码` ``、`**粗体**`。**不闭合的标记保持字面文本**
- * （用户写的 `2 * 3` 不该变成粗体的一半）。
- *
- * ## `**` 按 CommonMark 的 left/right-flanking 简化版判定
- *
- * | 写法 | 结果 | 为什么 |
- * |---|---|---|
- * | `**粗**` | 粗体 | 开标记后不是空白、闭标记前不是空白 |
- * | `2 ** 3` | 字面 `2 ** 3` | 开标记后是空白 ⇒ 开不起来 |
- * | `** 和 **` | 字面 | 同上 |
- * | `**` | 字面 | 没有内容 |
- *
- * ⚠ 不实现完整的 flanking（标点/Unicode 那套）—— 这是**临时实现**，
- *   正式版换 marked 后整段删掉。
- */
-function tokensOfLine(line: string): readonly MarkdownToken[] {
-	const tokens: MarkdownToken[] = [];
-	let buffer = '';
-
-	const flush = (): void => {
-		if (buffer !== '') {
-			tokens.push({ kind: 'text', text: buffer });
-			buffer = '';
-		}
-	};
-
-	let index = 0;
-	while (index < line.length) {
-		const char = line[index];
-
-		if (char === '`') {
-			const end = line.indexOf('`', index + 1);
-			/* 空内容（``）也算代码：那是用户明确打了两个反引号。 */
-			if (end > index) {
-				flush();
-				tokens.push({ kind: 'code', text: line.slice(index + 1, end) });
-				index = end + 1;
-				continue;
-			}
-			buffer += char;
-			index += 1;
-			continue;
-		}
-
-		if (char === '*' && line[index + 1] === '*') {
-			/* 开标记后面必须是内容（不是空白），否则保持字面。 */
-			const canOpen = !isBlankChar(line[index + 2]);
-			if (canOpen) {
-				/* 闭标记前面必须是内容（不是空白）。 */
-				let end = line.indexOf('**', index + 2);
-				while (end !== -1 && (end === index + 2 || isBlankChar(line[end - 1]))) {
-					end = line.indexOf('**', end + 2);
-				}
-				if (end !== -1) {
-					flush();
-					tokens.push({ kind: 'strong', text: line.slice(index + 2, end) });
-					index = end + 2;
-					continue;
-				}
-			}
-			buffer += '**';
-			index += 2;
-			continue;
-		}
-
-		buffer += char;
-		index += 1;
-	}
-
-	flush();
-	return tokens;
-}
-
-/**
- * markdown 源码 → 行数组。
- *
- * ## 现在支持的语法（**临时实现**）
- *
- * | 语法 | 效果 |
- * |---|---|
- * | 换行（`\n`，含 `\r\n` / `\r`）| 一行一段；空行留白 |
- * | `**粗体**` | `<strong>` |
- * | `` `代码` `` | `<code>` |
- *
- * ⚠ **这是临时实现。** 用户 `2026-11-10` 明确要求「找正规的 md 渲染器」，
- *   正式版要换成 marked（GFM）+ 白名单净化（旧版 `lib/markdown.js` 是这么做的：
- *   marked 解析 → DOMParser 惰性文档 → 按白名单**重建**节点 → 绝不 innerHTML）。
- *   换库点只有本函数一个 —— 正式版替换 `markdownLinesOf` 即可。
- *
- * 现在**不支持**（会原样显示成文字）：标题 `#`、列表、引用、代码块 ```、表格、
- * 链接、图片、删除线、HTML 标签（**原样当文字**，绝不解析）。
- *
- * @param source 任意值；不是字符串 ⇒ 空数组
- */
-export function markdownLinesOf(source: unknown): readonly MarkdownLine[] {
-	if (typeof source !== 'string' || source === '') return [];
-	const normalized = source.replace(/\r\n?/gu, '\n');
-	return normalized.split('\n').map((line) => ({
-		tokens: tokensOfLine(line),
-		blank: line.trim() === '',
-	}));
-}
-
-/* ══════════════════════════════════════════════════════════
    ask
    ══════════════════════════════════════════════════════════ */
 
@@ -382,13 +249,13 @@ export interface TextSectionView {
 	readonly empty: boolean;
 }
 
-/** markdown 章节。 */
+/** markdown 章节 —— **只把源码交出去**，解析与净化在 `renderers/Markdown.tsx`。 */
 export interface MarkdownSectionView {
 	readonly kind: 'markdown';
+	/** 原样的 markdown 源码（不在这里解析，解析器不是本文件的事）。 */
 	readonly source: string;
 	readonly placeholder: string;
 	readonly empty: boolean;
-	readonly lines: readonly MarkdownLine[];
 }
 
 /** 未知 $type / 脏 payload —— 降级成「展开原始 JSON」，不白屏、不猜。 */
@@ -455,7 +322,6 @@ export function sectionViewOf(payload: unknown): SectionView {
 			source,
 			placeholder: stringField(record, 'placeholder'),
 			empty: source.trim() === '',
-			lines: markdownLinesOf(source),
 		};
 	}
 

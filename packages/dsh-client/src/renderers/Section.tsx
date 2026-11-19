@@ -3,7 +3,7 @@
  *
  * ## 这个组件只做「渲染决定」
  *
- * 全部判决在 `dev/pure/section.ts`（67 条单测）：
+ * 全部判决在 `pure/section.ts`：
  *
  * ```ts
  * const view = sectionViewOf(section.payload);   // 三种形态 + 降级，纯函数
@@ -22,12 +22,12 @@
  * ③ **组件不判「能不能编辑」** —— 只上报 `onEdit(sectionId)`，由父层决定
  *    （`readonly` 是父层灌进来的，组件不读卡片状态）。
  *
- * ## markdown 是临时实现
+ * ## markdown 走 `renderers/Markdown.tsx`
  *
- * `markdownLinesOf()` 只支持换行 / `**粗体**` / `` `代码` ``。正式版要换 marked
- * （用户 `2026-11-10` 要求「找正规的 md 渲染器」）。换库点只有那个纯函数；
- * **本文件永远不用 `dangerouslySetInnerHTML`** —— 文字一律走子节点，结构上
- * 没有注入这条路。
+ * `markdown` 章节只把源码交给 `<Markdown source={…} />`；解析（marked + GFM）
+ * 与白名单净化在 `pure/markdown-tokens.ts`（用户 `2026-11-10` 要求
+ * 「找正规的 md 渲染器」）。**本文件永远不用 `dangerouslySetInnerHTML`**
+ * —— 文字一律走子节点，结构上没有注入这条路。
  */
 
 import { useState, type ReactNode } from 'react';
@@ -36,12 +36,11 @@ import {
 	canEditOf,
 	emptyHintOf,
 	sectionViewOf,
-	type MarkdownLine,
-	type MarkdownToken,
 	type SectionView,
 } from '../pure/section.ts';
 import type { CardSection } from '../types.ts';
 import { AskSection } from './AskSection.tsx';
+import { Markdown } from './Markdown.tsx';
 
 /** 组件属性（任务描述给的那一份，一个不多一个不少）。 */
 export interface SectionProps {
@@ -145,13 +144,8 @@ function SectionContent(props: {
 					</div>
 				);
 			}
-			return (
-				<div className="md">
-					{view.lines.map((line, index) => (
-						<MarkdownLineView key={index} line={line} />
-					))}
-				</div>
-			);
+			/* 源码原样交给正式实现：解析 / GFM / 白名单净化都在那一层。 */
+			return <Markdown source={view.source} />;
 		}
 
 		case 'ask':
@@ -167,30 +161,6 @@ function SectionContent(props: {
 		case 'unknown':
 			return <UnknownBlock title={view.title} json={view.json} />;
 	}
-}
-
-/** markdown 一行。空行画 `<br>`（与段落间距一致）。 */
-function MarkdownLineView(props: { readonly line: MarkdownLine }): ReactNode {
-	if (props.line.blank) return <br />;
-	return (
-		<div className="md-line">
-			{props.line.tokens.map((token, index) => (
-				<MarkdownTokenView key={index} token={token} />
-			))}
-		</div>
-	);
-}
-
-/**
- * markdown 行内 token —— **建元素、文字走子节点**，没有 innerHTML。
- *
- * @param token `pure/section.ts` 的 `markdownLinesOf()` 切出来的片段
- */
-function MarkdownTokenView(props: { readonly token: MarkdownToken }): ReactNode {
-	const token = props.token;
-	if (token.kind === 'strong') return <strong>{token.text}</strong>;
-	if (token.kind === 'code') return <code className="md-code-inline">{token.text}</code>;
-	return <>{token.text}</>;
 }
 
 /**
