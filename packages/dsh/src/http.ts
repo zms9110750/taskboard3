@@ -194,16 +194,22 @@ function permissionStateOf(taskboard: Taskboard): PermissionState {
 	};
 }
 
-/** 是否是合法的 UI 轴档位（判据是 core 的选项表本身）。 */
-function isCardActionLevel(value: unknown): value is CardActionLevel {
-	if (typeof value !== 'string') return false;
-	return CARD_ACTION_OPTIONS.some((one) => one.value === value);
+/**
+ * 把 body 里的原始值解析成 UI 轴档位。
+ *
+ * @returns `undefined` = 不是合法档位（判据是 core 的选项表本身）
+ */
+function asCardActionLevel(value: unknown): CardActionLevel | undefined {
+	return CARD_ACTION_OPTIONS.find((one) => one.value === value)?.value;
 }
 
-/** 是否是合法的宿主轴档位（判据是 core 的选项表本身）。 */
-function isToolGuardLevel(value: unknown): value is ToolGuardLevel {
-	if (typeof value !== 'string') return false;
-	return TOOL_GUARD_OPTIONS.some((one) => one.value === value);
+/**
+ * 把 body 里的原始值解析成宿主轴档位。
+ *
+ * @returns `undefined` = 不是合法档位（判据是 core 的选项表本身）
+ */
+function asToolGuardLevel(value: unknown): ToolGuardLevel | undefined {
+	return TOOL_GUARD_OPTIONS.find((one) => one.value === value)?.value;
 }
 
 /** 路由装配参数。 */
@@ -341,6 +347,14 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			const body = await readJson(req);
 			const cardRaw = rawField(body, 'cardActionLevel');
 			const guardRaw = rawField(body, 'toolGuardLevel');
+			/*
+			 * 先解析成类型化变量，**只判一次** —— 后面的写直接用解析结果。
+			 *
+			 * ⚠ 不要写成「校验时判一次、写之前再判一次」：第二次判定是兜底，
+			 *   第一次校验哪天被改掉，第二次会静默跳过 —— 返回 200 但什么都没写。
+			 */
+			const cardLevel = cardRaw === undefined ? undefined : asCardActionLevel(cardRaw);
+			const guardLevel = guardRaw === undefined ? undefined : asToolGuardLevel(guardRaw);
 
 			if (cardRaw === undefined && guardRaw === undefined) {
 				sendFailure(
@@ -353,7 +367,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 				return;
 			}
 
-			if (cardRaw !== undefined && !isCardActionLevel(cardRaw)) {
+			if (cardRaw !== undefined && cardLevel === undefined) {
 				sendFailure(
 					res,
 					failure(
@@ -366,7 +380,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 				return;
 			}
 
-			if (guardRaw !== undefined && !isToolGuardLevel(guardRaw)) {
+			if (guardRaw !== undefined && guardLevel === undefined) {
 				sendFailure(
 					res,
 					failure(
@@ -384,8 +398,8 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			 * 只改传了的那个；没传的保持原值 —— 这是 PATCH 语义，
 			 * 但 HTTP 方法用 POST（与其它写端点一致，且 body 是完整声明）。
 			 */
-			if (isCardActionLevel(cardRaw)) await taskboard.setCardActionLevel(cardRaw);
-			if (isToolGuardLevel(guardRaw)) await taskboard.setToolGuardLevel(guardRaw);
+			if (cardLevel !== undefined) await taskboard.setCardActionLevel(cardLevel);
+			if (guardLevel !== undefined) await taskboard.setToolGuardLevel(guardLevel);
 
 			sendOk(res, permissionStateOf(taskboard));
 			return;
