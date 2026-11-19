@@ -3,8 +3,8 @@
  *
  * ## 这个预览里什么是真的
  *
- * - **六个组件是真的**：`SpaceBar` / `FilterRow`+`FilterBox` / `CardRow` /
- *   `CardDetail` / `StatusMenu` 全部来自 `src/renderers/`，一个替身都没有。
+ * - **组件是真的**：`SpaceBar` / `FilterRow`+`FilterBox` / `SearchBox` / `CardRow` /
+ *   `CardDetail` / `StatusMenu` / `TechTree` 全部来自 `src/renderers/`，一个替身都没有。
  * - **样式是真的**：`injectStyles()` 注入 `src/styles.ts` 的 `WORKSPACE_CSS`
  *   —— 预览和产品是同一份 CSS。`style.css` 里只有预览外壳 + mock tab 头。
  * - **布局是真的**：舞台尺寸 = 用户给的真实尺寸（1600×1000 / 570×920），
@@ -14,10 +14,12 @@
  *
  * - **数据**：没有服务端。12 张卡 / 6 个空间 / 18 个模板抄自设计图与
  *   `packages/core/templates/*.yaml`（模板名、类别、领域、编号前缀都是真值）。
- * - **筛选**：`Workspace` 只上报 `onFilterChange`，真正过滤归数据层
- *   ⇒ 点筛选**不会**改变列表。这是 V3 的边界（视图不碰数据），不是视觉决定。
+ * - **筛选 / 搜索是真的**：`Workspace` 本地调 `applyCardQuery()`（判决在
+ *   `src/pure/card-filter.ts`）—— 不匹配的卡**隐藏**。`onFilterChange` /
+ *   `onSearchChange` 仍然上报（外面若有数据层要同步，照旧能接）。
+ * - **科技树是真的**：`Workspace` 的视图切换渲染定稿的 `TechTree`
+ *   （筛/搜判决在 `src/pure/tree-filter.ts`，hover 淡化边在组件里）。
  * - **状态转移**：菜单能开、能选，选了只弹一条预览回执，不发请求。
- * - **科技树**：V1 还没做，点了显示占位。
  *
  * ## 初始状态 = 设计图那个状态
  *
@@ -354,18 +356,28 @@ const WORKSPACES: readonly SpaceEntity[] = Object.freeze([
 ]);
 
 /**
- * 筛选初始态 —— **照设计图**。
+ * 筛选初始态 —— **只 seed 一条**（类别：设计）。
  *
- * | 框 | 设计图画的是 | 这里 seed 的路径 |
- * |---|---|---|
- * | 状态 | `状态：提交` | `['TASK_STATE_SUBMITTED']` |
- * | 类别 | `类别：设计` | `['design']` |
- * | 领域 | `领域：核心/代码`（展开三段）| `['核心', 'design']` ⇒ 核心 › 设计 › 模板 |
+ * ## 为什么不照设计图把三个框都 seed 上
+ *
+ * 设计图（`view-3-workspace*.svg`）画的是「状态：提交 + 类别：设计 +
+ * 领域：核心›设计」同时生效的样子。但筛选是 **AND 语义**（判决在
+ * `src/pure/card-filter.ts`，本预览不改它）：每条选中路径都必须是卡在对应
+ * 树里的位置路径的前缀。三条各自命中：
+ *
+ * | 条件 | 命中 |
+ * |---|---|
+ * | 状态 = 提交 | U-01 / E-08（都是 goal）|
+ * | 类别 = 设计 | C-03 / Q-07 / R-12 |
+ * | 领域 = 核心›设计 | C-03 / Q-07 |
+ *
+ * 三条的交集是**空集** ⇒ 预览一打开就是空态（看起来像数据丢了）。
+ * 所以只 seed「类别」，其余留给用户点 —— 初始列表有 3 张卡。
+ *
+ * ⚠ **不要**为了让初始态「好看」去改 AND 语义：过滤逻辑是对的，错的是 seed。
  */
 const DEFAULT_PICKED: Readonly<Record<string, Picked>> = Object.freeze({
-	status: [TaskState.SUBMITTED],
 	kind: ['design'],
-	domain: ['核心', 'design'],
 });
 
 /* ══════════════════════════════════════════════════════════
@@ -525,10 +537,10 @@ function App(): React.ReactNode {
 								say('打开建卡页（预览：入口没接）');
 							}}
 							onFilterChange={(id, next) => {
-								say(`筛选 ${id} → ${next.length === 0 ? '（清空）' : next.join(' / ')}（预览：过滤归数据层，暂不生效）`);
+								say(`筛选 ${id} → ${next.length === 0 ? '（清空）' : next.join(' / ')}（预览：本地实时过滤已生效，这里只是回执）`);
 							}}
 							onSearchChange={() => {
-								say('搜索（预览：过滤归数据层，暂不生效）');
+								say('搜索（预览：本地实时过滤已生效，这里只是回执）');
 							}}
 							onAction={onAction}
 							onAddRelation={(cardId) => {

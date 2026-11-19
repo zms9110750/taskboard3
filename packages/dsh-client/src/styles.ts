@@ -318,6 +318,46 @@ export const CREATE_CSS = `
 `;
 
 /**
+ * 搜索框的样式 —— 前缀 `.search-box`（SearchBox 组件自带，类名不改）。
+ *
+ * ## 从哪来
+ *
+ * SearchBox 的视觉细节原先只存在于 `dev/preview/searchbox/style.css`（那一份
+ * 仍给 SearchBox 自己的预览用）。V3 工作区要用它 ⇒ 在这里收口成产品样式，
+ * 和上面各组件「preview CSS → WORKSPACE_CSS」同一个做法。
+ *
+ * ## 和 preview 那份的差别（只有两处，都不是行为）
+ *
+ * 1. **作用域**：全部包在 `.tb3w-root` 下（类名保持原样，只加前缀 —— 同
+ *    `WORKSPACE_CSS` 的约定，避免 `.search-box` 这种通用名撞到宿主）。
+ * 2. **颜色**：用宿主 token + 兜底色（`var(--accent, #2563eb)` 这套），
+ *    兜底值就是 preview 里写的那个色值。焦点 / hover / disabled 都是**样式**，
+ *    判决（能不能提交）在 `src/pure/search-box.ts`，本段不碰。
+ *
+ * ⚠ 布局宽度由调用方决定（`WORKSPACE_CSS` 的 `.tb3w-filters__tail .search-box`）；
+ *   组件本身 `field` 是 `flex:1`，没有固定宽度 —— 这是 SearchBox 的设计，
+ *   本文件不改它。
+ *
+ * ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**。
+ */
+export const SEARCHBOX_CSS = `
+.tb3w-root .search-box{display:flex;align-items:stretch;min-width:0}
+.tb3w-root .search-box__field{position:relative;display:flex;align-items:center;flex:1 1 auto;min-width:0;height:36px;border:1px solid var(--border,#e7e9ee);border-right:0;border-radius:8px 0 0 8px;background:var(--bg-card,#fff);transition:border-color .12s,background .12s}
+.tb3w-root .search-box__field:focus-within{border-color:var(--accent,#2563eb)}
+.tb3w-root .search-box__icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;color:var(--text-weak,#9aa1ad);pointer-events:none}
+/* 左内边距 33px = 图标左 11px + 图标 14px + 间距 8px —— 文字不会压到图标 */
+.tb3w-root .search-box__input{width:100%;height:100%;padding:0 12px 0 33px;border:0;border-radius:8px 0 0 8px;outline:none;background:transparent;font-family:inherit;font-size:13px;line-height:1.5;color:var(--text,#16181d)}
+.tb3w-root .search-box__input::placeholder{color:var(--text-weak,#9aa1ad)}
+.tb3w-root .search-box__input:disabled{cursor:not-allowed}
+.tb3w-root .search-box__go{flex:0 0 auto;height:36px;padding:0 20px;border:1px solid var(--accent,#2563eb);margin-left:-1px;border-radius:0 8px 8px 0;background:var(--accent,#2563eb);color:#fff;font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.02em;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+.tb3w-root .search-box__go:hover:not(:disabled){background:var(--accent-strong,#1d4ed8);border-color:var(--accent-strong,#1d4ed8)}
+.tb3w-root .search-box__go:active:not(:disabled){background:#1e40af;border-color:#1e40af}
+/* 空输入 / 禁用 ⇒ 视觉弱化：灰底、灰字、灰边（它是真 disabled，不是只换颜色） */
+.tb3w-root .search-box__go:disabled{background:#f1f3f6;border-color:var(--border,#e7e9ee);color:var(--text-weak,#9aa1ad);cursor:default}
+.tb3w-root .search-box[data-search-disabled='true'] .search-box__field{background:#f7f8fa;border-color:var(--border,#e7e9ee)}
+`;
+
+/**
  * 工作区（V3）的样式 —— 前缀 `tb3w-`。
  *
  * ## 它为什么单独一段
@@ -433,10 +473,11 @@ export const WORKSPACE_CSS = `
 .tb3w-filters__tail{display:flex;align-items:center;gap:8px;min-width:0}
 .tb3w-ai-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
 .tb3w-ai-chip b{font-weight:600;color:var(--text)}
-.tb3w-search{display:flex;align-items:center;gap:6px;width:250px;max-width:100%;padding:4px 11px;border:1px solid var(--border);border-radius:15px;background:var(--bg-card);color:var(--text-weak)}
-.tb3w-search__icon{flex:0 0 auto;display:block}
-.tb3w-search input{width:100%;min-width:0;border:0;outline:none;background:transparent;font-family:inherit;font-size:11px;color:var(--text)}
-.tb3w-search input::placeholder{color:var(--text-weak)}
+/*
+ * 尾部搜索框 = 定稿的 SearchBox（类名 .search-box，样式在 SEARCHBOX_CSS）。
+ * 这里只管**布局**：宽版固定 250px（和原来的行内输入框同宽），窄版整行。
+ */
+.tb3w-filters__tail .search-box{flex:0 0 auto;width:250px}
 
 /* ── 左栏：列表 ── */
 .tb3w-list{flex:2 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
@@ -453,6 +494,15 @@ export const WORKSPACE_CSS = `
 .tb3w-list__cols span:last-child{text-align:right}
 .tb3w-list__body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px 14px 12px}
 .tb3w-list__empty{padding:28px 8px;text-align:center;font-size:12px;color:var(--text-weak)}
+
+/*
+ * 科技树视图 —— 用定稿的 TechTree（类名 tb3t-*，CSS 在 TECHTREE_CSS）。
+ * 它的根是 height:100% 的 flex 列（画布自己滚、页脚常驻）⇒ 这里只给一个
+ * 「撑满列表栏」的容器。min-height:0 是 flex 里让子元素内部滚动的必要条件
+ * （同 .tb3w-list__body 的理由）。
+ */
+.tb3w-tree{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.tb3w-tree > .tb3t-root{flex:1 1 auto;min-height:0}
 
 /* ── 分隔条：可拖（宽版竖 / 窄版横） ── */
 .tb3w-split{position:relative;display:flex;flex:0 0 20px;align-items:center;justify-content:center;cursor:col-resize;user-select:none;touch-action:none}
@@ -677,7 +727,7 @@ export const WORKSPACE_CSS = `
   .tb3w-root .filter-box__csep,.tb3w-root .filter-box__sep{font-size:11px}
   .tb3w-root .filter-box__vline{margin:0 7px}
   .tb3w-ai-chip{display:none}
-  .tb3w-search{width:100%;padding:3px 10px}
+  .tb3w-filters__tail .search-box{flex:1 1 100%;width:100%}
   .tb3w-list__head{padding:9px 12px 5px}
   .tb3w-list__title{font-size:12px}
   .tb3w-list__body{padding:6px 12px 10px}
@@ -688,6 +738,120 @@ export const WORKSPACE_CSS = `
   .tb3w-root .detail-title{font-size:14px}
   .tb3w-root .detail-history__item{font-size:10.5px}
 }
+`;
+
+/**
+ * 科技树的样式 —— 前缀 `tb3t-`（唯一，不跟 `tb3-*` / `tb3cc-*` / `tb3w-*` 混）。
+ *
+ * ## ⚠ 这一份为什么是**复制的**（不是 import）
+ *
+ * 科技树的 CSS 原本定义在 `src/renderers/TechTree.tsx` 的 `TECHTREE_CSS`
+ * （组件文件头写着「合并时把 TECHTREE_CSS 并进 styles.ts 即可」）。
+ *
+ * 但 `styles.ts` **不能 import `.tsx`**：`node --test` 直接跑 TS 源码
+ * （规则 6），Node 的类型剥离只认 `.ts`，import `.tsx` 会抛
+ * `ERR_UNKNOWN_FILE_EXTENSION` —— `test/create-layout.test.ts` 从本文件
+ * import `CREATE_CSS`，一 import `.tsx` 整个测试文件就挂（已实际踩到）。
+ *
+ * 本次写权限不含 `TechTree.tsx` ⇒ 暂时只能两份。
+ *
+ * ## ⚠ 漂移风险 + 拆掉它的条件（给下一个能动 `TechTree.tsx` 的人）
+ *
+ * 两份 CSS 一旦改了一边，**没有任何自动检查会红** —— 预览（techtree 预览用
+ * `TechTree.tsx` 那份）和产品（用本文件这份）会不一致。所以：
+ *
+ * 1. 把 `TechTree.tsx` 里的 `TECHTREE_CSS` 定义**删掉**，改成
+ *    `import { TECHTREE_CSS } from '../styles.ts'`（不会再成环：本文件已不再
+ *    import `TechTree.tsx`）；
+ * 2. `injectTechTreeStyles()` 改成直接调 `injectStyles()`；
+ * 3. 删掉本段的复制说明。
+ *
+ * ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**。
+ */
+export const TECHTREE_CSS = `
+/* ── 根：填满父容器；画布滚动，页脚常驻 ── */
+.tb3t-root{display:flex;flex-direction:column;height:100%;min-height:0;background:transparent;color:var(--text,#16181d);font-size:12px;line-height:1.5}
+.tb3t-scroll{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;position:relative}
+.tb3t-stage{position:relative;flex:0 0 auto}
+
+/* ── 列背景 + 列头 ── */
+.tb3t-band{position:absolute;border-radius:12px;background:var(--bg-soft,#f9fafb);pointer-events:none}
+.tb3t-band__title{position:absolute;left:0;right:0;top:9px;text-align:center;font-size:11.5px;font-weight:600;color:var(--text-weak,#9ca3af);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── 线层 ── */
+.tb3t-links{position:absolute;left:0;pointer-events:none;overflow:visible}
+.tb3t-edge{fill:none;stroke-width:2;stroke-linecap:round;stroke:#5b6472;transition:opacity .12s ease,stroke-width .12s ease}
+.tb3t-edge--derives{stroke:#5b6472}
+.tb3t-edge--dependsOn{stroke:#a16207}
+.tb3t-edge--supersedes{stroke:#6d28d9}
+.tb3t-edge--constrains{stroke:#b91c1c}
+.tb3t-edge--related{stroke:#15803d;stroke-dasharray:4 3}
+.tb3t-edge--references{stroke:#6b7280;stroke-dasharray:4 3}
+/* 用户 2026-11-19：hover 时无关的边淡到 25% */
+.tb3t-edge.is-dim{opacity:0.25}
+/* 相连的边：加粗 + 加深（光晕单独一层） */
+.tb3t-edge.is-active{stroke-width:3;opacity:1}
+.tb3t-edge-glow{fill:none;stroke-width:10;stroke-linecap:round;opacity:0.16;filter:blur(2px)}
+.tb3t-edge-label{font-size:10px;font-weight:700;text-anchor:middle;paint-order:stroke;stroke:#ffffff;stroke-width:3.5;stroke-linejoin:round}
+.tb3t-edge-label--derives{fill:#5b6472}
+.tb3t-edge-label--dependsOn{fill:#a16207}
+.tb3t-edge-label--supersedes{fill:#6d28d9}
+.tb3t-edge-label--constrains{fill:#b91c1c}
+.tb3t-edge-label--related{fill:#15803d}
+.tb3t-edge-label--references{fill:#6b7280}
+
+/* ── 箭头（尖端贴目标卡边：refX=9 让三角形顶点正好落在路径终点） ── */
+.tb3t-arrow path{stroke:none}
+.tb3t-arrow--derives path{fill:#5b6472}
+.tb3t-arrow--dependsOn path{fill:#a16207}
+.tb3t-arrow--supersedes path{fill:#6d28d9}
+.tb3t-arrow--constrains path{fill:#b91c1c}
+.tb3t-arrow--related path{fill:#15803d}
+.tb3t-arrow--references path{fill:#6b7280}
+
+/* ── 卡片 ── */
+.tb3t-card{position:absolute;display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:2px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-card,#fff);color:inherit;font-family:inherit;text-align:left;cursor:pointer;overflow:hidden;box-shadow:0 1px 2px rgb(15 23 42 / 7%);transition:border-color .12s,background .12s,box-shadow .12s}
+.tb3t-card:hover{background:#fbfcfe;border-color:#cbd5e1}
+.tb3t-card.is-selected{border-color:var(--accent,#2563eb);box-shadow:0 0 0 4px rgb(37 99 235 / 16%),0 1px 2px rgb(15 23 42 / 7%)}
+/* 草稿：无可见边框，但保留 2px 占位（用户 2026-11-10：草稿无边框） */
+.tb3t-card.is-draft{border-color:transparent;box-shadow:none}
+.tb3t-card.is-draft:hover{border-color:var(--border,#e5e7eb)}
+.tb3t-card.is-draft.is-selected{border-color:var(--accent,#2563eb)}
+.tb3t-card__top{display:flex;align-items:center;gap:4px;min-width:0;height:16px}
+.tb3t-card__spacer{flex:1 1 auto;min-width:2px}
+.tb3t-card__warn{flex:0 0 auto;color:#ef4444;font-size:9px;line-height:1}
+.tb3t-card__title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;font-weight:600;line-height:1.35;color:var(--text,#1f2328);word-break:break-word}
+.tb3t-card .card-id{font-size:11px;flex:0 0 auto}
+.tb3t-card .badge{flex:0 1 auto;min-width:0;max-width:54px;padding:0 4px;font-size:9.5px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* StatusCell 在卡片里：圆点 + 中文名（用户：不只靠颜色） */
+.tb3t-card .task-card__status{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;font-size:9px;color:var(--text-weak,#9aa1ad);white-space:nowrap}
+.tb3t-card .task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42px}
+
+/* ── 页脚：状态图例 + 布局警告 ── */
+.tb3t-footer{flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:6px 12px;border-top:1px solid var(--border,#eef0f3);background:var(--bg-soft,#fafbfc);font-size:11px;color:var(--text-secondary,#6b7280)}
+.tb3t-footer__states{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;min-width:0}
+.tb3t-footer__label{color:var(--text-weak,#9ca3af)}
+.tb3t-footer__state{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.tb3t-footer__warn{margin-left:auto;color:var(--text-weak,#9aa1ad);white-space:nowrap}
+.tb3t-footer__warn.has-warning{color:#b45309}
+
+/* ── 空态 ── */
+.tb3t-empty{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:40px 16px;color:var(--text-weak,#9aa1ad);font-size:12.5px;text-align:center}
+
+/* ── 关系图例（工具栏里用） ── */
+.tb3t-legend{display:flex;align-items:center;flex-wrap:wrap;gap:2px 12px;font-size:11px;color:var(--text-secondary,#5f6673)}
+.tb3t-legend__item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.tb3t-legend__item[data-rel="derives"]{color:#5b6472}
+.tb3t-legend__item[data-rel="dependsOn"]{color:#a16207}
+.tb3t-legend__item[data-rel="supersedes"]{color:#6d28d9}
+.tb3t-legend__item[data-rel="constrains"]{color:#b91c1c}
+.tb3t-legend__item[data-rel="related"]{color:#15803d}
+.tb3t-legend__item[data-rel="references"]{color:#6b7280}
+.tb3t-legend__svg{flex:0 0 auto;display:block;overflow:visible}
+.tb3t-legend__path{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.tb3t-legend__head{fill:currentColor;stroke:none}
+.tb3t-legend__item[data-rel="related"] .tb3t-legend__path{stroke-dasharray:4 3}
+.tb3t-legend__item[data-rel="references"] .tb3t-legend__path{stroke-dasharray:4 3}
 `;
 
 /**
@@ -1030,10 +1194,17 @@ export function injectStyles(): void {
 	const element = document.createElement('style');
 	element.id = STYLE_ID;
 	/*
-	 * ⚠ 三段都注入：`STYLES` 是旧面板内的（`tb3-*`），`CREATE_CSS` 是全屏建卡页的
-	 *   （`tb3cc-*`），`WORKSPACE_CSS` 是 V3 工作区的（`tb3w-*` + 六个定稿组件）。
-	 *   合成一个 `<style>` 而不是三个 —— 少两个 DOM 节点，去重逻辑只需要管一个 id。
+	 * ⚠ 五段都注入：`STYLES` 是旧面板内的（`tb3-*`），`CREATE_CSS` 是全屏建卡页的
+	 *   （`tb3cc-*`），`WORKSPACE_CSS` 是 V3 工作区的（`tb3w-*` + 六个定稿组件），
+	 *   `SEARCHBOX_CSS` 是工作区尾部搜索框的（`.search-box`），
+	 *   `TECHTREE_CSS` 是科技树的（`tb3t-*`，**复制**自 `TechTree.tsx`，原因见那段注释）。
+	 *   合成一个 `<style>` 而不是五个 —— 少四个 DOM 节点，去重逻辑只需要管一个 id。
+	 *
+	 * ⚠ 顺序有约束：`TECHTREE_CSS` 放最后。它里面 `.tb3t-card .card-id` /
+	 *   `.tb3t-card .badge` 与 `WORKSPACE_CSS` 的 `.tb3w-root .card-id` /
+	 *   `.tb3w-root .badge` **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
+	 *   科技树自己的规格（颜色仍是 `WORKSPACE_CSS` 那一份真值）。
 	 */
-	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}`;
+	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SEARCHBOX_CSS}\n${TECHTREE_CSS}`;
 	document.head.appendChild(element);
 }
