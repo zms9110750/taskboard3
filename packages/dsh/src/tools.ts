@@ -32,7 +32,7 @@
  *   `defineTool` 由调用方注入。好处：本模块可以**纯本地测试**，不需要 DSH 运行时。
  */
 
-import type { BoardMode, Card, Taskboard } from '@taskboard/core';
+import type { Card, Taskboard } from '@taskboard/core';
 import { BASE_TOOLS, EXECUTION_TOOLS, READONLY_TOOLS } from '@taskboard/core';
 import type { Failure, TaskState } from '@taskboard/protocol';
 import {
@@ -47,7 +47,7 @@ import {
 	labelOf,
 } from '@taskboard/protocol';
 
-import { isAdoptTransition } from './actions.ts';
+import { adoptTargetOf, isAdoptTransition } from './actions.ts';
 import { holderOf } from './holder.ts';
 
 /** 一个已定义工具的最小形状（对齐 DSH `ToolDefinition` 的字段子集）。 */
@@ -85,19 +85,12 @@ export interface ToolDeps {
 	 *
 	 * ⚠ 可以是 `undefined`：没有 subagent 环境的 profile 也该能用任务板。
 	 *   那时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
+	 *
+	 * ⚠ 档位**不在这里注入**：`taskboard_adopt` 直接读
+	 *   `taskboard.getCardActionLevel()`（core 是唯一真值）。
+	 *   传进来就变成第二份状态，两个入口会漂。
 	 */
 	readonly subagents?: unknown;
-	/**
-	 * 读当前调用的**任务板模式**（`plan` / `work` / `auto` / `undefined`）。
-	 *
-	 * ⚠ 用途只有一个：`taskboard_adopt` 要知道 **auto 模式下 AI 能不能自己采纳草稿**
-	 *   （用户：「自动工作和工作的区别就是 ai 自己采纳草稿」）。
-	 *   其余工具的模式判定全在 guard 里（core 的 `judgeToolCall`）。
-	 *
-	 * ⚠ 省略 ⇒ 恒 `undefined` ⇒ 采纳按「非 auto」处理（AI 不能采纳）——
-	 *   那是**安全**的默认方向。
-	 */
-	readonly modeOf?: (exec: unknown) => BoardMode | undefined;
 }
 
 /*
@@ -213,7 +206,7 @@ function rawOf(args: unknown, key: string): unknown {
 }
 
 /**
- * 建十一个工具。
+ * 建全部 AI 工具（**名字与顺序都是契约**，见 `test/tools.test.ts`）。
  *
  * @returns 工具定义数组（调用方逐个 `ctx.tools.register`）
  */
@@ -552,7 +545,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 	const transition = defineTool({
 		name: 'taskboard_transition',
 		description:
-			'改一张卡的状态。to 为空 ⇒ 只回答：当前状态含义、现在能转去哪（附按钮文案）、哪些目标被拒及原因，不执行。to 有值 ⇒ 执行转移。状态 id 用协议全名（如 TASK_STATE_SUBMITTED），中文名也能认。',
+			'改一张卡的状态。to 为空 ⇒ 只回答：当前状态含义、现在能转去哪（附按钮文案）、哪些目标被拒及原因，不执行。to 有值 ⇒ 执行转移。状态 id 用协议全名（如 TASK_STATE_SUBMITTED），中文名也能认。⚠ 「采纳草稿」不是转移，用 taskboard_adopt。',
 		parameters: {
 			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
 			id: { type: 'string', required: true, description: '卡编号。' },
@@ -563,7 +556,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 			to: { type: 'string', description: '目标状态 id。省略 = 只查询不执行。' },
 		},
 		output: OUTPUT,
-		async execute(args: unknown, exec: unknown): Promise<unknown> {
+		async execute(args: unknown): Promise<unknown> {
 			const workspaceId = await resolveWorkspace(args);
 			const cardId = str(args, 'id') ?? '';
 
@@ -599,7 +592,14 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 						const button = buttonsOf(kind, one.status, 'ai').find((one2) => one2.to === target);
 						const verdict = judgeTransition({ kind, from: one.status, to: target, trigger: 'ai' });
 						const suffix = verdict.ok ? '' : `（当前不可：${verdict.reason}）`;
-						lines.push(`  · ${stateText(target)} —— 按钮「${button?.label ?? ''}」${suffix}`);
+						/*
+						 * ⚠ 采纳不是「转移」：它要写 `adoptedAt`，走的是 `taskboard_adopt`。
+						 *   列表里不标这一句，模型会照着按钮文案拿 transition 去点采纳。
+						 */
+						const adoptNote = isAdoptTransition(kind, one.status, target)
+							? '（这是「采纳」，请用 taskboard_adopt，不要用本工具）'
+							: '';
+						lines.push(`  · ${stateText(target)} —— 按钮「${button?.label ?? ''}」${suffix}${adoptNote}`);
 					}
 				}
 
@@ -630,22 +630,23 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 
 			/* ── 执行转移：AI 触发 ── */
 			/*
-			 * ⚠ **采纳走 `adopt()`，不走 `transition()`** —— 理由同 HTTP 路由：
-			 *   采纳要同时写 `adoptedAt`（与 history 那条用同一个 `at`），
-			 *   否则 `search` 的排序键 `adoptedAt ?? createdAt` 会错乱且不报错。
+			 * ⚠ **采纳不是转移** —— 它是独立工具 `taskboard_adopt`（从本工具拆出来的）。
 			 *
-			 * ⚠ **`allowAiAdopt` 只在 auto 模式为 true**（用户：
-			 *   「自动工作和工作的区别就是 ai 自己采纳草稿」）。
-			 *   work / plan 模式下 AI 不能自己采纳，得用户点。
+			 * 理由（`2026-11-19`）：
+			 * ① 用户把「允许采纳草稿」当成一条独立授权（core 的 `judgeToolCall`
+			 *    第一段 ③ 按工具名 `taskboard_adopt` 判）—— 藏在一个「万能转移」的
+			 *    action 参数里，guard 就永远命不中那条规则；
+			 * ② 采纳要同时写 `adoptedAt`（与 history 那条用同一个 `at`），
+			 *    与普通转移是两个 core 方法，混在一个工具里迟早漏。
+			 *
+			 * ⇒ 这里明确让路：告诉模型改用哪个工具，而不是静默按普通转移处理。
 			 */
 			if (isAdoptTransition(kind, one.status, to)) {
-				const mode = deps.modeOf?.(exec);
-				const adopted = await taskboard.adopt(workspaceId, cardId, 'ai', {
-					allowAiAdopt: mode === 'auto',
-				});
-				if (!adopted.ok) return { text: `采纳失败：\n${describeFailure(adopted)}` };
 				return {
-					text: `已把 ${adopted.card.id}「${adopted.card.title}」从草稿采纳为「${labelOf(adopted.card.status)}」。`,
+					text:
+						`「${stateText(to)}」是**采纳草稿**，不是普通状态转移。` +
+						'请改用 taskboard_adopt 工具（参数：workspaceId、id）—— ' +
+						'它会走 core 的 adopt()，同时写 adoptedAt。',
 				};
 			}
 
@@ -657,7 +658,79 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 8. 领取 ── */
+	/* ── 8. 采纳草稿（从 transition 拆出的独立工具） ── */
+	/*
+	 * ## 为什么必须是独立工具
+	 *
+	 * 用户把「允许采纳草稿」当成一档**独立授权**。core 的 `judgeToolCall`
+	 * 第一段 ③ 就是按 `toolName === 'taskboard_adopt'` 判的 ——
+	 * 如果采纳还藏在 `taskboard_transition` 的 `to` 参数里，
+	 * 那条 guard 规则**永远不会命中**，用户开的档位就是个摆设。
+	 *
+	 * ## 参数里没有 `to`
+	 *
+	 * 采纳的目标状态由**类别**决定（goal/work → 提交，design/record → 需要授权），
+	 * 那是 `protocol` 的 `BUTTON_ACTIONS` 里的事实（`method === 'adopt'`）。
+	 * 让模型传 `to` 只会多一个可以传错的参数 —— 目标由 core 算。
+	 *
+	 * ## 档位
+	 *
+	 * 读 `taskboard.getCardActionLevel()`（core 是唯一真值），
+	 * 非 `adopt` ⇒ 直接拒绝并指路（正常路径上 guard 已经先拦了一次，
+	 * 这里是 guard 缺席时的兜底 —— 加装模块没装也不该绕开用户授权）。
+	 */
+	const adopt = defineTool({
+		name: 'taskboard_adopt',
+		description:
+			'采纳一张草稿卡：按类别转到「提交」（目标 / 工作）或「需要授权」（设计 / 记录），并写 adoptedAt。只有草稿能采纳；能否由 AI 采纳取决于任务板档位「允许采纳草稿」。普通状态转移请用 taskboard_transition。',
+		parameters: {
+			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
+			id: { type: 'string', required: true, description: '草稿卡的编号。' },
+		},
+		output: OUTPUT,
+		async execute(args: unknown): Promise<unknown> {
+			const workspaceId = await resolveWorkspace(args);
+			const cardId = str(args, 'id') ?? '';
+
+			const found = mustGetCard(workspaceId, cardId);
+			if (!found.ok) return { text: found.text };
+			const one = found.card;
+			const kind = one.template.kind;
+
+			/*
+			 * 先看这个 (类别, 状态) 有没有采纳按钮 —— 没有就直接说清，
+			 * 不把「只有草稿能采纳」这种事实留给 core 的 TRANSITION_REJECTED
+			 * （那个错误码对模型来说太泛，容易让它以为换个 to 就能过）。
+			 */
+			const target = adoptTargetOf(one.template.kind, one.status);
+			if (target === undefined) {
+				return {
+					text:
+						`${one.id}「${one.title}」当前状态是「${labelOf(one.status)}」（类别 ${kind}），` +
+						'现在没有「采纳」这个动作。只有草稿能采纳。',
+				};
+			}
+
+			const cardLevel = taskboard.getCardActionLevel();
+			if (cardLevel !== 'adopt') {
+				return {
+					text:
+						'采纳失败：当前任务板档位不允许 AI 采纳草稿。' +
+						'只有「允许采纳草稿」档位才能由 AI 采纳；其它档位要用户自己在界面上点采纳。',
+				};
+			}
+
+			const adopted = await taskboard.adopt(workspaceId, cardId, 'ai', { allowAiAdopt: true });
+			if (!adopted.ok) return { text: `采纳失败：\n${describeFailure(adopted)}` };
+			return {
+				text:
+					`已把 ${adopted.card.id}「${adopted.card.title}」从草稿采纳为` +
+					`「${labelOf(adopted.card.status)}」（类别 ${kind} 的采纳目标是 ${stateText(target)}）。`,
+			};
+		},
+	});
+
+	/* ── 9. 领取 ── */
 	const claim = defineTool({
 		name: 'taskboard_claim',
 		description:
@@ -680,7 +753,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 9. 释放 ── */
+	/* ── 10. 释放 ── */
 	const release = defineTool({
 		name: 'taskboard_release',
 		description:
@@ -703,7 +776,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 10. 注册表 ── */
+	/* ── 11. 注册表 ── */
 	const registry = defineTool({
 		name: 'taskboard_registry',
 		description:
@@ -777,7 +850,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 11. 标记已读 ── */
+	/* ── 12. 标记已读 ── */
 	const markSeen = defineTool({
 		name: 'taskboard_mark_seen',
 		description:
@@ -802,7 +875,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 12. 权限管理：读四档策略 ── */
+	/* ── 13. 权限管理：读四档策略 ── */
 	const toolPolicies = defineTool({
 		name: 'taskboard_tool_policies',
 		description:
@@ -864,7 +937,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 13. 权限管理：改某一档的增量 ── */
+	/* ── 14. 权限管理：改某一档的增量 ── */
 	const toolPolicySet = defineTool({
 		name: 'taskboard_tool_policy_set',
 		description:
@@ -940,7 +1013,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 14. 权限管理：设组成员 ── */
+	/* ── 15. 权限管理：设组成员 ── */
 	const toolPolicyMembers = defineTool({
 		name: 'taskboard_tool_policy_members',
 		description:
@@ -969,7 +1042,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		},
 	});
 
-	/* ── 15. 权限管理：清空某一档 ── */
+	/* ── 16. 权限管理：清空某一档 ── */
 	const toolPolicyReset = defineTool({
 		name: 'taskboard_tool_policy_reset',
 		description:
@@ -1023,6 +1096,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 		updateContent,
 		updateNote,
 		transition,
+		adopt,
 		claim,
 		release,
 		registry,

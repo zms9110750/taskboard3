@@ -70,14 +70,6 @@ async function closeTaskboard(): Promise<void> {
 /** 当前用例的工作空间 id。 */
 let workspaceId = '';
 
-/**
- * 当前用例的「任务板模式」。
- *
- * ⚠ 只有 `taskboard_adopt` 用到（auto 模式下 AI 能不能自己采纳草稿）。
- *   默认 `undefined` = 非任务板预设 ⇒ 按「不能自己采纳」处理（安全方向）。
- */
-let currentMode: 'plan' | 'work' | 'auto' | undefined;
-
 beforeEach(async () => {
 	await closeTaskboard();
 	taskboard = createTaskboard({
@@ -90,13 +82,19 @@ beforeEach(async () => {
 	assert.equal(created.ok, true);
 	if (created.ok) workspaceId = created.workspace.id;
 
-	currentMode = undefined;
+	/*
+	 * ⚠ 档位是 core 的**持久化状态**（`dataDir` 在本文件里共用）——
+	 *   每个用例显式复位，否则前一个用例改过的档位会漏到下一个。
+	 *   默认值见 `core/src/index.ts:188,191`：no-claim + off。
+	 */
+	await taskboard.setCardActionLevel('no-claim');
+	await taskboard.setToolGuardLevel('off');
+
 	tools = createTools({
 		taskboard,
 		defineTool: fakeDefineTool,
 		defaultWorkspaceId: async () => workspaceId,
 		subagents: stubSubagents('测试agent'),
-		modeOf: () => currentMode,
 	});
 });
 
@@ -134,6 +132,7 @@ describe('工具注册面', () => {
 			'taskboard_update_content',
 			'taskboard_update_note',
 			'taskboard_transition',
+			'taskboard_adopt',
 			'taskboard_claim',
 			'taskboard_release',
 			'taskboard_registry',
@@ -532,22 +531,23 @@ describe('四档权限工具', () => {
 		await taskboard.transition(workspaceId, cardId, 'TASK_STATE_SUBMITTED', 'button');
 		await taskboard.claim(workspaceId, cardId, 'ai', 'lead');
 
+		/* 档位：宿主轴必须 manage，否则第二段一律放行（off = 不管理工具）。 */
+		await taskboard.setToolGuardLevel('manage');
 		const heldCards = [{ templateRef: template.ref }];
 
 		/* taskboard_transition 在 BASE ⇒ 任何时候都放行，不受 delta 影响。 */
 		const baseVerdict = taskboard.judgeToolCall({
-			mode: 'work',
 			toolName: 'taskboard_transition',
 			heldCards,
 		});
 		assert.deepEqual(baseVerdict, { ok: true }, 'BASE 里的工具不该被 delta 影响');
 
 		/* 而 bash 因为在独立档里 ⇒ 也放行（证明 delta 生效了）。 */
-		const bashVerdict = taskboard.judgeToolCall({ mode: 'work', toolName: 'bash', heldCards });
+		const bashVerdict = taskboard.judgeToolCall({ toolName: 'bash', heldCards });
 		assert.deepEqual(bashVerdict, { ok: true }, '独立档里的 bash 该放行');
 
 		/* edit 既不在 BASE 也不在独立档 ⇒ 拒。 */
-		const editVerdict = taskboard.judgeToolCall({ mode: 'work', toolName: 'edit', heldCards });
+		const editVerdict = taskboard.judgeToolCall({ toolName: 'edit', heldCards });
 		assert.equal(editVerdict.ok, false, 'edit 没被授予 ⇒ 该拒');
 	});
 
@@ -859,18 +859,18 @@ describe('taskboard_transition', () => {
 		assert.ok(text.includes('可用'), text);
 	});
 
-	it('认中文状态名（草稿 → 提交 是合法按钮）', async () => {
-		const id = await makeCard('中文状态');
-		const text = await run('taskboard_transition', { id, to: '提交' });
-		/*
-		 * 两种可能：core 的 transition 还没实现 ⇒ 提示「尚未实现」；
-		 * 或已实现 ⇒ 真的转了。两种都算通过（本用例测的是**状态名解析**没报错）。
-		 */
-		assert.ok(
-			text.includes('尚未') || text.includes('已把') || text.includes('失败'),
-			`不该是「不是已知状态」：${text}`,
-		);
-		assert.ok(!text.includes('不是已知状态'), text);
+	it('认中文状态名（草稿 →「提交」是采纳目标 ⇒ 指路 taskboard_adopt）', async () => {
+		/* 用 goal / work 类别：它们的草稿「提交」是采纳，不是普通转移。 */
+		const template = taskboard.listTemplates().find((one) => one.kind === 'goal' || one.kind === 'work');
+		assert.notEqual(template, undefined);
+		if (template === undefined) return;
+		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '中文状态' });
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+
+		const text = await run('taskboard_transition', { id: created.card.id, to: '提交' });
+		assert.ok(!text.includes('不是已知状态'), `中文名应能认：${text}`);
+		assert.ok(text.includes('taskboard_adopt'), `采纳不该由 transition 执行：${text}`);
 	});
 
 	it('不存在的编号 ⇒ 失败文案', async () => {
@@ -878,76 +878,134 @@ describe('taskboard_transition', () => {
 		assert.ok(text.includes('不存在'), text);
 	});
 
-	/* ── 采纳走 adopt()，且按模式决定 AI 能不能自己采 ── */
+	/* ── 采纳已拆成独立工具：transition 必须明确让路 ── */
 
-	it('⚠ 采纳走 adopt()：AI 采纳后 adoptedAt 被写（走 transition 就不会写）', async () => {
+	it('⚠ transition 不再接受采纳：明确指向 taskboard_adopt，且不改状态', async () => {
 		/*
-		 * 采纳要同时写 `adoptedAt`（`search` 的排序键）。若 AI 的采纳走了
-		 * `transition()`，状态对了、排序错了、**且不报错** —— 静默错误。
-		 *
-		 * ⚠ 用 design 模板：它的采纳对 AI 本来就开放（`BUTTON_ACTIONS` 里是 BOTH），
-		 *   所以这条用例测的是「走对方法」，不是「auto 放行」。
+		 * 用户把「允许采纳草稿」当成独立授权，core 的 `judgeToolCall`
+		 * 第一段 ③ 按工具名 `taskboard_adopt` 判 ——
+		 * 若 transition 还能静默执行采纳，那条 guard 规则永远命中不了。
 		 */
-		const template = taskboard.listTemplates().find((one) => one.kind === 'design');
+		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
 		assert.notEqual(template, undefined);
 		if (template === undefined) return;
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '设计草稿' });
+		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '工作草稿' });
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
-		assert.equal(created.card.adoptedAt, null);
 
-		const to = created.card.template.kind === 'design' ? 'TASK_STATE_AUTH_REQUIRED' : 'TASK_STATE_SUBMITTED';
-		const text = await run('taskboard_transition', { id: created.card.id, to });
+		const text = await run('taskboard_transition', { id: created.card.id, to: 'TASK_STATE_SUBMITTED' });
 		assert.ok(text.includes('采纳'), text);
+		assert.ok(text.includes('taskboard_adopt'), `应指路独立工具：${text}`);
 
 		const after = taskboard.get(workspaceId, created.card.id);
 		assert.equal(after.ok, true);
+		if (after.ok) {
+			assert.equal(after.card.status, 'TASK_STATE_UNSPECIFIED', '不能静默按普通转移处理');
+			assert.equal(after.card.adoptedAt, null);
+		}
+	});
+});
+
+/* ────────────────────────── taskboard_adopt（独立工具） ──────────────────────────
+ *
+ * ## 为什么必须独立
+ *
+ * 用户把「允许采纳草稿」当成一档**独立授权**：`CardActionLevel = 'adopt'`。
+ * core 的 `judgeToolCall` 第一段 ③ 判的就是 `toolName === 'taskboard_adopt'`。
+ * ⇒ 采纳如果还藏在 `taskboard_transition` 的 `to` 参数里，那条规则永远不命中。
+ *
+ * ## 目标状态不传参
+ *
+ * 采纳目标由类别决定（goal/work → 提交，design/record → 需要授权），
+ * 那是 `protocol` 的 `BUTTON_ACTIONS` 里的事实 ⇒ 工具参数里没有 `to`。
+ */
+
+describe('taskboard_adopt', () => {
+	/** 建一张指定类别的草稿卡，返回编号。 */
+	async function draftOf(kind: 'work' | 'goal' | 'design' | 'record', title: string): Promise<string> {
+		const template = taskboard.listTemplates().find((one) => one.kind === kind);
+		assert.notEqual(template, undefined, `应当存在 ${kind} 类别的模板`);
+		if (template === undefined) return '';
+		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title, actor: 'user' });
+		assert.equal(created.ok, true, created.ok ? '' : created.message);
+		return created.ok ? created.card.id : '';
+	}
+
+	it('注册了独立工具：名字正确，参数里没有 to', () => {
+		const adopt = tool('taskboard_adopt');
+		assert.equal(adopt.name, 'taskboard_adopt');
+
+		const params = adopt.parameters as Record<string, unknown>;
+		assert.deepEqual(Object.keys(params).sort(), ['id', 'workspaceId']);
+		assert.equal('to' in params, false, '采纳目标由类别算，不该让模型传 to');
+		assert.ok(adopt.description.includes('采纳'), adopt.description);
+	});
+
+	it('cardLevel=adopt ⇒ 能采纳；写 adoptedAt + history 的 adopt(actor=ai)', async () => {
+		const id = await draftOf('work', '工作草稿');
+		if (id === '') return;
+		await taskboard.setCardActionLevel('adopt');
+
+		const text = await run('taskboard_adopt', { id });
+		assert.ok(text.includes('已把') && text.includes('采纳'), text);
+
+		const after = taskboard.get(workspaceId, id);
+		assert.equal(after.ok, true);
 		if (!after.ok) return;
-		assert.notEqual(after.card.adoptedAt, null, '采纳必须写 adoptedAt');
+		assert.equal(after.card.status, 'TASK_STATE_SUBMITTED', 'work 的采纳目标 ⇒ 提交');
+		assert.notEqual(after.card.adoptedAt, null, '采纳必须写 adoptedAt（search 的排序键）');
 		const adoptEntry = after.card.history.find((one) => one.action === 'adopt');
 		assert.notEqual(adoptEntry, undefined, 'history 里应有 adopt 事件');
-		assert.equal(adoptEntry?.at, after.card.adoptedAt, 'adoptedAt 与 history 的 adopt 事件同一时刻');
+		assert.equal(adoptEntry?.at, after.card.adoptedAt, 'adoptedAt 与 history 的 adopt 同一时刻');
 		assert.equal(adoptEntry?.actor, 'ai', 'AI 工具的采纳 ⇒ actor 是 ai');
 	});
 
-	it('⚠ work 模式下 AI 不能自己采纳 goal/work 草稿', async () => {
-		/*
-		 * 用户：「自动工作和工作的区别就是 ai 自己采纳草稿。」
-		 * ⇒ work 模式下 AI 采纳 goal/work 草稿必须失败。
-		 */
-		currentMode = 'work';
-		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
-		assert.notEqual(template, undefined);
-		if (template === undefined) return;
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '工作草稿' });
-		assert.equal(created.ok, true);
-		if (!created.ok) return;
+	it('design 的采纳目标是「需要授权」（不是提交）', async () => {
+		const id = await draftOf('design', '设计草稿');
+		if (id === '') return;
+		await taskboard.setCardActionLevel('adopt');
 
-		const text = await run('taskboard_transition', { id: created.card.id, to: 'TASK_STATE_SUBMITTED' });
-		assert.ok(text.includes('失败'), `work 模式下 AI 不该能自己采纳：${text}`);
+		const text = await run('taskboard_adopt', { id });
+		assert.ok(text.includes('已把'), text);
 
-		const after = taskboard.get(workspaceId, created.card.id);
+		const after = taskboard.get(workspaceId, id);
 		assert.equal(after.ok, true);
-		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_UNSPECIFIED', '状态不该变');
+		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_AUTH_REQUIRED');
 	});
 
-	it('⚠ auto 模式下 AI 可以自己采纳 goal/work 草稿', async () => {
-		currentMode = 'auto';
-		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
-		assert.notEqual(template, undefined);
-		if (template === undefined) return;
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '工作草稿' });
-		assert.equal(created.ok, true);
-		if (!created.ok) return;
+	it('⚠ cardLevel=claim ⇒ 拒绝并指路「允许采纳草稿」，状态不变', async () => {
+		const id = await draftOf('work', '不许采纳');
+		if (id === '') return;
+		await taskboard.setCardActionLevel('claim');
 
-		const text = await run('taskboard_transition', { id: created.card.id, to: 'TASK_STATE_SUBMITTED' });
-		assert.ok(text.includes('采纳'), `auto 模式下 AI 该能自己采纳：${text}`);
+		const text = await run('taskboard_adopt', { id });
+		assert.ok(text.includes('失败'), text);
+		assert.ok(text.includes('允许采纳草稿'), `应说清是档位问题：${text}`);
 
-		const after = taskboard.get(workspaceId, created.card.id);
+		const after = taskboard.get(workspaceId, id);
 		assert.equal(after.ok, true);
-		if (!after.ok) return;
-		assert.equal(after.card.status, 'TASK_STATE_SUBMITTED');
-		assert.notEqual(after.card.adoptedAt, null);
+		if (after.ok) {
+			assert.equal(after.card.status, 'TASK_STATE_UNSPECIFIED', '被拒就不该改状态');
+			assert.equal(after.card.adoptedAt, null);
+		}
+	});
+
+	it('非草稿 ⇒ 明确说「只有草稿能采纳」，不猜', async () => {
+		const id = await draftOf('work', '已经提交了');
+		if (id === '') return;
+		/* 先用按钮路径推到提交态（用户点采纳）。 */
+		const moved = await taskboard.transition(workspaceId, id, 'TASK_STATE_SUBMITTED', 'button');
+		assert.equal(moved.ok, true, moved.ok ? '' : moved.message);
+		await taskboard.setCardActionLevel('adopt');
+
+		const text = await run('taskboard_adopt', { id });
+		assert.ok(text.includes('只有草稿'), text);
+	});
+
+	it('不存在的编号 ⇒ 失败文案', async () => {
+		await taskboard.setCardActionLevel('adopt');
+		const text = await run('taskboard_adopt', { id: 'NOPE-99' });
+		assert.ok(text.includes('不存在'), text);
 	});
 });
 

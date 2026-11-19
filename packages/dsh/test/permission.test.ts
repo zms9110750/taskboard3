@@ -1,23 +1,30 @@
 /**
  * 权限 guard 测试 —— **这是安全边界，要穷举**。
  *
- * ## 三件事分开测
+ * ## 四层分开测
  *
  * | 层 | 测什么 | 为什么分开 |
  * |---|---|---|
  * | `holderOf` | 卡片持有者标识怎么取 | 三条回落，且必须与 `holder.ts` 一致 |
- * | `modeOf` | 预设名 → `BoardMode` 的映射 | 互斥语义的入口：**取不到 = 放行** |
  * | `heldWorkCardsOf` | 收集持有的工作卡 | 「只查第一个空间」这个已知限制的后果 |
- * | `createPermissionGuard` | 端到端：三种模式 + 非任务板预设 | 真正的行为 |
+ * | `createPermissionGuard` | 端到端：两条正交轴的档位组合 | 真正的行为 |
+ * | 依赖面 | `judgeToolCall` 收到什么、**不**读什么 | 防止「悄悄又接回 DSH 预设」 |
  *
- * ## ⚠ 核心语义：与 DSH 自己的权限互斥
+ * ## ⚠ 档位在 core，不在本文件（`2026-11-19` 两条正交轴定稿）
  *
- * 用户原话：
- * > 我说的是和dsh自己的权限互斥。只要开的是他自己或者别的插件提供的权限。
- * > 那么这个插件给的限制都不生效。
+ * core 的 `judgeToolCall` 入参只有 `{ toolName, heldCards }` ——
+ * 两个档位（`cardActionLevel` / `toolGuardLevel`）由 `Taskboard` 实例自己从
+ * kv 缓存读。所以本文件的用例通过 `taskboard.setCardActionLevel(...)` /
+ * `taskboard.setToolGuardLevel(...)` 改档位，然后断言 **guard 的行为跟着变**。
  *
- * ⇒ 「不是任务板预设」= 一律放行。这是「开发者权限」的实现方式
- *   （切到 DSH 的完全访问，任务板什么都不管）。
+ * 默认值（`core/src/index.ts:188,191`）：
+ * `cardActionLevel = 'no-claim'`、`toolGuardLevel = 'off'`。
+ *
+ * ## ⚠ 与 DSH 自己的权限不再有关系
+ *
+ * 上一版 guard 会读 `ctx.permissionPresets` 里的预设名反推 `BoardMode`。
+ * `2026-11-19` 把那一整层删掉了 —— 这里留一条**否定断言**：
+ * 就算把 `permissionPresets` 塞进依赖，结果也不该被它左右。
  */
 
 import assert from 'node:assert/strict';
@@ -34,7 +41,6 @@ import {
 	createPermissionGuard,
 	heldWorkCardsOf,
 	holderOf,
-	modeOf,
 	type PermissionSubagentsLike,
 } from '../src/permission.ts';
 
@@ -166,37 +172,6 @@ describe('holderOf', () => {
 	});
 });
 
-/* ────────────────────────── 模式解析 ────────────────────────── */
-
-describe('modeOf', () => {
-	it('三个任务板预设各自映射到正确的模式', () => {
-		assert.equal(modeOf(() => 'taskboard-plan', {}), 'plan');
-		assert.equal(modeOf(() => 'taskboard-work', {}), 'work');
-		assert.equal(modeOf(() => 'taskboard-auto', {}), 'auto');
-	});
-
-	it('⚠ 不是任务板的预设 ⇒ undefined（互斥语义 ⇒ 放行方向）', () => {
-		assert.equal(modeOf(() => 'danger-full-access', {}), undefined, 'DSH 自己的完全访问 ⇒ 不管');
-		assert.equal(modeOf(() => 'workspace-write', {}), undefined);
-		assert.equal(modeOf(() => 'no-tools', {}), undefined, '别的插件注册的档位 ⇒ 不管');
-		assert.equal(modeOf(() => 'custom', {}), undefined);
-	});
-
-	it('预设名读取器缺席 ⇒ undefined（没装预设服务）', () => {
-		assert.equal(modeOf(undefined, {}), undefined);
-	});
-
-	it('读取器返回 undefined / 抛错 ⇒ undefined（不拦）', () => {
-		assert.equal(modeOf(() => undefined, {}), undefined);
-		assert.equal(
-			modeOf(() => {
-				throw new Error('boom');
-			}, {}),
-			undefined,
-		);
-	});
-});
-
 /* ────────────────────────── 持有卡收集 ────────────────────────── */
 
 describe('heldWorkCardsOf', () => {
@@ -238,18 +213,11 @@ describe('heldWorkCardsOf', () => {
 /* ────────────────────────── guard 端到端 ────────────────────────── */
 
 describe('createPermissionGuard', () => {
-	/** 造 guard，`preset` 是「当前会话选中的预设名」。 */
-	function guardOf(options: {
-		subagents?: unknown;
-		preset?: string | undefined;
-		/** 不传 = 没有预设服务。 */
-		withPresets?: boolean;
-	} = {}): (exec: unknown) => string | undefined {
-		const withPresets = options.withPresets ?? true;
+	/** 造 guard（档位**不注入** —— 它从 taskboard 读）。 */
+	function guardOf(options: { subagents?: unknown } = {}): (exec: unknown) => string | undefined {
 		return createPermissionGuard({
 			taskboard,
 			...(options.subagents === undefined ? {} : { subagents: options.subagents }),
-			...(withPresets ? { presetNameOf: () => options.preset } : {}),
 		});
 	}
 
@@ -258,38 +226,86 @@ describe('createPermissionGuard', () => {
 		return execOf({ agent: { id: agentId }, name });
 	}
 
-	it('⚠ 非任务板预设 ⇒ 一律放行（互斥语义）', () => {
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'danger-full-access' });
-		assert.equal(guard(exec('bash')), undefined, '完全访问下任务板不该拦任何东西');
-		assert.equal(guard(exec('taskboard_tool_policy_set')), undefined, '改权限工具也该放行');
+	/* ── 第一段：领卡类动作（只看 cardLevel，永远先跑） ── */
+
+	it('⚠ 默认档位（no-claim + off）：领卡与采纳都被拒，普通工具放行', () => {
+		const guard = guardOf({ subagents: subagentsOf('lead') });
+
+		const claimVerdict = guard(exec('taskboard_claim'));
+		assert.notEqual(claimVerdict, undefined, '默认档位不允许领卡');
+		assert.ok(claimVerdict?.includes('不允许领卡'), `理由该说清档位：${claimVerdict}`);
+
+		const adoptVerdict = guard(exec('taskboard_adopt'));
+		assert.notEqual(adoptVerdict, undefined, '默认档位不允许采纳草稿');
+		assert.ok(adoptVerdict?.includes('采纳草稿'), `理由该说清档位：${adoptVerdict}`);
+
+		/* toolLevel = off ⇒ 第二段不管理工具。 */
+		assert.equal(guard(exec('bash')), undefined, 'off 档不管理工具调用');
+		assert.equal(guard(exec('taskboard_tool_policy_set')), undefined, 'off 档连权限工具都不管');
 	});
 
-	it('没有预设服务 ⇒ 一律放行', () => {
-		const guard = guardOf({ subagents: subagentsOf('lead'), withPresets: false });
-		assert.equal(guard(exec('bash')), undefined);
+	it('⚠ 第一段不看 toolLevel：off 档也不等于替用户放开领卡', async () => {
+		/*
+		 * 正交语义的核心：宿主「不管理工具」不等于「用户授权 AI 领卡」。
+		 * ⇒ 把 toolLevel 显式设成 off，claim / adopt 仍按 cardLevel 判。
+		 */
+		await taskboard.setToolGuardLevel('off');
+		await taskboard.setCardActionLevel('no-claim');
+		const guard = guardOf({ subagents: subagentsOf('lead') });
+
+		assert.notEqual(guard(exec('taskboard_claim')), undefined, 'off 档下 claim 仍受 cardLevel 管');
+		assert.notEqual(guard(exec('taskboard_adopt')), undefined, 'off 档下 adopt 仍受 cardLevel 管');
 	});
 
-	it('work 模式 + BASE 工具 ⇒ 放行（不需要领卡）', () => {
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+	it('cardLevel=claim：领卡放行，采纳仍拒', async () => {
+		await taskboard.setCardActionLevel('claim');
+		const guard = guardOf({ subagents: subagentsOf('lead') });
+
+		assert.equal(guard(exec('taskboard_claim')), undefined, '允许领卡 ⇒ claim 放行');
+		assert.notEqual(guard(exec('taskboard_adopt')), undefined, '允许领卡 ≠ 允许采纳');
+	});
+
+	it('cardLevel=adopt：领卡与采纳都放行', async () => {
+		await taskboard.setCardActionLevel('adopt');
+		const guard = guardOf({ subagents: subagentsOf('lead') });
+
+		assert.equal(guard(exec('taskboard_claim')), undefined);
+		assert.equal(guard(exec('taskboard_adopt')), undefined);
+	});
+
+	/* ── 第二段：其它工具（只看 toolLevel） ── */
+
+	it('toolLevel=manage + BASE 工具 ⇒ 放行（不需要领卡）', async () => {
+		await taskboard.setToolGuardLevel('manage');
+		/*
+		 * ⚠ `taskboard_claim` 也在 BASE 里，但它同时受**第一段**（UI 轴）管 ——
+		 *   `no-claim` 档下会被拒。这里把 UI 轴调到 claim，测的才是
+		 *   「BASE 工具不需要领卡」这件事本身。
+		 */
+		await taskboard.setCardActionLevel('claim');
+		const guard = guardOf({ subagents: subagentsOf('lead') });
 		for (const name of BASE_TOOLS) {
 			assert.equal(guard(exec(name)), undefined, `BASE 工具「${name}」不该被拦`);
 		}
 	});
 
-	it('work 模式 + 执行类 + 没有卡 ⇒ 拒绝，且说清「先领卡」', () => {
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+	it('toolLevel=manage + 执行类 + 没有卡 ⇒ 拒绝，且说清「先领卡」', async () => {
+		await taskboard.setToolGuardLevel('manage');
+		const guard = guardOf({ subagents: subagentsOf('lead') });
 		const verdict = guard(exec('bash'));
 		assert.notEqual(verdict, undefined, '没领卡跑 bash 该被拒');
 		assert.ok(verdict?.includes('工作卡'), `理由应说清要领卡：${verdict}`);
 	});
 
-	it('work 模式 + 持有卡但独立档没有 ⇒ 拒绝', async () => {
+	it('toolLevel=manage + 持有卡但独立档没有 ⇒ 拒绝', async () => {
+		await taskboard.setToolGuardLevel('manage');
 		await claimedWorkCard('要写代码', 'lead');
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.notEqual(guard(exec('bash')), undefined, '独立档里没 bash 该被拒');
 	});
 
-	it('work 模式 + 独立档有 ⇒ 放行；没有的仍拒绝', async () => {
+	it('toolLevel=manage + 独立档有 ⇒ 放行；没有的仍拒绝', async () => {
+		await taskboard.setToolGuardLevel('manage');
 		const cardId = await claimedWorkCard('要写代码', 'lead');
 		const ref = taskboard.get(workspaceId, cardId);
 		assert.equal(ref.ok, true);
@@ -297,19 +313,21 @@ describe('createPermissionGuard', () => {
 		const set = await taskboard.setTemplatePolicy(ref.card.template.ref, ['bash', 'write']);
 		assert.equal(set.ok, true);
 
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('bash')), undefined, '独立档里有 bash 该放行');
 		assert.notEqual(guard(exec('edit')), undefined, '独立档里没有 edit 仍该拒');
 	});
 
-	it('work 模式：通用档对所有工作卡生效', async () => {
+	it('toolLevel=manage：通用档对所有工作卡生效', async () => {
+		await taskboard.setToolGuardLevel('manage');
 		await claimedWorkCard('吃通用档', 'lead');
 		await taskboard.setCommonPolicy(['bash']);
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('bash')), undefined);
 	});
 
-	it('work 模式：组档只对组成员生效', async () => {
+	it('toolLevel=manage：组档只对组成员生效', async () => {
+		await taskboard.setToolGuardLevel('manage');
 		const cardId = await claimedWorkCard('组测试', 'lead');
 		const ref = taskboard.get(workspaceId, cardId);
 		assert.equal(ref.ok, true);
@@ -318,64 +336,115 @@ describe('createPermissionGuard', () => {
 
 		await taskboard.setGroupPolicy('别组', ['bash']);
 		await taskboard.setGroupMembers('别组', ['完全不存在的模板']);
-		let guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+		let guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.notEqual(guard(exec('bash')), undefined, '卡不在组里 ⇒ 组增量不生效');
 
 		await taskboard.setGroupMembers('别组', [templateRef]);
-		guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+		guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('bash')), undefined, '卡在组里 ⇒ 组增量生效');
 	});
 
-	it('⚠ 三种模式下权限管理工具都不可用（改权限要切完全访问）', () => {
-		for (const preset of ['taskboard-plan', 'taskboard-work', 'taskboard-auto']) {
-			const guard = guardOf({ subagents: subagentsOf('lead'), preset });
-			const verdict = guard(exec('taskboard_tool_policy_set'));
-			assert.notEqual(verdict, undefined, `${preset} 下不该能改权限`);
-			assert.ok(verdict?.includes('完全访问'), `理由该指向完全访问：${verdict}`);
-		}
+	it('⚠ 权限管理工具：manage 拒、manage-edit 放行', async () => {
+		await taskboard.setToolGuardLevel('manage');
+		let guard = guardOf({ subagents: subagentsOf('lead') });
+		const verdict = guard(exec('taskboard_tool_policy_set'));
+		assert.notEqual(verdict, undefined, 'manage 下不该能改档位权限');
+		assert.ok(verdict?.includes('允许编辑档位权限'), `理由该指向那一档：${verdict}`);
+
+		await taskboard.setToolGuardLevel('manage-edit');
+		guard = guardOf({ subagents: subagentsOf('lead') });
+		assert.equal(guard(exec('taskboard_tool_policy_set')), undefined, 'manage-edit ⇒ 允许改权限');
 	});
 
-	it('⚠ 即使把权限工具写进 common 增量，三种模式下仍拒绝', async () => {
+	it('⚠ 即使把权限工具写进 common 增量，manage 下仍拒绝', async () => {
 		/*
-		 * core 的判定第 ② 条在四档之前 —— 这是**结构性**保护。
+		 * core 的判定 ⑤ 在 ⑥（BASE）与四档之前 —— 这是**结构性**保护。
 		 * 这里从 dsh 侧确认：把权限工具配进 common 也绕不过去。
 		 */
+		await taskboard.setToolGuardLevel('manage');
 		await taskboard.setCommonPolicy(['taskboard_tool_policy_set']);
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.notEqual(guard(exec('taskboard_tool_policy_set')), undefined, '能给自己发权限的工具必须硬拒');
 	});
 
-	it('plan 模式：不能创建、不能领取', () => {
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-plan' });
-		assert.notEqual(guard(exec('taskboard_create')), undefined, 'plan 下不能创建');
-		assert.notEqual(guard(exec('taskboard_claim')), undefined, 'plan 下不能领取');
-		/* 其它 BASE 工具仍可用。 */
-		assert.equal(guard(exec('taskboard_cards')), undefined, 'plan 下读卡可以');
-		assert.equal(guard(exec('taskboard_transition')), undefined, 'plan 下改状态可以');
-	});
+	/* ── 依赖面：参数里有什么、没什么 ── */
 
-	it('⚠ plan 模式：即使持有工作卡也不吃四档增量', async () => {
-		const cardId = await claimedWorkCard('plan 也有卡', 'lead');
+	it('⚠ judgeToolCall 只收到 { toolName, heldCards }（档位不在入参里）', async () => {
+		const cardId = await claimedWorkCard('持有卡', 'lead');
 		const ref = taskboard.get(workspaceId, cardId);
 		assert.equal(ref.ok, true);
 		if (!ref.ok) return;
-		await taskboard.setCommonPolicy(['bash']);
-		await taskboard.setTemplatePolicy(ref.card.template.ref, ['bash']);
-		await taskboard.setGroupPolicy('g', ['bash']);
-		await taskboard.setGroupMembers('g', [ref.card.template.ref]);
 
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-plan' });
-		assert.notEqual(guard(exec('bash')), undefined, 'plan 只读 ⇒ 有卡也不该放行 bash');
+		/** 记录 core 被判定的入参。 */
+		const seen: unknown[] = [];
+		const spy: Taskboard = {
+			...taskboard,
+			judgeToolCall: (input) => {
+				seen.push(input);
+				return { ok: true };
+			},
+		} as unknown as Taskboard;
+
+		const guard = createPermissionGuard({ taskboard: spy, subagents: subagentsOf('lead') });
+		assert.equal(guard(exec('bash')), undefined);
+
+		assert.equal(seen.length, 1, '每次工具调用恰好判一次');
+		const input = seen[0] as Record<string, unknown>;
+		assert.deepEqual(Object.keys(input).sort(), ['heldCards', 'toolName'], '入参只有两个字段');
+		assert.equal(input['toolName'], 'bash');
+		assert.deepEqual(input['heldCards'], [{ templateRef: ref.card.template.ref }]);
+		assert.equal('mode' in input, false, '旧的 mode 入参必须彻底消失');
+		assert.equal('cardLevel' in input, false, '档位由 core 自己读，调用方不该传');
+		assert.equal('toolLevel' in input, false, '档位由 core 自己读，调用方不该传');
 	});
 
-	it('auto 模式：工具判定与 work 相同（差异只在采纳草稿）', async () => {
-		await claimedWorkCard('auto 测试', 'lead');
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-auto' });
-		assert.notEqual(guard(exec('bash')), undefined, 'auto 下也得有增量才放行 bash');
+	it('⚠ 不读 DSH 权限预设：塞进去也不影响判定', async () => {
+		/*
+		 * 旧接线读 `ctx.permissionPresets.current(session)` 再映射成 BoardMode。
+		 * 那一层已整个删掉。这里塞一个「预设名 = taskboard-auto」的服务进去
+		 * （旧语义下 claim 会放行），断言的却是**默认档位仍然拒 claim**。
+		 */
+		const withPresetService = createPermissionGuard({
+			taskboard,
+			subagents: subagentsOf('lead'),
+			...( {
+				permissionPresets: {
+					current: () => 'taskboard-auto',
+					presets: {
+						'taskboard-auto': { sandbox: 'danger-full-access', approval: 'never', name: 'x', description: 'x' },
+					},
+				},
+				emit: () => undefined,
+			} as unknown as object ),
+		});
+
+		const claimVerdict = withPresetService(exec('taskboard_claim'));
+		assert.notEqual(claimVerdict, undefined, '默认 no-claim 档必须拒 —— 预设名不该改变判定');
+
+		/* 真正改变判定的是 core 的档位。 */
+		await taskboard.setCardActionLevel('claim');
+		assert.equal(withPresetService(exec('taskboard_claim')), undefined, '档位才是判据');
 	});
+
+	it('档位从 taskboard 内部读：改档位 ⇒ guard 行为跟着变', async () => {
+		const guard = guardOf({ subagents: subagentsOf('lead') });
+
+		assert.notEqual(guard(exec('taskboard_claim')), undefined, '默认 no-claim');
+		await taskboard.setCardActionLevel('claim');
+		assert.equal(guard(exec('taskboard_claim')), undefined, '改 claim 后放行');
+		assert.notEqual(guard(exec('taskboard_adopt')), undefined, 'claim 下采纳仍拒');
+		await taskboard.setCardActionLevel('adopt');
+		assert.equal(guard(exec('taskboard_adopt')), undefined, '改 adopt 后采纳放行');
+
+		assert.equal(guard(exec('bash')), undefined, '默认 off ⇒ bash 放行');
+		await taskboard.setToolGuardLevel('manage');
+		assert.notEqual(guard(exec('bash')), undefined, '改 manage 后无卡 bash 被拒');
+	});
+
+	/* ── 兜底 ── */
 
 	it('工具名空 / agent 缺席 ⇒ 放行（不是我们的判定对象）', () => {
-		const guard = guardOf({ subagents: subagentsOf('lead'), preset: 'taskboard-work' });
+		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.equal(guard(execOf({ agent: { id: 'u' } })), undefined, '没工具名 ⇒ 放行');
 		assert.equal(guard(execOf({ name: 'bash' })), undefined, '没 agent ⇒ 放行');
 	});
@@ -387,11 +456,7 @@ describe('createPermissionGuard', () => {
 				throw new Error('boom');
 			},
 		} as unknown as Taskboard;
-		const guard = createPermissionGuard({
-			taskboard: broken,
-			subagents: subagentsOf('lead'),
-			presetNameOf: () => 'taskboard-work',
-		});
+		const guard = createPermissionGuard({ taskboard: broken, subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('bash')), undefined, '内部错应放行（并 console.error）');
 	});
 });

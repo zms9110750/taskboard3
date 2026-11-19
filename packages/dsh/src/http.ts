@@ -27,8 +27,8 @@
  * （形状就是 `@taskboard/protocol` 的 `Failure`）。
  */
 
-import type { SearchCondition, Taskboard } from '@taskboard/core';
-import { missingRenderers } from '@taskboard/core';
+import type { CardActionLevel, SearchCondition, Taskboard, ToolGuardLevel } from '@taskboard/core';
+import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS, missingRenderers } from '@taskboard/core';
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
@@ -167,6 +167,45 @@ function rawField(body: unknown, key: string): unknown {
 	return (body as Record<string, unknown>)[key];
 }
 
+/* ────────────────────────── 两条正交轴的档位 ────────────────────────── */
+
+/**
+ * `GET /api/permission` 的 `data` 形状（也是 POST 成功后的回声）。
+ *
+ * ⚠ **选项表来自 core**（`CARD_ACTION_OPTIONS` / `TOOL_GUARD_OPTIONS`），
+ * 本文件不硬编码第二份 —— 第二份清单一旦漂移就是「UI 显示一个存不进去的档」，
+ * 而且不报错。core 的选项表本身有 `satisfies` + 「每档恰好出现一次」的
+ * 编译期断言（AGENTS 3.7）。
+ */
+interface PermissionState {
+	readonly cardActionLevel: CardActionLevel;
+	readonly toolGuardLevel: ToolGuardLevel;
+	readonly cardActionOptions: typeof CARD_ACTION_OPTIONS;
+	readonly toolGuardOptions: typeof TOOL_GUARD_OPTIONS;
+}
+
+/** 读两条轴的当前档位 + 选项表。 */
+function permissionStateOf(taskboard: Taskboard): PermissionState {
+	return {
+		cardActionLevel: taskboard.getCardActionLevel(),
+		toolGuardLevel: taskboard.getToolGuardLevel(),
+		cardActionOptions: CARD_ACTION_OPTIONS,
+		toolGuardOptions: TOOL_GUARD_OPTIONS,
+	};
+}
+
+/** 是否是合法的 UI 轴档位（判据是 core 的选项表本身）。 */
+function isCardActionLevel(value: unknown): value is CardActionLevel {
+	if (typeof value !== 'string') return false;
+	return CARD_ACTION_OPTIONS.some((one) => one.value === value);
+}
+
+/** 是否是合法的宿主轴档位（判据是 core 的选项表本身）。 */
+function isToolGuardLevel(value: unknown): value is ToolGuardLevel {
+	if (typeof value !== 'string') return false;
+	return TOOL_GUARD_OPTIONS.some((one) => one.value === value);
+}
+
 /** 路由装配参数。 */
 export interface RouteDeps {
 	/** 任务板实例。 */
@@ -280,6 +319,80 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		return;
 	}
 
+	/* ── GET / POST /api/permission —— 读写两条正交轴的档位 ──
+	 *
+	 * | 轴 | 取值 | 谁定 |
+	 * |---|---|---|
+	 * | `cardActionLevel` | no-claim / claim / adopt | 用户（任务板 UI） |
+	 * | `toolGuardLevel` | off / manage / manage-edit | 宿主（DSH） |
+	 *
+	 * ⚠ 与旧的 `GET /api/policy-edit` **不是一件事**：那是「能不能改四档策略」的
+	 *   内存开关，已被用户否掉。这里读写的只是**两个档位**，策略本身仍走
+	 *   `/api/...` 之外的 AI 工具（`taskboard_tool_policy_*`）。
+	 *
+	 * ⚠ 选项表从 core 来（见 `permissionStateOf`），不在本文件硬编码。
+	 */
+	if (tail === '/permission') {
+		if (method === 'GET') {
+			sendOk(res, permissionStateOf(taskboard));
+			return;
+		}
+		if (method === 'POST') {
+			const body = await readJson(req);
+			const cardRaw = rawField(body, 'cardActionLevel');
+			const guardRaw = rawField(body, 'toolGuardLevel');
+
+			if (cardRaw === undefined && guardRaw === undefined) {
+				sendFailure(
+					res,
+					failure(ErrorCode.FIELD_REQUIRED, '至少要给 cardActionLevel 或 toolGuardLevel 之一。', {
+						issues: [{ path: '', message: 'body 里没有任何档位字段' }],
+					}),
+					400,
+				);
+				return;
+			}
+
+			if (cardRaw !== undefined && !isCardActionLevel(cardRaw)) {
+				sendFailure(
+					res,
+					failure(
+						ErrorCode.FIELD_REQUIRED,
+						`cardActionLevel 非法：${String(cardRaw)}。可用：${CARD_ACTION_OPTIONS.map((one) => one.value).join(' / ')}。`,
+						{ issues: [{ path: '/cardActionLevel', message: '不是合法档位' }] },
+					),
+					400,
+				);
+				return;
+			}
+
+			if (guardRaw !== undefined && !isToolGuardLevel(guardRaw)) {
+				sendFailure(
+					res,
+					failure(
+						ErrorCode.FIELD_REQUIRED,
+						`toolGuardLevel 非法：${String(guardRaw)}。可用：${TOOL_GUARD_OPTIONS.map((one) => one.value).join(' / ')}。`,
+						{ issues: [{ path: '/toolGuardLevel', message: '不是合法档位' }] },
+					),
+					400,
+				);
+				return;
+			}
+
+			/*
+			 * 两个写各自落 kv（core 负责持久化 + 更新缓存）。
+			 * 只改传了的那个；没传的保持原值 —— 这是 PATCH 语义，
+			 * 但 HTTP 方法用 POST（与其它写端点一致，且 body 是完整声明）。
+			 */
+			if (isCardActionLevel(cardRaw)) await taskboard.setCardActionLevel(cardRaw);
+			if (isToolGuardLevel(guardRaw)) await taskboard.setToolGuardLevel(guardRaw);
+
+			sendOk(res, permissionStateOf(taskboard));
+			return;
+		}
+		return sendMethodNotAllowed(res, 'GET, POST');
+	}
+
 	/* ── POST /api/render-check —— UI 报告它能渲染什么，Host 比对模板需求 ── */
 	if (tail === '/render-check') {
 		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
@@ -373,19 +486,20 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		return;
 	}
 
-	/* ── 权限编辑开关已删除 ──
+	/* ── 旧「权限编辑开关」端点已删除 ──
 	 *
 	 * 用户 `2026-11-14`：
 	 *
 	 * > 能不能只留三个权限。开发者权限由dsh自己的完全权限去操作？
 	 * > 没有必要为此就让我们再开一个新的权限。
 	 *
-	 * ⇒ 「改权限」不再是任务板的一个开关，而是 **DSH 自己的权限预设**：
-	 *   切到「完全访问」时任务板 guard 一律放行（互斥语义），
-	 *   AI 在那里自然能调 `taskboard_tool_policy_*`。
+	 * ⇒ 没有一个「改权限」的内存开关。现在的形态是两条正交轴（`2026-11-19`）：
+	 *   · **档位**读写 → `GET/POST /api/permission`（本文件上面那一段）；
+	 *   · **四档策略** → AI 工具 `taskboard_tool_policy_*`，只由宿主轴
+	 *     `manage-edit` 放行。
 	 *
 	 * 所以原来的 `GET /api/policy-edit` 与 `POST /api/policy-edit/toggle`
-	 * 两个端点连同 core 的内存开关一起删掉了。
+	 * 两个端点连同 core 的内存开关一起删掉了。不要往回加。
 	 */
 
 	/* ── GET /api/updates ── */

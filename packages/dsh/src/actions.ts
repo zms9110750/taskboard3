@@ -8,7 +8,7 @@
  * | 入口 | 位置 |
  * |---|---|
  * | HTTP（用户点按钮） | `src/http.ts` 的 `POST /api/cards/:id/action` |
- * | AI 工具 | `src/tools.ts` 的 `taskboard_transition` |
+ * | AI 工具 | `src/tools.ts` 的 `taskboard_adopt` |
  *
  * 而它**必须走同一条判据** —— 否则「界面点采纳」和「AI 采纳」会走不同的
  * core 方法，其中一条会漏写 `adoptedAt`。
@@ -51,4 +51,18 @@ export function isAdoptTransition(kind: string, from: TaskState, to: TaskState):
 	return BUTTON_ACTIONS.some(
 		(action) => action.kind === kind && action.from === from && action.to === to && action.method === 'adopt',
 	);
+}
+
+/**
+ * 某个类别、某个状态下的**采纳目标状态**。
+ *
+ * `taskboard_adopt` 工具（AI 侧）只需要「我在草稿态，采纳会去哪」，
+ * 它不接收目标状态参数 —— 目标由类别定。
+ *
+ * @returns `undefined` ⇒ 这个 (类别, 状态) 没有采纳按钮
+ */
+export function adoptTargetOf(kind: string, from: TaskState): TaskState | undefined {
+	return BUTTON_ACTIONS.find(
+		(action) => action.kind === kind && action.from === from && action.method === 'adopt',
+	)?.to;
 }

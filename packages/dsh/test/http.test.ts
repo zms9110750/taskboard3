@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createTaskboard, type Taskboard } from '@taskboard/core';
+import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS } from '@taskboard/core';
 import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
 import { createSearch } from '@taskboard/core';
 
@@ -881,6 +882,128 @@ describe('actor 标记：HTTP 写 ⇒ updates.user', () => {
  * ⇒ 这里用**假 hub**（记录 `open` 被调了几次），不验帧内容。
  */
 
+/* ────────────────────────── 两条正交轴的档位 ──────────────────────────
+ *
+ * `GET / POST /api/permission` 读写：
+ *
+ * | 轴 | 取值 | 谁定 |
+ * |---|---|---|
+ * | `cardActionLevel` | no-claim / claim / adopt | 用户 |
+ * | `toolGuardLevel` | off / manage / manage-edit | 宿主 |
+ *
+ * ⚠ 与旧的 `GET /api/policy-edit` **不是一件事**（那个是内存开关，已删）。
+ * ⚠ 选项表来自 core（`CARD_ACTION_OPTIONS` / `TOOL_GUARD_OPTIONS`），
+ *   dsh 不硬编码第二份 —— 用例直接与 core 的常量做 `deepEqual`，
+ *   有一天有人在本文件抄一份表，这条会红。
+ */
+
+describe('GET / POST /api/permission', () => {
+	/** 两个档位各是什么。 */
+	interface PermissionData {
+		readonly cardActionLevel: string;
+		readonly toolGuardLevel: string;
+		readonly cardActionOptions: unknown;
+		readonly toolGuardOptions: unknown;
+	}
+
+	it('GET 返回两个档位 + 选项表（选项就是 core 的那一张）', async () => {
+		/* 共用一个 dataDir ⇒ 前一个用例写过的档位会留在库里；先复位到默认。 */
+		await taskboard.setCardActionLevel('no-claim');
+		await taskboard.setToolGuardLevel('off');
+
+		const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/permission` });
+		assert.equal(out.status, 200, out.raw);
+
+		const payload = out.json as { ok: boolean; data: PermissionData };
+		assert.equal(payload.ok, true);
+		assert.equal(payload.data.cardActionLevel, 'no-claim');
+		assert.equal(payload.data.toolGuardLevel, 'off');
+		assert.deepEqual(payload.data.cardActionOptions, CARD_ACTION_OPTIONS);
+		assert.deepEqual(payload.data.toolGuardOptions, TOOL_GUARD_OPTIONS);
+	});
+
+	it('POST 改档位 ⇒ 回声新档位；随后 GET 能读到（真的落库了）', async () => {
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/permission`,
+			body: { cardActionLevel: 'adopt', toolGuardLevel: 'manage-edit' },
+		});
+		assert.equal(out.status, 200, out.raw);
+
+		const payload = out.json as { ok: boolean; data: PermissionData };
+		assert.equal(payload.ok, true);
+		assert.equal(payload.data.cardActionLevel, 'adopt');
+		assert.equal(payload.data.toolGuardLevel, 'manage-edit');
+
+		/* 不是只回了 body —— core 实例真的改了。 */
+		assert.equal(taskboard.getCardActionLevel(), 'adopt');
+		assert.equal(taskboard.getToolGuardLevel(), 'manage-edit');
+
+		const again = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/permission` });
+		const state = (again.json as { data: PermissionData }).data;
+		assert.equal(state.cardActionLevel, 'adopt');
+		assert.equal(state.toolGuardLevel, 'manage-edit');
+	});
+
+	it('只给一个档位 ⇒ 另一个保持原值', async () => {
+		await taskboard.setCardActionLevel('claim');
+		await taskboard.setToolGuardLevel('manage');
+
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/permission`,
+			body: { cardActionLevel: 'adopt' },
+		});
+		assert.equal(out.status, 200, out.raw);
+		assert.equal(taskboard.getCardActionLevel(), 'adopt');
+		assert.equal(taskboard.getToolGuardLevel(), 'manage', '没传的档位不该被清掉');
+	});
+
+	it('⚠ POST 非法值 ⇒ 400 + Failure 信封，且不写库', async () => {
+		await taskboard.setCardActionLevel('claim');
+		await taskboard.setToolGuardLevel('manage');
+
+		const bads: readonly unknown[] = [
+			{ cardActionLevel: 'nope' },
+			{ toolGuardLevel: 'nope' },
+			{ cardActionLevel: 123 },
+			{ toolGuardLevel: true },
+		];
+		for (const body of bads) {
+			const out = await call(depsOf(), {
+				method: 'POST',
+				url: `${ROUTE_PREFIX}/api/permission`,
+				body,
+			});
+			assert.equal(out.status, 400, `应拒绝 ${JSON.stringify(body)}：${out.raw}`);
+			const payload = out.json as { ok: boolean; code: string };
+			assert.equal(payload.ok, false);
+			assert.equal(payload.code, 'FIELD_REQUIRED');
+		}
+
+		assert.equal(taskboard.getCardActionLevel(), 'claim', '非法请求不该动档位');
+		assert.equal(taskboard.getToolGuardLevel(), 'manage', '非法请求不该动档位');
+	});
+
+	it('空 body ⇒ 400（没有要改的档位，不静默成功）', async () => {
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/permission`,
+			body: {},
+		});
+		assert.equal(out.status, 400, out.raw);
+		const payload = out.json as { ok: boolean; code: string };
+		assert.equal(payload.ok, false);
+		assert.equal(payload.code, 'FIELD_REQUIRED');
+	});
+
+	it('方法不对 ⇒ 405，Allow 头是 GET, POST', async () => {
+		const out = await call(depsOf(), { method: 'DELETE', url: `${ROUTE_PREFIX}/api/permission` });
+		assert.equal(out.status, 405);
+		assert.equal(out.headers.allow, 'GET, POST');
+	});
+});
+
 describe('GET /api/events', () => {
 	/** 假 hub：只记录被调用的次数。 */
 	function fakeHub(): {
@@ -947,20 +1070,20 @@ describe('GET /api/events', () => {
 	});
 });
 
-/* ────────────────────────── 权限编辑端点已删除 ──────────────────────────
+/* ────────────────────────── 权限编辑开关（旧机制）应不存在 ──────────────────────────
  *
  * 用户 `2026-11-14`：「没有必要为此就让我们再开一个新的权限。」
  *
- * ⇒ 「改权限」不再是任务板的一个开关/端点，而是 **DSH 自己的权限预设**：
- *   切到「完全访问」时任务板 guard 一律放行（互斥语义），AI 在那里
- *   自然能调 `taskboard_tool_policy_*`。
+ * ⇒ 「改四档策略」不再是任务板的一个内存开关/端点。现在的形态是：
+ *   · **档位**读写走 `GET/POST /api/permission`（两条正交轴，见上一节）；
+ *   · **策略**由 AI 工具 `taskboard_tool_policy_*` 读写（受宿主轴 `manage-edit` 管）。
  *
  * 所以原来那两个端点连同它们的用例一起删了。这里只留一条**否定断言**，
- * 防止有人把端点加回来时没人发现 —— 那个机制已经被用户否掉了。
+ * 防止有人把旧端点加回来时没人发现 —— 那个机制已经被用户否掉了。
  */
 
-describe('权限编辑端点应不存在', () => {
-	it('GET /api/policy-edit ⇒ 404（该机制已被预设取代）', async () => {
+describe('旧权限编辑端点应不存在', () => {
+	it('GET /api/policy-edit ⇒ 404（旧机制已删）', async () => {
 		const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/policy-edit?scope=sess-1` });
 		assert.equal(out.status, 404, out.raw);
 	});
