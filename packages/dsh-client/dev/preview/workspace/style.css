@@ -1,0 +1,204 @@
+/*
+ * 工作区预览 —— **只写预览特有的样式**。
+ *
+ * ⚠ 产品样式（`tb3w-*` + 六个定稿组件的样式）**不在这里**：它们由 `main.tsx`
+ *   调 `injectStyles()` 注入（`src/styles.ts` 的 `WORKSPACE_CSS`），预览和产品用同一份。
+ *   这和 `cardcreate` 预览的做法一致 —— 在预览里抄一份产品 CSS 的后果是
+ *   「预览是对的、产品是坏的」，而那种坏**不报错**。
+ *
+ * 本文件只有三样东西：预览外壳（切换栏 / 舞台）、**mock tab 头**、提示条。
+ *
+ * ## 为什么要有 mock tab 头
+ *
+ * 设计图（`view-3-workspace-narrow.svg`，570×920 = 工作区 tab 的真实尺寸）把
+ * 顶部那条 `▦ 任务板 · 工作区` 画进了 920 里。产品里那一条是**宿主渲染的 tab 头**，
+ * 不属于 `Workspace` 组件 —— 所以它只出现在预览里，用来把「组件在上面一条
+ * 30px 的标签条下面撑满」这件事演出来。
+ */
+
+body {
+  margin: 0;
+  background: #eef0f4;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.pv {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.pv-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #1f2328;
+  color: #fff;
+  font-size: 12px;
+}
+.pv-bar__tag {
+  padding: 1px 8px;
+  border-radius: 5px;
+  background: #fff;
+  color: #1f2328;
+  font-weight: 700;
+}
+.pv-bar__btn {
+  padding: 4px 12px;
+  border-radius: 7px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  background: transparent;
+  color: #d5d9e0;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pv-bar__btn:hover {
+  border-color: #fff;
+  color: #fff;
+}
+.pv-bar__btn.is-on {
+  background: #fff;
+  border-color: #fff;
+  color: #1f2328;
+  font-weight: 700;
+}
+.pv-bar__note {
+  color: #9aa1ad;
+  font-size: 11.5px;
+}
+
+/*
+ * 舞台区 —— 可滚动。
+ *
+ * ⚠ 尺寸大于视口时让它滚，**不要缩放**：状态菜单是 `position: fixed` + 量
+ *   `getBoundingClientRect()` 定位的，祖上有 transform 时 fixed 会改坐标系、
+ *   弹层就会错位。按真实 px 摆最诚实（这条是 cardcreate 预览踩过的坑）。
+ */
+.pv-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/*
+ * 舞台本体 —— **尺寸就是真实尺寸**（行内 style 设 width/height）。
+ *
+ * ⚠ 边框用 `outline` 而不是 `border`：border 会吃掉 1px（内容宽变 568×918），
+ *   而用户给的 570×920 / 1600×1000 就是**容器内可用**的尺寸。
+ */
+.pv-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  background: #f5f7fa;
+  outline: 1px solid #c9cfd9;
+  outline-offset: -1px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 6px 22px rgb(20 26 38 / 10%);
+}
+
+/* mock tab 头（预览专属，产品里是宿主画的） */
+.pv-tabbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 14px;
+  background: #fafbfc;
+  border-bottom: 1px solid #e7e9ee;
+  color: #16181d;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pv-stage[data-stage="full"] .pv-tabbar {
+  height: 36px;
+}
+/* 窄版 tab 头 30px（设计图 view-3-workspace-narrow.svg:3） */
+.pv-stage[data-stage="narrow"] .pv-tabbar {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 11.5px;
+}
+.pv-tabbar__hint {
+  color: #b6bec9;
+  font-size: 9.5px;
+  font-weight: 400;
+}
+
+/* 工作区挂载点：给 `.tb3w-root` 一个确定高度（它自己是 height:100%） */
+.pv-ws {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+.pv-ws > .tb3w-root {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/*
+ * ── 截图模式（`body.is-solo`）──
+ *
+ * 验证脚本截图时加这个 class：藏掉切换条、去掉留白、舞台贴 (0,0)，
+ * 然后用「视口 = 舞台尺寸」截整个视口。
+ *
+ * ⚠ 为什么不用 `Page.captureScreenshot` 的 clip：元素比视口大时 clip +
+ *   captureBeyondViewport 会只渲染到视口宽度（cardcreate 预览实测：1600 宽的
+ *   舞台截出来右边 320px 是灰的）。
+ */
+body.is-solo .pv-bar {
+  display: none;
+}
+body.is-solo .pv-scroll {
+  padding: 0;
+  overflow: visible;
+  display: block;
+}
+body.is-solo .pv-stage {
+  border-radius: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+/* 提示条：预览里的假服务端回执 / 未实现功能说明（只在点东西之后出现） */
+.pv-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(640px, calc(100vw - 48px));
+  padding: 9px 14px;
+  border-radius: 9px;
+  border: 1px solid #f5d0a9;
+  background: #fff7ed;
+  color: #92400e;
+  font-size: 12px;
+  box-shadow: 0 6px 20px rgb(20 26 38 / 12%);
+}
+.pv-toast button {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #92400e;
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}

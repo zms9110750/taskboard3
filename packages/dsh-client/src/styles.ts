@@ -318,6 +318,379 @@ export const CREATE_CSS = `
 `;
 
 /**
+ * 工作区（V3）的样式 —— 前缀 `tb3w-`。
+ *
+ * ## 它为什么单独一段
+ *
+ * 这是**拼装层**：六个已定稿组件（SpaceBar / FilterRow+FilterBox / CardRow /
+ * CardDetail / StatusMenu）的 CSS 原本只存在于各自的 `dev/preview/<组件>/style.css`
+ * 里。V3 是第一个**产品级**页面，所以在这里收口成一份：
+ *
+ * | 来源 | 类名 | 作用域 |
+ * |---|---|---|
+ * | 各组件的 preview CSS | `.space-bar` / `.filter-box` / `.task-card` / `.detail` / `.menu` … | 全部包在 `.tb3w-root` 下 |
+ * | StatusMenu 的浮层 | `.menu*` | 它 portal 到 `body` ⇒ 用 `[data-menu="status"]` 作用域 |
+ * | 本组件（拼装）| `.tb3w-*` | 新前缀，不跟 `tb3-*` / `tb3cc-*` 混 |
+ *
+ * ⚠ **组件类名保持原样、只加作用域前缀** —— 已定稿组件的 DOM 是它们的
+ *   preview 验收过的，改类名等于让那些 CDP 断言失去意义。
+ *
+ * ## 颜色全走宿主 token + 兜底色
+ *
+ * 和 `CREATE_CSS` 同一手法：`var(--dsw-alias-*, 兜底)`。预览里没有宿主
+ * token ⇒ 用兜底色，也就是设计图上的那套颜色。
+ *
+ * ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**（会提前结束字符串）。
+ */
+export const WORKSPACE_CSS = `
+/* ══════════════════════════════════════════════════════════
+   0. 令牌 + 盒模型
+   ══════════════════════════════════════════════════════════ */
+
+.tb3w-root, [data-menu="status"] {
+  --bg: var(--dsw-alias-bg-secondary, #f5f7fa);
+  --bg-card: var(--dsw-alias-bg-primary, #fff);
+  --bg-soft: var(--dsw-alias-bg-secondary, #fafbfc);
+  --bg-hover: var(--dsw-alias-bg-hover, #f3f4f6);
+  --border: var(--dsw-alias-border-secondary, #e7e9ee);
+  --border-strong: var(--dsw-alias-border-primary, #d7dbe2);
+  --text: var(--dsw-alias-text-primary, #16181d);
+  --text-secondary: var(--dsw-alias-text-secondary, #5f6673);
+  --text-weak: var(--dsw-alias-text-tertiary, #9aa1ad);
+  --accent: var(--dsw-alias-brand-primary, #2563eb);
+  --accent-strong: var(--dsw-alias-brand-hover, #1d4ed8);
+  --warn: #d97706;
+  --font-mono: ui-monospace, Consolas, "Courier New", monospace;
+  --fs-id: 11px;
+  --fs-badge: 10px;
+  --fs-body: 12.5px;
+  --state-unspecified-dot: #9ca3af;
+  --state-unspecified-fg: #6b7280;
+  --state-submitted-dot: #111827;
+  --state-submitted-fg: #111827;
+  --state-working-dot: #06b6d4;
+  --state-working-fg: #0e7490;
+  --state-inputRequired-dot: #eab308;
+  --state-inputRequired-fg: #a16207;
+  --state-authRequired-dot: #a855f7;
+  --state-authRequired-fg: #7e22ce;
+  --state-completed-dot: #10b981;
+  --state-completed-fg: #047857;
+  --state-failed-dot: #ef4444;
+  --state-failed-fg: #b91c1c;
+  --state-canceled-dot: #92400e;
+  --state-canceled-fg: #78350f;
+  --state-rejected-dot: #f97316;
+  --state-rejected-fg: #c2410c;
+  --kind-goal-fg: #7c3aed;
+  --kind-goal-bg: #f3e8ff;
+  --kind-design-fg: #2563eb;
+  --kind-design-bg: #dbeafe;
+  --kind-work-fg: #0891b2;
+  --kind-work-bg: #cffafe;
+  --kind-record-fg: #6b7280;
+  --kind-record-bg: #f3f4f6;
+}
+.tb3w-root, .tb3w-root *, [data-menu="status"], [data-menu="status"] *{box-sizing:border-box}
+
+/* ══════════════════════════════════════════════════════════
+   1. 拼装壳
+   ══════════════════════════════════════════════════════════ */
+
+.tb3w-root{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13px;line-height:1.5}
+.tb3w-page{container-type:size;container-name:tb3w;display:flex;flex-direction:column;height:100%;min-height:0;padding:16px 20px;overflow:hidden}
+.tb3w-chrome{flex:0 0 auto;display:flex;flex-direction:column;min-width:0}
+.tb3w-main{flex:1 1 auto;display:flex;flex-direction:row;min-height:0;min-width:0;margin-top:12px}
+
+/* SpaceBar 自己带 6px 上下 padding ⇒ 这里只补左右对齐 */
+.tb3w-chrome > .space-bar{padding-left:2px;padding-right:2px}
+
+/* ── 工具栏：条数 / 图例 / 视图切换 / 新建 ── */
+.tb3w-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;min-width:0;margin-top:10px;padding:0 2px}
+.tb3w-toolbar__title{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
+.tb3w-toolbar__count{margin-left:4px;font-weight:400;color:var(--text-secondary)}
+.tb3w-toolbar__legend{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;order:2;min-width:0;font-size:11px;color:var(--text-secondary)}
+.tb3w-toolbar__legend-label{flex:0 0 auto;white-space:nowrap}
+.tb3w-legend__item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.tb3w-legend__line{display:inline-block;flex:0 0 auto;width:14px;height:2px;border-radius:1px;background:#5b6472}
+.tb3w-legend__line[data-rel="depends"]{background:#a16207}
+.tb3w-legend__line[data-rel="supersedes"]{background:#6d28d9}
+.tb3w-legend__line[data-rel="constrains"]{background:#b91c1c}
+.tb3w-legend__line[data-rel="related"]{height:0;border-top:2px dashed #15803d;background:none}
+.tb3w-legend__line[data-rel="references"]{height:0;border-top:2px dashed #6b7280;background:none}
+.tb3w-legend__hint{flex:0 0 auto;font-size:10px;color:#b6bec9;white-space:nowrap}
+.tb3w-legend__hint--short{display:none}
+.tb3w-toolbar__actions{display:flex;align-items:center;gap:8px;order:3;margin-left:auto;min-width:0}
+.tb3w-seg{display:inline-flex;align-items:center;padding:2px;border-radius:6px;background:var(--bg-hover)}
+.tb3w-seg__btn{padding:3px 10px;border:0;border-radius:5px;background:transparent;color:var(--text-secondary);font-family:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.tb3w-seg__btn.is-on{background:var(--bg-card);color:var(--text);font-weight:600;box-shadow:0 0 0 1px var(--border)}
+.tb3w-btn-primary{padding:4px 12px;border:1px solid var(--text);border-radius:6px;background:var(--text);color:#fff;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+.tb3w-btn-primary:hover{opacity:.88}
+
+/* ── 筛选行：3 个 FilterBox + 尾部（AI 未读 / 搜索） ── */
+.tb3w-filters{min-width:0;margin-top:8px}
+.tb3w-filters .filter-row__spacer{flex:1 1 auto;min-width:0}
+.tb3w-filters__tail{display:flex;align-items:center;gap:8px;min-width:0}
+.tb3w-ai-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
+.tb3w-ai-chip b{font-weight:600;color:var(--text)}
+.tb3w-search{display:flex;align-items:center;gap:6px;width:250px;max-width:100%;padding:4px 11px;border:1px solid var(--border);border-radius:15px;background:var(--bg-card);color:var(--text-weak)}
+.tb3w-search__icon{flex:0 0 auto;display:block}
+.tb3w-search input{width:100%;min-width:0;border:0;outline:none;background:transparent;font-family:inherit;font-size:11px;color:var(--text)}
+.tb3w-search input::placeholder{color:var(--text-weak)}
+
+/* ── 左栏：列表 ── */
+.tb3w-list{flex:2 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.tb3w-list__head{flex:0 0 auto;display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:11px 14px 7px}
+.tb3w-list__title{font-size:12.5px;font-weight:600;color:var(--text)}
+.tb3w-list__title em{font-style:normal;font-weight:400;color:var(--text-secondary)}
+.tb3w-list__sort{flex:0 0 auto;font-size:11px;color:var(--text-weak)}
+/*
+ * 列表的列名行。设计图里只在宽版出现（窄版把纵向空间让给行本身）。
+ * 三列与 CardRow 的几何对齐：46px 正方形 + 12px gap ≈ 58（首列给到 190 是为了
+ * 把「分类 · 领域 · 模板」对齐到 label 起点），最后一列 90px 对齐「最后动过」。
+ */
+.tb3w-list__cols{flex:0 0 auto;display:grid;grid-template-columns:190px 150px minmax(0,1fr) 90px;gap:0;padding:0 14px 5px;border-bottom:1px solid #eef1f5;font-size:8.5px;color:#b6bec9}
+.tb3w-list__cols span:last-child{text-align:right}
+.tb3w-list__body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px 14px 12px}
+.tb3w-list__empty{padding:28px 8px;text-align:center;font-size:12px;color:var(--text-weak)}
+
+/* ── 分隔条：可拖（宽版竖 / 窄版横） ── */
+.tb3w-split{position:relative;display:flex;flex:0 0 20px;align-items:center;justify-content:center;cursor:col-resize;user-select:none;touch-action:none}
+.tb3w-split__line{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #cbd5e1}
+.tb3w-split__grip{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10px}
+
+/* ── 右栏：详情 ── */
+.tb3w-detail{flex:1.2 1 0;display:flex;flex-direction:column;min-width:300px;max-width:460px;min-height:0}
+.tb3w-detail > .detail{flex:1 1 auto;min-height:0;overflow-y:auto}
+.tb3w-detail__empty{flex:1 1 auto;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:10px;background:var(--bg-card);color:var(--text-weak);font-size:12px}
+/* 详情里的状态 = 状态菜单的触发器（设计图没画胶囊，见 V3 报告） */
+.tb3w-detail [data-meta="status"]{position:relative;cursor:pointer;border-radius:5px}
+.tb3w-detail [data-meta="status"]:hover{background:var(--bg-hover)}
+.tb3w-detail [data-meta="status"]::after{content:"⌄";position:absolute;top:50%;right:-3px;transform:translateY(-50%);font-size:9px;color:var(--text-weak);opacity:.85}
+.tb3w-root[data-detail="closed"] .tb3w-split,.tb3w-root[data-detail="closed"] .tb3w-detail{display:none}
+
+/* ══════════════════════════════════════════════════════════
+   2. 已定稿组件的样式（作用域化；值照抄各自 preview 的 style.css）
+   ══════════════════════════════════════════════════════════ */
+
+/* ── SpaceBar ── */
+.tb3w-root .ghost-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-family:inherit;font-size:12px;white-space:nowrap;cursor:pointer;transition:border-color .12s,color .12s,background .12s}
+.tb3w-root .ghost-btn:hover:not(:disabled){border-color:var(--text-weak);color:var(--text)}
+.tb3w-root .ghost-btn:disabled{opacity:.45;cursor:default}
+.tb3w-root .ghost-btn.is-active{border-color:var(--accent);background:#eff6ff;color:var(--accent)}
+.tb3w-root .space-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;padding:6px 2px}
+.tb3w-root .space-bar > *{flex:0 0 auto}
+.tb3w-root .space-action{min-width:84px;justify-content:center}
+.tb3w-root .space-action.is-emphasis-current{border-color:var(--accent);background:#eef4ff;color:var(--accent);font-weight:600;cursor:default}
+.tb3w-root .space-action.is-emphasis-current:hover{border-color:var(--accent);color:var(--accent)}
+.tb3w-root .space-action.is-emphasis-action{border-color:var(--border);background:var(--bg-card);color:var(--text-secondary)}
+.tb3w-root .space-action.is-emphasis-action:hover:not(:disabled){border-color:var(--accent);background:#f5f9ff;color:var(--accent)}
+.tb3w-root .space-action.is-emphasis-plain{color:var(--text-weak)}
+.tb3w-root .space-action.is-on{border-color:var(--text);background:var(--text);color:#fff}
+.tb3w-root .space-action.is-on:hover:not(:disabled){border-color:var(--text);background:var(--text);color:#fff}
+.tb3w-root .space-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid var(--border);border-radius:999px;background:var(--bg-card);color:var(--text-secondary);font-family:inherit;font-size:12px;white-space:nowrap;cursor:pointer;transition:border-color .12s,background .12s}
+.tb3w-root .space-chip:hover{border-color:var(--text-weak)}
+.tb3w-root .space-chip.is-current{border-color:var(--text);background:var(--text);color:#fff}
+.tb3w-root .space-chip.is-viewing{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.tb3w-root .space-chip.is-current.is-viewing{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.tb3w-root .space-chip.is-archived{border-style:dashed;opacity:.65}
+.tb3w-root .space-chip.is-archived:hover{opacity:1}
+.tb3w-root .space-chip.is-current.is-archived{opacity:1}
+.tb3w-root .space-chip__count{font-family:var(--font-mono);font-size:11px;opacity:.75}
+.tb3w-root .space-chip--add{padding:4px 9px;color:var(--text-weak)}
+
+/* ── FilterBox / FilterRow ── */
+.tb3w-root .filter-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.tb3w-root .filter-box{position:relative;flex:0 0 auto;height:32px;max-width:100%;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);overflow:hidden;cursor:pointer;user-select:none;transition:width .18s ease}
+.tb3w-root .filter-box.is-open{border-color:#93c5fd}
+.tb3w-root .filter-box__face{position:absolute;top:0;bottom:0;left:12px;display:inline-flex;align-items:center;white-space:nowrap;transition:opacity .12s ease}
+.tb3w-root .filter-box__face--expanded{opacity:0;pointer-events:none}
+.tb3w-root .filter-box.is-open .filter-box__face--collapsed{opacity:0;pointer-events:none}
+.tb3w-root .filter-box.is-open .filter-box__face--expanded{opacity:1;pointer-events:auto}
+.tb3w-root .filter-box__title{padding:0 2px;border:0;border-radius:4px;background:none;color:var(--text-secondary);font-family:inherit;font-size:12.5px;cursor:pointer}
+.tb3w-root .filter-box__title:hover{background:#f3f4f6;color:var(--text)}
+.tb3w-root .filter-box__colon{font-size:12.5px;color:var(--text-secondary)}
+.tb3w-root .filter-box__crumbs{display:inline-flex;align-items:center}
+/* 分隔斜杠要看得见（用过 #cbd5e1，截图里几乎看不见） */
+.tb3w-root .filter-box__csep{padding:0 1px;font-size:12px;color:#9aa1ad;user-select:none}
+.tb3w-root .filter-box__items{display:inline-flex;align-items:center}
+.tb3w-root .filter-box__item{display:inline-flex;align-items:center;gap:2px;padding:2px 4px;border:0;border-radius:4px;background:none;color:var(--text);font-family:inherit;font-size:12.5px;cursor:pointer}
+.tb3w-root .filter-box__item:hover{background:#f3f4f6}
+.tb3w-root .filter-box__item.is-picked{color:var(--accent);font-weight:700}
+.tb3w-root .filter-box__item--crumb:not(.is-picked){text-decoration:underline dotted #b6bec9;text-underline-offset:3px}
+.tb3w-root .filter-box__item--crumb:not(.is-picked):hover{color:var(--accent);text-decoration-color:var(--accent)}
+.tb3w-root .filter-box__more{margin-left:1px;font-size:9px;opacity:.5}
+.tb3w-root .filter-box__sep{padding:0 2px;font-size:12px;color:#cbd5e1;user-select:none}
+.tb3w-root .filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
+
+/* ── 状态圆点 / 编号 / 徽章（StatusCell 系） ── */
+.tb3w-root .dot{display:inline-block;flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--state-unspecified-dot)}
+.tb3w-root .dot--unspecified{background:var(--state-unspecified-dot)}
+.tb3w-root .dot--submitted{background:var(--state-submitted-dot)}
+.tb3w-root .dot--working{background:var(--state-working-dot)}
+.tb3w-root .dot--inputRequired{background:var(--state-inputRequired-dot)}
+.tb3w-root .dot--authRequired{background:var(--state-authRequired-dot)}
+.tb3w-root .dot--completed{background:var(--state-completed-dot)}
+.tb3w-root .dot--failed{background:var(--state-failed-dot)}
+.tb3w-root .dot--canceled{background:var(--state-canceled-dot)}
+.tb3w-root .dot--rejected{background:var(--state-rejected-dot)}
+.tb3w-root .card-id{flex:0 0 auto;font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;letter-spacing:-.2px}
+.tb3w-root .card-id--goal{color:var(--kind-goal-fg)}
+.tb3w-root .card-id--design{color:var(--kind-design-fg)}
+.tb3w-root .card-id--work{color:var(--kind-work-fg)}
+.tb3w-root .card-id--record{color:var(--kind-record-fg)}
+.tb3w-root .badge{display:inline-block;flex:0 0 auto;padding:0 5px;border-radius:3px;font-size:var(--fs-badge);line-height:1.6;white-space:nowrap}
+.tb3w-root .badge--goal{background:var(--kind-goal-bg);color:var(--kind-goal-fg)}
+.tb3w-root .badge--design{background:var(--kind-design-bg);color:var(--kind-design-fg)}
+.tb3w-root .badge--work{background:var(--kind-work-bg);color:var(--kind-work-fg)}
+.tb3w-root .badge--record{background:var(--kind-record-bg);color:var(--kind-record-fg)}
+.tb3w-root .badge--domain{background:#f3f4f6;color:var(--text-secondary)}
+.tb3w-root .badge--template{background:#eef1f5;color:var(--text-secondary)}
+/*
+ * ⚠ 非紧凑态的 .task-card__status 原先只存在于旧面板的 CSS（.status-line 那段），
+ *   V3 的详情头部用到了它 ⇒ 这里补一条基础规则（**样式钩子，不改组件行为**）。
+ */
+.tb3w-root .task-card__status{display:inline-flex;align-items:center;gap:4px;min-width:0;font-size:11.5px;color:var(--text-secondary)}
+.tb3w-root .task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb3w-root .task-card__status.is-compact{flex:0 0 auto;align-items:center;gap:3px;font-size:9px;color:var(--text-weak)}
+
+/* ── CardRow ── */
+.tb3w-root .task-card{display:flex;align-items:stretch;gap:0;width:100%;margin-bottom:6px;padding:8px 12px;border:2px solid var(--border);border-radius:8px;background:var(--bg-card);color:inherit;font-family:inherit;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
+.tb3w-root .task-card:hover{background:#f8f9fb}
+.tb3w-root .task-card.is-selected{border-color:var(--accent);background:#f5f9ff}
+.tb3w-root .task-card.is-draft{border-color:transparent}
+.tb3w-root .task-card.is-draft:hover{border-color:var(--border)}
+.tb3w-root .task-card.is-draft.is-selected{border-color:var(--accent)}
+.tb3w-root .task-card.is-unread-ai{border-left-width:4px;border-left-color:var(--accent);padding-left:10px}
+.tb3w-root .task-card.is-unread-user{border-right-width:4px;border-right-color:var(--warn);padding-right:10px}
+.tb3w-root .task-card__square{flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0}
+.tb3w-root .task-card__square-id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;letter-spacing:-.2px}
+.tb3w-root .task-card__body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.tb3w-root .task-card__line{display:flex;align-items:center;gap:6px;min-width:0}
+.tb3w-root .task-card__line .badge{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb3w-root .task-card__title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-body);font-weight:600}
+.tb3w-root .task-card__when{flex:0 0 90px;overflow:hidden;text-align:right;font-size:11px;color:var(--text-weak);white-space:nowrap}
+.tb3w-root .task-card__when-label{display:block;font-size:9px;opacity:.7}
+.tb3w-root .task-card.is-unread-ai .card-id{font-weight:800}
+
+/* ── CardDetail ── */
+.tb3w-root .detail{display:flex;flex-direction:column;gap:14px;min-width:0;padding:16px 18px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card)}
+.tb3w-root .detail-head{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tb3w-root .detail-title-row{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.tb3w-root .detail-title{flex:1 1 auto;min-width:0;margin:0;overflow-wrap:anywhere;color:var(--text);font-size:17px;font-weight:700;line-height:1.4;letter-spacing:-.01em}
+.tb3w-root .detail-title-row__spacer{flex:0 0 auto;width:0}
+.tb3w-root .icon-btn{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:1px solid transparent;border-radius:5px;background:none;color:var(--text-weak);font-family:inherit;font-size:14px;line-height:1;cursor:pointer}
+.tb3w-root .icon-btn:hover{border-color:var(--border);background:#f6f7f9;color:var(--text)}
+/* meta 行：状态是**固定 92px 首列**，不随 label 变宽而漂移 */
+.tb3w-root .detail-meta{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0;font-size:11.5px;color:var(--text-secondary)}
+.tb3w-root .detail-meta > *{flex:0 0 auto;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb3w-root .detail-status-col{display:inline-flex;align-items:center;flex:0 0 92px;min-width:0;margin-left:0;padding:0}
+.tb3w-root .detail-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.tb3w-root .detail-action{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;font-size:12px}
+.tb3w-root .detail-action.is-primary{border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600}
+.tb3w-root .detail-action.is-primary:hover:not(:disabled){border-color:var(--accent-strong);background:var(--accent-strong);color:#fff}
+.tb3w-root .detail-action.is-primary:disabled{opacity:.4;cursor:not-allowed}
+.tb3w-root .detail-action__badge{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:rgb(255 255 255 / 24%);font-family:var(--font-mono);font-size:10px;font-weight:700;line-height:1}
+.tb3w-root .detail-action:not(.is-primary) .detail-action__badge{background:#eef1f5;color:var(--text-secondary)}
+.tb3w-root .detail-banner{padding:8px 11px;border:1px solid #fde68a;border-radius:7px;background:#fffbeb;color:#92400e;font-size:11.5px;line-height:1.6}
+.tb3w-root .detail-sections{display:flex;flex-direction:column;gap:12px;min-width:0}
+.tb3w-root .detail-section{display:flex;flex-direction:column;gap:4px;min-width:0}
+.tb3w-root .detail-section__label{font-size:12px;font-weight:600;color:var(--text-secondary)}
+.tb3w-root .detail-section__body{overflow-wrap:anywhere;color:var(--text);font-size:12.5px;line-height:1.75;white-space:pre-wrap}
+.tb3w-root .detail-section__empty,.tb3w-root .detail-empty{font-size:12px;color:var(--text-weak)}
+.tb3w-root .detail-note{display:flex;flex-direction:column;gap:5px;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fbfcfd}
+.tb3w-root .detail-note__label{font-size:11.5px;font-weight:600;color:var(--text-secondary)}
+.tb3w-root .detail-note__input{width:100%;padding:7px 9px;border:1px solid transparent;border-radius:5px;background:var(--bg-card);resize:vertical;color:var(--text);font-family:inherit;font-size:12.5px;line-height:1.7}
+.tb3w-root .detail-note__input:focus{border-color:#93c5fd;box-shadow:0 0 0 3px rgb(37 99 235 / 10%);outline:none}
+.tb3w-root .detail-note__input:disabled{background:#f4f5f7;color:var(--text-weak);cursor:not-allowed}
+.tb3w-root .detail-note__readonly{font-size:11px;color:var(--text-weak)}
+.tb3w-root .detail-history{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tb3w-root .detail-history__head{display:inline-flex;align-self:flex-start;align-items:center;gap:6px;margin-left:-6px;padding:2px 6px;color:var(--text-secondary);font-size:12px;font-weight:600}
+.tb3w-root .detail-history__list{display:flex;flex-direction:column;gap:7px;margin:0;padding:0 0 0 2px;list-style:none}
+.tb3w-root .detail-history__item{display:flex;align-items:baseline;gap:8px;min-width:0;color:#3f4652;font-size:11.5px;line-height:1.6}
+.tb3w-root .detail-history__dot{flex:0 0 auto;width:5px;height:5px;border-radius:50%;background:#cbd5e1;transform:translateY(-2px)}
+.tb3w-root .detail-history__item.is-ai .detail-history__dot{background:#2563eb}
+.tb3w-root .detail-history__item.is-user .detail-history__dot{background:var(--text)}
+.tb3w-root .detail-history__text{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.tb3w-root .detail-history__time{flex:0 0 auto;color:var(--text-weak);font-family:var(--font-mono);font-size:10.5px}
+
+/* ── StatusMenu（portal 到 body ⇒ 用 data-menu 作用域） ── */
+[data-menu="status"]{position:fixed;z-index:150;width:280px;min-width:250px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);box-shadow:0 10px 30px rgb(0 0 0 / 14%);overflow-y:auto;color:var(--text);font-size:13px;line-height:1.5}
+[data-menu="status"] .menu__title{padding:4px 8px 6px;color:var(--text-weak);font-size:11px;font-weight:600}
+[data-menu="status"] .menu__item{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border:0;border-radius:5px;background:none;color:var(--text);font-family:inherit;font-size:12px;text-align:left;cursor:pointer}
+[data-menu="status"] .menu__item:hover,[data-menu="status"] .menu__item.is-active{background:#f3f4f6}
+[data-menu="status"] .menu__tone--unspecified{color:var(--state-unspecified-fg)}
+[data-menu="status"] .menu__tone--submitted{color:var(--state-submitted-fg)}
+[data-menu="status"] .menu__tone--working{color:var(--state-working-fg)}
+[data-menu="status"] .menu__tone--inputRequired{color:var(--state-inputRequired-fg)}
+[data-menu="status"] .menu__tone--authRequired{color:var(--state-authRequired-fg)}
+[data-menu="status"] .menu__tone--completed{color:var(--state-completed-fg)}
+[data-menu="status"] .menu__tone--failed{color:var(--state-failed-fg)}
+[data-menu="status"] .menu__tone--canceled{color:var(--state-canceled-fg)}
+[data-menu="status"] .menu__tone--rejected{color:var(--state-rejected-fg)}
+[data-menu="status"] .menu__icon{flex:0 0 auto;width:15px;text-align:center;color:var(--text-weak);font-size:11px}
+[data-menu="status"] .menu__item[class*="menu__tone--"] .menu__icon{color:inherit}
+[data-menu="status"] .menu__label{flex:0 0 auto}
+[data-menu="status"] .menu__hint{margin-left:auto;padding-left:14px;color:var(--text-weak);font-size:11px}
+[data-menu="status"] .menu__divider{height:1px;margin:4px 0;background:#f2f4f7}
+[data-menu="status"] .menu__empty{padding:8px;color:var(--text-weak);font-size:12px}
+[data-menu="status"] .menu__footer{margin-top:4px;padding:8px 8px 2px;border-top:1px solid #f2f4f7;color:var(--text-weak);font-size:11px;line-height:1.6}
+
+/* ══════════════════════════════════════════════════════════
+   3. 响应式：宽 < 700px ⇒ 上下堆叠（结构变）
+   ══════════════════════════════════════════════════════════ */
+
+@container tb3w (max-width: 700px) {
+  .tb3w-page{padding:10px 12px}
+  .tb3w-main{flex-direction:column;margin-top:6px}
+  .tb3w-list{flex:0 0 52%}
+  .tb3w-split{flex:0 0 20px;cursor:row-resize}
+  .tb3w-split__line{top:50%;bottom:auto;left:8px;right:8px;width:auto;height:0;border-left:0;border-top:3px dashed #c3cad4}
+  .tb3w-split__grip{display:none}
+  .tb3w-detail{flex:1 1 0;min-width:0;max-width:none;min-height:0}
+  /* 列名行在小容器里去掉 —— 8.5px 的列名比行本身还占地方 */
+  .tb3w-list__cols{display:none}
+
+  /* 设计图（570×920）里窄版控件小一号：chip 24px、工具栏 10.5px、筛选框 26px */
+  .tb3w-chrome > .space-bar{gap:5px;padding:4px 2px}
+  .tb3w-root .space-chip{padding:3px 10px;font-size:11px}
+  .tb3w-root .space-chip__count{font-size:9.5px}
+  .tb3w-root .ghost-btn{padding:3px 9px;font-size:11px}
+  .tb3w-root .space-action{min-width:72px}
+  .tb3w-toolbar{margin-top:8px;gap:4px 8px}
+  .tb3w-toolbar__title{font-size:12px}
+  .tb3w-toolbar__legend{order:3;flex:1 0 100%;gap:2px 9px;font-size:9.5px}
+  .tb3w-toolbar__actions{order:2}
+  .tb3w-toolbar__perm{display:none}
+  .tb3w-legend__hint--long{display:none}
+  .tb3w-legend__hint--short{display:inline}
+  .tb3w-seg__btn{padding:2px 9px;font-size:10.5px}
+  .tb3w-btn-primary{padding:3px 10px;font-size:10.5px}
+  .tb3w-filters{margin-top:6px}
+  .tb3w-filters .filter-row__spacer{display:none}
+  .tb3w-filters__tail{flex:1 0 100%;flex-wrap:wrap;gap:6px}
+  .tb3w-root .filter-row{gap:6px}
+  .tb3w-root .filter-box{height:26px}
+  .tb3w-root .filter-box__face{left:10px}
+  .tb3w-root .filter-box__title,.tb3w-root .filter-box__colon{font-size:11px}
+  .tb3w-root .filter-box__item{font-size:11px;padding:2px 3px}
+  .tb3w-root .filter-box__csep,.tb3w-root .filter-box__sep{font-size:11px}
+  .tb3w-root .filter-box__vline{margin:0 7px}
+  .tb3w-ai-chip{display:none}
+  .tb3w-search{width:100%;padding:3px 10px}
+  .tb3w-list__head{padding:9px 12px 5px}
+  .tb3w-list__title{font-size:12px}
+  .tb3w-list__body{padding:6px 12px 10px}
+  .tb3w-root .task-card{margin-bottom:5px;padding:6px 10px}
+  .tb3w-root .task-card.is-unread-ai{padding-left:8px}
+  .tb3w-root .task-card.is-unread-user{padding-right:8px}
+  .tb3w-root .detail{padding:12px 14px;gap:11px}
+  .tb3w-root .detail-title{font-size:14px}
+  .tb3w-root .detail-history__item{font-size:10.5px}
+}
+`;
+
+/**
  * 全部类名 —— **单一来源**。
  *
  * 组件里只用 `CLS.xxx`，不写字面量。写错类名的后果是样式静默失效
@@ -657,9 +1030,10 @@ export function injectStyles(): void {
 	const element = document.createElement('style');
 	element.id = STYLE_ID;
 	/*
-	 * ⚠ 两段都注入：`STYLES` 是面板内的（`tb3-*`），`CREATE_CSS` 是全屏建卡页的（`tb3cc-*`）。
-	 *   合成一个 `<style>` 而不是两个 —— 少一个 DOM 节点，而且去重逻辑只需要管一个 id。
+	 * ⚠ 三段都注入：`STYLES` 是旧面板内的（`tb3-*`），`CREATE_CSS` 是全屏建卡页的
+	 *   （`tb3cc-*`），`WORKSPACE_CSS` 是 V3 工作区的（`tb3w-*` + 六个定稿组件）。
+	 *   合成一个 `<style>` 而不是三个 —— 少两个 DOM 节点，去重逻辑只需要管一个 id。
 	 */
-	element.textContent = `${STYLES}\n${CREATE_CSS}`;
+	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}`;
 	document.head.appendChild(element);
 }
