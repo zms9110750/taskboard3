@@ -422,12 +422,17 @@ console.log('\n═══ ⑧ CSS 硬约束（用户设计硬约束）═══')
 		[true, true, true],
 	);
 	expect(
-		'⭐ 面板高度按形态插值（min / half 都在 CSS 里）',
+		'⭐ 面板高度用真实视口单位（min(50vh,480px) / 50vh）',
 		[
-			DRAWER_CSS.includes('height:min(calc(var(--tb3d-vh,100vh) * 0.5), 480px)'),
-			DRAWER_CSS.includes('height:calc(var(--tb3d-vh,100vh) * 0.5)'),
+			DRAWER_CSS.includes('height:min(50vh, 480px)'),
+			DRAWER_CSS.includes('height:50vh'),
 		],
 		[true, true],
+	);
+	expect(
+		'⚠ 没有「模拟屏高」自定义变量残留（用户 2026-11-20 否掉）',
+		[DRAWER_CSS.includes('--tb3d-vh'), DRAWER_CSS.includes('calc(var(')],
+		[false, false],
 	);
 	expect(
 		'⭐ 入口定位由表插值：left:-32px / bottom:4px',
@@ -442,8 +447,8 @@ console.log('\n═══ ⑧ CSS 硬约束（用户设计硬约束）═══')
 		[true, true, true],
 	);
 	expect('动画形态带 animation、无动画形态不带', [
-		DRAWER_CSS.includes('.tb3d-panel[data-drawer-variant="b"]{bottom:calc(100% + 6px);border-radius:12px;height:min(calc(var(--tb3d-vh,100vh) * 0.5), 480px);box-shadow:0 10px 24px rgb(15 23 42 / 16%);animation:tb3d-rise .18s ease-out}'),
-		DRAWER_CSS.includes('.tb3d-panel[data-drawer-variant="a"]{bottom:calc(100% + 0px);border-radius:0px;height:min(calc(var(--tb3d-vh,100vh) * 0.5), 480px);box-shadow:none}'),
+		DRAWER_CSS.includes('.tb3d-panel[data-drawer-variant="b"]{bottom:calc(100% + 6px);border-radius:12px;height:min(50vh, 480px);box-shadow:0 10px 24px rgb(15 23 42 / 16%);animation:tb3d-rise .18s ease-out}'),
+		DRAWER_CSS.includes('.tb3d-panel[data-drawer-variant="a"]{bottom:calc(100% + 0px);border-radius:0px;height:min(50vh, 480px);box-shadow:none}'),
 	], [true, true]);
 
 	const s = mod.DRAWER_COMPACT_SPACING;
@@ -523,11 +528,12 @@ const checkArtifact = (label, path, needles) => {
 };
 
 checkArtifact('候选对比页', PREVIEW_COMPARE_HTML, [
-	'抽屉 V5 · 候选形态对比',
+	'抽屉 V5 · 候选形态',
 	'.tb3d-entry',
 	'.tb3d-panel',
-	'data-variant-column',
-	'data-screen-btn',
+	'data-compare-variant',
+	'data-mock-composer-card',
+	'data-panel-size',
 	'任务板',
 ]);
 checkArtifact('单栏模拟页', PREVIEW_COMPOSER_HTML, [
@@ -537,7 +543,22 @@ checkArtifact('单栏模拟页', PREVIEW_COMPOSER_HTML, [
 	'data-single-column',
 	'data-variant-btn',
 	'data-mock-composer-card',
+	'data-panel-size',
 ]);
+
+/* 宽而扁的证据在产物里（面板宽 = 输入框卡片 max-width 1200；高度是真实 50vh） */
+for (const [label, path] of [
+	['候选对比页', PREVIEW_COMPARE_HTML],
+	['单栏模拟页', PREVIEW_COMPOSER_HTML],
+]) {
+	const html = readPreview(path);
+	expect(`⭐ ${label}：输入框卡片 max-width 是真实 1200px`, html.includes('max-width:1200px'), true);
+	expect(`⭐ ${label}：面板高度用真实 50vh（代码里有 50vh、没有模拟变量）`, [
+		html.includes('50vh'),
+		html.includes('--tb3d-vh'),
+	], [true, false]);
+	expect(`⚠ ${label}：没有上一版的「模拟屏高」控件（data-screen-btn）`, html.includes('data-screen-btn'), false);
+}
 
 /* ══════════════════════════════════════════════════════════
    ⑩ 结果 + 诚实清单
@@ -548,11 +569,12 @@ console.log(failures.length ? failures.join('\n') : '  全部通过');
 console.log(`  SSR 断言数 ${total}（失败 ${failures.length}）`);
 
 console.log('\n═══ ⚠ 没测到的（需要真浏览器，这里不假装）═══');
+console.log('  ✗ 面板**实测**像素宽高 —— 预览页里有 getBoundingClientRect 读数给自己看，但 node 里量不了');
 console.log('  ✗ 面板是否真的贴在输入框上边缘 / 宽度是否真的等于输入框 —— 要布局（getBoundingClientRect）');
 console.log('  ✗ 入口正方形是否真的在卡片左外侧、和 + 垂直居中 —— 要真实 composer 的 side-clearance');
 console.log('  ✗ Esc / 点外部 / 点遮罩是否真的关 —— 要 DOM 事件');
 console.log('  ✗ 两栏是否真的各自滚、面板是否真的不滚 —— 要 scrollHeight / clientHeight');
-console.log('  ✗ 50vh / min(50vh,480px) 是否真的算出那个像素 —— 要真排版（当前只有公式数值版）');
+console.log('  ✗ 50vh / min(50vh,480px) 在**当前窗口**算出多少像素 —— 要真排版（页面里有实测读数，这里不假装）');
 console.log('  ✗ 上滑动画、圆角、阴影、遮罩透明度 —— 要截图');
 console.log('  ⇒ 交互判决的可信度来自 test/drawer-view.test.ts（node --test，纯函数）');
 console.log('  ⇒ 视觉请用户双击 dev/preview/drawer/index.html 和 dev/preview/drawer-composer/index.html 看');

@@ -1,12 +1,14 @@
 /*
- * 抽屉候选对比页 —— **只写预览外壳**。
+ * 抽屉候选对比页（切换器版）—— **只写预览外壳**。
  *
  * ⚠ 产品样式（`.tb3d-*` 抽屉、`.tb3w-*` 工作区）与 mock composer 结构样式都不在这里：
  *   前者由 `main.tsx` 的 `injectStyles()` 注入、后者由 `injectMockStyles()` 注入
  *   （`mock-composer.tsx` 的 `MOCK_CSS`，两个预览页共用一份）。
- *   在预览里抄一份产品 CSS 的后果是「预览是对的、产品是坏的」，而那种坏不报错。
  *
- * 本文件只有：切换条 / 滚动区 / 三列舞台 / 提示条。
+ * 本文件：切换条 / 舞台（占满宽度，真实 1200 宽 composer）/ 尺寸读数 / 提示条。
+ *
+ * 用户 `2026-11-20`：「莫写着模拟屏高。然后用高而窄的放抽屉面板做什么」
+ * ⇒ 没有三列、没有模拟屏高变量；舞台宽度优先给足，面板 = 输入框宽 × 真实 50vh。
  */
 
 body {
@@ -48,10 +50,6 @@ body {
   color: #9aa1ad;
   font-size: 11.5px;
 }
-.pv-bar__label {
-  color: #9aa1ad;
-  font-size: 11.5px;
-}
 .pv-bar__btn {
   padding: 4px 12px;
   border-radius: 7px;
@@ -61,6 +59,7 @@ body {
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .pv-bar__btn:hover {
   border-color: #fff;
@@ -79,76 +78,76 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════
-   滚动区 + 三列
+   舞台：占满宽度，让 composer 能到 ≈1200px
    ══════════════════════════════════════════════════════════ */
 
 .pv-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-}
-
-.pv-columns {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 16px 20px 28px;
+  justify-content: center;
+  padding: 12px 16px 16px;
 }
 
 /*
- * 一列 = 一个模拟窗口。
+ * 舞台 = 一个模拟 DSH 对话窗口。
  *
- * `transform:translateZ(0)` 有两个作用：
- *   1. 把候选 C 的 `position:fixed` 遮罩关在本列里（真实 DSH 里它铺满视口）；
- *   2. 让列内绝对定位以本列为参照，不会被页面滚动带歪。
- * 高度由行内 style 给（= 模拟屏高），所以面板高度公式里的 `--tb3d-vh` 有意义。
+ * `transform:translateZ(0)` 把候选 C 的 `position:fixed` 遮罩关在舞台里
+ * （真实 DSH 里它铺满视口）。宽 `min(1320px, 100%)`：1320 = 输入框 1200 + 两侧 60 缝，
+ * 保证 `--` 不用把面板压窄；窄屏时随视口缩。
  */
-.pvc {
-  position: relative;
-  flex: 0 0 480px;
+.pv-stage {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  width: min(1320px, 100%);
   overflow: hidden;
   border-radius: 12px;
   background: #f5f7fa;
   outline: 1px solid #c9cfd9;
   outline-offset: -1px;
-  box-shadow: 0 8px 26px rgb(20 26 38 / 12%);
+  box-shadow: 0 8px 26px rgb(20 26 38 / 10%);
   transform: translateZ(0);
 }
 
-.pvc__head {
+.pv-stage__head {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 9px 12px;
+  padding: 8px 14px;
   background: #fafbfc;
   border-bottom: 1px solid #e7e9ee;
 }
-.pvc__titleline {
+.pv-stage__line {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
-.pvc__tag {
+.pv-stage__tag {
   color: #1f2328;
   font-size: 12.5px;
   font-weight: 700;
 }
-.pvc__height {
-  margin-left: auto;
-  padding: 1px 7px;
-  border-radius: 9px;
-  background: #eef1f5;
-  color: #6b7280;
-  font-size: 10.5px;
-}
-.pvc__summary {
+.pv-stage__summary {
   color: #7b828c;
   font-size: 10.5px;
   line-height: 1.6;
+}
+
+/* 面板实测尺寸（page 里用 getBoundingClientRect 读出来的真实像素） */
+.pv-size {
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: #eef1f5;
+  color: #6b7280;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.pv-size b {
+  color: #1f2328;
+  font-size: 11.5px;
 }
 
 /* ══════════════════════════════════════════════════════════

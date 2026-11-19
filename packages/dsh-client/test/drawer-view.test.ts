@@ -148,16 +148,18 @@ describe('② 高度公式（用户原话「高度 ≈ 屏幕一半」）', () =
 		assert.notEqual(drawerHeightPxOf(DRAWER_VARIANTS.a, 1200), drawerHeightPxOf(DRAWER_VARIANTS.c, 1200));
 	});
 
-	it('CSS 版与数值版同一公式：a 是 min(calc(var(--tb3d-vh,100vh) * 0.5), 480px)', () => {
-		assert.equal(
-			drawerHeightCssOf(DRAWER_VARIANTS.a),
-			'min(calc(var(--tb3d-vh,100vh) * 0.5), 480px)',
-		);
+	it('⭐ CSS 版用真实视口单位：a 是 min(50vh, 480px)', () => {
+		assert.equal(drawerHeightCssOf(DRAWER_VARIANTS.a), 'min(50vh, 480px)');
 	});
 
-	it('CSS 版：c 是 calc(var(--tb3d-vh,100vh) * 0.5)，不再套 min', () => {
-		assert.equal(drawerHeightCssOf(DRAWER_VARIANTS.c), 'calc(var(--tb3d-vh,100vh) * 0.5)');
+	it('⭐ CSS 版：c 是 50vh，不再套 min', () => {
+		assert.equal(drawerHeightCssOf(DRAWER_VARIANTS.c), '50vh');
 		assert.equal(drawerHeightCssOf(DRAWER_VARIANTS.c).includes('min('), false);
+	});
+
+	it('⚠ 高度只用真实视口单位 —— 不许有「模拟屏高」自定义变量（用户 2026-11-20 否掉）', () => {
+		assert.equal(DRAWER_CSS.includes('--tb3d-vh'), false);
+		assert.equal(DRAWER_CSS.includes('calc(var('), false);
 	});
 });
 

@@ -29,17 +29,41 @@
  * `<Workspace />` 都是产品同一份；样式来自 `injectStyles()`（产品同一份 CSS）。
  * **假**：没有服务端，对话内容是死的；`+` / 发送 / 权限只是画出来的。
  *
+ * ## ⚠ 尺寸：宽而扁（用户 `2026-11-20` 从截图量的真实尺寸）
+ *
+ * | 量 | 值 |
+ * |---|---|
+ * | 输入框宽 | **≈ 1200px** |
+ * | 屏高 | 952px ⇒ 面板高 ≈ 476px |
+ * | 面板 | ≈ **1200 × 476**，宽高比 **2.5 : 1** |
+ *
+ * 之前预览把三列硬塞成 ~480px 宽、面板被挤成「窄高」，用户否了：
+ * 「用高而窄的放抽屉面板做什么」。
+ * ⇒ 这里 `max-width` 写 1200；**面板高度用真实 `50vh`**（产品 CSS 里就是 `50vh`
+ *   / `min(50vh,480px)`，没有自定义变量）。
+ *
  * ## CSS 为什么在 TS 里而不是 style.css
  *
  * 两个预览目录各有一份 `style.css`，但**这段 mock 结构必须两边完全一致** ——
  * 复制两份迟早漂。⇒ 以 `MOCK_CSS` 常量导出，两个页面各自 `injectMockStyles()` 注入。
  */
 
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import type { DrawerVariant } from '../../../src/pure/drawer-view.ts';
 import { Drawer, DrawerEntry } from '../../../src/renderers/Drawer.tsx';
 import type { WorkspaceProps } from '../../../src/renderers/Workspace.tsx';
+
+/** 输入框卡片最大宽 —— 用户从截图量的真实值（≈1200px）。 */
+export const MOCK_COMPOSER_CARD_MAX_WIDTH = 1200;
+
+/**
+ * composer 左右留缝（px）—— 必须 ≥ 入口伸出去的 32px。
+ *
+ * 真 DSH 用 `--dsh-composer-side-clearance` 留这条缝（具体值未验证）；
+ * 预览给 48px，保证正方形完整可见且不贴边。
+ */
+export const MOCK_COMPOSER_SIDE_PAD = 48;
 
 /** `MockComposer` 的属性。 */
 export interface MockComposerProps {
@@ -57,7 +81,7 @@ export interface MockComposerProps {
 	readonly title?: string;
 	/** 刷新回调（省略 = 不画刷新按钮）。 */
 	readonly onRefresh?: () => void;
-	/** 对话区是否画几条假消息（候选对比页的窄列可关掉，省空间）。 */
+	/** 对话区是否画几条假消息（窄容器可关掉，省空间）。 */
 	readonly showConversation?: boolean;
 }
 
@@ -155,7 +179,7 @@ export const MOCK_CSS = `
 .pvm-conv__head{display:flex;align-items:center;gap:8px;padding-bottom:8px;border-bottom:1px solid #f0f2f5}
 .pvm-conv__title{color:#1f2328;font-size:13px;font-weight:700}
 .pvm-conv__chip{padding:2px 8px;border-radius:10px;background:#f1f3f6;color:#6b7280;font-size:10px}
-.pvm-msg{display:flex;flex-direction:column;gap:3px;max-width:86%}
+.pvm-msg{display:flex;flex-direction:column;gap:3px;max-width:70%}
 .pvm-msg--user{align-self:flex-end;align-items:flex-end}
 .pvm-msg__who{color:#9aa1ad;font-size:10px}
 .pvm-msg__text{padding:7px 11px;border-radius:10px;background:#f4f6f8;color:#3f4750;font-size:12px;line-height:1.7}
@@ -165,11 +189,15 @@ export const MOCK_CSS = `
  * ⚠ 左右 padding 必须 ≥ 入口按钮伸出去的量（32px）+ 一点余量：
  *   入口是 left:-32px，卡片贴边时会被列的 overflow:hidden 裁掉。
  *   真 DSH 用 --dsh-composer-side-clearance 留这条缝（具体值未验证）；
- *   预览里给 44px，保证正方形完整可见。
+ *   预览里给 48px，保证正方形完整可见。
  */
-.pvm-composer{flex:0 0 auto;display:flex;justify-content:center;padding:0 44px 22px}
+.pvm-composer{flex:0 0 auto;display:flex;justify-content:center;padding:0 48px 22px}
+/*
+ * ⚠ 输入框宽照真实尺寸（≈1200px）。用户明确否过「窄高」预览：
+ *   面板宽 = 卡片宽，卡片不够宽 ⇒ 面板被挤成窄高，三个候选的差别看不出来。
+ */
 .pvm-card{
-  position:relative;width:100%;max-width:760px;
+  position:relative;width:100%;max-width:1200px;
   display:flex;flex-direction:column;gap:12px;padding-top:8px;
   border-radius:18px;background:#fff;color:#16181d;
   box-shadow:0 0 0 1px rgb(15 23 42 / 8%),0 10px 30px rgb(15 23 42 / 10%);
@@ -194,21 +222,4 @@ export function injectMockStyles(): void {
 	element.id = 'tb3d-mock-composer-css';
 	element.textContent = MOCK_CSS;
 	document.head.appendChild(element);
-}
-
-/**
- * 把「模拟屏高」写进舞台的 CSS 变量。
- *
- * 面板高度公式里有 `--tb3d-vh`（默认 `100vh`）：候选对比页三列并排时，
- * 浏览器 vh 对三列是一样的、高度维度看不出差别 ⇒ 每列显式给一个模拟屏高。
- *
- * @param heightPx 模拟屏幕高（px）
- */
-export function screenVarStyle(heightPx: number): CSSProperties {
-	/*
-	 * ⚠ 断言：`CSSProperties` 不收录自定义属性（`--x`）。
-	 *   这是 React 外部类型限制，不是我们想绕过检查 —— 变量名与
-	 *   `drawerHeightCssOf()` 里的 `var(--tb3d-vh,100vh)` 对应，改一处必须改两处。
-	 */
-	return { height: `${String(heightPx)}px`, '--tb3d-vh': `${String(heightPx)}px` } as CSSProperties;
 }

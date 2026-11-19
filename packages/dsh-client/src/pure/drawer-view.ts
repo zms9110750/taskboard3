@@ -229,22 +229,24 @@ function px(value: number): string {
 	return `${String(value)}px`;
 }
 
-/** 面板高度（CSS 表达式）。 */
+/**
+ * 面板高度（CSS 表达式）—— **只用真实视口单位**。
+ *
+ * 用户 `2026-11-20` 明确否掉了预览里那种「模拟屏高」的变量：
+ * 「莫写着模拟屏高。然后用高而窄的放抽屉面板做什么」。
+ * ⇒ 这里只允许 `vh` / `min(…, 480px)`，**不允许任何自定义变量去替代视口单位**。
+ */
 export function drawerHeightCssOf(variant: DrawerVariant): string {
-	/*
-	 * `--tb3d-vh`：产品里不设 ⇒ 默认 `100vh`（屏幕高）；
-	 * 预览页三列并排时设成「模拟屏高」，否则三列共用浏览器 vh、高度维度看不出差别。
-	 */
-	const half = `calc(var(--tb3d-vh,100vh) * ${String(DRAWER_HEIGHT_RATIO)})`;
+	const half = `${String(DRAWER_HEIGHT_RATIO * 100)}vh`;
 	return variant.heightMode === 'capped-half'
 		? `min(${half}, ${px(DRAWER_HEIGHT_CAP_PX)})`
 		: half;
 }
 
 /**
- * 面板高度（px 数值）—— 给「模拟屏高 → 实际多高」的表和单测用。
+ * 面板高度（px 数值）—— 给「给定屏幕高 → 实际多高」的换算和单测用。
  *
- * ⚠ 浏览器里**最终高度还是 CSS 算的**（因为有 `vh` + `min()`）；
+ * ⚠ 浏览器里**最终高度还是 CSS 算的**（`50vh` + `min()`）；
  *   这个函数只是同一公式的数值版，用来断言公式没漂。
  *
  * @param variant 形态

@@ -4,7 +4,10 @@
  * 产品样式（`.tb3d-*` / `.tb3w-*`）与 mock composer 结构样式分别由
  * `injectStyles()` / `injectMockStyles()` 注入（和产品、和候选对比页同一份）。
  *
- * 本文件：切换条 / 滚动区 / 一个「像 DSH 对话页」的窗口 / 提示条。
+ * 用户 `2026-11-20`：面板要**宽而扁**（真实 ≈1200 × 476）。本页整页铺满视口，
+ * composer 卡片最大宽 1200px（`MOCK_CSS` 里），面板高度走真实 `50vh`。
+ *
+ * 本文件：切换条 / 整页窗口 / 实测尺寸读数 / 提示条。
  */
 
 body {
@@ -46,10 +49,6 @@ body {
   color: #9aa1ad;
   font-size: 11.5px;
 }
-.pv-bar__label {
-  color: #9aa1ad;
-  font-size: 11.5px;
-}
 .pv-bar__btn {
   padding: 4px 12px;
   border-radius: 7px;
@@ -59,6 +58,7 @@ body {
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .pv-bar__btn:hover {
   border-color: #fff;
@@ -77,27 +77,26 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════
-   一个「DSH 对话页」窗口
+   一个「整页 DSH 对话窗口」
    ══════════════════════════════════════════════════════════ */
 
 .pv-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
   display: flex;
   justify-content: center;
-  padding: 14px;
+  padding: 12px 16px 16px;
 }
 
 /*
- * 窗口高度 = 切换条以外的高度；**不给 `--tb3d-vh`** ⇒ 面板高度走真实 50vh。
- * 宽度取 DSH 对话列那档（约 1040），composer 卡片最宽 760。
+ * 窗口铺满可用宽高；宽度上限 1320 = 输入框 1200 + 两侧 60 缝。
+ * **不设任何模拟屏高变量**：面板高度用真实 vh。
  */
 .pvs-window {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  width: min(1040px, 100%);
+  width: min(1320px, 100%);
   background: #fff;
   border-radius: 12px;
   outline: 1px solid #d5dae1;
@@ -111,7 +110,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 18px 10px;
+  padding: 10px 16px;
   border-bottom: 1px solid #eef0f3;
 }
 .pvs-head__title {
@@ -130,12 +129,20 @@ body {
   color: #9ca3af;
   font-size: 10.5px;
 }
-.pvs-head__state {
+
+/* 面板实测尺寸（getBoundingClientRect 读出来的真实像素） */
+.pv-size {
   margin-left: auto;
-  color: #b0b7c1;
-  font-size: 10px;
-  max-width: 52%;
-  text-align: right;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: #eef1f5;
+  color: #6b7280;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.pv-size b {
+  color: #1f2328;
+  font-size: 11.5px;
 }
 
 /* ══════════════════════════════════════════════════════════
