@@ -882,7 +882,13 @@ export function renderMarkdownNodes(source: string): MdNode[] {
 
 	let tokens: readonly Token[];
 	try {
-		tokens = marked.lexer(source, { gfm: true, breaks: false });
+		/*
+		 * `breaks: true` = **GFM / GitHub 的默认**：单换行就是换行（`<br>`）。
+		 * 严格 CommonMark（`false`）会把单换行折成一个空格并进同一段 ——
+		 * 那是用户可见的行为退步，旧版手写解析器也是「回车 = 换行」。别改回 `false`。
+		 * （`gfm: true` 也是 marked 的默认，显式写出来是钉住表格 / 任务列表 / 删除线。）
+		 */
+		tokens = marked.lexer(source, { gfm: true, breaks: true });
 	} catch {
 		/*
 		 * marked 理论上只在「解析器死循环」这种病态输入上抛。
