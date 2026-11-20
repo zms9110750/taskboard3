@@ -322,7 +322,12 @@ function MarkdownBlock(props: {
 }): ReactNode {
 	const [preview, setPreview] = useState(false);
 	const view = props.view;
-	const editable = !props.readonly && props.onPatch !== undefined;
+	/*
+	 * ⚠ 只有 **create** 相位可编辑（契约 `02-action.md:263-265`：
+	 *   create = 源码框 + 查看预览；active / ended 都是**只读渲染**）。
+	 *   不能只用 `!readonly && onPatch` 判 —— 那样 active 也会变成源码框。
+	 */
+	const editable = props.phase === 'create' && !props.readonly && props.onPatch !== undefined;
 
 	if (!editable) {
 		if (view.empty) {
