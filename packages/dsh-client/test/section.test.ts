@@ -290,7 +290,7 @@ describe('askSectionOf —— picked 三态（core 注释原文的三种）', ()
 			group?.options.map((one) => one.picked),
 			[true, false],
 		);
-		assert.equal(group !== undefined && askStateLabelOf(group), '单选·已选 1');
+		assert.equal(group !== undefined && askStateLabelOf(group), '已选择');
 	});
 
 	it('多选标注与单选不同', () => {
@@ -306,7 +306,7 @@ describe('askSectionOf —— picked 三态（core 注释原文的三种）', ()
 		});
 		const group = view.groups[0];
 		assert.equal(group?.multiSelect, true);
-		assert.equal(group !== undefined && askStateLabelOf(group), '多选·已答 2');
+		assert.equal(group !== undefined && askStateLabelOf(group), '已选 2');
 	});
 
 	it('⚠ picked 里的脏值（非字符串）被丢掉，不炸', () => {

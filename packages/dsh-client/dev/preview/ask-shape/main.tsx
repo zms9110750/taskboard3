@@ -296,27 +296,11 @@ export function CreateColumn(props: {
 
 export function ActiveColumn(props: {
 	readonly items: readonly AskItem[];
+	/** 当前答案 payload（由 `AskColumns` 持有，和 ended 栏共用）。 */
+	readonly payload: Record<string, unknown>;
+	readonly onAsk: (next: Record<string, unknown>) => void;
 }): React.ReactNode {
-	const items = props.items;
-
-	/*
-	 * 预期答案（预览夹具）—— 直接写 **payload 形状**，和产品里存的一模一样。
-	 * 这里没有 `picked` / `custom` 三个平行 state，只有一个 payload。
-	 */
-	const [payload, setPayload] = useState<Record<string, unknown>>(() => ({
-		$type: 'ask',
-		items: items.map((item, i) => ({
-			header: item.header,
-			question: item.question,
-			options: item.options,
-			multi_select: item.multiSelect,
-			placeholder: item.placeholder,
-			...(i === 0 ? { picked: ['方案 B：先做科技树'] } : {}),
-			...(i === 1 ? { picked: ['筛选行'], custom: ['还有配色'] } : {}),
-		})),
-	}));
-
-	const view = sectionViewOf(payload);
+	const view = sectionViewOf(props.payload);
 
 	return (
 		<div className="as-col">
@@ -328,7 +312,7 @@ export function ActiveColumn(props: {
 			{/*
 			 * 用户 2026-11-21：「不要写胶水代码。他们的逻辑应该是很一致的。」
 			 * ⇒ 动作**直接交给产品的 pure 函数 `applyAskAction`**：
-			 *   单选互斥 / 自填文字进 picked / 删 picked 全在一处，预览没有第二套逻辑。
+			 *   单选互斥 / 自填文字进 picked / 删 picked 全在一处。
 			 */}
 			{view.kind === 'ask' ? (
 				view.groups.map((group, index) => (
@@ -338,7 +322,7 @@ export function ActiveColumn(props: {
 						group={group}
 						readonly={false}
 						onAsk={(_sectionId, action) => {
-							setPayload((current) => applyAskAction(current, index, action) as Record<string, unknown>);
+							props.onAsk(applyAskAction(props.payload, index, action) as Record<string, unknown>);
 						}}
 					/>
 				))
@@ -357,30 +341,16 @@ export function ActiveColumn(props: {
 
 export function EndedColumn(props: {
 	readonly items: readonly AskItem[];
+	/** 和 active 栏共用同一份答案 ⇒ 那边一改这边立刻跟着变。 */
+	readonly payload: Record<string, unknown>;
 }): React.ReactNode {
-	const items = props.items;
-
 	/*
 	 * ⚠ 这里原来是一套**手写的假组件**（`as-readonly__option` 之类），
-	 * 跟产品完全脱钩 —— 所以冻结态的「选中项左边框」在它身上根本不生效。
+	 * 跟产品完全脱钩 —— 所以冻结态的选中项左边框在它身上根本不生效。
 	 *
-	 * 现在直接喂真 `AskGroupCard` + `readonly`：冻结态长什么样由产品决定，
-	 * 预览不再画第二套。
+	 * 现在直接喂真 `AskGroupCard` + `readonly`：冻结态长什么样由产品决定。
 	 */
-	const payload = {
-		$type: 'ask',
-		items: items.map((item) => ({
-			header: item.header,
-			question: item.question,
-			options: item.options,
-			multi_select: item.multiSelect,
-			placeholder: item.placeholder,
-			...(item.picked === undefined ? {} : { picked: item.picked }),
-			...(item.custom === undefined ? {} : { custom: item.custom }),
-		})),
-	};
-
-	const view = sectionViewOf(payload);
+	const view = sectionViewOf(props.payload);
 
 	return (
 		<div className="as-col">
@@ -417,11 +387,46 @@ export function AskColumns(props: {
 	readonly layout: 'grid' | 'stack';
 }): React.ReactNode {
 	const [items, setItems] = useState<readonly AskItem[]>(INITIAL_ITEMS);
+	/*
+	 * 答案 state 提到这一层 ⇒ active 栏的作答**实时反映到 ended 栏**。
+	 * 之前两栏各存各的 state，改 active 时 ended 纹丝不动，
+	 * 「三态同屏」就只对了一半（create → 其他 联动，active → ended 不联动）。
+	 */
+	const [payload, setPayload] = useState<Record<string, unknown>>(() => ({
+		$type: 'ask',
+		items: items.map((item, i) => ({
+			header: item.header,
+			question: item.question,
+			options: item.options,
+			multi_select: item.multiSelect,
+			placeholder: item.placeholder,
+			...(i === 0 ? { picked: ['方案 B：先做科技树'] } : {}),
+			...(i === 1 ? { picked: ['筛选行'], custom: ['还有配色'] } : {}),
+		})),
+	}));
+
+	/* items 被 create 栏改动时，答案 payload 也要跟着重建（题目/选项变了）。 */
+	const answered: Record<string, unknown> = {
+		$type: 'ask',
+		items: items.map((item, i) => {
+			const raw = (payload['items'] as Record<string, unknown>[] | undefined)?.[i] ?? {};
+			return {
+				header: item.header,
+				question: item.question,
+				options: item.options,
+				multi_select: item.multiSelect,
+				placeholder: item.placeholder,
+				...(raw['picked'] === undefined ? {} : { picked: raw['picked'] }),
+				...(raw['custom'] === undefined ? {} : { custom: raw['custom'] }),
+			};
+		}),
+	};
+
 	const columns = (
 		<>
 			<CreateColumn items={items} setItems={setItems} />
-			<ActiveColumn items={items} />
-			<EndedColumn items={items} />
+			<ActiveColumn items={items} payload={answered} onAsk={setPayload} />
+			<EndedColumn items={items} payload={answered} />
 		</>
 	);
 

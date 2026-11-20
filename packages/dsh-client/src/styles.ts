@@ -1180,6 +1180,8 @@ export const SECTION_CSS = `
 
 .tb3w-root .ask-option__mark--check{flex:0 0 14px;width:14px;color:var(--accent);font-weight:700;text-align:center;line-height:14px}
 .tb3w-root .ask-group__state-text{padding:1px 8px;border-radius:999px;background:#f1f3f6;color:var(--text-secondary);font-family:var(--font-mono);font-size:10.5px}
+/* 冻结态「未选择」带边框 —— 暗示这是一个**结果**，不是按钮 */
+.tb3w-root .ask-group[data-ask-state='unset'] .ask-group__state-text{border:1px solid var(--border-strong,#c5ccd6);background:transparent;color:var(--text-weak)}
 /* ── 问题行：问题 + 单选/多选标签 + 状态按钮 ── */
 .tb3w-root .ask-group__qrow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .tb3w-root .ask-group__qrow .ask-group__question{margin:0;flex:1 1 auto;min-width:0}

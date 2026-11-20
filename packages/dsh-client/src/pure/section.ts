@@ -271,15 +271,17 @@ export interface AskSectionView {
 }
 
 /**
- * 把作答状态翻成界面文字。
+ * 把作答状态翻成界面文字（**冻结态**用）。
  *
- * ⚠ 「未选择」和「都不要」（`picked: []`）在界面上**不区分** ——
- * 用户 2026-11-21：「这个都不要是啥玩意？不是应该在右上角那里选了几个的地方写没选吗」。
- * 对使用者来说「没有答案」就是「未选择」，`picked: []` 是存储层细节，不该出现在界面上。
+ * 用户 2026-11-21：「不需要这个『单选』。单选在这个胶囊左边说过了。
+ * 这里只要说『已选择』（单选时显示），或『已选 x』（多选时显示），
+ * 或『未选择』（带边框暗示这个是结果）就行了」
+ *
+ * ⇒ 不再拼「单选」/「多选」前缀 —— 那已经在 header 里说过了。
  */
 export function askStateLabelOf(group: AskGroupView): string {
 	if (group.pickedState === 'unset' || group.pickedState === 'none') return '未选择';
-	return group.multiSelect ? `多选·已答 ${group.pickedCount}` : `单选·已选 ${group.pickedCount}`;
+	return group.multiSelect ? `已选 ${group.pickedCount}` : '已选择';
 }
 
 /**
