@@ -36,7 +36,9 @@ import {
 	canEditOf,
 	emptyHintOf,
 	sectionViewOf,
+	type MarkdownSectionView,
 	type SectionView,
+	type TextSectionView,
 } from '../pure/section.ts';
 import type { CardSection } from '../types.ts';
 import { AskSection } from './AskSection.tsx';
@@ -48,13 +50,31 @@ export interface SectionProps {
 	readonly sectionId: string;
 	/** 卡上的章节（`{ label, payload }`）。 */
 	readonly section: CardSection;
-	/** `true` = 只读显示，`false` = 可点编辑。 */
+	/**
+	 * 生命周期相位（用户 2026-11-21 采纳）：
+	 * `create` = 草稿 / `active` = 进行·搁置 / `ended` = 完成。
+	 *
+	 * 省略时按 `readonly` 推导（`readonly === true` ⇒ `ended`，否则 `active`）——
+	 * 保老调用方不传也照旧。
+	 */
+	readonly phase?: SectionPhase;
+	/** `true` = 只读显示，`false` = 可点编辑（老口径；新代码优先用 `phase`）。 */
 	readonly readonly?: boolean;
 	/** 点这一章要编辑时上报（组件不判该不该编辑）。 */
 	readonly onEdit?: (sectionId: string) => void;
+	/**
+	 * 内联编辑回写（`create` / `active` 相位用）。
+	 *
+	 * `patch` 是**要合并进 payload 的字段**（`text` 的 `value` / `placeholder`、
+	 * `markdown` 的 `source`），组件不重算整份 payload。
+	 */
+	readonly onChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
 	/** ask 选项被点（`value` 是选项的 label；`NO_ANSWER` = 都不要）。 */
 	readonly onAnswer?: (sectionId: string, value: string) => void;
 }
+
+/** 三个生命周期相位。 */
+export type SectionPhase = 'create' | 'active' | 'ended';
 
 /**
  * 一个章节。
@@ -63,7 +83,9 @@ export interface SectionProps {
  */
 export function Section(props: SectionProps): ReactNode {
 	const section = props.section;
-	const readonlyFlag = props.readonly === true;
+	/* 相位：新口径优先；老调用方只传 readonly 时按它推导。 */
+	const phase: SectionPhase = props.phase ?? (props.readonly === true ? 'ended' : 'active');
+	const readonlyFlag = phase === 'ended';
 	const view = sectionViewOf(section.payload);
 	const label = typeof section.label === 'string' ? section.label : '';
 
@@ -106,7 +128,10 @@ export function Section(props: SectionProps): ReactNode {
 				<SectionContent
 					view={view}
 					sectionId={props.sectionId}
+					phase={phase}
 					readonly={readonlyFlag}
+					rawPayload={section.payload}
+					{...(props.onChange === undefined ? {} : { onChange: props.onChange })}
 					{...(props.onAnswer === undefined ? {} : { onAnswer: props.onAnswer })}
 				/>
 			</div>
@@ -118,35 +143,40 @@ export function Section(props: SectionProps): ReactNode {
 function SectionContent(props: {
 	readonly view: SectionView;
 	readonly sectionId: string;
+	readonly phase: SectionPhase;
 	readonly readonly: boolean;
+	readonly rawPayload: unknown;
+	readonly onChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
 	readonly onAnswer?: (sectionId: string, value: string) => void;
 }): ReactNode {
 	const view = props.view;
+	const readable = props.readonly;
+
+	/** 合并一个字段回 payload。 */
+	const patch = (fields: Readonly<Record<string, unknown>>): void => {
+		props.onChange?.(props.sectionId, fields);
+	};
 
 	switch (view.kind) {
-		case 'text': {
-			if (view.empty) {
-				return (
-					<div className="section-block__placeholder">
-						{emptyHintOf(view, props.readonly)}
-					</div>
-				);
-			}
-			/* `white-space: pre-wrap` 由 CSS 给（text 要保留换行与缩进）。 */
-			return <div className="section-block__text">{view.value}</div>;
-		}
+		case 'text':
+			return (
+				<TextBlock
+					view={view}
+					phase={props.phase}
+					readonly={readable}
+					{...(props.onChange === undefined ? {} : { onPatch: patch })}
+				/>
+			);
 
-		case 'markdown': {
-			if (view.empty) {
-				return (
-					<div className="section-block__placeholder">
-						{emptyHintOf(view, props.readonly)}
-					</div>
-				);
-			}
-			/* 源码原样交给正式实现：解析 / GFM / 白名单净化都在那一层。 */
-			return <Markdown source={view.source} />;
-		}
+		case 'markdown':
+			return (
+				<MarkdownBlock
+					view={view}
+					phase={props.phase}
+					readonly={readable}
+					{...(props.onChange === undefined ? {} : { onPatch: patch })}
+				/>
+			);
 
 		case 'ask':
 			return (
@@ -187,6 +217,151 @@ function UnknownBlock(props: { readonly title: string; readonly json: string }):
 				{props.title} · {open ? '收起原始 JSON ▴' : '展开原始 JSON ▾'}
 			</button>
 			{open ? <pre className="payload-box">{props.json}</pre> : null}
+		</div>
+	);
+}
+
+/* ══════════════════════════════════════════════════════════
+   text / markdown 的三相位渲染（用户 2026-11-21 采纳）
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * `text` 章节的三相位。
+ *
+ * 采纳的候选：
+ * - **create 候选 3**：可编辑正文 + 灰字做成**可折叠区**（默认只显示一行灰字，点开才编辑）
+ * - **active 候选 1**：单框可编辑正文，灰字 = HTML `placeholder`
+ * - **ended 候选 2**：只读 `textarea`（保留框形状，value 和 placeholder 都还在框里）
+ *
+ * @param props view / phase / readonly / onPatch
+ */
+function TextBlock(props: {
+	readonly view: TextSectionView;
+	readonly phase: SectionPhase;
+	readonly readonly: boolean;
+	readonly onPatch?: (fields: Readonly<Record<string, unknown>>) => void;
+}): ReactNode {
+	const view = props.view;
+	const editable = !props.readonly && props.onPatch !== undefined;
+
+	/* ended：只读 textarea（候选 2 —— 保留框形状）。 */
+	if (props.readonly) {
+		return (
+			<div className="section-block__field">
+				<textarea
+					className="section-block__textarea is-readonly"
+					value={view.value}
+					placeholder={view.placeholder}
+					rows={Math.max(2, view.value.split('\n').length)}
+					readOnly
+					data-section-phase={props.phase}
+				/>
+			</div>
+		);
+	}
+
+	/* active：单框 + 灰字 = placeholder（候选 1）。 */
+	if (props.phase === 'active') {
+		return (
+			<div className="section-block__field">
+				<textarea
+					className="section-block__textarea"
+					value={view.value}
+					placeholder={view.placeholder}
+					rows={Math.max(2, view.value.split('\n').length)}
+					onChange={(event) => {
+						props.onPatch?.({ value: event.target.value });
+					}}
+					data-section-phase="active"
+				/>
+			</div>
+		);
+	}
+
+	/* create：正文 textarea + 灰字折叠区（候选 3）。 */
+	return (
+		<div className="section-block__field">
+			<textarea
+				className="section-block__textarea"
+				value={view.value}
+				rows={Math.max(2, view.value.split('\n').length)}
+				onChange={(event) => {
+					props.onPatch?.({ value: event.target.value });
+				}}
+				data-section-phase="create"
+			/>
+			<details className="section-block__decl">
+				<summary>
+					声明（灰字）：{view.placeholder === '' ? '（未设置）' : view.placeholder}
+				</summary>
+				<input
+					className="section-block__decl-input"
+					value={view.placeholder}
+					placeholder="清空正文后，框里显示这句灰字"
+					onChange={(event) => {
+						props.onPatch?.({ placeholder: event.target.value });
+					}}
+				/>
+			</details>
+		</div>
+	);
+}
+
+/**
+ * `markdown` 章节的三相位。
+ *
+ * 采纳的候选：**create 候选 1**（源码框 + 「查看预览」按钮）；active / ended 只读渲染。
+ *
+ * @param props view / phase / readonly / onPatch
+ */
+function MarkdownBlock(props: {
+	readonly view: MarkdownSectionView;
+	readonly phase: SectionPhase;
+	readonly readonly: boolean;
+	readonly onPatch?: (fields: Readonly<Record<string, unknown>>) => void;
+}): ReactNode {
+	const [preview, setPreview] = useState(false);
+	const view = props.view;
+	const editable = !props.readonly && props.onPatch !== undefined;
+
+	if (!editable) {
+		if (view.empty) {
+			return <div className="section-block__placeholder">{view.placeholder}</div>;
+		}
+		return <Markdown source={view.source} />;
+	}
+
+	return (
+		<div className="section-block__field">
+			{preview ? (
+				view.empty ? (
+					<div className="section-block__placeholder">{view.placeholder}</div>
+				) : (
+					<Markdown source={view.source} />
+				)
+			) : (
+				<textarea
+					className="section-block__textarea is-mono"
+					value={view.source}
+					placeholder={view.placeholder}
+					rows={Math.max(4, view.source.split('\n').length)}
+					onChange={(event) => {
+						props.onPatch?.({ source: event.target.value });
+					}}
+					data-section-phase={props.phase}
+				/>
+			)}
+			<div className="section-block__actions">
+				<button
+					type="button"
+					className="ghost-btn"
+					onClick={() => {
+						setPreview(!preview);
+					}}
+				>
+					{preview ? '← 回源码' : '查看预览'}
+				</button>
+			</div>
 		</div>
 	);
 }

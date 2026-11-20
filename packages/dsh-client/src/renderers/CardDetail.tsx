@@ -49,12 +49,13 @@ import type { ReactNode } from 'react';
 
 import { detailTableOf, type DetailLabels } from '../pure/card-detail.ts';
 import type { RelationsView } from '../pure/relations-block.ts';
+import { isDraftStatus, isEndedStatus } from '../pure/card-view.ts';
 import { sectionInputOf } from '../pure/section-adapter.ts';
 import type { Card } from '../types.ts';
 import { DetailHead } from './DetailHead.tsx';
 import { DetailHistory } from './DetailHistory.tsx';
 import { DetailNote } from './DetailNote.tsx';
-import { Section } from './Section.tsx';
+import { Section, type SectionPhase } from './Section.tsx';
 
 /** 组件属性。 */
 export interface CardDetailProps {
@@ -80,6 +81,12 @@ export interface CardDetailProps {
 	readonly onJumpRelation?: (cardId: string) => void;
 	/** 备注失焦提交（值没变时不调）。 */
 	readonly onNoteChange: (text: string) => void;
+	/**
+	 * 章节内联编辑回写（`patch` 合并进该章节 payload）。
+	 *
+	 * 省略 ⇒ 章节按相位渲染但**全部只读**（没接线时不假装能改）。
+	 */
+	readonly onSectionChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
 	/**
 	 * 右上角 ×；省略 = 不显示这个按钮。
 	 *
@@ -111,6 +118,16 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 	 * ⚠ 不读 `table.sections[i].text` —— 内容由 Section 按 payload 自己解释。
 	 */
 	const sections = table.sections.map((one) => sectionInputOf(one));
+
+	/*
+	 * 卡状态 ⇒ 章节相位（用户 2026-11-21 采纳的三相位）：
+	 *   草稿 → create；进行 / 搁置 → active；完成 → ended。
+	 */
+	const phase: SectionPhase = isDraftStatus(props.card.status)
+		? 'create'
+		: isEndedStatus(props.card.status)
+			? 'ended'
+			: 'active';
 
 	return (
 		<div className="detail" data-card-detail data-card-id={props.card.id}>
@@ -157,7 +174,11 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 							key={one.sectionId}
 							sectionId={one.sectionId}
 							section={one.section}
-							readonly={true}
+							phase={phase}
+							readonly={phase === 'ended'}
+							{...(props.onSectionChange === undefined
+								? {}
+								: { onChange: props.onSectionChange })}
 						/>
 					))
 				)}

@@ -1090,6 +1090,16 @@ export const SECTION_CSS = `
 .tb3w-root .section-block.is-editable:hover .section-block__edit-hint{opacity:1}
 /* text 正文：保留换行与缩进（text 与 markdown 的区别就在这里） */
 .tb3w-root .section-block__text{font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;word-break:break-word}
+/* ── 三相位的内联编辑（用户 2026-11-21 采纳） ── */
+.tb3w-root .section-block__field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tb3w-root .section-block__textarea{width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border-strong,#d7dbe2);border-radius:6px;background:#fff;color:var(--text);font:12.5px/1.7 inherit;resize:vertical}
+.tb3w-root .section-block__textarea:focus{outline:none;border-color:var(--accent)}
+.tb3w-root .section-block__textarea.is-readonly{background:#fafbfc;color:var(--text-secondary);border-color:var(--border,#e7e9ee);cursor:default}
+.tb3w-root .section-block__textarea.is-mono{font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+.tb3w-root .section-block__decl{border:1px dashed var(--border-strong,#d7dbe2);border-radius:6px;background:#fafbfc;padding:5px 9px}
+.tb3w-root .section-block__decl summary{cursor:pointer;font-size:11px;color:var(--text-secondary)}
+.tb3w-root .section-block__decl-input{width:100%;box-sizing:border-box;margin-top:5px;padding:5px 8px;border:1px solid var(--border-strong,#d7dbe2);border-radius:5px;background:#fff;font:11.5px/1.6 inherit;color:var(--text)}
+.tb3w-root .section-block__actions{display:flex;gap:6px}
 /* 空态 / 模板作者写的灰字 */
 .tb3w-root .section-block__placeholder{font-size:12.5px;line-height:1.7;color:var(--text-weak);font-style:italic}
 
