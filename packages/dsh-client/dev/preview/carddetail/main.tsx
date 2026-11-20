@@ -208,7 +208,7 @@ function Live(props: LiveProps): React.ReactNode {
 				</span>
 			</div>
 
-			<div className="pv-detail-stage" data-live>
+			<div className="pv-detail-stage tb3w-root" data-live>
 				{shown === null || closed ? (
 					<div className="pv-detail-stage__empty" data-live-closed>
 						（详情已关闭，点上面的编号重开）
@@ -312,7 +312,7 @@ function Matrix(props: LiveProps): React.ReactNode {
 			{SCENARIOS.map((s) => (
 				<div className="pv-case" key={s.key} data-scenario={s.key}>
 					<div className="pv-case__note">{s.note}</div>
-					<div className="pv-detail-stage">
+					<div className="pv-detail-stage tb3w-root">
 						<CardDetail
 							card={s.card}
 							templateLabel="功能设计"
