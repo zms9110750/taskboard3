@@ -155,7 +155,9 @@ export function AskGroupCard(props: {
 					<AskOptionRow
 						key={option.label}
 						sectionId={props.sectionId}
-						option={option}
+						label={option.label}
+						description={option.description}
+						picked={option.picked}
 						multiSelect={group.multiSelect}
 						{...(props.interactive ? { onAnswer: props.onAnswer } : {})}
 					/>
@@ -180,27 +182,46 @@ export function AskGroupCard(props: {
 }
 
 /** 一个选项（可点 / 只读）。 */
+/**
+ * 一个选项行 —— **普通选项和自填共用这一个外壳**。
+ *
+ * 用户 2026-11-21：
+ * > 「把选项组件抽出来。不要开那么多胶水代码。他们的逻辑应该是很一致的。」
+ *
+ * ⇒ 圆圈 / 方框 / 勾、`is-picked` 类、整行热区全在这里决定；
+ *   普通选项的 body 是「标题 + 说明」，自填的 body 是传进来的 `<input>`
+ *   （`children`）。两者的**选中逻辑完全一致**（点整行 = 选中）。
+ *
+ * 标记的形状是**相位 + 多选**共同决定的：
+ *
+ * | 相位 | 单选 | 多选 |
+ * |---|---|---|
+ * | 可选择（active）| ○ / ● | □ / ■ |
+ * | 冻结（ended）| ✓（选中时）| ✓（选中时）|
+ *
+ * @param props label / description / picked / multiSelect / children / onAnswer / onSelect
+ */
 export function AskOptionRow(props: {
 	readonly sectionId: string;
-	readonly option: AskOptionView;
-	/** 多选组：标记画**正方形**（单选画圆圈）—— 用户 2026-11-21。 */
+	/** 普通选项的标题；自填传空串（body 用 `children` 替代）。 */
+	readonly label: string;
+	/** 普通选项的说明；空串不画。 */
+	readonly description?: string;
+	/** 是否已选中 —— 决定 `is-picked` 类和标记形态。 */
+	readonly picked: boolean;
+	/** 多选组：标记画**正方形**（单选画圆圈）。 */
 	readonly multiSelect: boolean;
+	/** 自填：body 里放输入框（传了就替换 label / description）。 */
+	readonly children?: ReactNode;
+	/** 自定义点击行为（自填用：点整行 = focus 输入框）。省略 = 点行上报 `onAnswer(label)`。 */
+	readonly onSelect?: () => void;
 	readonly onAnswer?: (sectionId: string, value: string) => void;
 }): ReactNode {
-	const option = props.option;
-	const interactive = props.onAnswer !== undefined;
+	const interactive = props.onAnswer !== undefined || props.onSelect !== undefined;
 	const className = ['ask-option'];
-	if (option.picked) className.push('is-picked');
+	if (props.picked) className.push('is-picked');
+	if (props.children !== undefined) className.push('ask-option--custom');
 
-	/*
-	 * 标记的形状是**相位 + 多选**共同决定的（用户 2026-11-21 对着
-	 * `detail-ask-across-states.png` 说的）：
-	 *
-	 * | 相位 | 单选 | 多选 |
-	 * |---|---|---|
-	 * | 可选择（active）| ○ / ● | □ / ■ |
-	 * | 冻结（ended）| ✓（选中时）| ✓（选中时）|
-	 */
 	const mark = interactive ? (
 		<span
 			className="ask-option__mark ask-option__mark--box"
@@ -209,26 +230,64 @@ export function AskOptionRow(props: {
 		/>
 	) : (
 		<span className="ask-option__mark ask-option__mark--check" aria-hidden="true">
-			{option.picked ? '✓' : ''}
+			{props.picked ? '✓' : ''}
 		</span>
 	);
 
-	const inner = (
-		<>
-			{mark}
-			<span className="ask-option__body">
-				<span className="ask-option__label">{option.label}</span>
-				{option.description === '' ? null : (
-					<span className="ask-option__desc">{option.description}</span>
-				)}
-			</span>
-		</>
-	);
+	const inner =
+		props.children === undefined ? (
+			<>
+				{mark}
+				<span className="ask-option__body">
+					<span className="ask-option__label">{props.label}</span>
+					{props.description === undefined || props.description === '' ? null : (
+						<span className="ask-option__desc">{props.description}</span>
+					)}
+				</span>
+			</>
+		) : (
+			<>
+				{mark}
+				{props.children}
+			</>
+		);
+
+	const select = (): void => {
+		if (props.onSelect !== undefined) {
+			props.onSelect();
+			return;
+		}
+		props.onAnswer?.(props.sectionId, props.label);
+	};
 
 	/* 只读：`<div>`（不是 disabled 的 button —— 那会让它看起来「本来能点」）。 */
-	if (props.onAnswer === undefined) {
+	if (!interactive) {
 		return (
-			<div className={className.join(' ')} data-ask-option={option.label} data-picked={String(option.picked)}>
+			<div className={className.join(' ')} data-ask-option={props.label} data-picked={String(props.picked)}>
+				{inner}
+			</div>
+		);
+	}
+
+	/*
+	 * 自填行：body 里有 `<input>` —— `button` 里不能嵌交互控件，所以用 `div`
+	 * 加 `role=button`（点击行为由 `onSelect` 接管）。普通选项仍是真 `button`。
+	 */
+	if (props.children !== undefined) {
+		return (
+			<div
+				className={className.join(' ')}
+				data-ask-option={props.label}
+				data-picked={String(props.picked)}
+				role="button"
+				tabIndex={0}
+				onClick={select}
+				onKeyDown={(event) => {
+					if (event.key !== 'Enter' && event.key !== ' ') return;
+					event.preventDefault();
+					select();
+				}}
+			>
 				{inner}
 			</div>
 		);
@@ -238,10 +297,10 @@ export function AskOptionRow(props: {
 		<button
 			type="button"
 			className={className.join(' ')}
-			data-ask-option={option.label}
-			data-picked={String(option.picked)}
-			aria-pressed={option.picked}
-			onClick={() => props.onAnswer?.(props.sectionId, option.label)}
+			data-ask-option={props.label}
+			data-picked={String(props.picked)}
+			aria-pressed={props.picked}
+			onClick={select}
 		>
 			{inner}
 		</button>
@@ -275,31 +334,24 @@ function CustomOption(props: {
 		setActive(false);
 	};
 
-	/* 整行可点：点圆圈 / 点空白 / 点输入框都算「选了自填」。 */
-	const selectSelf = (): void => {
-		setActive(true);
-		inputRef.current?.focus();
-	};
-
+	/*
+	 * 复用 `AskOptionRow` —— 用户 2026-11-21：
+	 * > 「把选项组件抽出来。不要开那么多胶水代码。他们的逻辑应该是很一致的。」
+	 *
+	 * ⇒ 圆圈 / 方框 / `is-picked` / 整行热区都由那个组件管；
+	 *   这里只把 body 换成输入框，点整行 = 选中自己 + focus。
+	 */
 	return (
-		<div
-			className="ask-option ask-option--custom"
-			data-ask-custom-row
-			data-picked={String(active || hasValue)}
-			onClick={selectSelf}
-			onKeyDown={(event) => {
-				if (event.key !== 'Enter' && event.key !== ' ') return;
-				event.preventDefault();
-				selectSelf();
+		<AskOptionRow
+			sectionId={props.sectionId}
+			label=""
+			picked={active || hasValue}
+			multiSelect={props.group.multiSelect}
+			onSelect={() => {
+				setActive(true);
+				inputRef.current?.focus();
 			}}
-			role="button"
-			tabIndex={0}
 		>
-			<span
-				className={`ask-option__mark ask-option__mark--box${active || hasValue ? ' is-picked' : ''}`}
-				data-multi={String(props.group.multiSelect)}
-				aria-hidden="true"
-			/>
 			<input
 				ref={inputRef}
 				type="text"
@@ -309,6 +361,9 @@ function CustomOption(props: {
 				placeholder={
 					props.group.placeholder === '' ? '其它（自己填）…' : props.group.placeholder
 				}
+				onClick={() => {
+					setActive(true);
+				}}
 				onChange={(event) => setDraft(event.target.value)}
 				onKeyDown={(event) => {
 					if (event.key !== 'Enter') return;
@@ -319,7 +374,7 @@ function CustomOption(props: {
 				}}
 				onBlur={commit}
 			/>
-		</div>
+		</AskOptionRow>
 	);
 }
 
