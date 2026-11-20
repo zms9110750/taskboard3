@@ -8,7 +8,7 @@
  * | 候选形态表 | 3 个组合齐全、id 与键一致、维度确实互不相同（用户要「全部过目」）|
  * | 高度公式 | `min(50vh, 480px)` / `50vh` 的数值版与 CSS 版**出自同一份公式** |
  * | 面板几何 | 底边 = 上边缘 + gap、圆角 / 阴影 / 动画由形态表插值 |
- * | 入口几何 | `left:-32px`（右边缘贴输入框左边缘）、`bottom:4px`（和 28px 的 + 居中）|
+ * | 入口几何 | `left:-32px`（右边缘贴输入框左边缘）、`top:4px`（顶边对齐输入框顶边）|
  * | 共享 store | 开合、订阅、幂等；两个 session 各一份 |
  * | 关闭条件 | Esc（组字中不关）/ 点外部三例外 |
  * | CSS 硬约束 | 表里的数都出现在 `DRAWER_CSS` 里；面板不用 fixed；压缩间距来自表 |
@@ -21,13 +21,11 @@ import {
 	DRAWER_CLOSED,
 	DRAWER_COMPACT_SPACING,
 	DRAWER_DEFAULT_VARIANT_ID,
-	DRAWER_ENTRY_BOTTOM_PX,
 	DRAWER_ENTRY_SIZE_PX,
+	DRAWER_ENTRY_TOP_PX,
 	DRAWER_HEIGHT_CAP_PX,
 	DRAWER_HEIGHT_RATIO,
 	DRAWER_OPEN,
-	DRAWER_TOOL_ROW_BUTTON_PX,
-	DRAWER_TOOL_ROW_PAD_BOTTOM_PX,
 	DRAWER_VARIANTS,
 	DRAWER_VARIANT_IDS,
 	closesDrawerOn,
@@ -195,18 +193,18 @@ describe('③ 几何声明（宽松：只是声明串，落不落地看 CSS）',
 		assert.equal(values[0], 'none');
 	});
 
-	it('⭐ 入口：left:-32px（右边缘贴输入框左边缘）、bottom:4px（和 + 居中）', () => {
+	it('⭐ 入口：left:-32px（右边缘贴输入框左边缘）、top:4px（顶边对齐输入框顶边）', () => {
 		const css = drawerEntryCssOf();
 		assert.equal(css.includes(`left:${String(-DRAWER_ENTRY_SIZE_PX)}px`), true);
-		assert.equal(css.includes(`bottom:${String(DRAWER_ENTRY_BOTTOM_PX)}px`), true);
+		assert.equal(css.includes(`top:${String(DRAWER_ENTRY_TOP_PX)}px`), true);
 		assert.equal(css.includes('width:32px'), true);
 		assert.equal(css.includes('height:32px'), true);
+		/* 旧版是 bottom（垂直居中于工具行的 +）—— 已被用户 2026-11-20 否掉 */
+		assert.equal(css.includes('bottom:'), false);
 	});
 
-	it('⭐ 入口居中是人算的：6 + (28 - 32) / 2 = 4', () => {
-		assert.equal(DRAWER_TOOL_ROW_PAD_BOTTOM_PX, 6);
-		assert.equal(DRAWER_TOOL_ROW_BUTTON_PX, 28);
-		assert.equal(DRAWER_ENTRY_BOTTOM_PX, 4);
+	it('⭐ 入口顶边 = 输入框顶边：4px（asar 原文 placeholder inset 4px）', () => {
+		assert.equal(DRAWER_ENTRY_TOP_PX, 4);
 	});
 
 	it('遮罩是 fixed 铺满 + 半透明（只有 c 渲染它）', () => {

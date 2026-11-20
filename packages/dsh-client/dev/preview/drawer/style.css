@@ -183,3 +183,43 @@ body {
   font-size: 11px;
   cursor: pointer;
 }
+
+/* ── composer 骨架（只提供定位父级，不画内容） ────────────── */
+
+/*
+ * 用户 2026-11-20 否掉了「假 composer」：
+ *   「我要的不是真实dsh。我要的是那个抽屉组件要用已经候选的组件放进去。
+ *     你搓的什么垃圾东西。」
+ * ⇒ 这里只有两个真实定位父级（asar 有原文），内容是空的。
+ */
+
+.pvf {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding-top: 150px;
+}
+
+.pvf-card {
+  position: relative;
+  height: 96px;
+  border: 1px dashed #c7cdd6;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 55%);
+}
+
+.pvf-card::after {
+  content: "composer 卡片（定位父级）· 内容不归组件管";
+  position: absolute;
+  left: 12px;
+  bottom: 8px;
+  color: #9aa1ad;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.pvf-anchor {
+  height: 0;
+  position: absolute;
+  inset: 0 0 auto;
+}

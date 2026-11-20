@@ -35,7 +35,8 @@ import {
 import type { DrawerStore, DrawerVariantId } from '../../../src/pure/drawer-view.ts';
 import { useDrawerStore } from '../../../src/renderers/Drawer.tsx';
 import { injectStyles } from '../../../src/styles.ts';
-import { MockComposer, injectMockStyles } from './mock-composer.tsx';
+import { ComposerFrame } from './composer-frame.tsx';
+import { injectMockStyles } from './mock-composer.tsx';
 import { mockWorkspaceProps } from './mock-workspace.ts';
 import { PanelSizeBadge, usePanelMetrics } from './panel-metrics.tsx';
 
@@ -134,7 +135,7 @@ function App(): React.ReactNode {
 						</div>
 						<div className="pv-stage__summary">{variant.summary}</div>
 					</header>
-					<MockComposer
+					<ComposerFrame
 						variant={variant}
 						open={drawer.open}
 						onToggle={drawer.toggle}

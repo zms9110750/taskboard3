@@ -82,19 +82,19 @@ export const DRAWER_ENTRY_SIZE_PX = 32;
  */
 export const DRAWER_ENTRY_GAP_PX = 0;
 
-/** composer 工具行（`.GRgSLq_row`）的下内边距 —— asar 原文 `padding:2px 8px 6px`。 */
-export const DRAWER_TOOL_ROW_PAD_BOTTOM_PX = 6;
-
-/** composer 工具行里 `+` 的直径 —— asar 原文 `.GRgSLq_add{width:28px;height:28px}`。 */
-export const DRAWER_TOOL_ROW_BUTTON_PX = 28;
-
 /**
- * 入口按钮底边距卡片底边的距离（px）—— 让 32px 正方形与 28px 的 `+` **垂直居中**。
+ * 入口正方形的**顶边**距 composer 卡片顶边的距离（px）。
  *
- * `6 + (28 - 32) / 2 = 4`。算出来而不是猜：行底 padding 6、`+` 高 28、按钮高 32。
+ * 用户 `2026-11-20`：「正方形，右边缘贴输入框卡片的左边缘。**顶边对齐输入框顶边**」。
+ *
+ * 输入框（textarea）的顶边不是卡片顶边 —— asar 原文
+ * `.GRgSLq_placeholder{inset:4px 8px auto 14px}`：占位文字距卡片顶边 4px，
+ * 而占位层与 textarea 同顶 ⇒ **textarea 顶边 = 卡片顶边 + 4px**。
+ *
+ * ⚠ 旧版做的是 `bottom:4px`（垂直居中于工具行的 `+`）—— 那是「和 + 同一行」，
+ *   不是用户要的「顶边对齐输入框顶边」。这次按后者改。
  */
-export const DRAWER_ENTRY_BOTTOM_PX =
-	DRAWER_TOOL_ROW_PAD_BOTTOM_PX + (DRAWER_TOOL_ROW_BUTTON_PX - DRAWER_ENTRY_SIZE_PX) / 2;
+export const DRAWER_ENTRY_TOP_PX = 4;
 
 /* ══════════════════════════════════════════════════════════
    1. 三个候选形态（用户要「全部过目」的那三份）
@@ -291,15 +291,17 @@ export function drawerPanelCssOf(variant: DrawerVariant): string {
 /**
  * 入口正方形的定位声明。
  *
- * `left = -(边长 + 缝)`：正方形的**右边缘**正好落在卡片左边线上
- * （`position:absolute` 的包含块是 composer 卡片 —— asar 原文
- * `.GRgSLq_card{…position:relative}`；本组件由 `conversation.input.left`
- * 槽渲染在工具行里，所以卡片就是最近的定位祖先）。
+ * - `left = -(边长 + 缝)`：正方形**右边缘**正好落在卡片左边线上
+ *   （`position:absolute` 的包含块是 composer 卡片 —— asar 原文
+ *   `.GRgSLq_card{…position:relative}`；本组件由 `conversation.input.left`
+ *   槽渲染在工具行里，所以卡片就是最近的定位祖先）。
+ * - `top`：**顶边对齐输入框顶边**（用户 `2026-11-20`）。不是 `bottom`
+ *   —— 旧版的「和 `+` 垂直居中」已被否掉。
  */
 export function drawerEntryCssOf(): string {
 	return [
 		`left:${px(-DRAWER_ENTRY_SIZE_PX - DRAWER_ENTRY_GAP_PX)}`,
-		`bottom:${px(DRAWER_ENTRY_BOTTOM_PX)}`,
+		`top:${px(DRAWER_ENTRY_TOP_PX)}`,
 		`width:${px(DRAWER_ENTRY_SIZE_PX)}`,
 		`height:${px(DRAWER_ENTRY_SIZE_PX)}`,
 	].join(';');

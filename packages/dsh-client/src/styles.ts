@@ -419,8 +419,15 @@ export const WORKSPACE_CSS = `
   --text: var(--dsw-alias-text-primary, #16181d);
   --text-secondary: var(--dsw-alias-text-secondary, #5f6673);
   --text-weak: var(--dsw-alias-text-tertiary, #9aa1ad);
-  --accent: var(--dsw-alias-brand-primary, #2563eb);
-  --accent-strong: var(--dsw-alias-brand-hover, #1d4ed8);
+  /*
+   * 强调色 = **黑白**（用户 2026-11-20：「配色就用黑白的」）。
+   *
+   * 不再用宿主的 brand-primary（那是品牌蓝）。改跟随正文色：浅色主题下
+   * 是近黑、暗色主题下是近白 —— 两个主题都成立，不会出现「黑底黑字」。
+   * 状态色（--state-*）不动，那是九状态语义色。
+   */
+  --accent: var(--text, #16181d);
+  --accent-strong: var(--text, #16181d);
   --warn: #d97706;
   --font-mono: ui-monospace, Consolas, "Courier New", monospace;
   --fs-id: 11px;
