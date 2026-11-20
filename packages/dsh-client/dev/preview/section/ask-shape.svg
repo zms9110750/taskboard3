@@ -1,0 +1,199 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="700" viewBox="0 0 1160 700" font-family="-apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif">
+  <style>
+    .title { font-size: 15px; font-weight: 700; fill: #16181d; }
+    .sub { font-size: 12px; fill: #5f6673; }
+    .h { font-size: 12.5px; font-weight: 600; fill: #16181d; }
+    .body { font-size: 12px; fill: #16181d; }
+    .weak { font-size: 11.5px; fill: #9aa1ad; }
+    .label { font-size: 10.5px; fill: #5f6673; }
+    .box { fill: #fff; stroke: #d7dbe2; stroke-width: 1.2; rx: 8; }
+    .box-dashed { fill: #fafbfc; stroke: #c7cdd6; stroke-width: 1.2; stroke-dasharray: 4 3; rx: 8; }
+    .btn { fill: #fff; stroke: #d7dbe2; stroke-width: 1.2; rx: 7; }
+    .btn-on { fill: #eef4ff; stroke: #2563eb; stroke-width: 1.5; rx: 7; }
+    .btn-black { fill: #16181d; rx: 7; }
+    .pill { fill: #f3f4f6; rx: 99; }
+    .blue { fill: #2563eb; }
+    .note { font-size: 11px; fill: #b45309; }
+  </style>
+
+  <!-- 背景 -->
+  <rect width="1160" height="700" fill="#f6f7f9"/>
+
+  <!-- 标题 -->
+  <text class="title" x="24" y="34">ask · 三相位形状（契约来源：taskboard2/docs/02-action.md §2.9）</text>
+  <text class="sub" x="24" y="56">create = 编辑问卷本身（askCompose，7 件能力） · active = 填答案（askEditable） · ended = 只读展示结果（可刮取）</text>
+
+  <!-- ═══════════ 栏 1：create / askCompose ═══════════ -->
+  <g transform="translate(24, 80)">
+    <text class="h" x="0" y="0">create · askCompose</text>
+    <text class="label" x="0" y="16">编辑问卷本身 —— 题目 / 选项 / 多选 / 灰字</text>
+
+    <rect class="box" x="0" y="28" width="352" height="560"/>
+
+    <!-- 主标题（可编辑 input） -->
+    <rect class="box-dashed" x="14" y="44" width="324" height="30"/>
+    <text class="body" x="22" y="64">这个卡的目的是什么？</text>
+    <text class="label" x="266" y="64" fill="#9aa1ad">question</text>
+
+    <!-- 副标题（可编辑 input，灰小金） -->
+    <rect class="box-dashed" x="14" y="82" width="324" height="26"/>
+    <text class="weak" x="22" y="99">选一个就行（单选）</text>
+    <text class="label" x="266" y="99" fill="#9aa1ad">header</text>
+
+    <!-- 问题组 1 -->
+    <rect class="box" x="14" y="120" width="324" height="172"/>
+    <text class="label" x="24" y="138">问题组 1 / 2</text>
+    <rect class="btn" x="296" y="126" width="30" height="20" rx="5"/>
+    <text class="weak" x="306" y="140">✕</text>
+
+    <!-- 选项行 × 3 -->
+    <rect class="btn" x="24" y="150" width="260" height="28"/>
+    <text class="body" x="32" y="169">方案 A：先做详情页</text>
+    <rect class="btn" x="292" y="150" width="34" height="28" rx="5"/>
+    <text class="weak" x="303" y="169">✕</text>
+
+    <rect class="btn" x="24" y="184" width="260" height="28"/>
+    <text class="body" x="32" y="203">方案 B：先做科技树</text>
+    <rect class="btn" x="292" y="184" width="34" height="28" rx="5"/>
+    <text class="weak" x="303" y="203">✕</text>
+
+    <rect class="btn" x="24" y="218" width="260" height="28"/>
+    <text class="body" x="32" y="237">方案 C：两条并行</text>
+    <rect class="btn" x="292" y="218" width="34" height="28" rx="5"/>
+    <text class="weak" x="303" y="237">✕</text>
+
+    <!-- 添加选项 -->
+    <rect class="box-dashed" x="24" y="252" width="262" height="26"/>
+    <text class="blue" x="32" y="269" font-size="11.5">＋ 添加选项</text>
+
+    <!-- 多选开关 -->
+    <rect x="24" y="284" width="14" height="14" class="box" rx="3"/>
+    <text class="label" x="46" y="296">允许多选</text>
+    <text class="label" x="300" y="296" fill="#9aa1ad">multi-select</text>
+
+    <!-- 问题组 2（收起前） -->
+    <rect class="box" x="14" y="302" width="324" height="64"/>
+    <text class="label" x="24" y="320">问题组 2 / 2</text>
+    <rect class="btn" x="296" y="308" width="30" height="20" rx="5"/>
+    <text class="weak" x="306" y="322">✕</text>
+    <rect class="btn" x="24" y="330" width="260" height="26"/>
+    <text class="weak" x="32" y="347">（还没有选项）</text>
+
+    <!-- 添加问题组 -->
+    <rect class="box-dashed" x="14" y="376" width="324" height="30"/>
+    <text class="blue" x="24" y="395" font-size="11.5">＋ 添加问题组</text>
+
+    <!-- 自填灰字 -->
+    <rect class="box-dashed" x="14" y="416" width="324" height="28"/>
+    <text class="weak" x="22" y="434">自填灰字：如果都不合适，写下你的想法</text>
+    <text class="label" x="286" y="434" fill="#9aa1ad">placeholder</text>
+
+    <!-- 底部说明 -->
+    <text class="note" x="14" y="470">⚠ create 相位是「编辑题目」，不是「回答问题」</text>
+    <text class="label" x="14" y="490">题目 / 选项 / 多选 / 灰字都能改；askEditable 是另一件东西</text>
+
+    <!-- 7 件能力对照 -->
+    <text class="label" x="14" y="522">7 件能力：question · header · item-add · item-remove</text>
+    <text class="label" x="14" y="540">option-add · option-remove · multi-select · placeholder</text>
+  </g>
+
+  <!-- ═══════════ 栏 2：active / askEditable ═══════════ -->
+  <g transform="translate(404, 80)">
+    <text class="h" x="0" y="0">active · askEditable</text>
+    <text class="label" x="0" y="16">填答案 —— 选项 / 未选择 / 自填框</text>
+
+    <rect class="box" x="0" y="28" width="352" height="560"/>
+
+    <!-- 子标题（灰小字，只读） -->
+    <text class="weak" x="14" y="52">选一个就行（单选）</text>
+
+    <!-- 主标题（只读大字） -->
+    <text class="h" x="14" y="76" font-size="13">这个卡的目的是什么？</text>
+
+    <!-- 选项：普通 -->
+    <rect class="btn" x="14" y="92" width="324" height="32"/>
+    <text class="body" x="24" y="113">方案 A：先做详情页</text>
+
+    <!-- 选项：已选（蓝框 + 勾） -->
+    <rect class="btn-on" x="14" y="132" width="324" height="32"/>
+    <text class="body" x="24" y="153">方案 B：先做科技树</text>
+    <circle cx="322" cy="148" r="7" fill="#2563eb"/>
+    <text x="318" y="152" font-size="9" fill="#fff">✓</text>
+
+    <!-- 选项：未选 -->
+    <rect class="btn" x="14" y="172" width="324" height="32"/>
+    <text class="body" x="24" y="193">方案 C：两条并行</text>
+
+    <!-- 状态标签 -->
+    <rect class="pill" x="14" y="216" width="72" height="20"/>
+    <text class="label" x="22" y="230">单选 · 已选 1</text>
+
+    <!-- 自填 -->
+    <rect class="box-dashed" x="14" y="248" width="324" height="30"/>
+    <text class="weak" x="22" y="267">如果都不合适，写下你的想法</text>
+    <text class="label" x="286" y="267" fill="#9aa1ad">custom</text>
+
+    <!-- 都不要 -->
+    <rect class="btn" x="14" y="290" width="82" height="28"/>
+    <text class="body" x="24" y="309">都不要</text>
+    <text class="label" x="104" y="309" fill="#9aa1ad">与「未选择」不同</text>
+
+    <!-- 说明 -->
+    <text class="note" x="14" y="348">⚠ 这里不改题目 —— 只填 items[].picked / custom</text>
+    <text class="label" x="14" y="368">题目/选项文字来自 create 相位写下的东西</text>
+
+    <!-- 未选择状态对照 -->
+    <text class="label" x="14" y="404">同一张卡「未选择」时：</text>
+    <rect class="pill" x="14" y="414" width="58" height="20"/>
+    <text class="label" x="22" y="428">未选择</text>
+    <rect class="btn" x="82" y="414" width="82" height="20" rx="5"/>
+    <text class="label" x="92" y="428">都不要</text>
+  </g>
+
+  <!-- ═══════════ 栏 3：ended ═══════════ -->
+  <g transform="translate(784, 80)">
+    <text class="h" x="0" y="0">ended</text>
+    <text class="label" x="0" y="16">只读展示选择结果 —— 可刮取复制</text>
+
+    <rect class="box" x="0" y="28" width="352" height="560"/>
+
+    <text class="weak" x="14" y="52">选一个就行（单选）</text>
+    <text class="h" x="14" y="76" font-size="13">这个卡的目的是什么？</text>
+
+    <!-- 选项：未选（灰、无交互） -->
+    <rect x="14" y="92" width="324" height="32" fill="#fafbfc" stroke="#e7e9ee" stroke-width="1.2" rx="7"/>
+    <text class="weak" x="24" y="113">方案 A：先做详情页</text>
+
+    <!-- 选项：已选（只读高亮） -->
+    <rect x="14" y="132" width="324" height="32" fill="#eef4ff" stroke="#2563eb" stroke-width="1.2" rx="7"/>
+    <text class="body" x="24" y="153">方案 B：先做科技树</text>
+    <circle cx="322" cy="148" r="7" fill="#2563eb"/>
+    <text x="318" y="152" font-size="9" fill="#fff">✓</text>
+
+    <!-- 选项：未选 -->
+    <rect x="14" y="172" width="324" height="32" fill="#fafbfc" stroke="#e7e9ee" stroke-width="1.2" rx="7"/>
+    <text class="weak" x="24" y="193">方案 C：两条并行</text>
+
+    <!-- 结果 -->
+    <rect class="pill" x="14" y="216" width="72" height="20"/>
+    <text class="label" x="22" y="230">单选 · 已选 1</text>
+
+    <!-- 自填值（只读文本，不是输入框） -->
+    <text class="label" x="14" y="258">自填：</text>
+    <text class="body" x="52" y="258">先做详情页，科技树下一轮</text>
+
+    <!-- 说明 -->
+    <text class="note" x="14" y="300">⚠ 没有输入框、没有按钮 —— 只有文本</text>
+    <text class="label" x="14" y="320">user-select: text ⇒ 能选中复制（「刮取」）</text>
+
+    <!-- 三相位差异总结 -->
+    <text class="label" x="14" y="368" font-weight="600">三相位差异（同一份 payload）：</text>
+    <text class="label" x="14" y="390">create → 编辑题目（input × N）</text>
+    <text class="label" x="14" y="410">active → 填答案（button + input）</text>
+    <text class="label" x="14" y="430">ended  → 只读文本（div）</text>
+    <text class="note" x="14" y="456">⚠ 元素类型随相位变 —— CSS 要按 [data-phase=…] 分别写</text>
+  </g>
+
+  <!-- 底部注解 -->
+  <text class="label" x="24" y="672">来源：X:\temp\dsh\开发\taskboard2\docs\02-action.md（§2.8 四态 / §2.9 语义表 / §2.9b askCompose 的 7 件能力 / §2.9d 灰字三相位）</text>
+</svg>
