@@ -204,12 +204,13 @@ function freezeVariants<T extends object>(table: T): Readonly<T> {
 }
 
 /**
- * 默认形态 —— **占位，不是裁定**。
+ * 默认形态。
  *
- * 用户明确说「我没有授权你选哪一个实现」⇒ 产品接线前必须由用户定。
- * 预览页三列并排给他选；这里先写 `a` 只为让组件有可运行的默认值。
+ * 用户 `2026-11-20`：「抽屉使用圆角的。定稿。」
+ * ⇒ `b`（圆角 12px / 间距 6px / 轻阴影 / 180ms 上滑）就是裁定结果，
+ *   不再是「占位等选」。
  */
-export const DRAWER_DEFAULT_VARIANT_ID: DrawerVariantId = 'a';
+export const DRAWER_DEFAULT_VARIANT_ID: DrawerVariantId = 'b';
 
 /**
  * 取一个形态。

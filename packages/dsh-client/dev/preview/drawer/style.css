@@ -197,7 +197,8 @@ body {
   position: relative;
   display: flex;
   justify-content: center;
-  padding-top: 150px;
+  /* 面板要向上展开 min(50vh,480px)，这里必须留足，否则被裁 */
+  padding-top: 500px;
 }
 
 .pvf-card {

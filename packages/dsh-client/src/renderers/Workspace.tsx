@@ -187,10 +187,12 @@ export interface WorkspaceProps {
 	 */
 	readonly defaultPicked?: Readonly<Record<string, Picked>>;
 	/**
-	 * 科技树 / 列表的**初始**视图（`defaultValue` 语义，默认 `'list'`）。
+	 * 科技树 / 列表的**初始**视图（`defaultValue` 语义，**默认 `'tree'`**）。
+	 *
+	 * 用户 `2026-11-20`：「所有视图的进入默认视图要是科技树的。现在是列表。」
 	 *
 	 * ⚠ 和 `defaultPicked` 同一套理由：挂载后由本组件自持、按用户点击变。
-	 *   存在的目的是让**静态渲染**（SSR 断言 / 预览）能直接画出科技树视图 ——
+	 *   存在的目的是让**静态渲染**（SSR 断言 / 预览）能直接画出指定视图 ——
 	 *   `view` 是内部状态，静态渲染点不了按钮。
 	 */
 	readonly defaultView?: 'list' | 'tree';
@@ -252,7 +254,7 @@ export interface WorkspaceProps {
  */
 export function Workspace(props: WorkspaceProps): ReactNode {
 	/* ── 纯 UI 状态 ── */
-	const [view, setView] = useState<'list' | 'tree'>(() => props.defaultView ?? 'list');
+	const [view, setView] = useState<'list' | 'tree'>(() => props.defaultView ?? 'tree');
 	/*
 	 * `density === 'compact'` 时空间 chip 行默认折叠（用户 2026-11-20：
 	 * 「需要点但是用不上的东西要折叠」）。点「工作空间 ▾」展开成一行。
