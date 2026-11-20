@@ -1179,13 +1179,18 @@ export const SECTION_CSS = `
 /* 「未选择」按钮：当前就是未选择时**亮起**（黑底白字），点它能回到这个状态 */
 .tb3w-root .ask-group__state-btn[data-ask-state-btn='on']{background:var(--text);border-color:var(--text);color:#fff}
 /* ── 「激活」的题目：左边竖边框 ── */
-/* 可交互且已作答：整个问题页打左边框（同样不占位） */
-.tb3w-root .ask-group[data-ask-active=''true'']{position:relative}
-.tb3w-root .ask-group[data-ask-active=''true'']::before{content:"";position:absolute;left:-10px;top:0;bottom:0;width:3px;background:var(--accent);border-radius:2px}
+/* 左侧 12px 内边距恒定（不随状态变），边框画在 left:0 ⇒ 零位移。选择态：不是未选择就打整页左边框 */
+.tb3w-root .ask-group{position:relative;padding-left:12px}
+.tb3w-root .ask-group[data-ask-active='true']::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:2px}
 /* 冻结态：不给整页打边框，只给**选中的选项**打左边框 */
-/* 冻结态：给**选中的选项**打左边框（用 ::before 绝对定位，不占位、不位移） */
-.tb3w-root .ask-option.is-picked{position:relative}
-.tb3w-root .ask-option.is-picked::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:7px 0 0 7px}
+/*
+ * 左边框的两种态（用户 2026-11-21）：
+ *   冻结（ended）⇒ **选中的那个选项框**左边有边
+ *   选择（active）⇒ **整个问题页**左边有边（见下面的 [data-ask-active='true']）
+ * 用 ::before 绝对定位，不占位、不位移。
+ */
+.tb3w-root .ask-option[data-ask-readonly='true'].is-picked{position:relative}
+.tb3w-root .ask-option[data-ask-readonly='true'].is-picked::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:7px 0 0 7px}
 /* ── 自填行：圆圈 + 文本框 ── */
 .tb3w-root .ask-option--custom{cursor:default;align-items:center}
 .tb3w-root .ask-option--custom .ask-group__custom{flex:1 1 auto;min-width:0;padding:4px 8px;border:1px dashed var(--border-strong,#c5ccd6);border-radius:5px;background:#fafbfc;font:12px/1.5 inherit;color:var(--text)}

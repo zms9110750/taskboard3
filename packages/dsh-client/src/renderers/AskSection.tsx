@@ -125,7 +125,9 @@ export function AskGroupCard(props: {
 			 * 对着 `detail-ask-states.png` 说的）。
 			 */
 			/* 第 8 条：只有**可交互**且已作答时才给整页打边框（冻结态不打）。 */
-			data-ask-active={String(props.interactive && group.pickedState === 'picked')}
+			/* 选择态：只要**不是未选择**（picked / 
+one）⇒ 整个问题页左边打边框。 */
+			data-ask-active={String(props.interactive && group.pickedState !== 'unset')}
 		>
 			{/*
 			 * 问题行（用户 2026-11-21 第 3 条：**不要「单选」「多选」胶囊**）。
@@ -270,7 +272,13 @@ export function AskOptionRow(props: {
 	/* 只读：`<div>`（不是 disabled 的 button —— 那会让它看起来「本来能点」）。 */
 	if (!interactive) {
 		return (
-			<div className={className.join(' ')} data-ask-option={props.label} data-picked={String(props.picked)}>
+			<div
+				className={className.join(' ')}
+				data-ask-option={props.label}
+				data-picked={String(props.picked)}
+				/* 冻结态标记 —— 选中项的左边框只在这个态画（用户 2026-11-21）。 */
+				data-ask-readonly="true"
+			>
 				{inner}
 			</div>
 		);
