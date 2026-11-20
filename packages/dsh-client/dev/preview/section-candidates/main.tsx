@@ -307,24 +307,62 @@ function MarkdownCandidateB(): React.ReactNode {
    ══════════════════════════════════════════════════════════ */
 
 function App(): React.ReactNode {
-	return (
-		<div className="sc">
-			<h1 className="sc-title">text / markdown · 三相位候选</h1>
-			<div className="sc-sub">
-				每个 action 两个候选实现，各并排展示 create / active / ended。
-				契约来源 <code>taskboard2/docs/02-action.md:259-266</code>。
-			</div>
-			<TextCandidateA />
-			<TextCandidateB />
-			<MarkdownCandidateA />
-			<MarkdownCandidateB />
+	/*
+	 * 三个 action 用**标签页**切换（用户 2026-11-21：「要用标签切换他们三个组件」）。
+	 * 根上加 `tb3w-root` —— 产品类名（ghost-btn / section-block …）全在这个作用域下，
+	 * 不包就是裸 HTML（和 carddetail 踩过同一个坑）。
+	 */
+	const [tab, setTab] = useState<'text' | 'markdown' | 'ask'>('text');
 
-			<h2 className="sc-h2">ask · 三相位（契约 §2.9）</h2>
-			<div className="sc-ask-grid">
-				<CreateColumn />
-				<ActiveColumn />
-				<EndedColumn />
+	return (
+		<div className="sc tb3w-root">
+			<h1 className="sc-title">三个 action × 三个相位</h1>
+			<div className="sc-sub">
+				create / active / ended 并排；契约来源 <code>taskboard2/docs/02-action.md:259-266</code>。
 			</div>
+
+			<div className="sc-tabs" role="tablist">
+				{([
+					['text', 'text'],
+					['markdown', 'markdown'],
+					['ask', 'ask'],
+				] as const).map(([id, label]) => (
+					<button
+						key={id}
+						type="button"
+						role="tab"
+						aria-selected={tab === id}
+						className={`sc-tab${tab === id ? ' is-on' : ''}`}
+						onClick={() => {
+							setTab(id);
+						}}
+					>
+						{label}
+					</button>
+				))}
+			</div>
+
+			{tab === 'text' ? (
+				<>
+					<TextCandidateA />
+					<TextCandidateB />
+				</>
+			) : null}
+
+			{tab === 'markdown' ? (
+				<>
+					<MarkdownCandidateA />
+					<MarkdownCandidateB />
+				</>
+			) : null}
+
+			{tab === 'ask' ? (
+				<div className="sc-ask-grid">
+					<CreateColumn />
+					<ActiveColumn />
+					<EndedColumn />
+				</div>
+			) : null}
 		</div>
 	);
 }
@@ -373,6 +411,9 @@ function injectCandidateStyles(): void {
 		'.sc-code{margin:8px 0 0;padding:8px;border-radius:5px;background:#f3f4f6;font-family:ui-monospace,Consolas,monospace;font-size:11px;overflow:auto}',
 		'.sc-h2{font-size:15px;margin:28px 0 10px}',
 		'.sc-ask-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}',
+		'.sc-tabs{display:flex;gap:6px;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid #eef0f3}',
+		'.sc-tab{padding:6px 16px;border:1px solid #d7dbe2;border-radius:7px;background:#fff;color:#5f6673;font:12px/1 inherit;cursor:pointer}',
+		'.sc-tab.is-on{background:#16181d;border-color:#16181d;color:#fff;font-weight:600}',
 	].join('\n');
 	const style = document.createElement('style');
 	style.id = 'sc-style';
