@@ -4,7 +4,7 @@
  * ## 数据流（单向，全受控）
  *
  * ```
- * payload(picked / custom / custom_active) → view → 组件渲染
+ * payload(picked / custom) → view → 组件渲染
  * 用户动作 → onAsk(AskAction) → 父层写 payload → 新 view 灌回来
  * ```
  *
@@ -30,7 +30,7 @@
  * ## 契约
  *
  * - `askCompose`（create）走另一条渲染路径，不经过本文件。
- * - `custom_active` 是答案字段（`02-action.md:436`），`custom` 是自填文字。
+ * - 字段以 `packages/core/src/template/actions.ts` 的 `askItemSchema` 为准：`r`n *   `picked` / `custom`，**没有** `custom_active`。
  * - 单选组任一时刻只有一处「已选」：点选项 ⇒ 自填行取消；点自填 ⇒ 清掉选项。
  *   这条规则由父层应用 `AskAction` 时保证（本文件只上报动作）。
  */

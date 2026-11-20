@@ -1,10 +1,12 @@
 /**
  * `ask` 交互规则的纯逻辑测试。
  *
- * 覆盖 `askPatchOf` / `applyAskAction` —— 单选互斥、`custom_active`、
- * 「未选择必须删 `picked` 字段」这几条契约。
+ * ⚠ 字段以 **action 架构** 为准：`packages/core/src/template/actions.ts` 的
+ * `askItemSchema` —— `header` / `question` / `options` / `multi_select` /
+ * `picked` / `custom` / `placeholder`。
  *
- * 契约来源：taskboard2 `docs/02-action.md:488-500`。
+ * **没有 `custom_active`**。「自填行选中」在架构里表达成
+ * `picked` 里有一个不是任何选项 label 的值（= 被选中的自填文字）。
  */
 
 import assert from 'node:assert/strict';
@@ -36,29 +38,28 @@ function groupOf(payload: unknown) {
 }
 
 describe('askPatchOf · pick', () => {
-	it('单选：新选中替换旧的', () => {
+	it('单选：新选中替换旧的，且不写 custom_active', () => {
 		const group = groupOf(payloadOf(['A', 'B'], { picked: ['A'] }));
 		const patch = askPatchOf(group, { type: 'pick', label: 'B' });
 		assert.deepEqual(patch['picked'], ['B']);
-		assert.equal(patch['custom_active'], false);
+		assert.ok(!('custom_active' in patch), '架构里没有 custom_active');
 	});
 
 	it('多选：新选中追加', () => {
 		const group = groupOf(payloadOf(['A', 'B'], { multi_select: true, picked: ['A'] }));
-		const patch = askPatchOf(group, { type: 'pick', label: 'B' });
-		assert.deepEqual(patch['picked'], ['A', 'B']);
+		assert.deepEqual(askPatchOf(group, { type: 'pick', label: 'B' })['picked'], ['A', 'B']);
 	});
 
 	it('多选：再点已选 = 取消', () => {
 		const group = groupOf(payloadOf(['A', 'B'], { multi_select: true, picked: ['A', 'B'] }));
-		const patch = askPatchOf(group, { type: 'pick', label: 'A' });
-		assert.deepEqual(patch['picked'], ['B']);
+		assert.deepEqual(askPatchOf(group, { type: 'pick', label: 'A' })['picked'], ['B']);
 	});
 
-	it('单选 pick 会取消自填行', () => {
-		const group = groupOf(payloadOf(['A'], { picked: [], custom_active: true }));
+	it('单选 pick 会把自填文字挤出 picked（互斥）', () => {
+		const group = groupOf(payloadOf(['A'], { picked: ['自己写的'], custom: ['自己写的'] }));
+		assert.equal(group.customActive, true);
 		const patch = askPatchOf(group, { type: 'pick', label: 'A' });
-		assert.equal(patch['custom_active'], false);
+		assert.deepEqual(patch['picked'], ['A']);
 	});
 });
 
@@ -68,45 +69,51 @@ describe('askPatchOf · clear', () => {
 		const patch = askPatchOf(group, { type: 'clear' });
 		assert.ok('picked' in patch);
 		assert.equal(patch['picked'], undefined);
-		assert.equal(patch['custom_active'], false);
 	});
 
 	it('clear 不动 custom 文字', () => {
 		const group = groupOf(payloadOf(['A'], { picked: ['A'], custom: ['自己写的'] }));
-		const patch = askPatchOf(group, { type: 'clear' });
-		assert.ok(!('custom' in patch));
+		assert.ok(!('custom' in askPatchOf(group, { type: 'clear' })));
 	});
 });
 
 describe('askPatchOf · custom-toggle', () => {
-	it('单选：选中自填 ⇒ 清掉选项', () => {
+	it('没有自填文字时无法表达选中（返回空补丁）', () => {
 		const group = groupOf(payloadOf(['A'], { picked: ['A'] }));
-		const patch = askPatchOf(group, { type: 'custom-toggle' });
-		assert.equal(patch['custom_active'], true);
-		assert.deepEqual(patch['picked'], []);
+		assert.deepEqual(askPatchOf(group, { type: 'custom-toggle' }), {});
 	});
 
-	it('单选：再点一次 ⇒ 取消自填', () => {
-		const group = groupOf(payloadOf(['A'], { picked: [], custom_active: true }));
-		const patch = askPatchOf(group, { type: 'custom-toggle' });
-		assert.equal(patch['custom_active'], false);
+	it('单选：自填文字进 picked，选项让位', () => {
+		const group = groupOf(payloadOf(['A'], { picked: ['A'], custom: ['自己写的'] }));
+		assert.deepEqual(askPatchOf(group, { type: 'custom-toggle' })['picked'], ['自己写的']);
 	});
 
-	it('多选：不自填不碰 picked（可以共存）', () => {
-		const group = groupOf(payloadOf(['A'], { multi_select: true, picked: ['A'] }));
+	it('单选：再点一次 ⇒ 删 picked（回到未选择），custom 保留', () => {
+		const group = groupOf(payloadOf(['A'], { picked: ['自己写的'], custom: ['自己写的'] }));
 		const patch = askPatchOf(group, { type: 'custom-toggle' });
-		assert.equal(patch['custom_active'], true);
-		assert.ok(!('picked' in patch));
+		assert.equal(patch['picked'], undefined);
+		assert.ok(!('custom' in patch));
+	});
+
+	it('多选：自填文字追加进 picked，选项保留', () => {
+		const group = groupOf(payloadOf(['A'], { multi_select: true, picked: ['A'], custom: ['自己写的'] }));
+		assert.deepEqual(askPatchOf(group, { type: 'custom-toggle' })['picked'], ['A', '自己写的']);
 	});
 });
 
 describe('askPatchOf · custom-input', () => {
-	it('输入即选中，且单选组清掉选项', () => {
+	it('输入即选中：custom + picked 都写', () => {
 		const group = groupOf(payloadOf(['A'], { picked: ['A'] }));
 		const patch = askPatchOf(group, { type: 'custom-input', text: '自己写的' });
 		assert.deepEqual(patch['custom'], ['自己写的']);
-		assert.equal(patch['custom_active'], true);
-		assert.deepEqual(patch['picked'], []);
+		assert.deepEqual(patch['picked'], ['自己写的']);
+	});
+
+	it('清空文字 ⇒ custom 清空，picked 回到未选择', () => {
+		const group = groupOf(payloadOf(['A'], { picked: ['自己写的'], custom: ['自己写的'] }));
+		const patch = askPatchOf(group, { type: 'custom-input', text: '' });
+		assert.deepEqual(patch['custom'], []);
+		assert.equal(patch['picked'], undefined);
 	});
 });
 
@@ -120,24 +127,23 @@ describe('applyAskAction', () => {
 
 	it('clear 后 payload 里没有 picked 字段（= unset）', () => {
 		const next = applyAskAction(payloadOf(['A'], { picked: ['A'] }), 0, { type: 'clear' });
-		const group = groupOf(next);
-		assert.equal(group.pickedState, 'unset');
+		assert.equal(groupOf(next).pickedState, 'unset');
 		assert.ok(!('picked' in ((next as { items: Record<string, unknown>[] }).items[0] ?? {})));
 	});
 
-	it('自填：custom 存文字，customActive 为真', () => {
+	it('自填：custom 存文字，customActive 由 picked 派生', () => {
 		const next = applyAskAction(payloadOf(['A']), 0, { type: 'custom-input', text: 'hi' });
 		const group = groupOf(next);
 		assert.deepEqual(group.custom, ['hi']);
 		assert.equal(group.customActive, true);
 	});
 
-	it('单选：先选 A 再点自填 ⇒ A 不再选中', () => {
+	it('单选：先选 A 再填自填 ⇒ A 不再选中', () => {
 		let payload = applyAskAction(payloadOf(['A', 'B']), 0, { type: 'pick', label: 'A' });
-		payload = applyAskAction(payload, 0, { type: 'custom-toggle' });
+		payload = applyAskAction(payload, 0, { type: 'custom-input', text: 'hi' });
 		const group = groupOf(payload);
 		assert.equal(group.customActive, true);
-		assert.equal(group.pickedState, 'none');
+		assert.equal(group.options.find((one) => one.label === 'A')?.picked, false);
 	});
 
 	it('形状不对时原样返回', () => {

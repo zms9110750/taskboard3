@@ -316,7 +316,7 @@ export function ActiveColumn(props: {
 			{/*
 			 * 用户 2026-11-21：「不要写胶水代码。他们的逻辑应该是很一致的。」
 			 * ⇒ 动作**直接交给产品的 pure 函数 `applyAskAction`**：
-			 *   单选互斥 / custom_active / 删 picked 全在一处，预览没有第二套逻辑。
+			 *   单选互斥 / 自填文字进 picked / 删 picked 全在一处，预览没有第二套逻辑。
 			 */}
 			{view.kind === 'ask' ? (
 				view.groups.map((group, index) => (
@@ -334,7 +334,7 @@ export function ActiveColumn(props: {
 				<div className="as-note">夹具不是 ask 形态（预览数据写错了）</div>
 			)}
 
-			<div className="as-note">⚠ 这里不改题目 —— 只改答案（picked / custom / custom_active）</div>
+			<div className="as-note">⚠ 这里不改题目 —— 只改答案（picked / custom）</div>
 		</div>
 	);
 }
