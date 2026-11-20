@@ -58,18 +58,21 @@ function AskMark(props: {
 }): ReactNode {
 	if (props.readonly) {
 		/*
-		 * 冻结态（设计稿 detail-ask-states.png）：
-		 *   选中 ⇒ ✓
-		 *   未选中 ⇒ **细圆点**（空标记会让整行看起来没有样式）
+		 * 冻结态：**只有选中项画 ✓**，未选中什么都不画。
+		 *
+		 * 用户 2026-11-21：「冻结的未选中不需要圆点啊。我什么时候说过要了？
+		 * 冻结都不给你动了，你要一个示意"可选择"的东西做什么？
+		 * 所以这里的已选择是勾，跟可选择态的圆圈不一样了啊。暗示不可交互」
+		 *
+		 * ⇒ 空 span 保留只为**占位对齐**（14px），不画任何形状。
 		 */
-		return props.picked ? (
+		return (
 			<span className="ask-option__mark ask-option__mark--check" aria-hidden="true">
-				✓
+				{props.picked ? '✓' : ''}
 			</span>
-		) : (
-			<span className="ask-option__mark ask-option__mark--dot" aria-hidden="true" />
 		);
 	}
+	/* 可交互：圆圈（单选）/ 方框（多选） */
 	return (
 		<span
 			className="ask-option__mark ask-option__mark--box"
