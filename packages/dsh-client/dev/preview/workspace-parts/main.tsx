@@ -132,7 +132,8 @@ function ToolbarCase(props: {
 	readonly note: string;
 	readonly initialView: WorkspaceView;
 	readonly permission: boolean;
-	readonly spacePicker: boolean;
+	/** 有值 ⇒ 按 `Workspace` 的拼法在工具栏**外面**加空间开关。 */
+	readonly withPicker: boolean;
 }): React.ReactNode {
 	const [view, setView] = useState<WorkspaceView>(props.initialView);
 	const [events, setEvents] = useState<readonly string[]>([]);
@@ -140,7 +141,7 @@ function ToolbarCase(props: {
 		setEvents((prev) => [message, ...prev].slice(0, 8));
 	};
 
-	const picker: SpacePickerProps | undefined = !props.spacePicker
+	const picker: SpacePickerProps | undefined = !props.withPicker
 		? undefined
 		: {
 				workspaces: SPACES_8,
@@ -168,27 +169,33 @@ function ToolbarCase(props: {
 	return (
 		<Case note={props.note}>
 			<div className="wsp-demo tb3w-root">
-				<WorkspaceToolbar
-					shownCount={9}
-					totalCount={12}
-					queryActive
-					view={view}
-					onViewChange={(next) => {
-						setView(next);
-						record(`view-change: ${next}`);
-					}}
-					onCreateCard={() => {
-						record('create-card');
-					}}
-					{...(props.permission
-						? {
-								onOpenPermission: () => {
-									record('open-permission');
-								},
-							}
-						: {})}
-					{...(picker === undefined ? {} : { spacePicker: picker })}
-				/>
+				{/*
+				 * 和 `Workspace` 的拼法一致：「工作空间 ▾」在工具栏**外面** ——
+				 * 用户 2026-11-20：「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮」。
+				 */}
+				<div className="tb3w-chrome__bar">
+					<WorkspaceToolbar
+						shownCount={9}
+						totalCount={12}
+						queryActive
+						view={view}
+						onViewChange={(next) => {
+							setView(next);
+							record(`view-change: ${next}`);
+						}}
+						onCreateCard={() => {
+							record('create-card');
+						}}
+						{...(props.permission
+							? {
+									onOpenPermission: () => {
+										record('open-permission');
+									},
+								}
+							: {})}
+					/>
+					{picker === undefined ? null : <SpacePicker {...picker} />}
+				</div>
 			</div>
 			<EventLog events={events} />
 		</Case>
@@ -354,9 +361,9 @@ function App(): React.ReactNode {
 						计数 / 关系图例 / 权限 / 科技树⇄列表 / 新建。**不含空间选择器** —— 选工作区是独立组件，见 ②。
 						⚠ 分段按钮是**临时内联实现**（用户还没选定候选组件），这里不是新实现，是原样搬家。
 					</p>
-					<ToolbarCase note="列表视图 · 有权限按钮 · 无空间选择器（full 密度）" initialView="list" permission spacePicker={false} />
-					<ToolbarCase note="科技树视图 · 有权限按钮" initialView="tree" permission spacePicker={false} />
-					<ToolbarCase note="无权限按钮（onOpenPermission 省略 = 不画）" initialView="list" permission={false} spacePicker={false} />
+					<ToolbarCase note="列表视图 · 有权限按钮 · 无空间选择器（full 密度）" initialView="list" permission withPicker={false} />
+					<ToolbarCase note="科技树视图 · 有权限按钮" initialView="tree" permission withPicker={false} />
+					<ToolbarCase note="无权限按钮（onOpenPermission 省略 = 不画）" initialView="list" permission={false} withPicker={false} />
 
 				</section>
 

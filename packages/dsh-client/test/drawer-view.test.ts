@@ -381,10 +381,18 @@ describe('⑥ CSS 由表插值生成', () => {
 		assert.equal(DRAWER_CSS.includes('.tb3d-body{flex:1 1 auto;display:flex;min-height:0;overflow:hidden}'), true);
 	});
 
-	it('筛选行 / 图例 / 列名行在抽屉里被收掉', () => {
-		assert.equal(DRAWER_CSS.includes('.tb3d-panel .tb3w-filters{display:none}'), true);
-		assert.equal(DRAWER_CSS.includes('.tb3d-panel .tb3w-toolbar__legend{display:none}'), true);
+	it('⭐ 抽屉 chrome 固定两行：图例和筛选行**不再**被收掉（用户 2026-11-20）', () => {
+		/*
+		 * 旧断言是 `display:none`（图例 / 筛选行都在抽屉里收掉）。
+		 * 用户 2026-11-20：「换行把图例弄没了？」「我要的抽屉视图是两行。」
+		 * ⇒ 这两条改回来：图例常驻、筛选行参与文档流占第二行。
+		 */
+		assert.equal(DRAWER_CSS.includes('.tb3d-panel .tb3w-toolbar__legend{display:none}'), false);
+		assert.equal(DRAWER_CSS.includes('.tb3d-panel .tb3w-filters{display:none}'), false);
+		/* 列名行仍然是收掉的（窄容器里 8.5px 列名比行本身还占地方） */
 		assert.equal(DRAWER_CSS.includes('.tb3d-panel .tb3w-list__cols{display:none}'), true);
+		/* chrome 是竖排（两行），不是横排挤成一行 */
+		assert.equal(DRAWER_CSS.includes('.tb3d-panel .tb3w-chrome{flex-direction:column'), true);
 	});
 
 	it('有上滑动画 keyframes + 尊重 prefers-reduced-motion', () => {

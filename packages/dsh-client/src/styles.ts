@@ -484,6 +484,15 @@ export const WORKSPACE_CSS = `
 /* SpaceBar 自己带 6px 上下 padding ⇒ 这里只补左右对齐 */
 .tb3w-chrome > .space-bar{padding-left:2px;padding-right:2px}
 
+/*
+ * 行 1 的外层：工具栏 + 空间开关按钮并排。
+ *
+ * 用户 2026-11-20：「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮」
+ * ⇒ 开关按钮不进 WorkspaceToolbar，由 Workspace 在外面拼（见 Workspace.tsx）。
+ */
+.tb3w-chrome__bar{display:flex;align-items:center;gap:8px;min-width:0}
+.tb3w-chrome__bar > .tb3w-toolbar{flex:1 1 auto;min-width:0}
+
 /* ── 工具栏：条数 / 图例 / 视图切换 / 新建 ── */
 .tb3w-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;min-width:0;margin-top:10px;padding:0 2px}
 .tb3w-toolbar__title{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
@@ -954,16 +963,20 @@ ${DRAWER_VARIANT_IDS.map(
  */
 .tb3d-panel .tb3w-page{padding:${px(DRAWER_COMPACT_SPACING.pagePadY)} ${px(DRAWER_COMPACT_SPACING.pagePadX)}}
 
-/* chip 行 + 工具栏并成一行（设计图顶栏就一条）——只调布局，不改 Workspace 自己的文件 */
-.tb3d-panel .tb3w-chrome{flex-direction:row;flex-wrap:wrap;align-items:center;gap:0 10px}
+/*
+ * chrome 固定两行（用户 2026-11-20：「我要的抽屉视图是两行」）。
+ *
+ * ⚠ 旧版这里把 chrome 改成 flex-direction:row 并 display:none 掉了
+ *   title / legend / filters —— 用户看到的「图例弄没了」「挤成一行」就是这 6 条
+ *   造成的，**不是 flex-wrap**。
+ *   行 1 = 任务条 + 关系图例 + 工具栏；行 2 = 筛选按钮 + 搜索。
+ */
+.tb3d-panel .tb3w-chrome{flex-direction:column;gap:0}
 .tb3d-panel .tb3w-chrome > .space-bar{flex:0 1 auto;min-width:0;padding:2px 2px;gap:5px}
-.tb3d-panel .tb3w-toolbar{flex:1 1 auto;justify-content:flex-end;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)};gap:4px 8px}
-/* 抽屉里标题在顶栏、条数在列表头 ⇒ 工具栏里那条「任务 共 N 条」不重复画 */
-.tb3d-panel .tb3w-toolbar__title{display:none}
-.tb3d-panel .tb3w-toolbar__legend{display:none}
+.tb3d-panel .tb3w-toolbar{flex:0 0 auto;justify-content:flex-end;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)};gap:4px 8px}
 .tb3d-panel .tb3w-toolbar__perm{display:none}
-/* 筛选行整行收掉（抽屉里放不下，用户看的是任务不是筛选器） */
-.tb3d-panel .tb3w-filters{display:none}
+/* 行 2：筛选 + 搜索。参与文档流（不浮层）—— 展开只撑高这一行。 */
+.tb3d-panel .tb3w-filters{flex:0 0 auto;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)}}
 .tb3d-panel .tb3w-main{margin-top:${px(DRAWER_COMPACT_SPACING.mainGap)}}
 
 /* 控件小一号（高度不变形，只影响视觉密度） */
