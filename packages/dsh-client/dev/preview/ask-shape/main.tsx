@@ -144,6 +144,21 @@ export function CreateColumn(props: {
 				<div className="as-group" key={itemIndex}>
 					<div className="as-group__bar">
 						<span className="as-role">问题组 {itemIndex + 1} / {items.length}</span>
+						{/*
+						 * 用户 2026-11-21：「把多选作为按钮放在这个问题页的 × 的左边。」
+						 * ⇒ 单选/多选不再是正文里的一个 checkbox，而是组头的一个按钮。
+						 */}
+						<button
+							type="button"
+							className={`as-multibtn${item.multiSelect ? ' is-on' : ''}`}
+							data-ask-multibtn
+							title="切换单选 / 多选"
+							onClick={() => {
+								patchItem(itemIndex, { multiSelect: !item.multiSelect });
+							}}
+						>
+							{item.multiSelect ? '多选' : '单选'}
+						</button>
 						<button
 							type="button"
 							className="as-icon"
@@ -227,17 +242,7 @@ export function CreateColumn(props: {
 					</div>
 
 					{/* 多选开关 */}
-					<label className="as-check">
-						<input
-							type="checkbox"
-							checked={item.multiSelect}
-							onChange={(e) => {
-								patchItem(itemIndex, { multiSelect: e.target.checked });
-							}}
-						/>
-						允许多选
-						<span className="as-role">multi-select</span>
-					</label>
+					{/* 多选开关已挪到组头（× 左边），正文里不再有这一行。 */}
 
 					{/*
 					 * 用户 2026-11-21：「创建期不要展示『如果都不合适，写下你的想法』的自填框。」
@@ -501,6 +506,8 @@ export function injectAskStyles(): void {
 		'.as-role{font-size:10.5px;color:#9aa1ad;font-family:ui-monospace,Consolas,monospace}',
 		'.as-icon{width:22px;height:22px;border:1px solid #e7e9ee;border-radius:5px;background:#fff;color:#5f6673;cursor:pointer;line-height:1}',
 		'.as-icon:disabled{opacity:.4;cursor:default}',
+		'.as-multibtn{padding:2px 9px;border:1px solid #d7dbe2;border-radius:5px;background:#fff;color:#5f6673;font:11px/1.4 inherit;cursor:pointer}',
+		'.as-multibtn.is-on{background:#16181d;border-color:#16181d;color:#fff;font-weight:600}',
 		'.as-input{width:100%;box-sizing:border-box;padding:6px 9px;border:1px solid #d7dbe2;border-radius:6px;font:12px/1.5 inherit;background:#fff}',
 		'.as-input--question{font-size:13px;font-weight:600}',
 		'.as-input--header{font-size:11.5px;color:#9aa1ad}',

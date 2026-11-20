@@ -1179,9 +1179,13 @@ export const SECTION_CSS = `
 .tb3w-root .ask-group__state-btn[data-ask-state-btn='none']{border-style:dashed;color:#b45309}
 .tb3w-root .ask-group__state-btn[data-ask-state-btn='picked']{color:#047857}
 /* ── 「激活」的题目：左边竖边框 ── */
-.tb3w-root .ask-group[data-ask-active='true']{box-shadow:inset 3px 0 0 var(--accent)}
+/* 可交互且已作答：整个问题页打左边框（同样不占位） */
+.tb3w-root .ask-group[data-ask-active=''true'']{position:relative}
+.tb3w-root .ask-group[data-ask-active=''true'']::before{content:"";position:absolute;left:-10px;top:0;bottom:0;width:3px;background:var(--accent);border-radius:2px}
 /* 冻结态：不给整页打边框，只给**选中的选项**打左边框 */
-.tb3w-root .ask-option.is-picked{box-shadow:inset 3px 0 0 var(--accent)}
+/* 冻结态：给**选中的选项**打左边框（用 ::before 绝对定位，不占位、不位移） */
+.tb3w-root .ask-option.is-picked{position:relative}
+.tb3w-root .ask-option.is-picked::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:7px 0 0 7px}
 /* ── 自填行：圆圈 + 文本框 ── */
 .tb3w-root .ask-option--custom{cursor:default;align-items:center}
 .tb3w-root .ask-option--custom .ask-group__custom{flex:1 1 auto;min-width:0;padding:4px 8px;border:1px dashed var(--border-strong,#c5ccd6);border-radius:5px;background:#fafbfc;font:12px/1.5 inherit;color:var(--text)}
