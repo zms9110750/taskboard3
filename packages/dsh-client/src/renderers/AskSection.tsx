@@ -194,18 +194,43 @@ export function AskCustomRow(props: {
 					<span className="ask-option__label">{text === '' ? '（未填写）' : text}</span>
 				</span>
 			) : (
-				<input
-					type="text"
-					className="ask-group__custom"
-					data-ask-custom
-					value={text}
-					onClick={() => props.onAsk?.({ type: 'custom-toggle' })}
-					onChange={(event) => props.onAsk?.({ type: 'custom-input', text: event.target.value })}
-					onKeyDown={(event) => {
-						/* 别让回车冒泡到父层（比如关详情）。 */
-						if (event.key === 'Enter') event.stopPropagation();
-					}}
-				/>
+				<>
+					{/*
+					 * 「自己填：」是**可点的选中入口**（用户 2026-11-21 第 2 条）。
+					 * 没有它的话整行都是输入框，只能往里打字、没法「选」这一行。
+					 */}
+					<button
+						type="button"
+						className="ask-option__custom-label"
+						data-ask-custom-label
+						onClick={(event) => {
+							/* 别冒泡到 AskRow —— 否则会 toggle 两次（选中又取消）。 */
+							event.stopPropagation();
+							props.onAsk?.({ type: 'custom-toggle' });
+						}}
+					>
+						自己填：
+					</button>
+					<input
+						type="text"
+						className="ask-group__custom"
+						data-ask-custom
+						value={text}
+						/* 占位符就是空框里的灰字；不再重复「自己填」 */
+						placeholder={placeholder}
+						/*
+						 * 第 3 条：点输入框**不是选择**（可能只是想刮取/看文字），
+						 * 所以只 focus，不 toggle；也阻止冒泡（否则会触发外层的选中）。
+						 */
+						onClick={(event) => event.stopPropagation()}
+						onMouseDown={(event) => event.stopPropagation()}
+						onChange={(event) => props.onAsk?.({ type: 'custom-input', text: event.target.value })}
+						onKeyDown={(event) => {
+							/* 别让回车冒泡到父层（比如关详情）。 */
+							if (event.key === 'Enter') event.stopPropagation();
+						}}
+					/>
+				</>
 			)}
 		</AskRow>
 	);

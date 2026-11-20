@@ -1177,7 +1177,13 @@ export const SECTION_CSS = `
 .tb3w-root .ask-group__multitag{flex:0 0 auto;padding:0 5px;border-radius:3px;background:#f3f4f6;color:var(--text-secondary);font-size:10px}
 .tb3w-root .ask-group__state-btn{flex:0 0 auto;padding:1px 8px;font-size:10.5px}
 /* 「未选择」按钮：当前就是未选择时**亮起**（黑底白字），点它能回到这个状态 */
-.tb3w-root .ask-group__state-btn.is-on{background:var(--text);border-color:var(--text);color:#fff}
+/* 未选择按钮「亮起」= **蓝边框 + 蓝字，不填充**（用户 2026-11-21：
+   和组件主题一致；用边框表示这个胶囊被选中，不是蓝底） */
+.tb3w-root .ask-group__state-btn{border:1px solid var(--border-strong,#c5ccd6);border-radius:5px;background:transparent;color:var(--text-secondary);cursor:pointer}
+.tb3w-root .ask-group__state-btn.is-on{color:var(--accent);background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent)}
+/* 「自己填：」—— 可点的选中入口 */
+.tb3w-root .ask-option__custom-label{flex:0 0 auto;margin:0;padding:0;border:0;background:none;color:var(--text-secondary);font:inherit;font-size:12px;cursor:pointer}
+.tb3w-root .ask-option__custom-label:hover{color:var(--accent)}
 /* ── 「激活」的题目：左边竖边框 ── */
 /* 左侧 12px 内边距恒定（不随状态变），边框画在 left:0 ⇒ 零位移。选择态：不是未选择就打整页左边框 */
 .tb3w-root .ask-group{position:relative;padding-left:12px}

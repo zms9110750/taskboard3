@@ -196,16 +196,18 @@ export function askPatchOf(
 
 		case 'custom-toggle': {
 			/*
-			 * 自填行「选中」在架构里只能靠 `picked`：
-			 *   有文字 ⇒ 放文字
-			 *   还没输入 ⇒ 放 `''`（空文字也是「被选中的自填文字」，
-			 *     派生出的 `customActive` 为 true，界面上圆圈就实心）
-			 * 取消 ⇒ 把自填值从 `picked` 拿走（选项保留 / 单选回到未选择）。
-			 * 多选：可以和其他选项**共存**，所以只增删自填这一项。
+			 * 自填行「选中」在架构里只能靠 `picked`（放自填文字，空文字放 `''`）。
+			 *
+			 * 单选：点一下就能选中（`picked: ['']`），再点取消回到未选择。
+			 * 多选：**没输入文字时什么都不改** ——
+			 *   否则 `picked: ['']` 会让 `pickedState` 从 `unset` 变 `picked`，
+			 *   界面上看起来「从未选择变成选了 0 个」，用户明确说过这是错的。
+			 *   多选只有真输入了文字才算选中。
 			 */
 			if (group.customActive) {
 				return { picked: group.multiSelect ? withoutCustom : undefined };
 			}
+			if (text === '' && group.multiSelect) return {};
 			return { picked: group.multiSelect ? [...withoutCustom, text] : [text] };
 		}
 

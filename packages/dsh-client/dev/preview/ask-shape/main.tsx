@@ -145,20 +145,32 @@ export function CreateColumn(props: {
 					<div className="as-group__bar">
 						<span className="as-role">问题组 {itemIndex + 1} / {items.length}</span>
 						{/*
-						 * 用户 2026-11-21：「把多选作为按钮放在这个问题页的 × 的左边。」
-						 * ⇒ 单选/多选不再是正文里的一个 checkbox，而是组头的一个按钮。
+						 * 用户 2026-11-21 第 5 条：「编辑态下的单选和多选要用两个按钮而不是一个切换按钮。
+						 * 如果字会变的话就不属于切换，你不知道他的是否选中的含义。而且他也要用蓝色的主题。」
+						 * ⇒ 两个固定文案的按钮，当前生效那个是蓝边框 + 淡蓝底。
 						 */}
-						<button
-							type="button"
-							className={`as-multibtn${item.multiSelect ? ' is-on' : ''}`}
-							data-ask-multibtn
-							title="切换单选 / 多选"
-							onClick={() => {
-								patchItem(itemIndex, { multiSelect: !item.multiSelect });
-							}}
-						>
-							{item.multiSelect ? '多选' : '单选'}
-						</button>
+						<div className="as-seg" data-ask-mode-seg>
+							<button
+								type="button"
+								className={`as-seg__btn${item.multiSelect ? '' : ' is-on'}`}
+								data-ask-mode="single"
+								onClick={() => {
+									patchItem(itemIndex, { multiSelect: false });
+								}}
+							>
+								单选
+							</button>
+							<button
+								type="button"
+								className={`as-seg__btn${item.multiSelect ? ' is-on' : ''}`}
+								data-ask-mode="multi"
+								onClick={() => {
+									patchItem(itemIndex, { multiSelect: true });
+								}}
+							>
+								多选
+							</button>
+						</div>
 						<button
 							type="button"
 							className="as-icon"

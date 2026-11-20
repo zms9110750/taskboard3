@@ -251,6 +251,99 @@ check(
 );
 
 /* ══════════════════════════════════════════════════════════
+   ③b 「自己填：」标签 + 点输入框不选中
+   ══════════════════════════════════════════════════════════ */
+
+console.log('\n自填行的「自己填：」入口');
+
+/* 先清空单选组，保证下面从「未选择」开始。 */
+await evalJs(clickClear(1));
+check(
+	'「自己填：」标签存在',
+	await evalJs(`(${G(1)}).querySelectorAll('[data-ask-custom-label]').length`),
+	1,
+);
+
+/* 点 input：**不是选择**（用户第 3 条：可能只是想刮取文字） */
+await evalJs(`((${G(1)}).querySelector('[data-ask-custom]').click(), true)`);
+check(
+	'点输入框不会选中自填行',
+	await evalJs(`(${G(1)}).querySelector('[data-row-kind="custom"]').classList.contains('is-picked')`),
+	false,
+);
+
+/* 点「自己填：」标签：**是选择** */
+await evalJs(`((${G(1)}).querySelector('[data-ask-custom-label]').click(), true)`);
+check(
+	'点「自己填：」标签会选中自填行',
+	await evalJs(`(${G(1)}).querySelector('[data-row-kind="custom"]').classList.contains('is-picked')`),
+	true,
+);
+
+/* ══════════════════════════════════════════════════════════
+   ③c 多选：空文字点自填不改状态
+   ══════════════════════════════════════════════════════════ */
+
+console.log('\n多选 · 空文字点自填不改状态');
+
+/*
+ * 多选组夹具带自填文字「还有配色」—— 先输入清空，再点「未选择」回到 unset，
+ * 然后点自填行（空文字）⇒ **必须还是 unset**（用户第 4 条：
+ * 「点他，就不是未选择，而是选了 0 个了。这个逻辑不对」）。
+ */
+await evalJs(`(function(){
+	const input = (${G(2)}).querySelector('[data-ask-custom]');
+	const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
+	desc.set.call(input, '');
+	input.dispatchEvent(new Event('input', { bubbles: true }));
+	return true;
+})()`);
+await sleep(150);
+await evalJs(clickClear(2));
+await evalJs(clickRow(2, 3));
+check('多选：空文字点自填 ⇒ 仍是未选择（没有变「已选 0 个」）', await evalJs(rowsOf(2)), [
+	{ kind: 'option', picked: false },
+	{ kind: 'option', picked: false },
+	{ kind: 'option', picked: false },
+	{ kind: 'custom', picked: false },
+]);
+check(
+	'多选：空文字点自填后「未选择」按钮仍亮着',
+	await evalJs(`(${G(2)}).querySelector('.ask-group__state-btn').classList.contains('is-on')`),
+	true,
+);
+
+/* ══════════════════════════════════════════════════════════
+   ③d 未选择按钮是蓝色边框（不是黑底）
+   ══════════════════════════════════════════════════════════ */
+
+console.log('\n未选择按钮样式');
+
+/* 重新点一次，确保按钮处于 is-on（前面的用例会改状态）。 */
+await evalJs(clickClear(2));
+await sleep(120);
+check('按钮确实带着 is-on', await evalJs(`(${G(2)}).querySelector('.ask-group__state-btn').className`), 'ghost-btn ask-group__state-btn is-on');
+
+check(
+	'未选择按钮亮起 = 蓝边框（inset box-shadow 里有 brand 蓝）',
+	await evalJs(`getComputedStyle((${G(2)}).querySelector('.ask-group__state-btn')).boxShadow.indexOf('rgb(37, 99, 235)') >= 0`),
+	true,
+);
+/* 蓝字：只要求是蓝色系（品牌蓝在预览里可能被主题变量覆写成 #2e63d9）。 */
+check(
+	'未选择按钮亮起 = 蓝字',
+	await evalJs(`(function(){
+		const m = getComputedStyle((${G(2)}).querySelector('.ask-group__state-btn')).color.match(/\\d+/g).map(Number);
+		return m[2] > 150 && m[0] < 120;
+	})()`),
+	true,
+);
+check(
+	'未选择按钮不是蓝底（背景透明）',
+	await evalJs(`getComputedStyle((${G(2)}).querySelector('.ask-group__state-btn')).backgroundColor`),
+	'rgba(0, 0, 0, 0)',
+);
+/* ══════════════════════════════════════════════════════════
    ④ 自填框输入文字
    ══════════════════════════════════════════════════════════ */
 
