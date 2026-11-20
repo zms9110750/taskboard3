@@ -78,9 +78,9 @@ describe('askPatchOf · clear', () => {
 });
 
 describe('askPatchOf · custom-toggle', () => {
-	it('没有自填文字时无法表达选中（返回空补丁）', () => {
+	it('没有自填文字时也能选中（用空字符串占位）', () => {
 		const group = groupOf(payloadOf(['A'], { picked: ['A'] }));
-		assert.deepEqual(askPatchOf(group, { type: 'custom-toggle' }), {});
+		assert.deepEqual(askPatchOf(group, { type: 'custom-toggle' })['picked'], ['']);
 	});
 
 	it('单选：自填文字进 picked，选项让位', () => {
@@ -109,11 +109,11 @@ describe('askPatchOf · custom-input', () => {
 		assert.deepEqual(patch['picked'], ['自己写的']);
 	});
 
-	it('清空文字 ⇒ custom 清空，picked 回到未选择', () => {
+	it('清空文字 ⇒ custom 清空，但自填行仍选中（picked 留空字符串）', () => {
 		const group = groupOf(payloadOf(['A'], { picked: ['自己写的'], custom: ['自己写的'] }));
 		const patch = askPatchOf(group, { type: 'custom-input', text: '' });
 		assert.deepEqual(patch['custom'], []);
-		assert.equal(patch['picked'], undefined);
+		assert.deepEqual(patch['picked'], ['']);
 	});
 });
 

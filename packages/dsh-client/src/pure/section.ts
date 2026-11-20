@@ -177,32 +177,52 @@ export function askPatchOf(
 
 	switch (action.type) {
 		case 'pick': {
-			/* 单选：替换旧的；多选：同 label 再点 = 取消，否则追加。自填文字一并让位。 */
-			const next = group.multiSelect
-				? group.options.filter((one) => one.picked !== (one.label === action.label)).map((one) => one.label)
-				: [action.label];
-			return { picked: next };
+			/*
+			 * 单选：替换旧的（自填文字一并让位）。
+			 * 多选：同 label 再点 = 取消，否则追加；**自填文字必须保留**
+			 *   —— 多选里自填和选项是共存的，不能因为点了个选项就把自填挤掉。
+			 */
+			if (!group.multiSelect) return { picked: [action.label] };
+			const nextOptions = group.options
+				.filter((one) => one.picked !== (one.label === action.label))
+				.map((one) => one.label);
+			return { picked: [...nextOptions, ...(group.customActive ? group.custom : [])] };
 		}
+
 
 		case 'clear':
 			/* 未选择 = 删掉 `picked` 字段（空数组是「都不要」，两者不能混）。 */
 			return { picked: undefined };
 
 		case 'custom-toggle': {
-			if (text === '') return {};
-			/* 自填行选中 = 文字在 `picked` 里；再点一次从 `picked` 移走（`custom` 保留）。 */
-			return group.customActive
-				? { picked: group.multiSelect ? withoutCustom : undefined }
-				: { picked: group.multiSelect ? [...withoutCustom, text] : [text] };
+			/*
+			 * 自填行「选中」在架构里只能靠 `picked`：
+			 *   有文字 ⇒ 放文字
+			 *   还没输入 ⇒ 放 `''`（空文字也是「被选中的自填文字」，
+			 *     派生出的 `customActive` 为 true，界面上圆圈就实心）
+			 * 取消 ⇒ 把自填值从 `picked` 拿走（选项保留 / 单选回到未选择）。
+			 * 多选：可以和其他选项**共存**，所以只增删自填这一项。
+			 */
+			if (group.customActive) {
+				return { picked: group.multiSelect ? withoutCustom : undefined };
+			}
+			return { picked: group.multiSelect ? [...withoutCustom, text] : [text] };
 		}
 
+
 		case 'custom-input': {
-			/* 输入即选中：`custom` 存文字，`picked` 里放这段文字（单选时替换掉选项）。 */
-			if (action.text === '') {
-				return { custom: [], picked: group.multiSelect ? withoutCustom : undefined };
-			}
-			return { custom: [action.text], picked: group.multiSelect ? [...withoutCustom, action.text] : [action.text] };
+			/*
+			 * 输入即选中：`custom` 存文字，`picked` 里放这段文字。
+			 * 清空文字时**仍然保持选中**（`picked: ['']`）—— 否则打字打到一半全删，
+			 * 圆圈会莫名熄灭，和「点了就选中」不一致。
+			 */
+			const next = action.text === '' ? '' : action.text;
+			return {
+				custom: action.text === '' ? [] : [action.text],
+				picked: group.multiSelect ? [...withoutCustom, next] : [next],
+			};
 		}
+
 	}
 }
 /**

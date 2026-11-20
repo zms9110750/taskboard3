@@ -86,6 +86,8 @@ function AskMark(props: {
  * `button` 不能嵌交互控件。用同一种元素就能让两者走完全相同的代码路径。
  */
 function AskRow(props: {
+	/** 行的种类 —— 测试/样式用的稳定钩子，不参与行为判断。 */
+	readonly kind: 'option' | 'custom';
 	readonly picked: boolean;
 	readonly multiSelect: boolean;
 	readonly readonly: boolean;
@@ -101,6 +103,7 @@ function AskRow(props: {
 	return (
 		<div
 			className={className.join(' ')}
+			data-row-kind={props.kind}
 			data-picked={String(props.picked)}
 			{...(interactive
 				? {
@@ -140,6 +143,7 @@ export function AskOptionRow(props: {
 
 	return (
 		<AskRow
+			kind="option"
 			picked={props.option.picked}
 			multiSelect={props.multiSelect}
 			readonly={props.readonly}
@@ -179,6 +183,7 @@ export function AskCustomRow(props: {
 
 	return (
 		<AskRow
+			kind="custom"
 			picked={picked}
 			multiSelect={props.group.multiSelect}
 			readonly={props.readonly}
@@ -192,8 +197,8 @@ export function AskCustomRow(props: {
 				<input
 					type="text"
 					className="ask-group__custom"
+					data-ask-custom
 					value={text}
-					placeholder={placeholder}
 					onClick={() => props.onAsk?.({ type: 'custom-toggle' })}
 					onChange={(event) => props.onAsk?.({ type: 'custom-input', text: event.target.value })}
 					onKeyDown={(event) => {
