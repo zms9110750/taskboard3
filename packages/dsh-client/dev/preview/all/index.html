@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>任务板 3 · 组件过目</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b35;
+    --text: #e6e8ec; --weak: #9aa1ad; --accent: #5b8cff; --warn: #f0a44a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 28px 64px; background: var(--bg); color: var(--text);
+    font: 14px/1.65 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .sub { color: var(--weak); font-size: 13px; margin-bottom: 22px; }
+  .banner {
+    background: #2a2115; border: 1px solid #5a4520; color: #f5d9a8;
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 26px; font-size: 13px;
+  }
+  h2 { font-size: 13px; color: var(--weak); font-weight: 600; letter-spacing: .06em;
+       text-transform: uppercase; margin: 30px 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  a.card {
+    display: block; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px 16px; text-decoration: none; color: inherit;
+    transition: border-color .12s, background .12s;
+  }
+  a.card:hover { border-color: var(--accent); background: #1b1f28; }
+  .name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .desc { font-size: 12px; color: var(--weak); }
+  .tag {
+    display: inline-block; font-size: 10.5px; padding: 1px 7px; border-radius: 99px;
+    margin-left: 6px; vertical-align: 1px;
+  }
+  .tag.new { background: #1d2c1f; color: #7fd18b; border: 1px solid #2d4a31; }
+  .tag.old { background: #26221a; color: #d8b878; border: 1px solid #4a3d24; }
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line);
+           color: var(--weak); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>任务板 3 · 组件过目</h1>
+<div class="sub">每个链接是一个可交互的真组件页面，双击打开即可点、悬停、输入。</div>
+
+<div class="banner">
+  <b>⚠ 这些是组件预览页，不是产品。</b><br>
+  产品里现在跑的仍然是旧的 MVP 界面 —— 新组件一个都没接进去。
+  要不要换、换哪些，等你逐个过目之后定。
+</div>
+
+<h2>三个视口（一个视口一个布局）</h2>
+<div class="grid">
+  <a class="card" href="../vp-full/index.html">
+    <div class="name">全屏视口 1600 × 1000</div>
+    <div class="desc">组件铺满 1600×1000，页面里只有这一块。</div>
+  </a>
+  <a class="card" href="../vp-workspace/index.html">
+    <div class="name">工作区视口 570 × 920</div>
+    <div class="desc">组件铺满 570×920，页面里只有这一块。</div>
+  </a>
+  <a class="card" href="../vp-drawer/index.html">
+    <div class="name">抽屉视口 1200 × 476</div>
+    <div class="desc">组件铺满 1200×476，页面里只有这一块。</div>
+  </a>
+</div>
+
+<h2>抽屉</h2>
+<div class="grid">
+  <a class="card" href="../drawer/index.html">
+    <div class="name">抽屉 · 已定稿圆角（B） <span class="tag old">已定稿</span></div>
+    <div class="desc">一次一个变体、占满宽度。面板里是 Workspace，外面只给两个定位父级。</div>
+  </a>
+
+</div>
+
+<h2>拆出来的组件（task-77 / 78 / 79）</h2>
+<div class="grid">
+  <a class="card" href="../relation-parts/index.html">
+    <div class="name">关系面板内部部件 · ParentChip / DeriveButton / RelationChip / GroupHead / TableBody / FlatBody / EmptyBody</div>
+    <div class="desc">七个部件各摆一块（RelationPanel 取 A 之后的内部件）。</div>
+  </a>  <a class="card" href="../treecard/index.html">
+    <div class="name">科技树卡片 · TreeCard</div>
+    <div class="desc">从 TechTree 内部抽出的独立组件。9 种形态：普通 / 选中 / 草稿 / hover / 孤儿 / 环 / 9 状态 / label 缺值 / 长标题截断。</div>
+  </a>
+  <a class="card" href="../workspace-parts/index.html">
+    <div class="name">工作区拆件 · WorkspaceToolbar / SpacePicker / ListHeader / SplitHandle / ListEmpty</div>
+    <div class="desc">五个独立组件各一块：工具栏（列表/科技树/权限/compact）/ 空间选择器（8 / 40 / 0 个空间）/ 列表头 / 拖拽分隔条 / 三种空态。</div>
+  </a>
+  <a class="card" href="../carddetail/index.html">
+    <div class="name">卡详情 · CardDetail（章节已接定稿 Section）</div>
+    <div class="desc">text / markdown / ask 三种章节真渲染 + 空章节 + 未注册类型降级。</div>
+  </a>
+</div>
+<h2>你还没过目的（新做的）</h2>
+<div class="grid">
+  <a class="card" href="../workspace/index.html">
+    <div class="name">V3 工作区 · Workspace <span class="tag new">未过目</span></div>
+    <div class="desc">空间条 + 筛选行 + 列表 + 详情。含列表/科技树切换。可切 1600×1000 / 570×920 两档舞台。</div>
+  </a>
+  <a class="card" href="../techtree/index.html">
+    <div class="name">V1 科技树 · TechTree <span class="tag new">未过目</span></div>
+    <div class="desc">一列一层 + 连线箭头 + hover 时无关边淡到 25% + 筛选/搜索隐藏 + 输入编号回车跳转详情。</div>
+  </a>
+  <a class="card" href="../permission/index.html">
+    <div class="name">V2 权限面板 · PermissionPanel <span class="tag new">未过目</span></div>
+    <div class="desc">两条正交轴的档位选择器（卡片动作档位 / 工具管控档位）。含加载中、保存中、保存失败回滚各状态。</div>
+  </a>
+  <a class="card" href="../searchbox/index.html">
+    <div class="name">搜索框 · SearchBox <span class="tag new">未过目</span></div>
+    <div class="desc">框内放大镜图标 + 「前往」按钮 + 回车提交。可切空 / 有内容 / 禁用。</div>
+  </a>
+</div>
+
+<h2>之前定稿过的（复看用）</h2>
+<div class="grid">
+  <a class="card" href="../cardcreate/index.html">
+    <div class="name">C8 建卡页 · CardCreate <span class="tag old">已定稿</span></div>
+    <div class="desc">全屏建卡：模板选择 → 三级联选 → 各章节表单。</div>
+  </a>
+
+  <a class="card" href="../gallery/index.html">
+    <div class="name">展厅 · Gallery <span class="tag old">已定稿</span></div>
+    <div class="desc">9 状态 × 6 关系的全量外观总览。</div>
+  </a>
+  <a class="card" href="../section/index.html">
+    <div class="name">C6 章节 · Section <span class="tag old">已定稿</span></div>
+    <div class="desc">text / markdown / ask 三类章节的渲染与编辑。</div>
+  </a>
+  <a class="card" href="../markdown/index.html">
+    <div class="name">Markdown 渲染 <span class="tag old">已定稿</span></div>
+    <div class="desc">marked + 白名单（含 XSS 防护）。</div>
+  </a>
+  <a class="card" href="../spacebar/index.html">
+    <div class="name">C5 空间条 · SpaceBar <span class="tag old">已定稿</span></div>
+    <div class="desc">空间 chip 行，含归档态与折行。</div>
+  </a>
+  <a class="card" href="../filterbox/index.html">
+    <div class="name">筛选 · FilterBox（状态两级） <span class="tag old">已定稿</span></div>
+    <div class="desc">4 个组 + 组下状态；面包屑每段单独可点；点外面收起。</div>
+  </a>  <a class="card" href="../relation-panel/index.html">
+    <div class="name">关系面板 <span class="tag old">已定稿 A</span></div>
+    <div class="desc">A 原版三列表（产品已接 A）、B 平铺列表、C 折叠+计数条。</div>
+  </a>  <a class="card" href="../statusmenu/index.html">
+    <div class="name">C4 状态菜单 · StatusMenu <span class="tag old">已定稿</span></div>
+    <div class="desc">状态胶囊 + 展开菜单 + 禁用项。</div>
+  </a>
+</div>
+
+<footer>
+  这些页面都是自包含单文件（React 已内联），file:// 直接双击可开，不需要服务器。<br>
+  重建某个页面：<code>cd packages\dsh-client &amp;&amp; node dev\preview\build.mjs &lt;名字&gt;</code>
+</footer>
+
+</body>
+</html>
