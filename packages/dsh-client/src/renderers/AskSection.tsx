@@ -325,6 +325,12 @@ function CustomOption(props: {
 	const [active, setActive] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const hasValue = props.group.custom.some((one) => one !== '');
+	/*
+	 * 单选组里别的选项有选中（picked 非空）⇒ 自填不亮 —— 否则点普通选项后
+	 * 自填的本地 ctive 还挂着，两个同时亮。多选组可以共存。
+	 */
+	const customPicked =
+		hasValue || (props.group.multiSelect ? active : active && props.group.pickedState !== 'picked');
 
 	const commit = (): void => {
 		const value = draft.trim();
@@ -337,17 +343,27 @@ function CustomOption(props: {
 	/*
 	 * 复用 `AskOptionRow` —— 用户 2026-11-21：
 	 * > 「把选项组件抽出来。不要开那么多胶水代码。他们的逻辑应该是很一致的。」
+	 * > 「自填框不会跟其他的选框互斥」
 	 *
 	 * ⇒ 圆圈 / 方框 / `is-picked` / 整行热区都由那个组件管；
-	 *   这里只把 body 换成输入框，点整行 = 选中自己 + focus。
+	 *   点整行 = 选中自己 + focus。**单选组里还要先清空其他选中**
+	 *   （否则自填和普通选项会同时亮 —— 这就是「逻辑没统一」）。
 	 */
 	return (
 		<AskOptionRow
 			sectionId={props.sectionId}
 			label=""
-			picked={active || hasValue}
+			picked={customPicked}
 			multiSelect={props.group.multiSelect}
 			onSelect={() => {
+				/*
+				 * 单选语义：选中自填 ⇒ 其他选项必须取消。
+				 * 走 `onAnswer(sectionId, NO_ANSWER)` 让父层把 `picked` 清空；
+				 * 多选语义：可以和其他选项共存 ⇒ 不动。
+				 */
+				if (!props.group.multiSelect) {
+					props.onAnswer?.(props.sectionId, NO_ANSWER);
+				}
 				setActive(true);
 				inputRef.current?.focus();
 			}}
