@@ -166,9 +166,8 @@ export function CreateColumn(props: {
 							patchItem(itemIndex, { question: e.target.value });
 						}}
 					/>
-					<span className="as-role">question</span>
 
-					{/* header：副标题（灰小字） */}
+					{/* header：副标题（灰小字）—— 和 question 连续两个框，中间不插 label */}
 					<input
 						className="as-input as-input--header"
 						value={item.header}
@@ -177,7 +176,6 @@ export function CreateColumn(props: {
 							patchItem(itemIndex, { header: e.target.value });
 						}}
 					/>
-					<span className="as-role">header</span>
 
 					{/* options：可增删改（label + description 两个字段） */}
 					<div className="as-options">
@@ -241,16 +239,11 @@ export function CreateColumn(props: {
 						<span className="as-role">multi-select</span>
 					</label>
 
-					{/* 自填灰字 */}
-					<input
-						className="as-input as-input--dashed"
-						value={item.placeholder}
-						placeholder="自填框灰字"
-						onChange={(e) => {
-							patchItem(itemIndex, { placeholder: e.target.value });
-						}}
-					/>
-					<span className="as-role">placeholder</span>
+					{/*
+					 * 用户 2026-11-21：「创建期不要展示『如果都不合适，写下你的想法』的自填框。」
+					 * ⇒ create 相位**不画** placeholder（自填灰字）的编辑框 —— 它是运行时固定行为，
+					 *   不是题目的一部分。
+					 */}
 				</div>
 			))}
 
