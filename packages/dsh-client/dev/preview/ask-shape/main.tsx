@@ -347,52 +347,43 @@ export function EndedColumn(props: {
 	readonly items: readonly AskItem[];
 }): React.ReactNode {
 	const items = props.items;
-	const first = items[0];
-	const question = first?.question ?? '';
-	const header = first?.header ?? '';
-	const options = first?.options ?? [];
-	const picked = first?.picked ?? [];
-	const custom = first?.custom ?? [];
+
+	/*
+	 * ⚠ 这里原来是一套**手写的假组件**（`as-readonly__option` 之类），
+	 * 跟产品完全脱钩 —— 所以冻结态的「选中项左边框」在它身上根本不生效。
+	 *
+	 * 现在直接喂真 `AskGroupCard` + `readonly`：冻结态长什么样由产品决定，
+	 * 预览不再画第二套。
+	 */
+	const payload = {
+		$type: 'ask',
+		items: items.map((item) => ({
+			header: item.header,
+			question: item.question,
+			options: item.options,
+			multi_select: item.multiSelect,
+			placeholder: item.placeholder,
+			...(item.picked === undefined ? {} : { picked: item.picked }),
+			...(item.custom === undefined ? {} : { custom: item.custom }),
+		})),
+	};
+
+	const view = sectionViewOf(payload);
 
 	return (
 		<div className="as-col">
 			<div className="as-col__head">
 				<span className="as-col__name">ended</span>
-				<span className="as-col__note">只读展示结果 —— 可刮取复制</span>
+				<span className="as-col__note">只读展示结果 —— 可刮取复制（真 AskGroupCard readonly）</span>
 			</div>
 
-			<div className="as-readonly">
-				{header === '' ? null : <div className="as-readonly__header">{header}</div>}
-				{question === '' ? null : <div className="as-readonly__question">{question}</div>}
-
-				{options.map((option) => {
-					const isPicked = picked.includes(option.label);
-					return (
-						<div
-							key={option.label}
-							className={
-								isPicked ? 'as-readonly__option as-readonly__option--picked' : 'as-readonly__option'
-							}
-						>
-							<span>
-								{option.label}
-								{option.description === undefined || option.description === '' ? null : (
-									<span className="as-readonly__desc"> {option.description}</span>
-								)}
-							</span>
-							{isPicked ? <span className="as-readonly__check">✓</span> : null}
-						</div>
-					);
-				})}
-
-				<div className="as-pill">
-					{picked.length === 0 ? '未选择' : `单选 · 已选 ${String(picked.length)}`}
-				</div>
-
-				{custom.length === 0 ? null : (
-					<div className="as-readonly__custom">自填：{custom.join('、')}</div>
-				)}
-			</div>
+			{view.kind === 'ask' ? (
+				view.groups.map((group, index) => (
+					<AskGroupCard key={index} sectionId={`preview-ended-${String(index)}`} group={group} readonly />
+				))
+			) : (
+				<div className="as-note">夹具不是 ask 形态（预览数据写错了）</div>
+			)}
 
 			<div className="as-note">⚠ 没有输入框、没有按钮 —— 只有文本（user-select: text）</div>
 		</div>
