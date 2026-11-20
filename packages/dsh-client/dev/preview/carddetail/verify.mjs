@@ -182,11 +182,37 @@ const readPanel = (key) =>
       bg: getComputedStyle(b).backgroundColor,
       color: getComputedStyle(b).color,
     })),
-    sectionLabels: [...box.querySelectorAll('[data-section-id]')].map(n => ({
-      id: n.dataset.sectionId,
-      label: n.querySelector('.detail-section__label').textContent,
-      body: n.querySelector('.detail-section__body').textContent,
-    })),
+    /*
+     * 章节节点现在是定稿 Section：data-section-id / data-section-kind /
+     * data-section-readonly 是它自己写的钩子；空 text 用
+     * .section-block__placeholder，正文用 .section-block__text。
+     */
+    sections: [...box.querySelectorAll('[data-section-id]')].map(n => {
+      const label = n.querySelector('.section-block__label-text');
+      const text = n.querySelector('.section-block__text');
+      const placeholder = n.querySelector('.section-block__placeholder');
+      const ask = n.querySelector('.ask');
+      const firstOption = n.querySelector('[data-ask-option]');
+      return {
+        id: n.dataset.sectionId,
+        kind: n.dataset.sectionKind,
+        readonly: n.dataset.sectionReadonly,
+        label: label === null ? null : label.textContent,
+        text: text === null ? null : text.textContent,
+        placeholder: placeholder === null ? null : placeholder.textContent.trim(),
+        hasMd: n.querySelector('.md') !== null,
+        hasMdHeading: n.querySelector('.md h3') !== null,
+        hasMdCode: n.querySelector('.md pre.md-code') !== null,
+        hasAsk: ask !== null,
+        askInteractive: ask === null ? null : ask.dataset.askInteractive,
+        askOptions: n.querySelectorAll('[data-ask-option]').length,
+        firstOptionTag: firstOption === null ? null : firstOption.tagName,
+        hasUnknown: n.querySelector('.section-block__unknown') !== null,
+        unknownToggle: n.querySelector('[data-json-toggle]') === null
+          ? null
+          : n.querySelector('[data-json-toggle]').textContent,
+      };
+    }),
     hasSectionsEmpty: q('[data-sections-empty]') !== null,
     note: note === null ? null : {
       label: note.querySelector('.detail-note__label').textContent,
@@ -235,7 +261,7 @@ const clearEvents = () => ev(`document.querySelector('[data-clear-log]').click()
 console.log('\n═══ ① ⭐ 标题独占一行 ═══');
 {
 	const panes = await ev(`document.querySelectorAll('.detail').length`);
-	expect('八个详情面板都渲染了（1 活 + 7 场景）', panes, 8);
+	expect('九个详情面板都渲染了（1 活 + 8 场景）', panes, 9);
 
 	const many = await readPanel('many-history');
 	expect('标题文字正确', many.title, '把详情面板重做成「标题独占一行、备注常驻」');
@@ -308,16 +334,25 @@ console.log('\n═══ ①b ⭐ 状态在最左（编号左边），且不随 
 /* ══════════════════════════════════════════════════════════ */
 console.log('\n═══ ② ⭐ 备注常驻（每个场景都有）═══');
 {
-	const keys = ['empty-history', 'one-history', 'many-history', 'long-label', 'deleted', 'no-sections', 'no-close'];
+	const keys = [
+		'empty-history',
+		'one-history',
+		'many-history',
+		'long-label',
+		'deleted',
+		'section-kinds',
+		'no-sections',
+		'no-close',
+	];
 	const notes = [];
 	for (const key of keys) {
 		const one = await readPanel(key);
 		notes.push({ key, has: one.note !== null, visible: one.note !== null && one.note.visible });
 	}
 	expect(
-		'⭐ 七个场景都有备注节点且**真的可见**',
+		'⭐ 八个场景都有备注节点且**真的可见**',
 		notes.map((one) => one.has && one.visible),
-		[true, true, true, true, true, true, true],
+		[true, true, true, true, true, true, true, true],
 	);
 
 	const empty = await readPanel('empty-history');
@@ -359,13 +394,47 @@ console.log('\n═══ ③ ⭐ 没有「正文」二字 ═══');
 	expect('（对照）页面确实含「备注」二字 ⇒ 上面的断言不是空跑', bodyText.includes('备注'), true);
 	expect('（对照）页面确实含「历史」二字', bodyText.includes('历史'), true);
 
-	const sections = await readPanel('many-history');
+	/*
+	 * 2026-11-20：章节从 SectionStub 换成定稿 Section ⇒ 断言改成读 Section 的钩子：
+	 * `data-section-kind`（text / markdown / ask / unknown）+ 各形态的类名。
+	 */
+	const panel = await readPanel('section-kinds');
 	expect(
-		'⭐ 章节平铺：label 顺序 = 卡上的键顺序（goal → design → record）',
-		sections.sectionLabels.map((one) => one.label),
-		['目标', '设计', '记录'],
+		'⭐ 章节平铺：label 顺序 = 卡上的键顺序（goal → design → questions → record → unregistered）',
+		panel.sections.map((one) => one.label),
+		['目标', '设计', '需要回答的问题', '记录', '未注册的动作'],
 	);
-	expect('空内容的章节显示「（空）」', sections.sectionLabels[2].body.trim(), '（空）');
+	expect(
+		'⭐ 章节类型由 payload 的 $type 决定（Section 内部分派）',
+		panel.sections.map((one) => one.kind),
+		['text', 'markdown', 'ask', 'text', 'unknown'],
+	);
+	const [goal, design, questions, record, unregistered] = panel.sections;
+	expect('text：正文用 .section-block__text 且保留换行', goal.text.includes('\n'), true);
+	expect(
+		'markdown：.md 容器 + 标题 + 代码块',
+		[design.hasMd, design.hasMdHeading, design.hasMdCode],
+		[true, true, true],
+	);
+	expect('ask：两组选项都渲染出来了', questions.askOptions, 6);
+	expect('⭐ ask 只读：选项是 div（不假装能点的 button）', questions.firstOptionTag, 'DIV');
+	expect('⭐ ask 只读：data-ask-interactive=false', questions.askInteractive, 'false');
+	expect('空 text ⇒「（空）」占位', record.placeholder, '（空）');
+	expect(
+		'⚠ 未注册 $type ⇒ 降级成可展开的原始 JSON',
+		[unregistered.kind, unregistered.hasUnknown, String(unregistered.unknownToggle).includes('未注册的动作')],
+		['unknown', true, true],
+	);
+	expect(
+		'⭐ 所有章节都是 readonly（编辑 / ask 回答还没接线）',
+		panel.sections.every((one) => one.readonly === 'true'),
+		true,
+	);
+	expect(
+		'⭐ 占位组件的 class 已经彻底消失（.detail-section*）',
+		await ev(`document.querySelectorAll('.detail-section__label, .detail-section__body, .detail-section__empty').length`),
+		0,
+	);
 	const noSec = await readPanel('no-sections');
 	expect('没有章节 ⇒ 显示占位（不是空白）', noSec.hasSectionsEmpty, true);
 	expect('没有章节 ⇒ 占位文案说明原因', await ev(

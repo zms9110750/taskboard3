@@ -683,10 +683,12 @@ export const WORKSPACE_CSS = `
 .tb3w-root .detail-action:not(.is-primary) .detail-action__badge{background:#eef1f5;color:var(--text-secondary)}
 .tb3w-root .detail-banner{padding:8px 11px;border:1px solid #fde68a;border-radius:7px;background:#fffbeb;color:#92400e;font-size:11.5px;line-height:1.6}
 .tb3w-root .detail-sections{display:flex;flex-direction:column;gap:12px;min-width:0}
-.tb3w-root .detail-section{display:flex;flex-direction:column;gap:4px;min-width:0}
-.tb3w-root .detail-section__label{font-size:12px;font-weight:600;color:var(--text-secondary)}
-.tb3w-root .detail-section__body{overflow-wrap:anywhere;color:var(--text);font-size:12.5px;line-height:1.75;white-space:pre-wrap}
-.tb3w-root .detail-section__empty,.tb3w-root .detail-empty{font-size:12px;color:var(--text-weak)}
+/*
+ * ⚠ 这里曾经有 .detail-section / __label / __body / __empty —— 它们只服务
+ *   CardDetail 里的占位组件 SectionStub。2026-11-20 章节改用定稿 Section
+ *   （.section-block 那一套在 SECTION_CSS 里）⇒ 这几条已删，别再加回来。
+ */
+.tb3w-root .detail-empty{font-size:12px;color:var(--text-weak)}
 .tb3w-root .detail-note{display:flex;flex-direction:column;gap:5px;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fbfcfd}
 .tb3w-root .detail-note__label{font-size:11.5px;font-weight:600;color:var(--text-secondary)}
 .tb3w-root .detail-note__input{width:100%;padding:7px 9px;border:1px solid transparent;border-radius:5px;background:var(--bg-card);resize:vertical;color:var(--text);font-family:inherit;font-size:12.5px;line-height:1.7}
@@ -995,6 +997,116 @@ ${DRAWER_VARIANT_IDS.map(
   .tb3d-panel .tb3w-list{flex:0 0 ${px(DRAWER_COMPACT_SPACING.listWidth)}}
   .tb3d-panel .tb3w-detail{flex:1 1 0;min-width:0;max-width:none}
 }
+`;
+
+/**
+ * 章节渲染（`Section` / `Markdown` / `AskSection`）的样式 —— 作用域 `.tb3w-root`。
+ *
+ * ## 为什么单独一段
+ *
+ * 这三个组件是 C6 定稿的，但它们的 CSS 一直**只存在于预览**里：
+ * `dev/preview/section/style.css` + `dev/preview/markdown/style.css`。
+ * 2026-11-20 章节接进 `CardDetail`（详情是产品级页面）⇒ 必须在产品样式里
+ * 收口一份，否则详情里的章节是**裸文本**：没有外框、markdown 没有排版、
+ * ask 没有选项样式。
+ *
+ * 规则**逐条照搬**那两个 preview CSS，只加 `.tb3w-root` 前缀，类名一个没改
+ * （那些预览验收过的 DOM 仍然对得上）。
+ *
+ * ## 间距归父容器管
+ *
+ * `.section-block` 在预览里自带 `margin-bottom:10px`；产品里章节挂在
+ * `.detail-sections`（`display:flex;gap:12px`）下 ⇒ 这里**不加 margin**，
+ * 否则间距叠加成 22px。
+ *
+ * ⚠ 本文件是模板字符串 —— 注释里不能出现反引号。
+ */
+export const SECTION_CSS = `
+/* ── 一章的外框 ── */
+.tb3w-root .section-block{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card)}
+/* 可编辑：整章是点击目标 ⇒ 给 hover 反馈；只读时没有 pointer/hover（点不动看得出来） */
+.tb3w-root .section-block.is-editable{cursor:pointer;transition:border-color .12s,background .12s}
+.tb3w-root .section-block.is-editable:hover{border-color:var(--accent);background:#f8fbff}
+.tb3w-root .section-block__label{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;font-size:11.5px;color:var(--text-secondary)}
+.tb3w-root .section-block__label-text{font-weight:600}
+.tb3w-root .section-block__edit-hint{margin-left:auto;font-size:10.5px;color:var(--accent);opacity:0;transition:opacity .12s}
+.tb3w-root .section-block.is-editable:hover .section-block__edit-hint{opacity:1}
+/* text 正文：保留换行与缩进（text 与 markdown 的区别就在这里） */
+.tb3w-root .section-block__text{font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;word-break:break-word}
+/* 空态 / 模板作者写的灰字 */
+.tb3w-root .section-block__placeholder{font-size:12.5px;line-height:1.7;color:var(--text-weak);font-style:italic}
+
+/* ══════════════════════════════════════════════════════════
+   markdown（来自 dev/preview/markdown/style.css）
+   ══════════════════════════════════════════════════════════ */
+.tb3w-root .md{line-height:1.65;color:var(--text);word-break:break-word}
+.tb3w-root .md > *:first-child{margin-top:0}
+.tb3w-root .md > *:last-child{margin-bottom:0}
+.tb3w-root .md p,.tb3w-root .md ul,.tb3w-root .md ol,.tb3w-root .md blockquote,.tb3w-root .md table,.tb3w-root .md pre{margin:.6em 0}
+.tb3w-root .md h1,.tb3w-root .md h2,.tb3w-root .md h3,.tb3w-root .md h4,.tb3w-root .md h5,.tb3w-root .md h6{margin:1em 0 .5em;line-height:1.3;font-weight:600;color:var(--text)}
+.tb3w-root .md h1{font-size:1.5em}
+.tb3w-root .md h2{font-size:1.28em}
+.tb3w-root .md h3{font-size:1.12em}
+.tb3w-root .md h4,.tb3w-root .md h5,.tb3w-root .md h6{font-size:1em}
+.tb3w-root .md ul,.tb3w-root .md ol{padding-left:1.5em}
+.tb3w-root .md li + li{margin-top:.2em}
+.tb3w-root .md blockquote{padding:.2em 0 .2em .9em;border-left:3px solid var(--border);color:var(--text-secondary)}
+.tb3w-root .md hr{margin:1.2em 0;border:0;border-top:1px solid var(--border)}
+.tb3w-root .md a{color:var(--accent);text-decoration:none}
+.tb3w-root .md a:hover{text-decoration:underline}
+.tb3w-root .md code{padding:.15em .35em;border-radius:4px;background:#f1f3f6;font-family:var(--font-mono);font-size:.92em}
+/* 代码块：pre.md-code 里再套 code.md-code__body（内层不重复加底色） */
+.tb3w-root .md pre.md-code{position:relative;overflow-x:auto;padding:.9em .9em .8em;border:1px solid var(--border);border-radius:7px;background:#f7f8fa}
+.tb3w-root .md pre.md-code > code.md-code__body{padding:0;background:none;font-size:.9em;white-space:pre}
+/* 语言标签挂右上角（data-lang 只是数据，展示靠伪元素） */
+.tb3w-root .md pre.md-code[data-lang]::before{content:attr(data-lang);position:absolute;top:.35em;right:.7em;font-size:.72em;color:#9aa1ad;text-transform:uppercase;letter-spacing:.06em}
+.tb3w-root .md table.md-table{border-collapse:collapse;width:100%;font-size:.95em}
+.tb3w-root .md table.md-table th,.tb3w-root .md table.md-table td{padding:.35em .7em;border:1px solid var(--border);text-align:left}
+.tb3w-root .md table.md-table th{background:#f7f8fa;font-weight:600}
+.tb3w-root .md table.md-table th[align='center'],.tb3w-root .md table.md-table td[align='center']{text-align:center}
+.tb3w-root .md table.md-table th[align='right'],.tb3w-root .md table.md-table td[align='right']{text-align:right}
+/* 任务项：方框由组件产出（span.md-task__box），这里只管排版 */
+.tb3w-root .md li.md-task{list-style:none;margin-left:-1.2em}
+.tb3w-root .md li.md-task .md-task__box{display:inline-block;width:1.5em;color:var(--text-secondary)}
+.tb3w-root .md li.md-task.is-done{color:var(--text-secondary)}
+
+/* ══════════════════════════════════════════════════════════
+   ask（来自 dev/preview/section/style.css）
+   ══════════════════════════════════════════════════════════ */
+.tb3w-root .ask-group + .ask-group{margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)}
+.tb3w-root .ask-group__header{margin-bottom:2px;font-size:10.5px;color:var(--text-weak)}
+.tb3w-root .ask-group__question{margin-bottom:8px;font-size:12.5px;font-weight:600}
+.tb3w-root .ask-group__options{display:flex;flex-direction:column;gap:4px}
+.tb3w-root .ask-option{display:flex;align-items:flex-start;gap:7px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
+.tb3w-root .ask-option:hover{border-color:#93c5fd;background:#f8fbff}
+/* 只读的选项是 div —— 不给指针、不给 hover */
+.tb3w-root div.ask-option{cursor:default}
+.tb3w-root div.ask-option:hover{border-color:var(--border);background:var(--bg-card)}
+/* 已选：accent 描边 + 淡蓝底 + 勾 */
+.tb3w-root .ask-option.is-picked{border-color:var(--accent);background:#eff6ff}
+.tb3w-root div.ask-option.is-picked:hover{border-color:var(--accent);background:#eff6ff}
+/* 勾的位置固定占宽 ⇒ 未选中的文字不会左右跳 */
+.tb3w-root .ask-option__mark{flex:0 0 12px;color:var(--accent);font-weight:700;line-height:1.5}
+.tb3w-root .ask-option__body{display:flex;flex:1 1 auto;flex-direction:column;gap:1px;min-width:0}
+.tb3w-root .ask-option__label{font-weight:500}
+.tb3w-root .ask-option__desc{font-size:11px;line-height:1.6;color:var(--text-secondary)}
+/* 三态徽标：未选择灰 / 都不要橙 / 已选绿 */
+.tb3w-root .ask-group__state{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:10.5px;color:var(--text-weak)}
+.tb3w-root .ask-group__state-text{padding:0 6px;border-radius:4px;background:#f1f3f6;font-family:var(--font-mono)}
+.tb3w-root .ask-group__state[data-ask-state-label='unset'] .ask-group__state-text{color:#6b7280}
+.tb3w-root .ask-group__state[data-ask-state-label='none'] .ask-group__state-text{color:#b45309;background:#fef3c7}
+.tb3w-root .ask-group__state[data-ask-state-label='picked'] .ask-group__state-text{color:#047857;background:#d1fae5}
+.tb3w-root .ask-group__custom-values{font-size:10.5px;color:var(--text-secondary)}
+/* 「都不要」+ 自填 */
+.tb3w-root .ask-group__actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:9px;padding-top:9px;border-top:1px dashed #f0f2f6}
+.tb3w-root .ask-group__custom{flex:1 1 200px;min-width:120px;padding:4px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12px}
+.tb3w-root .ask-group__custom:focus{outline:none;border-color:var(--accent)}
+
+/* ══════════════════════════════════════════════════════════
+   未知 $type / 脏数据（降级成可展开的原始 JSON）
+   ══════════════════════════════════════════════════════════ */
+.tb3w-root .section-block__unknown{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.tb3w-root .payload-box{width:100%;max-height:260px;margin:0;padding:9px 11px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:#f6f7f9;font-family:var(--font-mono);font-size:10.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;cursor:text}
 `;
 
 /* 科技树的 CSS 单独放在 pure/techtree-css.ts —— 组件和本文件共用同一份真值（曾复制两份，无自动检查会红）。 */
@@ -1343,20 +1455,21 @@ export function injectStyles(): void {
 	element.id = STYLE_ID;
 	/*
 	/*
-	 * ⚠ 六段都注入：
+	 * ⚠ 七段都注入：
 	 *   STYLES         旧面板内的（tb3-*）
 	 *   CREATE_CSS     全屏建卡页（tb3cc-*）
 	 *   WORKSPACE_CSS  V3 工作区（tb3w-* + 六个定稿组件）
+	 *   SECTION_CSS    章节渲染（.section-block / .md / .ask-* / .payload-box）
 	 *   SEARCHBOX_CSS  工作区尾部搜索框（.search-box）
 	 *   DRAWER_CSS     V5 抽屉（tb3d-*：输入框上方展开 + 抽屉作用域下的纵向压缩）
 	 *   TECHTREE_CSS   科技树（tb3t-*，来自 pure/techtree-css.ts）
-	 *   合成一个 style 标签而不是六个 —— 少五个 DOM 节点，去重逻辑只需要管一个 id。
+	 *   合成一个 style 标签而不是七个 —— 少六个 DOM 节点，去重逻辑只需要管一个 id。
 	 *
 	 * ⚠ 顺序有约束：TECHTREE_CSS 放最后。它里面 .tb3t-card .card-id /
 	 *   .tb3t-card .badge 与 WORKSPACE_CSS 的 .tb3w-root .card-id /
 	 *   .tb3w-root .badge **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
 	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
-	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${TECHTREE_CSS}`;
+	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${TECHTREE_CSS}`;
 	document.head.appendChild(element);
 }

@@ -11,16 +11,21 @@
  *    · `long-label`     超长 label ⇒ 状态列 left **不变**（用户 `2026-11-18` 的根因）
  *    · `deleted`        墓碑 ⇒ 备注/章节都显示，动作禁用，横幅在
  *    · `no-sections`    没有章节 ⇒ 「模板没有章节」占位，但**没有「正文」二字**
+ *    · `section-kinds`  **三种 payload**：text 保留换行 / markdown 有排版 / ask
+ *                       只读展示（选项是 div，不假装能点）+ 未知动作降级 JSON
  *
  * 为什么要 ② 而不能只靠 ①：断言需要**每格都能直接读到初始态**，
  * 而 ① 里想凑出「0 条历史」得先把数据清掉。
+ *
+ * ⚠ 2026-11-20：章节的 `SectionStub` 占位已换成定稿 `Section` ⇒ 本页
+ *   现在渲染的是**三份真 payload**（text / markdown / ask），不是纯文本兜底。
  */
 
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { CardDetail } from '../../../src/renderers/CardDetail.tsx';
-import type { Card, HistoryEntry } from '../../../src/types.ts';
+import type { Card, CardSection, HistoryEntry } from '../../../src/types.ts';
 
 /* ── 夹具 ── */
 
@@ -30,6 +35,71 @@ const S = {
 	working: 'TASK_STATE_WORKING',
 	completed: 'TASK_STATE_COMPLETED',
 } as const;
+
+/**
+ * 章节夹具 —— **三种 payload 各一份**（+ 空 text + 未注册动作）。
+ *
+ * 形状照 `core/template/actions.ts` 的 zod schema（见 `pure/section.ts` 文件头）：
+ *   text     `{ $type:'text', value?, placeholder? }`
+ *   markdown `{ $type:'markdown', value?, placeholder? }`
+ *   ask      `{ $type:'ask', items:[{ header?, question?, options:[{label, description?}], multi_select?, picked? }] }`
+ */
+const SECTIONS: Readonly<Record<string, CardSection>> = {
+	goal: {
+		label: '目标',
+		payload: {
+			$type: 'text',
+			value: '详情面板的语义要能读、能测，不散在 JSX 里。\n这第二行用来验 text 保留换行（pre-wrap）。',
+		},
+	},
+	design: {
+		label: '设计',
+		payload: {
+			$type: 'markdown',
+			value: [
+				'### 三个决定',
+				'',
+				'1. **pure 出表**，组件只 `map`',
+				'2. `Section` 按 payload 的 `$type` **自己分派**',
+				'3. 未知动作降级成可展开的原始 JSON',
+				'',
+				'```ts',
+				'const view = sectionViewOf(payload);',
+				'```',
+				'',
+				'- 列表项 A',
+				'- 列表项 B',
+			].join('\n'),
+		},
+	},
+	questions: {
+		label: '需要回答的问题',
+		payload: {
+			$type: 'ask',
+			items: [
+				{
+					header: '详情页',
+					question: '详情页的章节用哪个组件渲染？',
+					multi_select: false,
+					options: [
+						{ label: '定稿 Section', description: 'text / markdown / ask 都走它' },
+						{ label: '继续用 SectionStub' },
+						{ label: '自己再写一个' },
+					],
+					picked: ['定稿 Section'],
+				},
+				{
+					header: '多选示例',
+					question: '哪些 payload 已经验过？',
+					multi_select: true,
+					options: [{ label: 'text' }, { label: 'markdown' }, { label: 'ask' }],
+				},
+			],
+		},
+	},
+	record: { label: '记录', payload: { $type: 'text', value: '' } },
+	unregistered: { label: '未注册的动作', payload: { $type: 'kanban-board', columns: 3 } },
+};
 
 /** ⚠ `HistoryEntry` 类型里没 `actor`（v3 早期），但运行时 core 会带 —— 用宽类型造夹具。 */
 type WideHistory = HistoryEntry & { readonly actor?: 'ai' | 'user' };
@@ -59,14 +129,7 @@ function card(over: Partial<Card> = {}): Card {
 				{ label: 'relates', to: 'DE-05' },
 			],
 		},
-		sections: {
-			goal: { label: '目标', payload: { $type: 'text', value: '详情面板的语义要能读、能测，不散在 JSX 里。' } },
-			design: {
-				label: '设计',
-				payload: { $type: 'text', value: '1) 一个 pure 函数产出整张表；2) 组件只 map；3) CDP 量标题的矩形。' },
-			},
-			record: { label: '记录', payload: { $type: 'text', value: '' } },
-		},
+		sections: SECTIONS,
 		note: '历史不折叠了，三条全画出来。',
 		createdAt: T0,
 		adoptedAt: null,
@@ -215,6 +278,13 @@ const SCENARIOS: readonly Scenario[] = [
 		card: card({ deleted: true }),
 	},
 	{
+		key: 'section-kinds',
+		note:
+			'三种 payload 都由定稿 Section 渲染：text（换行保留）/ markdown（标题+列表+代码块）/ ' +
+			'ask（只读：选项是 div，不假装能点）；record 是空 text ⇒「（空）」；未注册 $type ⇒ 降级 JSON',
+		card: card(),
+	},
+	{
 		key: 'no-sections',
 		note: '没有章节 ⇒ 显示占位文案（也没有任何包住章节的标题行）',
 		card: card({ sections: {}, history: [] }),
@@ -229,7 +299,7 @@ const SCENARIOS: readonly Scenario[] = [
 function Matrix(props: LiveProps): React.ReactNode {
 	return (
 		<section className="pv-block">
-			<h2>② 六个固定场景（逐个断言）</h2>
+			<h2>② 固定场景（逐个断言）</h2>
 			{SCENARIOS.map((s) => (
 				<div className="pv-case" key={s.key} data-scenario={s.key}>
 					<div className="pv-case__note">{s.note}</div>
@@ -275,7 +345,7 @@ function App(): React.ReactNode {
 				<h1>CardDetail / 卡片详情面板</h1>
 				<p>
 					状态在最左（固定列，不随 label 漂移）· 标题独占一行 · 备注常驻 ·{' '}
-					<b>历史不折叠</b> · 章节渲染等 C6 <code>Section</code> 合并后替换
+					<b>历史不折叠</b> · 章节 = 定稿 <code>Section</code>（text / markdown / ask 三种 payload）
 				</p>
 			</header>
 

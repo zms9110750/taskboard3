@@ -109,9 +109,10 @@ describe('① 三个候选形态', () => {
 		}
 	});
 
-	it('默认形态是「占位」而不是裁定 —— 必须是合法 id', () => {
+	it('⭐ 默认形态已定稿为 b（圆角）—— 用户 2026-11-20「抽屉使用圆角的。定稿。」', () => {
+		assert.equal(DRAWER_DEFAULT_VARIANT_ID, 'b');
 		assert.equal(DRAWER_VARIANT_IDS.includes(DRAWER_DEFAULT_VARIANT_ID), true);
-		assert.equal(drawerVariantOf(DRAWER_DEFAULT_VARIANT_ID), DRAWER_VARIANTS.a);
+		assert.equal(drawerVariantOf(DRAWER_DEFAULT_VARIANT_ID), DRAWER_VARIANTS.b);
 	});
 });
 

@@ -173,14 +173,18 @@ export interface DetailHeadView {
 /**
  * 一个章节的渲染决定。
  *
- * ## payload 形状假设（⚠ 等 C6 `Section` 合并后可能变）
+ * ## `payload` 原样透传 —— 内容怎么画归 `Section`
  *
  * 卡上的形状是 `CardSection = { label, payload }`（`src/types.ts:44`），
  * `payload` 是 action 给的**不透明结构**（`{ $type:'text', value }` 一类）。
- * 我假设 C6 的 `Section` 接 `{ label, payload }` 自己解释类型，
- * 所以这里把 **`payload` 原样透传**（`sections[i].payload === card.sections[id].payload`，
- * 单测用 `assert.strictEqual` 钉住），`text` 只是 C6 合并前的**纯文本兜底**
- * （复用产品 `src/pure.ts` 的 `extractText`，它已单测过）。
+ * 2026-11-20 起 `CardDetail` 用定稿 `Section` 渲染章节，它按 payload 的 `$type`
+ * 自己分派 text / markdown / ask / 未知降级（解析只有 `pure/section.ts` 一处）。
+ * ⇒ 这里把 **`payload` 原样透传**（`sections[i].payload === card.sections[id].payload`，
+ * 单测用 `assert.strictEqual` 钉住）；装箱成 `SectionProps` 的纯适配在
+ * `pure/section-adapter.ts`。
+ *
+ * `text` / `empty` 是 `SectionStub` 时代的纯文本兜底（`extractText()`，对 v3 的 ask
+ * 返回空串）—— 组件已**不再读**它们，保留是因为单测钉着、给纯文本兜底的调用方用。
  *
  * ## 顺序 = 卡的键插入顺序，**不排**
  *
@@ -193,11 +197,11 @@ export interface DetailSection {
 	readonly id: string;
 	/** 章节名**副本**（模板卸载后仍能显示）。 */
 	readonly label: string;
-	/** 从 payload 抽出的人话（C6 合并前的兜底）。 */
+	/** 从 payload 抽出的人话（纯文本兜底；组件已改用 `Section`，不再读它）。 */
 	readonly text: string;
-	/** 内容为空 ⇒ 组件显示占位（旧版是留一个空 div，用户看到一块空白）。 */
+	/** 内容为空（纯文本口径；组件已改用 `Section`，不再读它）。 */
 	readonly empty: boolean;
-	/** 原样透传给 C6 `Section`。 */
+	/** 原样透传给 `Section`（经 `sectionInputOf()`）。 */
 	readonly payload: unknown;
 }
 

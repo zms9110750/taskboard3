@@ -3,13 +3,19 @@
  *
  * ## 它只做「拼装 + 布局」
  *
+ * 用户 `2026-11-20`：「一个视图那么多能拆的。做了组件吗」
+ * ⇒ 四块内联部件已经搬进 `src/renderers/workspace/`，本文件只留「谁放哪」：
+ *
  * | 块 | 谁画 | 本文件的责任 |
  * |---|---|---|
- * | 空间 chip 行 | `SpaceBar` | 把 workspaces / current / viewing 原样传进去 |
- * | 工具栏 | **本文件** | 条数 / 关系图例 / 科技树⇄列表 / 新建（纯布局 + 文案）|
+ * | 空间 chip 行 | `SpaceBar`（full）/ `SpacePicker`（compact）| 把 workspaces / current / viewing 原样传进去 |
+ * | 工具栏 | `WorkspaceToolbar` | 传计数 / 视图 / 回调；权限按钮和空间选择器**按密度给不给** |
  * | 筛选行 | `FilterRow` + `FilterBox` | 建三棵树（状态 / 类别 / 领域）+ 尾部搜索框（定稿的 `SearchBox`）|
- * | 列表 | `CardRow` × N | 排序（按最后动过）+ 筛选/搜索（**隐藏**不匹配的卡）+ 空态 |
+ * | 列表头 | `ListHeader` | 传「显示中条数」 |
+ * | 空态 | `ListEmpty` | 传「为什么空」的判决（`emptyReasonOf()`）|
+ * | 列表 | `CardRow` × N | 排序（按最后动过）+ 筛选/搜索（**隐藏**不匹配的卡）|
  * | 科技树 | `TechTree` | `view=tree` 时占满列表栏；原样传 cards / 选中 / 筛选（判决在 `pure/tree-filter.ts`）|
+ * | 分隔条 | `SplitHandle` | 收它上报的列表比例、写成 `flex-basis` |
  * | 详情 | `CardDetail` | 传 labels / 回调；**不碰**它的显示判决 |
  * | 状态菜单 | `StatusMenu` | 锚点是详情里那个状态格（`[data-meta="status"]`）|
  *
@@ -59,7 +65,7 @@
  * 全仓规则：`./x.ts` / `./x.tsx`（见 AGENTS.md 规则 1）。
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 
 import { GROUP_LABELS, TASK_STATES, buttonsOf, isTaskState, statesInGroup } from '@taskboard/protocol';
@@ -75,7 +81,7 @@ import {
 	isFilterActive,
 	isQueryActive,
 } from '../pure/card-filter.ts';
-import type { CardFilter, EmptyReason } from '../pure/card-filter.ts';
+import type { CardFilter } from '../pure/card-filter.ts';
 import type { FilterNode, Picked } from '../pure/filter-box.ts';
 import { relationsOf, statusGroupOf } from '../pure/relations-block.ts';
 import { visibleCardIds } from '../pure/tree-filter.ts';
@@ -89,12 +95,13 @@ import { SearchBox } from './SearchBox.tsx';
 import { SpaceBar } from './SpaceBar.tsx';
 import { StatusMenu } from './StatusMenu.tsx';
 import { TechTree } from './TechTree.tsx';
+import { ListEmpty } from './workspace/ListEmpty.tsx';
+import { ListHeader } from './workspace/ListHeader.tsx';
+import { SplitHandle } from './workspace/SplitHandle.tsx';
+import { WorkspaceToolbar } from './workspace/WorkspaceToolbar.tsx';
 
 /* ══════════════════════════════════════════════════════════
-   关系图例
-
-   ⚠ 图例的颜色**不是状态色**（那是 9 状态一状态一色那套）。六种关系各一个
-   色相/线型，和旧版一致；数值抄设计图 view-3-workspace.svg 的图例段。
+   状态筛选的分组顺序
    ══════════════════════════════════════════════════════════ */
 
 /**
@@ -114,49 +121,6 @@ const STATUS_GROUP_ORDER = [
 
 /** 少一个组时这里编译失败（`StatusGroup` 正好 4 个）。 */
 const _GROUP_ORDER_COUNT: 4 = STATUS_GROUP_ORDER.length;
-
-/** 图例一项。`rel` 只用于 CSS 选择颜色/线型（`data-rel`）。 */
-interface LegendItem {
-	readonly rel: string;
-	readonly label: string;
-	readonly title: string;
-}
-
-const LEGEND: readonly LegendItem[] = Object.freeze([
-	{ rel: 'derives', label: '派生', title: '父任务 → 子任务' },
-	{ rel: 'depends', label: '依赖', title: '必须先完成' },
-	{ rel: 'supersedes', label: '取代', title: '这张卡取代了旧卡' },
-	{ rel: 'constrains', label: '约束', title: '限制了另一张卡' },
-	{ rel: 'related', label: '相关', title: '同一条线的工作' },
-	{ rel: 'references', label: '参考', title: '只是引用，不是依赖' },
-]);
-
-/* ══════════════════════════════════════════════════════════
-   空态文案
-
-   设计图没画空态，但页面必须有。**空的原因不同，话不能一样** ——
-   筛出 0 条却写「这个空间还没有卡」会让人以为数据丢了。
-   ⚠ 判决（是哪种空）在 `pure/card-filter.ts` 的 `emptyReasonOf()`，这里只挑句子。
-   ══════════════════════════════════════════════════════════ */
-
-/**
- * 按空的原因选一句文案。
- *
- * @param reason `emptyReasonOf()` 的返回值
- * @param query 搜索框原始值（只用它的 `trim()` 后结果拼话）
- */
-function emptyTextOf(reason: EmptyReason, query: string): string {
-	switch (reason) {
-		case 'space-empty':
-			return '这个空间还没有卡。';
-		case 'filter':
-			return '没有符合筛选条件的卡。';
-		case 'search':
-			return `没有匹配「${query.trim()}」的卡。`;
-		case 'both':
-			return `没有同时符合筛选和「${query.trim()}」的卡。`;
-	}
-}
 
 /* ══════════════════════════════════════════════════════════
    组件属性
@@ -260,7 +224,6 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 * 「需要点但是用不上的东西要折叠」）。点「工作空间 ▾」展开成一行。
 	 */
 	const compact = props.density === 'compact';
-	const [spaceOpen, setSpaceOpen] = useState(false);
 	const [search, setSearch] = useState<string>('');
 	/** 科技树里正 hover 的卡（`TechTree` 的 hover 是受控 prop，见组件文件头）。 */
 	const [treeHoverId, setTreeHoverId] = useState<string | null>(null);
@@ -272,10 +235,6 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	);
 	/** 分隔条拖过之后的列表占比；`null` = 用 CSS 默认（宽 2:1.2 / 窄 52%）。 */
 	const [splitRatio, setSplitRatio] = useState<number | null>(null);
-
-	const mainRef = useRef<HTMLDivElement>(null);
-	const listRef = useRef<HTMLElement>(null);
-	const splitRef = useRef<HTMLDivElement>(null);
 
 	/* ── 派生数据 ── */
 
@@ -452,49 +411,13 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 		setMenu({ cardId: selectedCard.id, anchor: statusCell });
 	};
 
-	/**
-	 * 分隔条拖动 —— 两种情况（宽版横拖 / 窄版竖拖）**同一套代码**：
-	 * 方向从 `.tb3w-main` 计算后的 `flex-direction` 读，不猜。
+	/*
+	 * 拖过之后才写内联 style；没拖过让 CSS 说话（宽 2:1.2、窄 52%）。
 	 *
-	 * 结果写成**百分比**（`flex-basis`），所以容器换尺寸后比例仍然成立
-	 * —— 写死 px 的话切一次舞台就会溢出。
+	 * ⚠ 拖动本身在 `SplitHandle` 里（它自己按 DOM 找 main / list、自己夹边界）；
+	 *   本组件只收它上报的**比例**，写成 `flex-basis` 百分比 —— 写 px 的话
+	 *   换个舞台尺寸就会溢出。
 	 */
-	const onSplitMouseDown = (event: ReactMouseEvent<HTMLDivElement>): void => {
-		const main = mainRef.current;
-		const list = listRef.current;
-		if (main === null || list === null) return;
-		event.preventDefault();
-
-		const column = getComputedStyle(main).flexDirection === 'column';
-		const startPos = column ? event.clientY : event.clientX;
-		const mainBox = main.getBoundingClientRect();
-		const listBox = list.getBoundingClientRect();
-		const mainSize = column ? mainBox.height : mainBox.width;
-		const startSize = column ? listBox.height : listBox.width;
-		if (mainSize <= 0) return;
-
-		/* 两头都留最小值，否则会把某一栏挤成 0（拖不回来）。 */
-		const MIN_LIST = 160;
-		const MIN_DETAIL = 180;
-
-		const onMove = (moveEvent: globalThis.MouseEvent): void => {
-			const delta = (column ? moveEvent.clientY : moveEvent.clientX) - startPos;
-			const next = Math.min(
-				Math.max(startSize + delta, MIN_LIST),
-				mainSize - MIN_DETAIL,
-			);
-			setSplitRatio(next / mainSize);
-		};
-		const onUp = (): void => {
-			window.removeEventListener('mousemove', onMove);
-			window.removeEventListener('mouseup', onUp);
-		};
-
-		window.addEventListener('mousemove', onMove);
-		window.addEventListener('mouseup', onUp);
-	};
-
-	/* 拖过之后才写内联 style；没拖过让 CSS 说话（宽 2:1.2、窄 52%）。 */
 	const listStyle =
 		splitRatio === null ? undefined : { flex: `0 0 ${String(splitRatio * 100)}%` };
 	const detailStyle =
@@ -578,120 +501,33 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						/>
 					)}
 
-					<div className="tb3w-toolbar" data-toolbar>
-						<span className="tb3w-toolbar__title">
-							任务
-							<span className="tb3w-toolbar__count" data-count>
-								{queryActive
-									? `筛出 ${String(shownCount)} / 共 ${String(props.cards.length)} 条`
-									: `共 ${String(props.cards.length)} 条`}
-							</span>
-						</span>
-
-						<span className="tb3w-toolbar__legend" data-legend>
-							<span className="tb3w-toolbar__legend-label">关系图例</span>
-							{LEGEND.map((item) => (
-								<span className="tb3w-legend__item" key={item.rel} title={item.title}>
-									<i className="tb3w-legend__line" data-rel={item.rel} />
-									<span>{item.label}</span>
-								</span>
-							))}
-							<span className="tb3w-legend__hint tb3w-legend__hint--long">
-								（只在科技树视图显示）
-							</span>
-							<span className="tb3w-legend__hint tb3w-legend__hint--short">
-								（仅科技树）
-							</span>
-						</span>
-
-						<span className="tb3w-toolbar__actions">
-							{/*
-							 * 紧凑：空间切换是**下拉面板** —— 点开在按钮下方弹出，
-							 * 覆盖在内容上，不推挤布局。
-							 * 用户 `2026-11-20`：「是菜单往下打开区域的，不是在菜单身上就展开的」。
-							 */}
-							{compact ? (
-								<span className="tb3w-space-wrap">
-									<button
-										type="button"
-										className="ghost-btn tb3w-space-toggle"
-										data-space-toggle
-										aria-expanded={spaceOpen}
-										aria-haspopup="true"
-										onClick={() => {
-											setSpaceOpen((prev) => !prev);
-										}}
-									>
-										{spaceOpen ? '工作空间 ▴' : '工作空间 ▾'}
-									</button>
-									{spaceOpen ? (
-										<div className="tb3w-space-pop" role="dialog" aria-label="切换工作空间">
-											<SpaceBar
-												workspaces={props.workspaces}
-												currentId={props.currentId}
-												viewingId={props.viewingId}
-												showArchived={props.showArchived}
-												cardCount={props.cards.length}
-												onView={props.onView}
-												onActivate={props.onActivate}
-												onToggleArchived={props.onToggleArchived}
-												onToggleShowArchived={props.onToggleShowArchived}
-												onCreate={props.onCreateWorkspace}
-											/>
-										</div>
-									) : null}
-								</span>
-							) : null}
-							{/* 紧凑：权限与约定收起来（低频、用不上 —— 用户 2026-11-20「要折叠」） */}
-							{compact || props.onOpenPermission === undefined ? null : (
-								<button
-									type="button"
-									className="ghost-btn tb3w-toolbar__perm"
-									onClick={props.onOpenPermission}
-								>
-									权限与约定
-								</button>
-							)}
-							{/*
-							 * ⚠ 分段按钮**没有定稿组件**。这里是临时内联实现，
-							 *   候选在 `dev/components/buttons.tsx` 的 `SegmentedControl`
-							 *   —— 用户还没选，所以不接进产品（用户 2026-11-20：
-							 *   「这不是我当初选定的定稿组件」）。
-							 */}
-							<span className="tb3w-seg" role="group" aria-label="视图切换">
-								<button
-									type="button"
-									className={view === 'tree' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
-									data-view-btn="tree"
-									aria-pressed={view === 'tree'}
-									onClick={() => {
-										setView('tree');
-									}}
-								>
-									科技树
-								</button>
-								<button
-									type="button"
-									className={view === 'list' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
-									data-view-btn="list"
-									aria-pressed={view === 'list'}
-									onClick={() => {
-										setView('list');
-									}}
-								>
-									列表
-								</button>
-							</span>
-							<button
-								type="button"
-								className="tb3w-btn-primary"
-								data-create-card
-								onClick={props.onCreateCard}
-							>
-								新建
-							</button>
-						</span>
-					</div>
+					<WorkspaceToolbar
+						shownCount={shownCount}
+						totalCount={props.cards.length}
+						queryActive={queryActive}
+						view={view}
+						onViewChange={setView}
+						onCreateCard={props.onCreateCard}
+						{...(compact || props.onOpenPermission === undefined
+							? {}
+							: { onOpenPermission: props.onOpenPermission })}
+						{...(compact
+							? {
+									spacePicker: {
+										workspaces: props.workspaces,
+										currentId: props.currentId,
+										viewingId: props.viewingId,
+										showArchived: props.showArchived,
+										cardCount: props.cards.length,
+										onView: props.onView,
+										onActivate: props.onActivate,
+										onToggleArchived: props.onToggleArchived,
+										onToggleShowArchived: props.onToggleShowArchived,
+										onCreate: props.onCreateWorkspace,
+									},
+								}
+							: {})}
+					/>
 
 					<div className="tb3w-filters">
 						<FilterRow
@@ -748,8 +584,8 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					</div>
 				</div>
 
-				<div className="tb3w-main" ref={mainRef} data-main>
-					<section className="tb3w-list" ref={listRef} style={listStyle} data-list>
+				<div className="tb3w-main" data-main>
+					<section className="tb3w-list" style={listStyle} data-list>
 						{view === 'tree' ? (
 							/*
 							 * 科技树视图：整栏交给定稿的 `TechTree`（它自带画布滚动 + 页脚图例）。
@@ -771,19 +607,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							</div>
 						) : (
 							<>
-								<header className="tb3w-list__head">
-									<span className="tb3w-list__title">
-										列表 <em data-list-count>· {String(visibleCards.length)} 条</em>
-									</span>
-									<span className="tb3w-list__sort">按更新时间</span>
-								</header>
-
-								<div className="tb3w-list__cols" aria-hidden="true">
-									<span>编号 + 状态</span>
-									<span>分类 · 领域 · 模板</span>
-									<span>标题</span>
-									<span>最后动过</span>
-								</div>
+								<ListHeader count={visibleCards.length} />
 
 								<div className="tb3w-list__body" data-list-body>
 									{visibleCards.length === 0 ? (
@@ -791,9 +615,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 										 * 有卡但被筛/搜掉了 ⇒ 画空态。⚠ 文案按**原因**选，
 										 * 不能一律写「这个空间还没有卡」。
 										 */
-										<div className="tb3w-list__empty" data-list-empty={emptyReason}>
-											{emptyTextOf(emptyReason, search)}
-										</div>
+										<ListEmpty reason={emptyReason} query={search} />
 									) : (
 										visibleCards.map((card) => (
 											<CardRow
@@ -811,20 +633,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						)}
 					</section>
 
-					{detailOpen ? (
-						<div
-							className="tb3w-split"
-							ref={splitRef}
-							role="separator"
-							data-split
-							onMouseDown={onSplitMouseDown}
-						>
-							<span className="tb3w-split__line" />
-							<span className="tb3w-split__grip" aria-hidden="true">
-								⇄
-							</span>
-						</div>
-					) : null}
+					{detailOpen ? <SplitHandle onResize={setSplitRatio} /> : null}
 
 					{selectedCard === null ? null : renderDetail(selectedCard)}
 

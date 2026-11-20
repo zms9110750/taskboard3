@@ -39,13 +39,18 @@
  * 本组件 + SVG 子树，卡片 DOM 不重建（设计图 ③：「hover 只重画 SVG 线层，卡片
  * DOM 不重建（不闪）」）。
  *
- * ## 样式为什么和组件同文件
+ * ## 卡片是独立组件
  *
- * 产品样式本应进 `src/styles.ts`，但本任务的写权限只有
- * `src/renderers/TechTree.tsx` / `src/pure/tree-filter.ts` / `dev/preview/techtree/`。
- * ⇒ 这里导出 `TECHTREE_CSS` + `injectTechTreeStyles()`（幂等，同 `styles.ts` 的手法）。
- * **合并时把 `TECHTREE_CSS` 并进 `styles.ts` 即可**（一行）。
- * 卡片里的圆点 / 徽章 / 编号沿用 `src/styles.ts` 已有的 `.dot` / `.badge` / `.card-id`
+ * 卡片本体在 `src/renderers/TreeCard.tsx`（独立预览 `dev/preview/treecard/`）——
+ * 本文件只负责把布局算好的 `left / top / width / height` 当 `style` 传给它。
+ * 位置**永远由布局算**，卡片自己不算坐标。
+ *
+ * ## 样式在哪
+ *
+ * `TECHTREE_CSS` 在 `pure/techtree-css.ts`（纯 `.ts`，`styles.ts` 和本组件都 import
+ * 同一份 ⇒ 产品与预览物理上不可能漂移）。这里只是 `export { TECHTREE_CSS }` 转发，
+ * 并保留 `injectTechTreeStyles()` 供预览注入。
+ * 卡片里的圆点 / 徽章 / 编号沿用 `styles.ts` 已有的 `.dot` / `.badge` / `.card-id`
  * 类名（预览里由 `preview.css` 提供同一条规则），所以颜色**只有一份真值**。
  */
 
@@ -55,7 +60,7 @@ import type { ReactNode } from 'react';
 import { RELATION_KINDS, TASK_STATES, isLinkKindId } from '@taskboard/protocol';
 import type { RelationKindId } from '@taskboard/protocol';
 
-import { isDraftStatus, kindTone, stateLabel } from '../pure/card-view.ts';
+import { stateLabel } from '../pure/card-view.ts';
 import { TECHTREE_CSS } from '../pure/techtree-css.ts';
 import { isFiltering, treeCardsOf, visibleCardIds } from '../pure/tree-filter.ts';
 import type { TreeFilterCriteria } from '../pure/tree-filter.ts';
@@ -72,12 +77,11 @@ import type {
 	TreeCurve,
 	TreeLayout,
 	TreeLayoutNode,
-	TreeLayoutWarning,
 	TreeMetrics,
 } from '../pure/tree-layout.ts';
 import type { Card } from '../types.ts';
-import { StatusCell } from './StatusCell.tsx';
 import { StatusDot } from './StatusDot.tsx';
+import { TreeCard } from './TreeCard.tsx';
 
 /* ══════════════════════════════════════════════════════════════
  * 一、视觉规格（**视图的事**，布局算法只收参数不写死）
@@ -362,6 +366,14 @@ export interface TechTreeProps {
 	readonly filter?: TreeFilterCriteria;
 	/** 类别中文名（从模板清单查；不传显示英文 id —— 不编中文）。 */
 	readonly kindLabelOf?: (kind: string) => string;
+	/**
+	 * 模板显示名（从模板清单查）。
+	 *
+	 * 省略 = 卡片上**不画**模板 badge（科技树设计图的卡片只有类别 + 领域，
+	 * 产品当前就是这个形态）；传了 = 多一个 `badge--template`
+	 * （列表行 `CardRow` 那种「类别 / 领域 / 模板」三个 label）。
+	 */
+	readonly templateLabelOf?: (ref: string) => string;
 	/** 每栏最多几行（超过折栏）；省略 = `tree-layout.ts` 的默认 10。 */
 	readonly maxRowsPerColumn?: number;
 	/** 点一张卡。 */
@@ -387,98 +399,47 @@ interface CardsLayerProps {
 	readonly metrics: TreeMetrics;
 	readonly selectedId: string | null;
 	readonly kindLabelOf: (kind: string) => string;
+	/** 模板显示名；`undefined` = 不画模板 badge（产品当前就是这种，见 TreeCard 文件头）。 */
+	readonly templateLabelOf: ((ref: string) => string) | undefined;
 	readonly onSelect: (cardId: string) => void;
 	readonly onHoverChange: ((cardId: string | null) => void) | undefined;
 }
 
 /**
- * 卡片层。
+ * 卡片层 —— 只是把布局算好的位置套到 `TreeCard` 上。
  *
  * ⚠ `memo` 的意义：`hoverId` **不在**它的 props 里 ⇒ hover 只重画 SVG 线层，
  *   卡片 DOM 不重建（设计图 ③）。默认浅比较即可 —— 调用方要保证回调 / 卡片数组
  *   的引用稳定（预览里用 `useState` 的 setter 和模块级常量，天然稳定）。
+ *
+ * ⚠ 卡片本体在 `TreeCard.tsx`（独立组件，有独立预览 `dev/preview/treecard/`）。
+ *   这里只负责：把 `node` 的层号 / 警告 / 盒子翻译成 `TreeCard` 的 props。
  */
 const CardsLayer = memo(function CardsLayer(props: CardsLayerProps): ReactNode {
 	return (
 		<>
 			{props.items.map((item) => (
-				<CardButton
+				<TreeCard
 					key={item.card.id}
-					item={item}
-					metrics={props.metrics}
+					card={item.card}
+					kindLabel={props.kindLabelOf(item.card.template.kind)}
+					templateLabel={props.templateLabelOf?.(item.card.template.ref) ?? ''}
 					selected={item.card.id === props.selectedId}
-					kindLabelOf={props.kindLabelOf}
+					{...(item.node.warning === undefined ? {} : { warning: item.node.warning })}
+					layer={item.node.layer}
 					onSelect={props.onSelect}
 					onHoverChange={props.onHoverChange}
+					style={{
+						left: item.box.left,
+						top: TREE_HEADER_HEIGHT + item.box.top,
+						width: props.metrics.cardWidth,
+						height: props.metrics.cardHeight,
+					}}
 				/>
 			))}
 		</>
 	);
 });
-
-/** 一张卡（绝对定位的 button）。 */
-function CardButton(props: {
-	readonly item: CardItem;
-	readonly metrics: TreeMetrics;
-	readonly selected: boolean;
-	readonly kindLabelOf: (kind: string) => string;
-	readonly onSelect: (cardId: string) => void;
-	readonly onHoverChange: ((cardId: string | null) => void) | undefined;
-}): ReactNode {
-	const { card, node, box } = props.item;
-	const warning: TreeLayoutWarning | undefined = node.warning;
-	const draft = isDraftStatus(card.status);
-	const tone = kindTone(card.template.kind);
-	const className = [
-		'tb3t-card',
-		draft ? 'is-draft' : '',
-		props.selected ? 'is-selected' : '',
-	]
-		.filter((one) => one !== '')
-		.join(' ');
-
-	return (
-		<button
-			type="button"
-			className={className}
-			data-card-id={card.id}
-			data-layer={String(node.layer)}
-			data-selected={props.selected ? 'true' : 'false'}
-			data-warning={warning === undefined ? '' : warning.kind}
-			style={{
-				left: box.left,
-				top: TREE_HEADER_HEIGHT + box.top,
-				width: props.metrics.cardWidth,
-				height: props.metrics.cardHeight,
-			}}
-			title={`${card.id} ${card.title}${warning === undefined ? '' : `\n▲ ${warning.detail}`}`}
-			onClick={() => {
-				props.onSelect(card.id);
-			}}
-			onMouseEnter={() => {
-				props.onHoverChange?.(card.id);
-			}}
-			onMouseLeave={() => {
-				props.onHoverChange?.(null);
-			}}
-		>
-			<span className="tb3t-card__top">
-				<span className={`card-id card-id--${tone}`}>{card.id}</span>
-				{warning === undefined ? null : (
-					<span className="tb3t-card__warn" data-card-warning={warning.kind} title={warning.detail}>
-						▲
-					</span>
-				)}
-				<span className={`badge badge--${tone}`}>{props.kindLabelOf(card.template.kind)}</span>
-				<span className="badge badge--domain">{card.template.domain}</span>
-				<span className="tb3t-card__spacer" />
-				{/* 状态：圆点 + 中文名（用户 `2026-11-19`：不只靠颜色） */}
-				<StatusCell compact status={card.status} />
-			</span>
-			<span className="tb3t-card__title">{card.title}</span>
-		</button>
-	);
-}
 
 /* ══════════════════════════════════════════════════════════════
  * 六、主组件
@@ -720,12 +681,13 @@ export function TechTree(props: TechTreeProps): ReactNode {
 						))}
 					</svg>
 
-					{/* 卡片层（memo：hover 不重建） */}
+					{/* 卡片层（memo：hover 不重建；卡片本体在 TreeCard.tsx） */}
 					<CardsLayer
 						items={items}
 						metrics={metrics}
 						selectedId={props.selectedId}
 						kindLabelOf={kindLabelOf}
+						templateLabelOf={props.templateLabelOf}
 						onSelect={props.onSelect}
 						onHoverChange={props.onHoverChange}
 					/>

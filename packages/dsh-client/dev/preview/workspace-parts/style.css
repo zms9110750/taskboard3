@@ -1,0 +1,203 @@
+/*
+ * workspace-parts 预览 —— 只写**预览外壳**。
+ *
+ * 产品样式全部来自 `injectStyles()`（`src/styles.ts` 的 `WORKSPACE_CSS` +
+ * 六个定稿组件的样式）—— 预览和产品用同一份。这里不抄任何 `.tb3w-*` 规则，
+ * 只加「把组件摆到页面上」需要的东西：
+ *
+ * - `.wsp-*`：页面骨架（标题 / 方块 / 说明）
+ * - 几条**只在预览里成立**的覆盖：`.tb3w-root` 本来是 `height:100%;overflow:hidden`
+ *   （产品里它挂满 tab），这里要让它按内容撑开、且允许空间面板溢出到方块外。
+ */
+
+body {
+  margin: 0;
+  background: #eef0f4;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.wsp {
+  min-height: 100vh;
+  padding: 26px 26px 70px;
+}
+
+.wsp-head h1 {
+  margin: 0 0 4px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #16181d;
+}
+.wsp-head p {
+  margin: 0;
+  color: #5f6673;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.wsp-head code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f3f6;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 10.5px;
+}
+
+.wsp-wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.wsp-block {
+  margin-top: 20px;
+  padding: 16px 18px 18px;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 8px 24px rgb(0 0 0 / 5%);
+}
+.wsp-block > h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #16181d;
+}
+.wsp-block > h2 code {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f3f6;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 10.5px;
+  color: #2563eb;
+}
+.wsp-block > p {
+  margin: 0 0 12px;
+  color: #8a919c;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.wsp-case {
+  margin-top: 12px;
+}
+.wsp-case:first-of-type {
+  margin-top: 0;
+}
+.wsp-case__note {
+  margin-bottom: 6px;
+  font-size: 10.5px;
+  color: #9aa1ad;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+}
+.wsp-case__note b {
+  color: #5f6673;
+}
+
+/* ── 组件样例的通用底座 ── */
+/*
+ * ⚠ 这几条是**预览专属覆盖**，产品里不成立：
+ *   `.tb3w-root` 产品里是 `height:100%;overflow:hidden`（挂满 tab），
+ *   预览里要按内容撑开、并允许「空间选择器」的绝对定位面板溢出到方块外。
+ */
+.wsp-demo.tb3w-root {
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  padding: 8px 10px;
+  border: 1px dashed #d7dbe2;
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+
+/* 工具栏在预览里不要顶部间距（产品里它是 chrome 的第二行） */
+.wsp-demo .tb3w-toolbar {
+  margin-top: 0;
+}
+
+/*
+ * 空间选择器展开态的方块需要额外高度：面板是 `position:absolute` 的，
+ * 不占布局高度 ⇒ 不让方块够高的话它会压在下一块上。
+ */
+.wsp-demo--picker {
+  min-height: 150px;
+}
+.wsp-demo--picker40 {
+  min-height: 390px;
+}
+
+/* ── 分隔条样例：给一个真的两栏盒子 ── */
+.wsp-split-demo {
+  display: flex;
+  flex-direction: column;
+  height: 260px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px dashed #d7dbe2;
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+.wsp-split-demo .tb3w-main {
+  height: 100%;
+  margin-top: 0;
+}
+.wsp-split-demo .tb3w-list,
+.wsp-split-demo .tb3w-detail {
+  overflow: hidden;
+}
+.wsp-pane-body {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #5f6673;
+  line-height: 1.7;
+}
+.wsp-pane-body b {
+  color: #16181d;
+}
+
+/* 垂直（窄版）样例：用容器查询同样的规则，但预览里没有 .tb3w-page 容器，
+   所以手工把 @container 的那几条搬过来 —— 只此一处，明确标成预览覆盖。 */
+.wsp-split-demo--column .tb3w-main {
+  flex-direction: column;
+}
+.wsp-split-demo--column .tb3w-split {
+  flex: 0 0 20px;
+  cursor: row-resize;
+}
+.wsp-split-demo--column .tb3w-split__line {
+  top: 50%;
+  bottom: auto;
+  left: 8px;
+  right: 8px;
+  width: auto;
+  height: 0;
+  border-left: 0;
+  border-top: 3px dashed #c3cad4;
+}
+.wsp-split-demo--column .tb3w-split__grip {
+  display: none;
+}
+
+/* ── ListHeader / ListEmpty 样例：给一个列表外壳 ── */
+.wsp-list-mock {
+  border: 1px dashed #d7dbe2;
+  border-radius: 9px;
+  background: #fff;
+  overflow: hidden;
+}
+
+/* ── 回调日志 ── */
+.wsp-log {
+  margin: 8px 0 0;
+  padding: 0 0 0 18px;
+  max-height: 96px;
+  overflow-y: auto;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  color: #3f4652;
+}
+.wsp-log__empty {
+  list-style: none;
+  margin-left: -18px;
+  color: #9aa1ad;
+  font-family: inherit;
+}

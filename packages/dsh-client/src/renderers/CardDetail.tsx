@@ -3,14 +3,14 @@
  *
  * ## 它只做「拼装」
  *
- * 全部显示决定在 `dev/pure/card-detail.ts` 的 `detailTableOf()`（55 条单测）：
+ * 全部显示决定在 `pure/card-detail.ts` 的 `detailTableOf()`（55 条单测）：
  * 标题、meta 五格、动作行、章节、备注、历史 —— 显示什么、按什么顺序、
  * 哪些常驻哪些折叠，**一条都不在这里判**。
  *
  * ```
  * CardDetail
- *  ├ DetailHead      标题行 / 状态+meta 行 / 动作行 / 墓碑横幅
- *  ├ detail-sections 章节（← flatten，直接平铺）
+ *  ├ DetailHead      标题行 / 状态+meta 行 / 动作行（含关系面板）/ 墓碑横幅
+ *  ├ detail-sections 章节（各自一个定稿 Section）
  *  ├ DetailNote      备注（常驻）
  *  └ DetailHistory   历史（**不折叠**，竖直全画）
  * ```
@@ -25,38 +25,36 @@
  * | 备注常驻 | `DetailNote` 无 `visible` 分支（`DetailNoteView.visible` 是字面量 `true`）|
  * | 历史不折叠 | `DetailHistory` 无 `useState`、无折叠按钮；`DetailHistoryView` 类型里没有 `collapsed` 字段 |
  *
- * ## ⚠ 章节渲染：等 C6 `Section` 合并后替换
+ * ## 章节：定稿 `Section`（`2026-11-20` 接上，`SectionStub` 已删）
  *
- * 本文件底部的 `SectionStub` 是**最简版**：章节名 + 文本 / 占位。
- * 真正的 `Section`（text / markdown / ask 的渲染器，831 行旧版逻辑）由另一个成员
- * 在做 C6。这里刻意**不**猜它的 props，只把 `payload` 原样传下去：
+ * 章节内容不在这里解释 —— `DetailSection` 经 `pure/section-adapter.ts` 的
+ * `sectionInputOf()` 转成 `Section` 的输入，由 `Section` 按 payload 的 `$type`
+ * 自己分派 text / markdown / ask / 未知降级（解析只有 `pure/section.ts` 一处）。
+ * 这里是**纯形状适配**，不在 JSX 里拼对象、不读 `DetailSection.text`。
  *
- * **payload 形状假设**：卡上 `sections[id] = { label, payload }`（`src/types.ts:44`），
- * `payload` 是不透明结构（`{ $type:'text', value }` 一类）。C6 的 `Section`
- * 应当接 `{ section: { label, payload } }` 自己解释类型。
- * ⇒ 合并后把 `<SectionStub …>` 换成 `<Section …>` 即可，`DetailSection.payload`
- *   已经是**原对象的引用**（单测用 `assert.strictEqual` 钉住这一点）。
+ * ⚠ 章节的**编辑 / ask 回答**还没接线（`api.patchCard` 在，但外层没有回调）
+ *   ⇒ 这里传 `readonly`。只读时 `AskSection` 把选项渲染成 `div`（不假装能点），
+ *   空章节显示「（空）」而不是模板的编辑提示。接编辑时把 `readonly` 换成
+ *   卡状态 / 回调判断即可，组件本身不用改。
  *
  * ## 参数里没有的东西
  *
  * - **状态菜单**（`onTransition`）：菜单归 C4 `StatusMenu`（另一个成员）。
  *   本组件收下 `onTransition` 但**不画菜单** —— 它由外层组装，见 `src/views/CardDetail.tsx`
  *   的 `menu` 参数。这里留回调是为了合并时接得上，不是为了现在能点。
- * - **关系浮层内容**：关系按钮是入口，内容归 C7 之外（关系区还没做）。
+ * - **章节编辑 / ask 回答**：见上（还没接线）。
  */
 
 import type { ReactNode } from 'react';
 
-import {
-	detailTableOf,
-	type DetailLabels,
-	type DetailSection,
-} from '../pure/card-detail.ts';
+import { detailTableOf, type DetailLabels } from '../pure/card-detail.ts';
 import type { RelationsView } from '../pure/relations-block.ts';
+import { sectionInputOf } from '../pure/section-adapter.ts';
 import type { Card } from '../types.ts';
 import { DetailHead } from './DetailHead.tsx';
 import { DetailHistory } from './DetailHistory.tsx';
 import { DetailNote } from './DetailNote.tsx';
+import { Section } from './Section.tsx';
 
 /** 组件属性。 */
 export interface CardDetailProps {
@@ -107,6 +105,12 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 		templateLabel: props.templateLabel,
 	};
 	const table = detailTableOf(props.card, labels);
+	/*
+	 * 章节的渲染输入在**这里**一次算好：
+	 * 形状适配是纯函数（`sectionInputOf`），JSX 里只剩「按 id 画一个 Section」。
+	 * ⚠ 不读 `table.sections[i].text` —— 内容由 Section 按 payload 自己解释。
+	 */
+	const sections = table.sections.map((one) => sectionInputOf(one));
 
 	return (
 		<div className="detail" data-card-detail data-card-id={props.card.id}>
@@ -138,12 +142,24 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 			 *     只是布局用的 flex 列，没有标题、不渲染文字。
 			 */}
 			<div className="detail-sections" data-detail-sections>
-				{table.sections.length === 0 ? (
+				{sections.length === 0 ? (
 					<div className="detail-empty" data-sections-empty>
 						这张卡的模板没有章节。
 					</div>
 				) : (
-					table.sections.map((section) => <SectionStub key={section.id} section={section} />)
+					sections.map((one) => (
+						/*
+						 * 定稿 `Section`：text / markdown / ask / 未知降级都在它内部按 payload 分派。
+						 * `readonly` 的原因见文件头「章节：定稿 Section」那一节
+						 * （编辑 / ask 回答还没接线 ⇒ 不假装能点）。
+						 */
+						<Section
+							key={one.sectionId}
+							sectionId={one.sectionId}
+							section={one.section}
+							readonly={true}
+						/>
+					))
 				)}
 			</div>
 
@@ -155,26 +171,6 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 			 *   没有「上一张卡的展开态带过来」这个问题。
 			 */}
 			<DetailHistory history={table.history} />
-		</div>
-	);
-}
-
-/**
- * ⚠ 等 C6 `Section` 合并后替换（最简版：章节名 + 文本 / 占位）。
- *
- * 这里**只是占位**，故意不叫 `Section`（避免和 C6 的组件重名，合并时一眼能搜到）。
- * payload 原样透传（`DetailSection.payload` 是卡上那个对象的引用）。
- *
- * @param props 一个章节
- */
-function SectionStub(props: { readonly section: DetailSection }): ReactNode {
-	const section = props.section;
-	return (
-		<div className="detail-section" data-section-id={section.id}>
-			<div className="detail-section__label">{section.label}</div>
-			<div className="detail-section__body">
-				{section.empty ? <span className="detail-section__empty">（空）</span> : section.text}
-			</div>
 		</div>
 	);
 }

@@ -1,0 +1,67 @@
+/*
+ * TreeCard 形态预览的样式 —— **只有预览外壳 + 复刻 hover**。
+ *
+ * ⚠ 卡片本身的样式（`tb3t-card` 等）**不在这里**：它由
+ *   `main.tsx` 调 `injectTechTreeStyles()` 注入（`src/pure/techtree-css.ts`），
+ *   预览和产品用同一份。在预览里抄一份卡片 CSS 的后果是
+ *   「预览是对的、产品是坏的」，而那种坏**不报错**。
+ *
+ * ⚠ 本文件是纯 CSS（不是模板字符串）。
+ */
+
+/* 卡片舞台：卡片是 position:absolute，所以父容器必须 position:relative */
+.pv-tc-stage {
+	position: relative;
+	margin-top: 4px;
+	background: #fafbfc;
+	border: 1px solid #e7e9ee;
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+/* 一格：absolute wrapper，卡片在里面 left:0/top:0（模拟 TechTree 的舞台） */
+.pv-cell {
+	position: absolute;
+}
+
+/*
+ * ⚠ 预览专用：静态复刻 `:hover` 的外观。
+ *
+ * 真 hover 直接悬停卡片就能看到（`.tb3t-card:hover` 在 techtree-css.ts 里）。
+ * 这里只是给「没有鼠标 / 截图」的场景一个可见的 hover 形态 ——
+ * **值照抄** `.tb3t-card:hover{background:#fbfcfe;border-color:#cbd5e1}`，
+ * 改那边时这里也要跟着改（纯展示用，不参与产品）。
+ */
+.pv-hover-demo .tb3t-card {
+	background: #fbfcfe;
+	border-color: #cbd5e1;
+}
+
+/* 点击回执列表（共享 preview.css 没有这两个类） */
+.pv-events {
+	margin: 0 0 10px;
+	padding-left: 18px;
+	font-size: 11.5px;
+	line-height: 1.9;
+	color: #3f4652;
+}
+.pv-events__empty {
+	list-style: none;
+	margin-left: -18px;
+	color: #9aa1ad;
+}
+
+.ghost-btn {
+	padding: 4px 10px;
+	border: 1px solid var(--border, #e7e9ee);
+	border-radius: 6px;
+	background: var(--bg-card, #fff);
+	color: var(--text-secondary, #5f6673);
+	font-family: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.ghost-btn:hover {
+	border-color: var(--text-weak, #9aa1ad);
+	color: var(--text, #16181d);
+}
