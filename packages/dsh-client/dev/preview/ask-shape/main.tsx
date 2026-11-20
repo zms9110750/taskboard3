@@ -15,7 +15,7 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { injectStyles } from '../../../src/styles.ts';
-import { AskSection } from '../../../src/renderers/AskSection.tsx';
+import { AskGroupCard } from '../../../src/renderers/AskSection.tsx';
 import { sectionViewOf } from '../../../src/pure/section.ts';
 
 /* ══════════════════════════════════════════════════════════
@@ -310,50 +310,53 @@ export function ActiveColumn(props: {
 		<div className="as-col">
 			<div className="as-col__head">
 				<span className="as-col__name">active · askEditable</span>
-				<span className="as-col__note">填答案 —— 选项 / 未选择 / 自填框（真 AskSection）</span>
+				<span className="as-col__note">填答案 —— 每组独立渲染（真 AskGroupCard），多选也能点</span>
 			</div>
 
 			{/*
-			 * 真组件：`AskSection` + `readonly={false}` + `onAnswer`。
-			 * 它自己管点击互斥 / 多选 / 自填，预览只负责把值记下来再喂回去。
+			 * 用户 2026-11-21 第 5 / 7 条：
+			 * - 「预览里面的多选是不可交互的」⇒ 之前用整块 `AskSection`，
+			 *   它的 `onAnswer` 拿不到「第几组」，预览只能驱动第一组。
+			 * - 「这一行的按钮，和一个问题页，也应该各拿出来做组件」⇒
+			 *   现在直接用导出的 `AskGroupCard`，每组一个独立回调。
 			 */}
 			{view.kind === 'ask' ? (
-				<AskSection
-					sectionId="preview-ask"
-					view={view}
-					readonly={false}
-					onAnswer={(sectionId, value) => {
-						void sectionId;
-						/*
-						 * 真组件的回调语义（`AskSection.tsx:17-19`）：
-						 *   点选项   → option.label
-						 *   点都不要 → ''（NO_ANSWER）
-						 *   自填提交 → 输入文字
-						 * ⚠ `sectionId` 不区分「哪个问题组」—— 预览里只驱动第一组。
-						 */
-						if (value === '') {
-							setPicked((prev) => ({ ...prev, '0': [] }));
-							return;
-						}
-						const first = items[0];
-						const isOption = first?.options.some((one) => one.label === value) ?? false;
-						if (!isOption) {
-							setCustom((prev) => ({ ...prev, '0': value }));
-							return;
-						}
-						if (first?.multiSelect === true) {
-							setPicked((prev) => {
-								const current = prev['0'] ?? [];
-								const next = current.includes(value)
-									? current.filter((one) => one !== value)
-									: [...current, value];
-								return { ...prev, '0': next };
-							});
-							return;
-						}
-						setPicked((prev) => ({ ...prev, '0': [value] }));
-					}}
-				/>
+				view.groups.map((group, index) => (
+					<AskGroupCard
+						key={index}
+						sectionId={`preview-ask-${String(index)}`}
+						group={group}
+						interactive
+						onAnswer={(sectionId, value) => {
+							void sectionId;
+							const key = String(index);
+							if (value === '') {
+								setPicked((prev) => {
+									const next = { ...prev };
+									delete next[key];
+									return next;
+								});
+								return;
+							}
+							const isOption = group.options.some((one) => one.label === value);
+							if (!isOption) {
+								setCustom((prev) => ({ ...prev, [key]: value }));
+								return;
+							}
+							if (group.multiSelect) {
+								setPicked((prev) => {
+									const current = prev[key] ?? [];
+									const next = current.includes(value)
+										? current.filter((one) => one !== value)
+										: [...current, value];
+									return { ...prev, [key]: next };
+								});
+								return;
+							}
+							setPicked((prev) => ({ ...prev, [key]: [value] }));
+						}}
+					/>
+				))
 			) : (
 				<div className="as-note">夹具不是 ask 形态（预览数据写错了）</div>
 			)}

@@ -38,7 +38,7 @@
  * 没有「都不要」。**不用 `disabled` + 仍可点** 那种半吊子形态。
  */
 
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 
 import {
 	NO_ANSWER,
@@ -80,7 +80,7 @@ export function AskSection(props: AskSectionProps): ReactNode {
 	return (
 		<div className="ask" data-ask-interactive={String(interactive)}>
 			{props.view.groups.map((group, index) => (
-				<AskGroupBlock
+				<AskGroupCard
 					key={index}
 					sectionId={props.sectionId}
 					group={group}
@@ -93,7 +93,7 @@ export function AskSection(props: AskSectionProps): ReactNode {
 }
 
 /** 一个问卷组。 */
-function AskGroupBlock(props: {
+export function AskGroupCard(props: {
 	readonly sectionId: string;
 	readonly group: AskGroupView;
 	readonly interactive: boolean;
@@ -122,42 +122,37 @@ function AskGroupBlock(props: {
 			 * 「激活」= 不是「未选择」⇒ 左边加竖边框（用户 2026-11-21，
 			 * 对着 `detail-ask-states.png` 说的）。
 			 */
-			data-ask-active={String(group.pickedState !== 'none')}
+			/* 第 8 条：只有**可交互**且已作答时才给整页打边框（冻结态不打）。 */
+			data-ask-active={String(props.interactive && group.pickedState !== 'none')}
 		>
 			{/*
-			 * 问题行：问题（大字）+ 单选/多选标签 + 状态按钮。
-			 * 用户 2026-11-21：「多选放在问题标题的地方」
-			 *             「『已选择 xx』胶囊的位置，放『未选择』按钮，可点」
+			 * 问题行（用户 2026-11-21 第 3 条：**不要「单选」「多选」胶囊**）。
+			 * 用户第 4 条：状态位置放**纯按钮「未选择」**，不是动态的「已选 N」，
+			 * 也**不要写「都不要」** —— 真正的「都不要」是「否决任务卡」或「自填不要」，
+			 * 不是这个按钮的语义。
 			 */}
 			<div className="ask-group__qrow">
 				{group.question === '' ? null : (
 					<div className="ask-group__question">{group.question}</div>
 				)}
-				<span className="ask-group__multitag" data-ask-multitag>
-					{group.multiSelect ? '多选' : '单选'}
-				</span>
 				{props.interactive ? (
 					<button
 						type="button"
 						className="ghost-btn ask-group__state-btn"
-						data-ask-state-btn={group.pickedState}
+						data-ask-state-btn="reset"
 						title="把这一题重置成「未选择」"
 						onClick={() => props.onAnswer?.(props.sectionId, NO_ANSWER)}
 					>
-						{askStateLabelOf(group)}
+						未选择
 					</button>
-				) : (
-					<span className="ask-group__state-text" data-ask-state-label={group.pickedState}>
-						{askStateLabelOf(group)}
-					</span>
-				)}
+				) : null}
 			</div>
 
 			{group.header === '' ? null : <div className="ask-group__header">{group.header}</div>}
 
 			<div className="ask-group__options">
 				{group.options.map((option) => (
-					<AskOption
+					<AskOptionRow
 						key={option.label}
 						sectionId={props.sectionId}
 						option={option}
@@ -179,27 +174,13 @@ function AskGroupBlock(props: {
 				) : null}
 			</div>
 
-			{props.interactive ? (
-				<div className="ask-group__actions">
-					<button
-						type="button"
-						className="ghost-btn ask-group__none"
-						data-ask-none
-						title="看了但都不要（与「未选择」不同）"
-						onClick={() => props.onAnswer?.(props.sectionId, NO_ANSWER)}
-					>
-						都不要
-					</button>
-				</div>
-			) : (
-				<CustomValuesReadonly values={group.custom} />
-			)}
+			{props.interactive ? null : <CustomValuesReadonly values={group.custom} />}
 		</div>
 	);
 }
 
 /** 一个选项（可点 / 只读）。 */
-function AskOption(props: {
+export function AskOptionRow(props: {
 	readonly sectionId: string;
 	readonly option: AskOptionView;
 	/** 多选组：标记画**正方形**（单选画圆圈）—— 用户 2026-11-21。 */
@@ -282,6 +263,8 @@ function CustomOption(props: {
 	readonly onAnswer?: (sectionId: string, value: string) => void;
 }): ReactNode {
 	const [draft, setDraft] = useState('');
+	const [active, setActive] = useState(false);
+	const inputRef = useRef<HTMLInputElement>(null);
 	const hasValue = props.group.custom.some((one) => one !== '');
 
 	const commit = (): void => {
@@ -289,16 +272,36 @@ function CustomOption(props: {
 		if (value === '') return;
 		props.onAnswer?.(props.sectionId, value);
 		setDraft('');
+		setActive(false);
+	};
+
+	/* 整行可点：点圆圈 / 点空白 / 点输入框都算「选了自填」。 */
+	const selectSelf = (): void => {
+		setActive(true);
+		inputRef.current?.focus();
 	};
 
 	return (
-		<div className="ask-option ask-option--custom" data-ask-custom-row>
+		<div
+			className="ask-option ask-option--custom"
+			data-ask-custom-row
+			data-picked={String(active || hasValue)}
+			onClick={selectSelf}
+			onKeyDown={(event) => {
+				if (event.key !== 'Enter' && event.key !== ' ') return;
+				event.preventDefault();
+				selectSelf();
+			}}
+			role="button"
+			tabIndex={0}
+		>
 			<span
-				className={`ask-option__mark ask-option__mark--box${hasValue ? ' is-picked' : ''}`}
+				className={`ask-option__mark ask-option__mark--box${active || hasValue ? ' is-picked' : ''}`}
 				data-multi={String(props.group.multiSelect)}
 				aria-hidden="true"
 			/>
 			<input
+				ref={inputRef}
 				type="text"
 				className="ask-group__custom"
 				data-ask-custom

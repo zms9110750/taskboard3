@@ -1166,7 +1166,10 @@ export const SECTION_CSS = `
 /* ── 选项标记：单选圆圈 / 多选方框 / 冻结勾（用户 2026-11-21） ── */
 .tb3w-root .ask-option__mark--box{flex:0 0 14px;width:14px;height:14px;box-sizing:border-box;border:1.5px solid var(--border-strong,#c5ccd6);border-radius:50%;background:#fff;margin-top:2px}
 .tb3w-root .ask-option__mark--box[data-multi='true']{border-radius:3px}
-.tb3w-root .ask-option.is-picked .ask-option__mark--box{border-color:var(--accent);background:var(--accent)}
+.tb3w-root .ask-option.is-picked .ask-option__mark--box{position:relative;border-color:var(--accent);background:#fff}
+.tb3w-root .ask-option.is-picked .ask-option__mark--box::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--accent)}
+.tb3w-root .ask-option.is-picked .ask-option__mark--box[data-multi='true']::after{border-radius:1px}
+
 .tb3w-root .ask-option__mark--check{flex:0 0 14px;width:14px;color:var(--accent);font-weight:700;text-align:center;line-height:14px}
 /* ── 问题行：问题 + 单选/多选标签 + 状态按钮 ── */
 .tb3w-root .ask-group__qrow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
@@ -1176,7 +1179,9 @@ export const SECTION_CSS = `
 .tb3w-root .ask-group__state-btn[data-ask-state-btn='none']{border-style:dashed;color:#b45309}
 .tb3w-root .ask-group__state-btn[data-ask-state-btn='picked']{color:#047857}
 /* ── 「激活」的题目：左边竖边框 ── */
-.tb3w-root .ask-group[data-ask-active='true']{padding-left:10px;border-left:3px solid var(--accent)}
+.tb3w-root .ask-group[data-ask-active='true']{box-shadow:inset 3px 0 0 var(--accent)}
+/* 冻结态：不给整页打边框，只给**选中的选项**打左边框 */
+.tb3w-root .ask-option.is-picked{box-shadow:inset 3px 0 0 var(--accent)}
 /* ── 自填行：圆圈 + 文本框 ── */
 .tb3w-root .ask-option--custom{cursor:default;align-items:center}
 .tb3w-root .ask-option--custom .ask-group__custom{flex:1 1 auto;min-width:0;padding:4px 8px;border:1px dashed var(--border-strong,#c5ccd6);border-radius:5px;background:#fafbfc;font:12px/1.5 inherit;color:var(--text)}
