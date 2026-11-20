@@ -28,6 +28,7 @@ import { createRoot } from 'react-dom/client';
 
 import { initRenderers } from '../../../src/init-renderers.ts';
 import {
+	DRAWER_DEFAULT_VARIANT_ID,
 	DRAWER_VARIANTS,
 	DRAWER_VARIANT_IDS,
 	createDrawerStore,
@@ -46,7 +47,8 @@ import { PanelSizeBadge, usePanelMetrics } from './panel-metrics.tsx';
 
 /** 预览页。 */
 function App(): React.ReactNode {
-	const [variantId, setVariantId] = useState<DrawerVariantId>('a');
+	/* 已定稿圆角（用户 2026-11-20）—— 用常量，别再写死 'a'。 */
+	const [variantId, setVariantId] = useState<DrawerVariantId>(DRAWER_DEFAULT_VARIANT_ID);
 	const [selectedId, setSelectedId] = useState<string | null>('GU-02');
 	const [notice, setNotice] = useState<string | undefined>(undefined);
 

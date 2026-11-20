@@ -217,7 +217,7 @@ function summaryOf(relations: RelationsView): string {
  *
  * @param props 卡 + 跳转回调
  */
-function ParentChip(props: { readonly card: Card; readonly onJump: (cardId: string) => void }): ReactNode {
+export function ParentChip(props: { readonly card: Card; readonly onJump: (cardId: string) => void }): ReactNode {
 	const card = props.card;
 	return (
 		<button
@@ -243,7 +243,7 @@ function ParentChip(props: { readonly card: Card; readonly onJump: (cardId: stri
  *
  * @param props 展示决定 + 回调
  */
-function DeriveButton(props: {
+export function DeriveButton(props: {
 	readonly action: RelationDeriveAction | undefined;
 	readonly onDerive: () => void;
 }): ReactNode {
@@ -274,7 +274,7 @@ function DeriveButton(props: {
  *
  * @param props 卡 + 跳转回调 + 是否画状态点
  */
-function RelationChip(props: {
+export function RelationChip(props: {
 	readonly card: Card;
 	readonly onJump: (cardId: string) => void;
 	/** 非三列形态（B/C）里状态点必须画，否则看不出是进行还是完成。 */
@@ -306,7 +306,7 @@ function RelationChip(props: {
  *
  * @param props 关系视图 + 回调
  */
-function TableBody(props: {
+export function TableBody(props: {
 	readonly relations: RelationsView;
 	readonly onJump: (cardId: string) => void;
 	readonly emptyText: string | undefined;
@@ -372,7 +372,7 @@ function TableBody(props: {
  *
  * @param props 关系视图 + 回调
  */
-function FlatBody(props: {
+export function FlatBody(props: {
 	readonly relations: RelationsView;
 	readonly onJump: (cardId: string) => void;
 	readonly emptyText: string | undefined;
@@ -408,7 +408,7 @@ function FlatBody(props: {
  *
  * @param props 一个组
  */
-function GroupHead(props: { readonly group: RelationGroupView }): ReactNode {
+export function GroupHead(props: { readonly group: RelationGroupView }): ReactNode {
 	const group = props.group;
 	return (
 		<div
@@ -427,7 +427,7 @@ function GroupHead(props: { readonly group: RelationGroupView }): ReactNode {
  *
  * @param props 文案（省略用原版「这张卡还没有任何关系。」）
  */
-function EmptyBody(props: { readonly emptyText: string | undefined }): ReactNode {
+export function EmptyBody(props: { readonly emptyText: string | undefined }): ReactNode {
 	return (
 		<div className="rel-empty" data-rel-empty>
 			{props.emptyText ?? '这张卡还没有任何关系。'}

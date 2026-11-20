@@ -24,6 +24,7 @@
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { relationsOf, statusGroupOf } from '../../../src/pure/relations-block.ts';
 import { CardDetail } from '../../../src/renderers/CardDetail.tsx';
 import type { Card, CardSection, HistoryEntry } from '../../../src/types.ts';
 
@@ -158,6 +159,12 @@ function Live(props: LiveProps): React.ReactNode {
 
 	const cards: readonly Card[] = [
 		card(),
+		/*
+		 * 关系目标必须真的在 `cards` 里 —— `relationsOf()` 会剔除指向不存在卡的边
+		 * （草稿目标也剔除）。少了这两张，详情里的关系面板就是 0 条。
+		 */
+		card({ id: 'DE-01', title: '父任务：详情面板重做', status: S.submitted, template: { ref: 'design.feature', kind: 'design', domain: '核心' }, relations: { parent: null, links: [] } }),
+		card({ id: 'DE-05', title: '相关：状态点样式', status: S.completed, template: { ref: 'design.feature', kind: 'design', domain: '核心' }, relations: { parent: null, links: [] } }),
 		/* 第二张卡：短历史 + 不同状态，用来验「切卡后折叠态/备注都重置」 */
 		card({
 			id: 'DE-04',
@@ -210,6 +217,7 @@ function Live(props: LiveProps): React.ReactNode {
 						card={shown}
 						templateLabel="功能设计"
 						kindLabel="设计"
+						relations={relationsOf(shown, cards, statusGroupOf)}
 						onTransition={(to) => props.onEvent(`transition:${to}`)}
 						onAddRelation={() => props.onEvent('add-relation')}
 						onDerive={() => props.onEvent('derive')}

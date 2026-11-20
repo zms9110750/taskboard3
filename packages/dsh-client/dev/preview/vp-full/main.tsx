@@ -469,7 +469,8 @@ function App(): React.ReactNode {
 							cards={CARDS}
 							templates={TEMPLATES}
 							selectedId={selectedId}
-							defaultPicked={DEFAULT_PICKED}
+							density="compact"
+			defaultPicked={DEFAULT_PICKED}
 							kindLabelOf={(kind) => KIND_LABELS[kind] ?? kind}
 							aiUnreadCount={1}
 							aiUpdatedCount={2}

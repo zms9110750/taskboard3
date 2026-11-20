@@ -351,13 +351,13 @@ function App(): React.ReactNode {
 						① WorkspaceToolbar <code>WorkspaceToolbar.tsx</code>
 					</h2>
 					<p>
-						计数 / 关系图例 / 权限 / 科技树⇄列表 / 新建 / 空间选择器。
+						计数 / 关系图例 / 权限 / 科技树⇄列表 / 新建。**不含空间选择器** —— 选工作区是独立组件，见 ②。
 						⚠ 分段按钮是**临时内联实现**（用户还没选定候选组件），这里不是新实现，是原样搬家。
 					</p>
 					<ToolbarCase note="列表视图 · 有权限按钮 · 无空间选择器（full 密度）" initialView="list" permission spacePicker={false} />
 					<ToolbarCase note="科技树视图 · 有权限按钮" initialView="tree" permission spacePicker={false} />
 					<ToolbarCase note="无权限按钮（onOpenPermission 省略 = 不画）" initialView="list" permission={false} spacePicker={false} />
-					<ToolbarCase note="compact 密度 · 带「工作空间 ▾」空间选择器（点它展开）" initialView="list" permission={false} spacePicker />
+
 				</section>
 
 				<section className="wsp-block">
