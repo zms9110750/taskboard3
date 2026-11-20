@@ -42,6 +42,7 @@ import {
 } from '../pure/section.ts';
 import type { CardSection } from '../types.ts';
 import { AskSection } from './AskSection.tsx';
+import type { AskAction } from '../pure/section.ts';
 import { Markdown } from './Markdown.tsx';
 
 /** 组件属性（任务描述给的那一份，一个不多一个不少）。 */
@@ -70,7 +71,10 @@ export interface SectionProps {
 	 */
 	readonly onChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
 	/** ask 选项被点（`value` 是选项的 label；`NO_ANSWER` = 都不要）。 */
-	readonly onAnswer?: (sectionId: string, value: string) => void;
+	/**
+	 * ask 作答动作。带 `groupIndex` —— 答案写在 `items[groupIndex]`。
+	 */
+	readonly onAsk?: (sectionId: string, groupIndex: number, action: AskAction) => void;
 }
 
 /** 三个生命周期相位。 */
@@ -132,7 +136,7 @@ export function Section(props: SectionProps): ReactNode {
 					readonly={readonlyFlag}
 					rawPayload={section.payload}
 					{...(props.onChange === undefined ? {} : { onChange: props.onChange })}
-					{...(props.onAnswer === undefined ? {} : { onAnswer: props.onAnswer })}
+					{...(props.onAsk === undefined ? {} : { onAsk: props.onAsk })}
 				/>
 			</div>
 		</div>
@@ -147,7 +151,10 @@ function SectionContent(props: {
 	readonly readonly: boolean;
 	readonly rawPayload: unknown;
 	readonly onChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
-	readonly onAnswer?: (sectionId: string, value: string) => void;
+	/**
+	 * ask 作答动作。带 `groupIndex` —— 答案写在 `items[groupIndex]`。
+	 */
+	readonly onAsk?: (sectionId: string, groupIndex: number, action: AskAction) => void;
 }): ReactNode {
 	const view = props.view;
 	const readable = props.readonly;
@@ -184,7 +191,7 @@ function SectionContent(props: {
 					sectionId={props.sectionId}
 					view={view}
 					readonly={props.readonly}
-					{...(props.onAnswer === undefined ? {} : { onAnswer: props.onAnswer })}
+					{...(props.onAsk === undefined ? {} : { onAsk: props.onAsk })}
 				/>
 			);
 

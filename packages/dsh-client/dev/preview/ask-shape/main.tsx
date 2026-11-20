@@ -16,7 +16,7 @@ import { createRoot } from 'react-dom/client';
 
 import { injectStyles } from '../../../src/styles.ts';
 import { AskGroupCard } from '../../../src/renderers/AskSection.tsx';
-import { sectionViewOf } from '../../../src/pure/section.ts';
+import { applyAskAction, sectionViewOf } from '../../../src/pure/section.ts';
 
 /* ══════════════════════════════════════════════════════════
    夹具：一份 ask payload（create 阶段写下的东西）
@@ -286,17 +286,12 @@ export function ActiveColumn(props: {
 	readonly items: readonly AskItem[];
 }): React.ReactNode {
 	const items = props.items;
-	/* 预填一份「已经填过」的数据 —— 否则「未选择」看不出填答案的形态。 */
-	const [picked, setPicked] = useState<Readonly<Record<string, readonly string[]>>>({
-		'0': ['方案 B：先做科技树'],
-		'1': ['筛选行'],
-	});
-	const [custom, setCustom] = useState<Readonly<Record<string, string>>>({
-		'1': '还有配色',
-	});
 
-	/** payload 里带上当前选择，让真组件按真实数据渲染。 */
-	const payload = {
+	/*
+	 * 预期答案（预览夹具）—— 直接写 **payload 形状**，和产品里存的一模一样。
+	 * 这里没有 `picked` / `custom` 三个平行 state，只有一个 payload。
+	 */
+	const [payload, setPayload] = useState<Record<string, unknown>>(() => ({
 		$type: 'ask',
 		items: items.map((item, i) => ({
 			header: item.header,
@@ -304,10 +299,10 @@ export function ActiveColumn(props: {
 			options: item.options,
 			multi_select: item.multiSelect,
 			placeholder: item.placeholder,
-			picked: picked[String(i)] ?? [],
-			custom: (custom[String(i)] ?? '') === '' ? [] : [custom[String(i)]],
+			...(i === 0 ? { picked: ['方案 B：先做科技树'] } : {}),
+			...(i === 1 ? { picked: ['筛选行'], custom: ['还有配色'] } : {}),
 		})),
-	};
+	}));
 
 	const view = sectionViewOf(payload);
 
@@ -315,15 +310,13 @@ export function ActiveColumn(props: {
 		<div className="as-col">
 			<div className="as-col__head">
 				<span className="as-col__name">active · askEditable</span>
-				<span className="as-col__note">填答案 —— 每组独立渲染（真 AskGroupCard），多选也能点</span>
+				<span className="as-col__note">填答案 —— 每组独立渲染（真 AskGroupCard）</span>
 			</div>
 
 			{/*
-			 * 用户 2026-11-21 第 5 / 7 条：
-			 * - 「预览里面的多选是不可交互的」⇒ 之前用整块 `AskSection`，
-			 *   它的 `onAnswer` 拿不到「第几组」，预览只能驱动第一组。
-			 * - 「这一行的按钮，和一个问题页，也应该各拿出来做组件」⇒
-			 *   现在直接用导出的 `AskGroupCard`，每组一个独立回调。
+			 * 用户 2026-11-21：「不要写胶水代码。他们的逻辑应该是很一致的。」
+			 * ⇒ 动作**直接交给产品的 pure 函数 `applyAskAction`**：
+			 *   单选互斥 / custom_active / 删 picked 全在一处，预览没有第二套逻辑。
 			 */}
 			{view.kind === 'ask' ? (
 				view.groups.map((group, index) => (
@@ -331,34 +324,9 @@ export function ActiveColumn(props: {
 						key={index}
 						sectionId={`preview-ask-${String(index)}`}
 						group={group}
-						interactive
-						onAnswer={(sectionId, value) => {
-							void sectionId;
-							const key = String(index);
-							if (value === '') {
-								setPicked((prev) => {
-									const next = { ...prev };
-									delete next[key];
-									return next;
-								});
-								return;
-							}
-							const isOption = group.options.some((one) => one.label === value);
-							if (!isOption) {
-								setCustom((prev) => ({ ...prev, [key]: value }));
-								return;
-							}
-							if (group.multiSelect) {
-								setPicked((prev) => {
-									const current = prev[key] ?? [];
-									const next = current.includes(value)
-										? current.filter((one) => one !== value)
-										: [...current, value];
-									return { ...prev, [key]: next };
-								});
-								return;
-							}
-							setPicked((prev) => ({ ...prev, [key]: [value] }));
+						readonly={false}
+						onAsk={(_sectionId, action) => {
+							setPayload((current) => applyAskAction(current, index, action) as Record<string, unknown>);
 						}}
 					/>
 				))
@@ -366,7 +334,7 @@ export function ActiveColumn(props: {
 				<div className="as-note">夹具不是 ask 形态（预览数据写错了）</div>
 			)}
 
-			<div className="as-note">⚠ 这里不改题目 —— 只填 items[].picked / custom</div>
+			<div className="as-note">⚠ 这里不改题目 —— 只改答案（picked / custom / custom_active）</div>
 		</div>
 	);
 }

@@ -16,7 +16,7 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { Section } from '../../../src/renderers/Section.tsx';
-import { NO_ANSWER } from '../../../src/pure/section.ts';
+import { applyAskAction, type AskAction } from '../../../src/pure/section.ts';
 import type { CardSection } from '../../../src/types.ts';
 
 /* ── 夹具：payload 逐字抄自 packages/core/templates/*.yaml ── */
@@ -132,55 +132,21 @@ interface LiveProps {
 }
 
 /** 父层：拿着 payload，按 onAnswer 算出新 payload 再灌回去。 */
+/** 父层：拿着 payload，把动作交给 pure 的 `applyAskAction`。 */
 function Live(props: LiveProps): React.ReactNode {
 	const [section, setSection] = useState<CardSection>(() => askSection());
 	const [readonlyState, setReadonlyState] = useState(false);
 
-	const answer = (sectionId: string, value: string): void => {
-		props.onEvent(`${readonlyState ? 'readonly/' : ''}answer:${sectionId}=${JSON.stringify(value)}`);
-		setSection((current) => {
-			const payload = current.payload as {
-				$type: 'ask';
-				items: Array<{
-					multi_select?: boolean;
-					options: readonly { label: string }[];
-					picked?: string[];
-					custom?: string[];
-				}>;
-			};
-			const item = payload.items[0];
-			if (item === undefined) return current;
-
-			const isOption = item.options.some((one) => one.label === value);
-			let picked: string[];
-			let custom = item.custom ?? [];
-
-			if (value === NO_ANSWER) {
-				/* 看了但都不要。 */
-				picked = [];
-			} else if (isOption) {
-				if (item.multi_select === true) {
-					picked = item.picked ?? [];
-					picked = picked.includes(value)
-						? picked.filter((one) => one !== value)
-						: [...picked, value];
-				} else {
-					picked = [value];
-				}
-			} else {
-				/* 自填值：进 custom，不进 picked。 */
-				picked = item.picked ?? [];
-				custom = [...custom, value];
-			}
-
-			return {
-				label: current.label,
-				payload: {
-					$type: 'ask',
-					items: [{ ...item, picked, custom }],
-				},
-			};
-		});
+	/*
+	 * ⚠ 这里**不再自己算** `picked` / `custom` —— 交给 pure 的 `applyAskAction`。
+	 * 之前这段手写的 30 行胶水跟产品父层是两套逻辑，改一处另一处就错。
+	 */
+	const ask = (sectionId: string, groupIndex: number, action: AskAction): void => {
+		props.onEvent(`${readonlyState ? 'readonly/' : ''}ask:${sectionId}=${JSON.stringify(action)}`);
+		setSection((current) => ({
+			...current,
+			payload: applyAskAction(current.payload, groupIndex, action),
+		}));
 	};
 
 	return (
@@ -192,7 +158,7 @@ function Live(props: LiveProps): React.ReactNode {
 					section={section}
 					readonly={readonlyState}
 					onEdit={(id) => props.onEvent(`edit:${id}`)}
-					onAnswer={answer}
+					onAsk={ask}
 				/>
 			</div>
 			<div className="pv-state">

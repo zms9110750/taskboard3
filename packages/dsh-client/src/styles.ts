@@ -1147,11 +1147,11 @@ export const SECTION_CSS = `
 .tb3w-root .ask-option{display:flex;align-items:flex-start;gap:7px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
 .tb3w-root .ask-option:hover{border-color:#93c5fd;background:#f8fbff}
 /* 只读的选项是 div —— 不给指针、不给 hover */
-.tb3w-root div.ask-option{cursor:default}
-.tb3w-root div.ask-option:hover{border-color:var(--border);background:var(--bg-card)}
+.tb3w-root .ask-option.is-readonly{cursor:default}
+.tb3w-root .ask-option.is-readonly:hover{border-color:var(--border);background:var(--bg-card)}
 /* 已选：accent 描边 + 淡蓝底 + 勾 */
 .tb3w-root .ask-option.is-picked{border-color:var(--accent);background:#eff6ff}
-.tb3w-root div.ask-option.is-picked:hover{border-color:var(--accent);background:#eff6ff}
+.tb3w-root .ask-option.is-readonly.is-picked:hover{border-color:var(--accent);background:#eff6ff}
 /* 勾的位置固定占宽 ⇒ 未选中的文字不会左右跳 */
 .tb3w-root .ask-option__mark{flex:0 0 12px;color:var(--accent);font-weight:700;line-height:1.5}
 .tb3w-root .ask-option__body{display:flex;flex:1 1 auto;flex-direction:column;gap:1px;min-width:0}
@@ -1177,7 +1177,7 @@ export const SECTION_CSS = `
 .tb3w-root .ask-group__multitag{flex:0 0 auto;padding:0 5px;border-radius:3px;background:#f3f4f6;color:var(--text-secondary);font-size:10px}
 .tb3w-root .ask-group__state-btn{flex:0 0 auto;padding:1px 8px;font-size:10.5px}
 /* 「未选择」按钮：当前就是未选择时**亮起**（黑底白字），点它能回到这个状态 */
-.tb3w-root .ask-group__state-btn[data-ask-state-btn='on']{background:var(--text);border-color:var(--text);color:#fff}
+.tb3w-root .ask-group__state-btn.is-on{background:var(--text);border-color:var(--text);color:#fff}
 /* ── 「激活」的题目：左边竖边框 ── */
 /* 左侧 12px 内边距恒定（不随状态变），边框画在 left:0 ⇒ 零位移。选择态：不是未选择就打整页左边框 */
 .tb3w-root .ask-group{position:relative;padding-left:12px}
@@ -1189,8 +1189,8 @@ export const SECTION_CSS = `
  *   选择（active）⇒ **整个问题页**左边有边（见下面的 [data-ask-active='true']）
  * 用 ::before 绝对定位，不占位、不位移。
  */
-.tb3w-root .ask-option[data-ask-readonly='true'].is-picked{position:relative}
-.tb3w-root .ask-option[data-ask-readonly='true'].is-picked::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:7px 0 0 7px}
+.tb3w-root .ask-option.is-readonly.is-picked{position:relative}
+.tb3w-root .ask-option.is-readonly.is-picked::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:7px 0 0 7px}
 /* ── 自填行：圆圈 + 文本框 ── */
 .tb3w-root .ask-option--custom{cursor:default;align-items:center}
 .tb3w-root .ask-option--custom .ask-group__custom{flex:1 1 auto;min-width:0;padding:4px 8px;border:1px dashed var(--border-strong,#c5ccd6);border-radius:5px;background:#fafbfc;font:12px/1.5 inherit;color:var(--text)}
