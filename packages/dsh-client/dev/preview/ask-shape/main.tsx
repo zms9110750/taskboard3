@@ -331,7 +331,34 @@ export function ActiveColumn(props: {
 					readonly={false}
 					onAnswer={(sectionId, value) => {
 						void sectionId;
-						setCustom((prev) => ({ ...prev, '0': value }));
+						/*
+						 * 真组件的回调语义（`AskSection.tsx:17-19`）：
+						 *   点选项   → option.label
+						 *   点都不要 → ''（NO_ANSWER）
+						 *   自填提交 → 输入文字
+						 * ⚠ `sectionId` 不区分「哪个问题组」—— 预览里只驱动第一组。
+						 */
+						if (value === '') {
+							setPicked((prev) => ({ ...prev, '0': [] }));
+							return;
+						}
+						const first = items[0];
+						const isOption = first?.options.some((one) => one.label === value) ?? false;
+						if (!isOption) {
+							setCustom((prev) => ({ ...prev, '0': value }));
+							return;
+						}
+						if (first?.multiSelect === true) {
+							setPicked((prev) => {
+								const current = prev['0'] ?? [];
+								const next = current.includes(value)
+									? current.filter((one) => one !== value)
+									: [...current, value];
+								return { ...prev, '0': next };
+							});
+							return;
+						}
+						setPicked((prev) => ({ ...prev, '0': [value] }));
 					}}
 				/>
 			) : (

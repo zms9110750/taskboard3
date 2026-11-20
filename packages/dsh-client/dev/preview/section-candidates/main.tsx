@@ -302,12 +302,14 @@ function App(): React.ReactNode {
 
 			{tab === 'ask' ? (
 				<>
-					<StateSection action="ask" state="全部三态" contract="ask 的候选按「实现」分：三栏并排 / 单栏纵向" wide>
-						<Cand id="1" note="三栏并排：create / active / ended 同屏（改 create 右边跟着变）">
+					<StateSection
+						action="ask"
+						state="create / active / ended"
+						contract="三态同屏；点 active 栏的选项会真的切换"
+						wide
+					>
+						<Cand id="1" note="三栏并排：create / active / ended 同屏（改 create 右边跟着变，点 active 选项会切换）">
 							<AskColumns layout="grid" />
-						</Cand>
-						<Cand id="2" note="单栏纵向：从上到下走一遍生命周期">
-							<AskColumns layout="stack" />
 						</Cand>
 					</StateSection>
 				</>
