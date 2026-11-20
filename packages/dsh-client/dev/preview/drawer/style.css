@@ -1,13 +1,14 @@
 /*
- * 抽屉预览 —— **只写预览外壳的样式**。
+ * 抽屉候选对比页（切换器版）—— **只写预览外壳**。
  *
- * ⚠ 产品样式（`tb3d-*` 抽屉 + `tb3w-*` 工作区 + 六个定稿组件）**不在这里**：
- *   它们由 `main.tsx` 调 `injectStyles()` 注入（`src/styles.ts` 的
- *   `WORKSPACE_CSS` / `DRAWER_CSS`），预览和产品用同一份。
- *   在预览里抄一份产品 CSS 的后果是「预览是对的、产品是坏的」，而那种坏不报错。
+ * ⚠ 产品样式（`.tb3d-*` 抽屉、`.tb3w-*` 工作区）与 mock composer 结构样式都不在这里：
+ *   前者由 `main.tsx` 的 `injectStyles()` 注入、后者由 `injectMockStyles()` 注入
+ *   （`mock-composer.tsx` 的 `MOCK_CSS`，两个预览页共用一份）。
  *
- * 本文件只有五样东西：切换条 / 舞台 / mock DSH 窗口（侧栏 + 对话 + 输入框 + tab 头）/
- * overlay 模拟 / 提示条。
+ * 本文件：切换条 / 舞台（占满宽度，真实 1200 宽 composer）/ 尺寸读数 / 提示条。
+ *
+ * 用户 `2026-11-20`：「莫写着模拟屏高。然后用高而窄的放抽屉面板做什么」
+ * ⇒ 没有三列、没有模拟屏高变量；舞台宽度优先给足，面板 = 输入框宽 × 真实 50vh。
  */
 
 body {
@@ -43,6 +44,11 @@ body {
   background: #fff;
   color: #1f2328;
   font-weight: 700;
+  white-space: nowrap;
+}
+.pv-bar__note {
+  color: #9aa1ad;
+  font-size: 11.5px;
 }
 .pv-bar__btn {
   padding: 4px 12px;
@@ -53,6 +59,7 @@ body {
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .pv-bar__btn:hover {
   border-color: #fff;
@@ -69,349 +76,78 @@ body {
   height: 18px;
   background: rgb(255 255 255 / 18%);
 }
-.pv-bar__note {
-  color: #9aa1ad;
-  font-size: 11.5px;
-}
 
 /* ══════════════════════════════════════════════════════════
-   舞台
+   舞台：占满宽度，让 composer 能到 ≈1200px
    ══════════════════════════════════════════════════════════ */
 
 .pv-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  padding: 16px;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  padding: 12px 16px 16px;
 }
 
 /*
- * 舞台 = 真实尺寸（行内 style 给 width / height）。
- * 用 outline 不用 border：border 会吃掉 1px，用户给的尺寸是**可用**尺寸。
+ * 舞台 = 一个模拟 DSH 对话窗口。
+ *
+ * `transform:translateZ(0)` 把候选 C 的 `position:fixed` 遮罩关在舞台里
+ * （真实 DSH 里它铺满视口）。宽 `min(1320px, 100%)`：1320 = 输入框 1200 + 两侧 60 缝，
+ * 保证 `--` 不用把面板压窄；窄屏时随视口缩。
  */
 .pv-stage {
-  position: relative;
   display: flex;
   flex-direction: column;
-  flex: 0 0 auto;
+  min-height: 0;
+  width: min(1320px, 100%);
+  overflow: hidden;
+  border-radius: 12px;
   background: #f5f7fa;
   outline: 1px solid #c9cfd9;
   outline-offset: -1px;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 6px 22px rgb(20 26 38 / 10%);
+  box-shadow: 0 8px 26px rgb(20 26 38 / 10%);
+  transform: translateZ(0);
 }
 
-/* 抽屉本体舞台：白底，1:1 看圆角/阴影 */
-.pv-stage--panel {
-  background: #eef0f4;
-}
-
-.pv-panel-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #9aa1ad;
-  font-size: 13px;
-}
-
-/* ══════════════════════════════════════════════════════════
-   远景：mock DSH 窗口
-   ══════════════════════════════════════════════════════════ */
-
-.pv-shell {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: row;
-  background: #fff;
-  overflow: hidden;
-}
-
-/* ── 左栏 ── */
-.pv-sidebar {
+.pv-stage__head {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 14px 16px;
+  padding: 8px 14px;
   background: #fafbfc;
-  border-right: 1px solid #ebedf0;
-  color: #3f4750;
-  font-size: 12px;
+  border-bottom: 1px solid #e7e9ee;
 }
-.pv-sidebar__brand {
-  margin-bottom: 14px;
-  color: #1f2328;
-  font-size: 15px;
-  font-weight: 700;
-}
-.pv-sidebar__brand b {
-  margin-left: 4px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: #1f2328;
-  color: #fff;
-  font-size: 7.5px;
-  letter-spacing: 1px;
-}
-.pv-sidebar__newchat {
-  margin-bottom: 16px;
-  padding: 7px 0;
-  border: 1px solid #e3e6ea;
-  border-radius: 9px;
-  background: #fff;
-  color: #2b3138;
-  text-align: center;
-}
-.pv-sidebar__row {
-  padding: 6px 8px;
-  border-radius: 7px;
-}
-.pv-sidebar__row.is-active {
-  background: #eceff2;
-  color: #1f2328;
-}
-.pv-sidebar__label {
-  margin: 14px 0 4px;
-  color: #9aa1ad;
-  font-size: 10.5px;
-}
-.pv-sidebar__hint {
-  color: #6b7280;
-  font-size: 11px;
-  line-height: 1.9;
-}
-.pv-sidebar__foot {
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid #eceff2;
-  color: #6b7280;
-  font-size: 11.5px;
-}
-
-/* ── 对话区 ── */
-.pv-conv {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  background: #fff;
-}
-.pv-conv__head {
-  flex: 0 0 auto;
+.pv-stage__line {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 18px 10px;
-  border-bottom: 1px solid #eef0f3;
 }
-.pv-conv__title {
+.pv-stage__tag {
   color: #1f2328;
   font-size: 12.5px;
   font-weight: 700;
 }
-.pv-conv__chip {
+.pv-stage__summary {
+  color: #7b828c;
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+/* 面板实测尺寸（page 里用 getBoundingClientRect 读出来的真实像素） */
+.pv-size {
+  margin-left: auto;
   padding: 2px 9px;
   border-radius: 10px;
-  background: #f1f3f6;
-  color: #6b7280;
-  font-size: 10px;
-}
-.pv-conv__muted {
-  color: #9ca3af;
-  font-size: 10.5px;
-}
-.pv-conv__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  padding: 14px 18px;
-  overflow: hidden;
-}
-.pv-conv__tag {
-  display: inline-block;
-  margin-bottom: 10px;
-  padding: 2px 10px;
-  border-radius: 10px;
-  background: #f5f6f8;
-  color: #6b7280;
-  font-size: 10px;
-}
-.pv-conv__line {
-  color: #4b5563;
-  font-size: 11.5px;
-  line-height: 1.9;
-}
-.pv-conv__line.is-strong {
-  color: #1f2328;
-}
-.pv-conv__code {
-  margin-top: 8px;
-  padding: 8px 12px;
-  border: 1px solid #eef0f3;
-  border-radius: 8px;
-  background: #f8f9fa;
-  color: #4b5563;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 10px;
-  line-height: 1.8;
-  white-space: pre;
-}
-
-/* ── 输入框（mock；Chevron 是真组件） ── */
-.pv-composer {
-  position: relative;
-  flex: 0 0 auto;
-  margin: 0 28px 28px;
-}
-.pv-composer__toggle {
-  position: absolute;
-  left: -24px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-}
-.pv-composer__card {
-  height: 108px;
-  padding: 12px 16px;
-  border: 1px solid #e2e6ea;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(20 26 38 / 4%);
-  display: flex;
-  flex-direction: column;
-}
-.pv-composer__placeholder {
-  flex: 1 1 auto;
-  color: #9aa1ad;
-  font-size: 11.5px;
-}
-.pv-composer__row {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.pv-composer__pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #f1f3f6;
+  background: #eef1f5;
   color: #6b7280;
   font-size: 11px;
+  white-space: nowrap;
 }
-.pv-composer__muted {
-  color: #4b5563;
-  font-size: 11px;
-}
-.pv-composer__model {
-  margin-left: auto;
-  color: #6b7280;
-  font-size: 10.5px;
-}
-.pv-composer__send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: #dbe4f0;
-  color: #fff;
-  font-size: 13px;
-}
-
-/* ── 右栏工作区 ── */
-.pv-pane {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  border-left: 1px solid #ebedf0;
-  background: #f5f7fa;
-}
-.pv-tabbar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  height: 36px;
-  padding: 0 14px;
-  background: #fafbfc;
-  border-bottom: 1px solid #e7e9ee;
-  color: #9ca3af;
-  font-size: 12px;
-}
-.pv-tabbar__active {
-  position: relative;
+.pv-size b {
   color: #1f2328;
-  font-weight: 700;
-}
-.pv-tabbar__active::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -10px;
-  height: 2px;
-  border-radius: 1px;
-  background: #2563eb;
-}
-.pv-tabbar__tab {
-  color: #9ca3af;
-}
-.pv-tabbar__hint {
-  margin-left: auto;
-  color: #b6bec9;
-  font-size: 9.5px;
-}
-.pv-pane__body {
-  flex: 1 1 auto;
-  display: flex;
-  min-height: 0;
-  min-width: 0;
-}
-.pv-pane__body > .tb3w-root {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-}
-
-/* ══════════════════════════════════════════════════════════
-   帧级 overlay 的模拟
-   ══════════════════════════════════════════════════════════ */
-
-/*
- * 真实产品里这一层由 DSH 的 AppFrame 提供（`shell.overlay`：
- * position:absolute; inset:0; pointer-events:none; 子元素 opt-in）。
- * 这里只是把那个容器画出来。
- */
-.pv-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  pointer-events: none;
-}
-/* 「居中于对话 + 工作区」：左边让出侧栏（设计图的对齐；待用户确认的那条） */
-.pv-overlay--pane {
-  left: 280px;
-}
-/* 抽屉本体舞台：层贴满舞台 */
-.pv-overlay--solo {
-  inset: 0;
-}
-.pv-stage--panel .tb3d-panel {
-  width: 100%;
-  max-width: none;
-  max-height: none;
-  height: 400px;
+  font-size: 11.5px;
 }
 
 /* ══════════════════════════════════════════════════════════

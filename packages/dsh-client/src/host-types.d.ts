@@ -45,9 +45,25 @@ declare module '@deepseek-ai/cordis' {
 	}
 
 	export interface SlotRegistration {
+		/** 槽名（被注册进哪个槽）。 */
 		readonly name: string;
-		readonly key: string;
+		/** keyed 槽（如 `sidebar.right.pane.tab`）用的键 = 实现身份。 */
+		readonly key?: string;
+		/**
+		 * list 槽里这一条的 id（全局唯一）。asar 原文（`2026-11-20` 复核）：
+		 * `scope.slots.register({name, id:'command-popup', order:1, locale:NS, inject:…}, PopupSelectView)`。
+		 */
+		readonly id?: string;
+		/** list 槽内的排序（越小越靠前）。 */
+		readonly order?: number;
+		/** 这条的显示名（可选；DSH 的坞槽示例用 `label`）。 */
+		readonly label?: string;
 		readonly locale?: string;
+		/**
+		 * 每个 session 解析一次注入值（组件 props 的一部分）。
+		 * 原文：`inject: (sessionId) => ({…})`。
+		 */
+		readonly inject?: (sessionId: string) => unknown;
 	}
 
 	export interface SidebarRightTabsRegistry {

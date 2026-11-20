@@ -57,6 +57,17 @@
 	 *
 	 * ⚠ 不要 include 整个 `src/` —— 那会把产品代码也拉进来检查，
 	 *   而产品代码由 `tsc -b` 负责。两条路径都报错时反而更难定位。
+	 *
+	 * ⚠ `src/host-types.d.ts` 必须单列：它是 ambient 声明（没有 import 路径可以
+	 *   「顺藤摸瓜」），只在 `tsconfig.json` 的 `src/**\/*.d.ts` 里才会进 program。
+	 *   不列它 ⇒ `dev/preview/drawer/ssr-entry.tsx` 一 import 注册代码就报
+	 *   `Cannot find module '@deepseek-ai/cordis'`（2026-11-20 实际踩到）。
 	 */
-	"include": ["dev/**/*.ts", "dev/**/*.tsx", "src/types.ts", "src/pure.ts"]
+	"include": [
+		"dev/**/*.ts",
+		"dev/**/*.tsx",
+		"src/types.ts",
+		"src/pure.ts",
+		"src/host-types.d.ts"
+	]
 }

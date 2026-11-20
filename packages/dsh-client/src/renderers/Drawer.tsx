@@ -1,130 +1,149 @@
 /**
- * 抽屉（V4）—— 会话级**底部浮层**，里面是**第二个 `<Workspace />` 实例**。
+ * 抽屉（V5 重做）—— **从输入框上方向外展开**的面板 + **输入框左外侧的正方形入口**。
  *
- * ## 形状
+ * ## 形状（用户 `2026-11-20` 画图标注）
  *
  * ```
- * ┌──────────────────────────── 1200 × 400（圆角 14、贴底居中）──────────────┐
- * │ 任务板                                            [⟳] [×]   ← 顶栏 36px     │
- * ├──────────────────────────────────────────────────────────────────────────┤
- * │ <Workspace />（第二个实例）                                                │
- * │   空间 chip 行 + 工具栏（列表 · 科技树 / 新建）                            │
- * │   ├ 左列表（宽版固定 320，自己滚）┬ 右详情（自己滚）┤                      │
- * └──────────────────────────────────────────────────────────────────────────┘
+ *          ┌──────────────────────────────────┐
+ *          │  抽屉面板                          │ ← 宽度 = 输入框宽（父容器的 100%）
+ *          │  高度 ≈ 屏幕一半                   │   底边贴输入框上边缘 + 形态间距
+ *          │  浮层遮挡后方内容                  │
+ *          └──────────────────────────────────┘
+ *                  ↑ 底边在输入框上边缘
+ *   ┌─┐   ┌──────────────────────────────┬───┐
+ *   │▣│   │ 发消息或创建任务…              │ ➤ │ ← 正方形入口贴着输入框左边缘
+ *   └─┘   └──────────────────────────────┴───┘   在 composer 工具行里、`+` 左边
  * ```
  *
- * ## ⚠ 挂载点（查证过；完整证据在 `pure/drawer-view.ts` 文件头）
+ * ## ⚠ 挂载点（已查证，asar 原文见 `pure/drawer-view.ts` 文件头）
  *
- * 设计图（`X:\temp\view-4-drawer.svg:257`）写的是「挂 `shell.overlay`（root scope）」。
- * 对运行中的 DSH `app.asar` 做字节搜索：**`shell.overlay` 命中 165 处**，槽存在，
- * 官方 doc 原文是「Frame-wide floating layer, above every column and outside their
- * scroll containers… click-through — entries opt back into pointer events」；
- * 层实现是 `.overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}`
- * —— **absolute，不是 fixed**；子元素才 `pointer-events:auto`。
+ * | 部件 | 槽 | 谁注册 |
+ * |---|---|---|
+ * | 正方形入口 | `conversation.input.left` | `register-drawer.tsx` 的 `DrawerEntrySlot` |
+ * | 面板 | `conversation.input.overlay` | `register-drawer.tsx` 的 `DrawerPanelSlot` |
  *
- * ⇒ 本组件**不需要 `position:fixed`**（用户 `2026-11-19` 否掉了 fixed：会逃出父容器）。
- *   它是一棵「`absolute` 贴底」的子树 —— 宿主把它挂进 `shell.overlay` 就是帧级浮层：
+ * **不用 `shell.overlay`** —— 那是整帧浮层，会横跨窗口（V4 因此被用户否了）。
  *
- *   ```ts
- *   ctx.slots.inject('shell.overlay', () => ctx.slots.register(
- *     { name: 'shell.overlay', id: 'taskboard3-drawer', order: 100 },
- *     DrawerEntry,   // DrawerEntry 里用 useBoardState / 宿主 store 喂 props
- *   ));
- *   ```
+ * ## 几何怎么来的（都不是拍脑袋）
  *
- *   预览里挂在舞台里就是「tab 内浮起」。两种挂载**同一个组件、同一份 CSS**。
- *   产品接线（`client.tsx`）本任务没做 —— 本文件只交组件。
+ * - **宽度**：DSH 的 `.overlayAnchor{position:absolute;inset:0 0 auto;height:0}` 在
+ *   composer 卡片顶部、宽度等于卡片；官方注释说浮层条目「position themselves against
+ *   the card (bottom: 100% + gap)」⇒ 面板 `left:0;right:0;bottom:calc(100% + gap)`
+ *   就**自动等于输入框宽**，不需要知道具体像素。
+ * - **入口位置**：卡片是 `position:relative`，入口由 `conversation.input.left`
+ *   渲染在工具行里 ⇒ 用 `position:absolute;left:-32px;bottom:4px` 抬到卡片左外侧、
+ *   与 28px 的 `+` 垂直居中。
+ * - **高度**：`min(50vh, 480px)` 或 `50vh`，公式在纯逻辑里（`drawerHeightCssOf`）。
  *
- * ## 为什么是受控的 `open`
+ * ## 受控
  *
- * 设计图 ②：输入框左侧 Chevron / 工具栏 / 右栏入口**共用同一个 open 状态**、
- * 派生**同一个动作**。所以本组件不自己持状态：
+ * 组件自己不持 `open`：`open` / `onToggle` / `onClose` 由调用方给。
+ * 产品里两个槽通过同一个 `DrawerStore` 共享状态（`register-drawer.tsx`）；
+ * 预览里用 `createDrawerStore` + `useDrawerStore`。
  *
- * ```tsx
- * const drawer = useDrawerState();          // 或宿主自己的 store
- * <DrawerToggle open={drawer.open} onToggle={drawer.toggle} />
- * <Drawer open={drawer.open} onClose={drawer.close} workspace={…} />
- * ```
+ * ## 三个候选形态
  *
- * 两个入口都从**同一个 `drawer`** 取值 ⇒ 不可能各写一套开合逻辑。
- * 状态机本身在 `pure/drawer-view.ts`（纯函数，`node --test` 直接测）。
- *
- * ## 复用 `<Workspace />`，不复制
- *
- * 抽屉里**没有**第二套列表 / 详情 / 工具栏代码 —— 只有一个 `<Workspace {...workspace} />`。
- * 于是「选中卡、滚动位置、视图（列表 / 科技树）」天然各存一份（那是 `Workspace` 自持的 UI 状态），
- * 这就是设计图 ④ 的「状态独立」。压缩只发生在 CSS（`styles.ts` 的 `DRAWER_CSS`，作用域 `.tb3d-*`）。
- *
- * ## 关闭方式（设计图 ②）
- *
- * - 再点 Chevron：`toggle`（同一个动作）。
- * - **Esc**：`document` keydown，组字中不关（输入法 Esc 是取消候选词）。
- * - **点外部**：`document` pointerdown 判决；**不渲染遮罩** —— 设计图里抽屉下方的
- *   输入框「仍可用」（`view-4-drawer.svg:126`），遮罩会拦掉滚轮 / 点击，
- *   违反「不抢焦点、不锁页面滚动」。
- * - 不抢焦点：不做 `autoFocus` / `focus()`；打开后焦点留在原处。
+ * `variant` prop 决定图标 / 间距 / 圆角 / 高度 / 遮罩 / 动画（数值在
+ * `pure/drawer-view.ts` 的 `DRAWER_VARIANTS`）。**不要替用户选** —— 预览页三列并排。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
+import { useSyncExternalStore } from 'react';
 
 import {
-	DRAWER_CLOSE_EVENT,
-	DRAWER_HEIGHT,
-	DRAWER_OPEN_EVENT,
-	DRAWER_TOGGLE_EVENT,
-	DRAWER_WIDTH,
 	closesDrawerOn,
-	drawerTierOf,
-	initialDrawerState,
+	drawerVariantOf,
 	isDrawerCloseKey,
-	reduceDrawer,
 } from '../pure/drawer-view.ts';
-import type { DrawerEvent, DrawerHitTarget, DrawerState } from '../pure/drawer-view.ts';
+import type {
+	DrawerHitTarget,
+	DrawerIconId,
+	DrawerStore,
+	DrawerVariant,
+} from '../pure/drawer-view.ts';
 import { Workspace } from './Workspace.tsx';
 import type { WorkspaceProps } from './Workspace.tsx';
 
-/** 面板 DOM id —— `DrawerToggle` 的 `aria-controls` 指向它。 */
-export const DRAWER_PANEL_ID = 'tb3d-drawer';
+/** 面板 DOM id —— 入口按钮的 `aria-controls` 指向它。 */
+export const DRAWER_PANEL_ID = 'tb3d-drawer-panel';
 
 /** 点外部时要跳过的 DOM 钩子：工作区的状态菜单 portal 到 body，但它属于抽屉。 */
 const STATUS_MENU_SELECTOR = '[data-menu="status"]';
 
-/** 触发器自己的 DOM 钩子（它自己 toggle，不能被「点外部」抢先关一次）。 */
+/** 入口按钮自己的 DOM 钩子（它自己 toggle，不能被「点外部」抢先关一次）。 */
 const TRIGGER_SELECTOR = '[data-drawer-trigger]';
 
 /* ══════════════════════════════════════════════════════════
-   1. 抽屉
+   1. 入口（conversation.input.left）—— 正方形按钮
    ══════════════════════════════════════════════════════════ */
 
-/** 抽屉属性。 */
-export interface DrawerProps {
-	/** 是否打开（受控 —— 和 Chevron 共用同一个状态）。 */
+/** 入口按钮属性。 */
+export interface DrawerEntryProps {
+	/** 和面板**同一个** open 状态。 */
 	readonly open: boolean;
-	/** 关闭动作（Esc / 点外部 / ×）。 */
-	readonly onClose: () => void;
-	/**
-	 * **第二个 `<Workspace />` 实例**的全部参数。
-	 *
-	 * 和右栏页签是同一个组件、同一个 props 形状；数据 / 回调由宿主给，
-	 * 选中卡等 UI 状态由这个实例自己持（所以和页签那份互不影响）。
-	 */
-	readonly workspace: WorkspaceProps;
-	/** 顶栏标题（设计图上是「任务板」）。 */
-	readonly title?: string;
-	/** 顶栏 ⟳；省略 = 不画这个按钮（不知道刷新什么的时候不假装有）。 */
-	readonly onRefresh?: () => void;
-	/**
-	 * 面板底边距**父容器**底边的距离（px）。
-	 *
-	 * 设计图把抽屉底边放在输入框上方 8px（`view-4-drawer.svg:242-245` 的 28 边距同理）——
-	 * 那个值取决于宿主输入框多高，所以由宿主传；组件默认贴父容器底边 16px。
-	 */
-	readonly bottomOffset?: number;
+	/** 和面板**同一个** toggle 动作。 */
+	readonly onToggle: () => void;
+	/** 候选形态（决定图标）。 */
+	readonly variant: DrawerVariant;
+	/** 无障碍名 / 悬停提示；省略 = 按开合状态给一句。 */
+	readonly label?: string;
 }
 
 /**
- * 抽屉。
+ * 正方形入口 —— 用户图里输入框左外侧那颗 `▣`。
+ *
+ * @param props 见 `DrawerEntryProps`
+ */
+export function DrawerEntry(props: DrawerEntryProps): ReactNode {
+	const label = props.label ?? (props.open ? '收起任务板抽屉' : '打开任务板抽屉');
+
+	return (
+		<button
+			type="button"
+			className="tb3d-entry"
+			data-drawer-entry="1"
+			data-drawer-trigger="entry"
+			data-drawer-variant={props.variant.id}
+			data-drawer-entry-icon={props.variant.icon}
+			aria-expanded={props.open}
+			aria-controls={DRAWER_PANEL_ID}
+			aria-label={label}
+			title={label}
+			onClick={props.onToggle}
+		>
+			<EntryIcon icon={props.variant.icon} />
+		</button>
+	);
+}
+
+/* ══════════════════════════════════════════════════════════
+   2. 面板（conversation.input.overlay）
+   ══════════════════════════════════════════════════════════ */
+
+/** 面板属性。 */
+export interface DrawerProps {
+	/** 是否打开（受控 —— 和入口按钮共用同一个状态）。 */
+	readonly open: boolean;
+	/** 关闭动作（Esc / 点外部 / ×）。 */
+	readonly onClose: () => void;
+	/** 候选形态（决定图标以外的一切视觉）。 */
+	readonly variant: DrawerVariant;
+	/**
+	 * 面板里的**压缩版 Workspace** 的全部参数。
+	 *
+	 * 和右栏页签是同一个组件、同一份 props 形状；数据 / 回调由宿主给，
+	 * 选中卡等 UI 状态由这个实例自己持（所以和页签那份互不影响）。
+	 */
+	readonly workspace: WorkspaceProps;
+	/** 顶栏标题（默认「任务板」）。 */
+	readonly title?: string;
+	/** 顶栏 ⟳；省略 = 不画这个按钮（不知道刷新什么的时候不假装有）。 */
+	readonly onRefresh?: () => void;
+}
+
+/**
+ * 抽屉面板。
  *
  * @param props 见 `DrawerProps`
  */
@@ -175,44 +194,32 @@ export function Drawer(props: DrawerProps): ReactNode {
 		};
 	}, [open, onClose]);
 
-	/* ── 关闭态：什么都不渲染（不占位、不拦截事件） ── */
+	/* ── 关闭态：什么都不渲染（不占位、不拦截事件；斜杠菜单同款约定） ── */
 	if (!open) return null;
 
 	const title = props.title ?? '任务板';
-	const bottomOffset = props.bottomOffset ?? 16;
-
-	/*
-	 * 底边距走 CSS 变量（`DRAWER_CSS` 里 `bottom:var(--tb3d-bottom,16px)` +
-	 * `max-height:calc(100% - var(--tb3d-bottom,16px) - 12px)`），默认值 16 与 CSS 一致。
-	 *
-	 * ⚠ 这里必须有一个类型断言：React 的 `CSSProperties` **不收录自定义属性**
-	 *   （`--x`）。这是外部类型的限制，不是我们想绕过检查 —— 变量名和 CSS 里的
-	 *   `var(--tb3d-bottom)` 对应，改一处必须改两处（`DRAWER_CSS` 注释里也标了）。
-	 */
-	const style =
-		bottomOffset === 16
-			? undefined
-			: ({ '--tb3d-bottom': `${String(bottomOffset)}px` } as CSSProperties);
 
 	return (
 		/*
-		 * 层：`absolute` 撑满父容器、`pointer-events:none` ——
-		 * 正好是 DSH `shell.overlay` 的约定（层本身穿透，面板自己 opt-in）。
-		 * 预览里父容器是舞台，效果相同。
+		 * 层：绝对定位、零高度 —— 正好长在 DSH 的 `.overlayAnchor` 里
+		 * （`height:0;position:absolute;inset:0 0 auto`，宽度 = 输入框卡片宽）。
+		 * 面板相对这一层 `bottom:100%` ⇒ 面板底边 = 输入框上边缘。
 		 */
 		<div className="tb3d-layer" data-drawer-layer="1">
+			{props.variant.mask ? <div className="tb3d-mask" data-drawer-mask="1" /> : null}
 			<section
 				className="tb3d-panel"
 				id={DRAWER_PANEL_ID}
 				ref={panelRef}
 				role="dialog"
 				aria-label={title}
-				aria-modal="false"
+				aria-modal={props.variant.mask}
 				data-drawer="1"
-				data-drawer-tier={drawerTierOf(DRAWER_HEIGHT)}
-				data-drawer-width={String(DRAWER_WIDTH)}
-				data-drawer-height={String(DRAWER_HEIGHT)}
-				style={style}
+				data-drawer-variant={props.variant.id}
+				data-drawer-gap={String(props.variant.gapPx)}
+				data-drawer-radius={String(props.variant.radiusPx)}
+				data-drawer-height={props.variant.heightMode}
+				data-drawer-animated={String(props.variant.animated)}
 			>
 				<header className="tb3d-head" data-drawer-head="1">
 					<span className="tb3d-head__title" data-drawer-title>
@@ -257,117 +264,98 @@ export function Drawer(props: DrawerProps): ReactNode {
 }
 
 /* ══════════════════════════════════════════════════════════
-   2. 触发器（输入框左侧 Chevron）
+   3. store ⇄ 组件（两个槽共享同一个 open 的接线）
    ══════════════════════════════════════════════════════════ */
 
-/** Chevron 触发器属性。 */
-export interface DrawerToggleProps {
-	/** 和抽屉**同一个** open 状态。 */
-	readonly open: boolean;
-	/** 和抽屉**同一个** toggle 动作。 */
-	readonly onToggle: () => void;
-	/** 无障碍名 / 悬停提示；省略 = 按开合状态给一句。 */
-	readonly label?: string;
-}
-
-/**
- * Chevron 触发器 —— 设计图 ② 里输入框左侧那颗按钮。
- *
- * 它和抽屉共用同一个 `open` / `toggle`；**不自己存状态**。
- *
- * @param props 见 `DrawerToggleProps`
- */
-export function DrawerToggle(props: DrawerToggleProps): ReactNode {
-	const label = props.label ?? (props.open ? '收起任务板抽屉' : '打开任务板抽屉');
-
-	return (
-		<button
-			type="button"
-			className="tb3d-trigger"
-			data-drawer-trigger="chevron"
-			data-drawer-open={String(props.open)}
-			aria-expanded={props.open}
-			aria-controls={DRAWER_PANEL_ID}
-			aria-label={label}
-			title={label}
-			onClick={props.onToggle}
-		>
-			<svg
-				className="tb3d-trigger__icon"
-				width="20"
-				height="20"
-				viewBox="0 0 20 20"
-				aria-hidden="true"
-			>
-				{/* 关着 = 朝上（可展开）；开着 = 朝下（可收起）。 */}
-				<path
-					d={props.open ? 'M5 7.5 L10 12.5 L15 7.5' : 'M5 12.5 L10 7.5 L15 12.5'}
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="1.7"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				/>
-			</svg>
-		</button>
-	);
-}
-
-/* ══════════════════════════════════════════════════════════
-   3. 本地开合状态（预览 / 单挂点场景用）
-   ══════════════════════════════════════════════════════════ */
-
-/** `useDrawerState()` 的返回值。 */
-export interface DrawerController {
+/** `useDrawerStore()` 的返回值。 */
+export interface DrawerBindings {
 	/** 当前是否打开。 */
 	readonly open: boolean;
-	/** 完整状态机状态（给需要断言/调试的调用点）。 */
-	readonly state: DrawerState;
-	/** 派发任意事件（一般不需要直接用）。 */
-	readonly dispatch: (event: DrawerEvent) => void;
-	/** 开合翻面 —— **三个入口共用这一个动作**。 */
+	/** 当前形态（来自 store 的配置）。 */
+	readonly variant: DrawerVariant;
+	/** 开合翻面。 */
 	readonly toggle: () => void;
-	/** 只开。 */
-	readonly openDrawer: () => void;
 	/** 只关。 */
 	readonly close: () => void;
 }
 
 /**
- * 本地持一份开合状态。
+ * 订阅一个 `DrawerStore`，得到两个槽共用的 `open`。
  *
- * ⚠ 产品里如果有「多个插件挂载点共享状态」的需求，应该把状态放到宿主的
- *   store 里再分别传 `open` / `onToggle`；这个 hook 是给「一个组件树里
- *   同时有触发器和抽屉」的场景（预览、单页内集成）。
+ * ⚠ 产品里**两个槽各调一次**这个 hook、喂**同一个 store** ⇒ 入口与面板不可能不同步。
  *
- * @param initialOpen 初始是否打开
+ * @param store 共享 store（见 `pure/drawer-view.ts` 的 `createDrawerStore`）
  */
-export function useDrawerState(initialOpen = false): DrawerController {
-	const [state, setState] = useState<DrawerState>(() => initialDrawerState(initialOpen));
-
-	const dispatch = useCallback((event: DrawerEvent): void => {
-		/* 无变化时 `reduceDrawer` 返回原对象 ⇒ React 直接跳过这次重渲染。 */
-		setState((prev) => reduceDrawer(prev, event));
-	}, []);
-
-	const toggle = useCallback((): void => {
-		dispatch(DRAWER_TOGGLE_EVENT);
-	}, [dispatch]);
-	const openDrawer = useCallback((): void => {
-		dispatch(DRAWER_OPEN_EVENT);
-	}, [dispatch]);
-	const close = useCallback((): void => {
-		dispatch(DRAWER_CLOSE_EVENT);
-	}, [dispatch]);
-
-	return { open: state.open, state, dispatch, toggle, openDrawer, close };
+export function useDrawerStore(store: DrawerStore): DrawerBindings {
+	const open = useSyncExternalStore(
+		store.subscribe,
+		() => store.getSnapshot().open,
+		/* SSR：默认关着渲染（预览/断言里只看显式 open 的那份） */
+		() => false,
+	);
+	return {
+		open,
+		variant: drawerVariantOf(store.variant),
+		toggle: store.toggle,
+		close: store.close,
+	};
 }
 
 /* ══════════════════════════════════════════════════════════
    4. inline SVG（零依赖）
    ══════════════════════════════════════════════════════════ */
 
-/** 刷新（设计图顶栏那颗 ⟳）。 */
+/**
+ * 入口图标 —— 三个候选形态各一颗。
+ *
+ * @param props.icon 图标 id
+ */
+function EntryIcon(props: { readonly icon: DrawerIconId }): ReactNode {
+	switch (props.icon) {
+		case 'square':
+			/* ▣：外框 + 内实心方块 */
+			return (
+				<svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true">
+					<rect
+						x="3.25"
+						y="3.25"
+						width="13.5"
+						height="13.5"
+						rx="2.4"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.6"
+					/>
+					<rect x="7.25" y="7.25" width="5.5" height="5.5" rx="1" fill="currentColor" />
+				</svg>
+			);
+		case 'arrow-up':
+			/* ▲：向上箭头（「从这里向上展开」）*/
+			return (
+				<svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true">
+					<path
+						d="M10 16 V4.6 M5.2 9.4 L10 4.6 L14.8 9.4"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.8"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					/>
+				</svg>
+			);
+		case 'dots':
+			/* ⋯：三点（「更多」）*/
+			return (
+				<svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true">
+					<circle cx="4.6" cy="10" r="1.55" fill="currentColor" />
+					<circle cx="10" cy="10" r="1.55" fill="currentColor" />
+					<circle cx="15.4" cy="10" r="1.55" fill="currentColor" />
+				</svg>
+			);
+	}
+}
+
+/** 刷新（顶栏那颗 ⟳）。 */
 function RefreshIcon(): ReactNode {
 	return (
 		<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
