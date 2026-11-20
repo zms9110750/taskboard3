@@ -1,25 +1,22 @@
 /**
- * composer 骨架 —— **只提供两个真实定位父级，不画任何假内容**。
+ * composer 拟真骨架 —— **布局照真实 DSH，组件是真的**。
  *
- * ## 为什么要有这个文件（用户 2026-11-20）
+ * ## 用户 2026-11-20 的最新要求
  *
- * > 「我要的不是真实dsh。我要的是那个抽屉组件要用已经候选的组件放进去。
- * >   你搓的什么垃圾东西。」
- * > 「渲染旧壳也应该在接入组件的地方接入组件。而不是搓假的」
+ * > 「drawer 预览拟真 dsh 的布局。要引用视口组件。」
+ * > （视口组件 = `dev/preview/vp-drawer/index.html` 那个 1200 × 476 的 Workspace 视口）
  *
- * 原来的 `mock-composer.tsx` 画了一整个假 composer：假对话、假输入框、
- * 假工具行、假发送按钮 —— 那些都不是组件，是我画的。而 `Drawer` 面板的
- * 定位**只需要两个真实父级**：
+ * 所以这个文件做两件事：
  *
- * | 父级 | asar 原文 | 作用 |
- * |---|---|---|
- * | `.GRgSLq_card`（`position:relative`）| `.GRgSLq_card{…position:relative}` | 入口 `left`/`top` 的包含块 |
- * | `.GRgSLq_overlayAnchor` | `.GRgSLq_overlayAnchor{height:0;position:absolute;inset:0 0 auto}` | 面板 `bottom:100%` 的包含块 |
+ * 1. **拟真**：卡片里画输入框 / 工具行 / `+` / 拖拽把手 / 发送按钮 ——
+ *    位置和尺寸照 asar 原文（`.GRgSLq_row{padding:2px 8px 6px}`、
+ *    `.GRgSLq_add{width:28px;height:28px}`、`.GRgSLq_primary{width:34px;height:34px}`）。
+ *    这些是**宿主的样子**，不是组件 —— 组件只有抽屉本身。
+ * 2. **引用视口**：抽屉面板里放的就是 `vp-drawer` 那个视口的内容
+ *    （`Workspace` 在 1200 × 476 里渲染，和那个预览页同一份）。
  *
- * ⇒ 这个文件只摆这两个盒子（**真实尺寸、真实定位语义**），里面放真组件
- *   `Drawer` / `DrawerEntry`。**不画对话、不画输入框、不画工具行。**
- *
- * ⚠ 卡片是空的。空不是缺陷 —— 它是「宿主长什么样不归组件管」的诚实表达。
+ * ⚠ 和旧 `mock-composer.tsx` 的区别：旧版画了假对话（两条消息气泡）。
+ *   那些不是宿主的样子，是编的内容 —— 去掉了。
  */
 
 import type { ReactNode } from 'react';
@@ -27,6 +24,10 @@ import type { ReactNode } from 'react';
 import type { DrawerVariant } from '../../../src/pure/drawer-view.ts';
 import { Drawer, DrawerEntry } from '../../../src/renderers/Drawer.tsx';
 import type { WorkspaceProps } from '../../../src/renderers/Workspace.tsx';
+
+/** 视口尺寸 —— 和 `dev/preview/vp-drawer` 同一个数。 */
+export const DRAWER_VIEWPORT_WIDTH = 1200;
+export const DRAWER_VIEWPORT_HEIGHT = 476;
 
 /** 组件属性。 */
 export interface ComposerFrameProps {
@@ -38,23 +39,29 @@ export interface ComposerFrameProps {
 	readonly workspace: WorkspaceProps;
 	readonly title?: string;
 	readonly onRefresh?: () => void;
-	/** 卡片宽度（真实 composer 的 `--dsh-chat-content-width`，默认 1200）。 */
+	/** 卡片宽度 = 视口宽度（真 composer 的 chat-content-width）。 */
 	readonly cardWidth?: number;
 }
 
 /**
- * 渲染「composer 卡片 + overlayAnchor + 真抽屉组件」。
+ * 渲染「拟真 composer 卡片 + overlayAnchor + 真抽屉组件」。
  *
  * @param props 见 `ComposerFrameProps`
  */
 export function ComposerFrame(props: ComposerFrameProps): ReactNode {
-	const width = props.cardWidth ?? 1200;
+	const width = props.cardWidth ?? DRAWER_VIEWPORT_WIDTH;
 
 	return (
 		<div className="pvf" data-composer-frame="1">
+			{/* 视口标签：说明这块就是 vp-drawer 那个视口 */}
+			<div className="pvf-tag" data-viewport-tag="1">
+				视口 {String(DRAWER_VIEWPORT_WIDTH)} × {String(DRAWER_VIEWPORT_HEIGHT)}
+				· 面板内容与 dev/preview/vp-drawer 同一份
+			</div>
+
 			{/*
-			 * 卡片：只提供 `position:relative`。空着 —— 内容不归组件管。
-			 * 高度给一个真实量级（textarea + 工具行 ≈ 96px），否则 anchor 无处可落。
+			 * 卡片：`position:relative` 是入口的包含块（asar 原文）。
+			 * 里面按真实 DSH 结构画输入框 + 工具行。
 			 */}
 			<div className="pvf-card" data-composer-card="1" style={{ width: `${String(width)}px` }}>
 				{/* overlayAnchor：真 DSH 原文 `.overlayAnchor{height:0;position:absolute;inset:0 0 auto}` */}
@@ -69,12 +76,31 @@ export function ComposerFrame(props: ComposerFrameProps): ReactNode {
 					/>
 				</div>
 
-				{/*
-				 * 入口：真组件挂在卡片的 `conversation.input.left` 语义位置上。
-				 * 这里直接放在卡片里 —— 它是 `position:absolute`，
-				 * `left:-32px; top:4px` 相对卡片生效，和挂在工具行里等价。
-				 */}
-				<DrawerEntry open={props.open} onToggle={props.onToggle} variant={props.variant} />
+				{/* 输入框（拟真：占位文字，不是组件） */}
+				<div className="pvf-editor" data-composer-editor="1">
+					<span className="pvf-editor__placeholder">发消息或创建任务…</span>
+				</div>
+
+				{/* 工具行（拟真：+ / 权限 / 模型 / 发送） */}
+				<div className="pvf-row" data-composer-row="1">
+					<div className="pvf-tools">
+						{/*
+						 * 入口：真组件挂在卡片里（`position:absolute`，
+						 * `left:-32px; top:4px` 相对卡片生效 —— 和挂在工具行里等价）。
+						 */}
+						<DrawerEntry open={props.open} onToggle={props.onToggle} variant={props.variant} />
+						<button type="button" className="pvf-add" aria-label="添加">
+							＋
+						</button>
+						<span className="pvf-mode">完全权限 ▾</span>
+					</div>
+					<div className="pvf-trailing">
+						<span className="pvf-model">DeepSeek V4.1 Flash ▾</span>
+						<button type="button" className="pvf-send" aria-label="发送">
+							↑
+						</button>
+					</div>
+				</div>
 			</div>
 		</div>
 	);

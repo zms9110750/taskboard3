@@ -201,22 +201,84 @@ body {
   padding-top: 500px;
 }
 
-.pvf-card {
-  position: relative;
-  height: 96px;
-  border: 1px dashed #c7cdd6;
-  border-radius: 14px;
-  background: rgb(255 255 255 / 55%);
-}
-
-.pvf-card::after {
-  content: "composer 卡片（定位父级）· 内容不归组件管";
-  position: absolute;
-  left: 12px;
-  bottom: 8px;
+.pvf-tag {
+  text-align: center;
   color: #9aa1ad;
   font-size: 11px;
-  pointer-events: none;
+  margin-bottom: 8px;
+}
+
+/* 卡片：拟真 composer —— 输入框 + 工具行 */
+.pvf-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e3e6eb;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%), 0 8px 24px rgb(15 23 42 / 6%);
+}
+
+.pvf-editor {
+  padding: 14px 16px 6px;
+  min-height: 52px;
+}
+
+.pvf-editor__placeholder {
+  color: #9aa1ad;
+  font-size: 13.5px;
+}
+
+/* 工具行：照 asar 原文 .row{padding:2px 8px 6px} */
+.pvf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 8px 6px;
+  min-width: 0;
+}
+
+.pvf-tools,
+.pvf-trailing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* .add{width:28px;height:28px;border-radius:999px} */
+.pvf-add {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e3e6eb;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2328;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pvf-mode,
+.pvf-model {
+  color: #5f6673;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* .primary{width:34px;height:34px;border-radius:999px} */
+.pvf-send {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dsw-alias-button-info-fill, #3b6ef0);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-2px);
 }
 
 .pvf-anchor {
