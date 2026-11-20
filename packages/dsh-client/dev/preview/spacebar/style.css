@@ -46,11 +46,11 @@
 	opacity: 0.45;
 	cursor: default;
 }
-/* 「显示已归档」开着 —— 淡蓝底 + accent 边框 */
+/* 「显示已归档」开着 = **黑底白字**（开关类激活态，用户 2026-11-20） */
 .ghost-btn.is-active {
-	border-color: var(--accent);
-	color: var(--accent);
-	background: #eff6ff;
+	border-color: var(--text);
+	color: #fff;
+	background: var(--text);
 }
 
 /* ── 整行 ── */
