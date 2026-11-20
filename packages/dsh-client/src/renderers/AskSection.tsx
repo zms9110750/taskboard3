@@ -57,10 +57,17 @@ function AskMark(props: {
 	readonly readonly: boolean;
 }): ReactNode {
 	if (props.readonly) {
-		return (
+		/*
+		 * 冻结态（设计稿 detail-ask-states.png）：
+		 *   选中 ⇒ ✓
+		 *   未选中 ⇒ **细圆点**（空标记会让整行看起来没有样式）
+		 */
+		return props.picked ? (
 			<span className="ask-option__mark ask-option__mark--check" aria-hidden="true">
-				{props.picked ? '✓' : ''}
+				✓
 			</span>
+		) : (
+			<span className="ask-option__mark ask-option__mark--dot" aria-hidden="true" />
 		);
 	}
 	return (
