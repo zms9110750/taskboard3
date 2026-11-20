@@ -1147,7 +1147,15 @@ export const SECTION_CSS = `
 .tb3w-root .ask-option{display:flex;align-items:flex-start;gap:7px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
 .tb3w-root .ask-option:hover{border-color:#93c5fd;background:#f8fbff}
 /* 只读的选项是 div —— 不给指针、不给 hover */
-.tb3w-root .ask-option.is-readonly{cursor:default}
+/*
+ * 冻结态（用户 2026-11-21「这里没有css」+ 设计稿 detail-ask-states.png）：
+ *   未选中 ⇒ **去掉边框、透明底、文字弱化**（降级成一行，不占版面）
+ *   已选中 ⇒ 保留边框 + 淡蓝底 + 左侧竖线
+ */
+.tb3w-root .ask-option.is-readonly{cursor:default;border-color:transparent;background:transparent;color:var(--text-weak)}
+.tb3w-root .ask-option.is-readonly .ask-option__desc{color:var(--text-weak);opacity:.75}
+.tb3w-root .ask-option.is-readonly.is-picked{border-color:var(--accent);background:#eff6ff;color:var(--text)}
+.tb3w-root .ask-option.is-readonly.is-picked .ask-option__desc{color:var(--text-secondary);opacity:1}
 .tb3w-root .ask-option.is-readonly:hover{border-color:var(--border);background:var(--bg-card)}
 /* 已选：accent 描边 + 淡蓝底 + 勾 */
 .tb3w-root .ask-option.is-picked{border-color:var(--accent);background:#eff6ff}

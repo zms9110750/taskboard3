@@ -270,19 +270,22 @@ export interface AskSectionView {
 	readonly empty: boolean;
 }
 
-/** 把「未选择 / 都不要 / 已选」翻成界面文字。 */
+/**
+ * 把作答状态翻成界面文字。
+ *
+ * ⚠ 「未选择」和「都不要」（`picked: []`）在界面上**不区分** ——
+ * 用户 2026-11-21：「这个都不要是啥玩意？不是应该在右上角那里选了几个的地方写没选吗」。
+ * 对使用者来说「没有答案」就是「未选择」，`picked: []` 是存储层细节，不该出现在界面上。
+ */
 export function askStateLabelOf(group: AskGroupView): string {
-	if (group.pickedState === 'unset') return '未选择';
-	if (group.pickedState === 'none') return '都不要';
+	if (group.pickedState === 'unset' || group.pickedState === 'none') return '未选择';
 	return group.multiSelect ? `多选·已答 ${group.pickedCount}` : `单选·已选 ${group.pickedCount}`;
 }
 
 /**
- * 点「都不要」时回调的 `value`。
+ * 「未选择」动作的哨兵值（历史遗留：早期用 `onAnswer(sectionId, '')` 表示它）。
  *
- * ⚠ 语义：`onAnswer(sectionId, '')` = **看了但都不要**（对应 payload 里
- *   `picked: []`）。调用方据此写 `picked: []`，**不要**删掉 `picked`
- *   —— 那会退回「未选择」，两种回答就分不出来了。
+ * ⚠ 现在清空走 `AskAction.clear`，这个常量只为兼容老调用方保留。
  */
 export const NO_ANSWER = '';
 

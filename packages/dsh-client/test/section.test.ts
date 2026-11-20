@@ -276,8 +276,9 @@ describe('askSectionOf —— picked 三态（core 注释原文的三种）', ()
 		const group = askSectionOf(withPicked([])).groups[0];
 		assert.equal(group?.pickedState, 'none');
 		assert.equal(group?.pickedCount, 0);
-		assert.equal(group !== undefined && askStateLabelOf(group), '都不要');
-		/* 两种状态必须能区分出来，否则「都不要」会被显示成「未选择」。 */
+		/* 用户 2026-11-21：界面上「没有答案」一律显示「未选择」，不暴露「都不要」。 */
+		assert.equal(group !== undefined && askStateLabelOf(group), '未选择');
+		/* 数据层仍要能区分（pickedState 不同），只是**界面文字**统一成「未选择」。 */
 		assert.notEqual(group?.pickedState, askSectionOf(withPicked(undefined)).groups[0]?.pickedState);
 	});
 
