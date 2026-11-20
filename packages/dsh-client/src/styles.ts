@@ -723,7 +723,8 @@ export const WORKSPACE_CSS = `
 /* meta 行：状态是**固定 92px 首列**，不随 label 变宽而漂移 */
 .tb3w-root .detail-meta{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0;font-size:11.5px;color:var(--text-secondary)}
 .tb3w-root .detail-meta > *{flex:0 0 auto;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tb3w-root .detail-status-col{display:inline-flex;align-items:center;flex:0 0 92px;min-width:0;margin-left:0;padding:0}
+/* 用户 2026-11-20：「从状态的文字到后面的 label 间隔太远了」——92px 改成按最长状态（「需要信息」4 字 ≈ 62px）收到 64px，仍保持同一行内各状态的左边缘对齐。 */
+.tb3w-root .detail-status-col{display:inline-flex;align-items:center;flex:0 0 68px;min-width:0;margin-left:0;padding:0}
 .tb3w-root .detail-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .tb3w-root .detail-action{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;font-size:12px}
 .tb3w-root .detail-action.is-primary{border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600}
