@@ -42,23 +42,27 @@ const INITIAL_ITEMS: readonly AskItem[] = [
 		header: '选一个就行（单选）',
 		question: '这个卡的目的是什么？',
 		options: [
-			{ label: '方案 A：先做详情页' },
-			{ label: '方案 B：先做科技树' },
-			{ label: '方案 C：两条并行' },
+			{ label: '方案 A：先做详情页', description: '详情页是入口，先有壳' },
+			{ label: '方案 B：先做科技树', description: '科技树是视图，先有骨架' },
+			{ label: '方案 C：两条并行', description: '同时推进，风险是都做不深' },
 		],
 		multiSelect: false,
 		placeholder: '如果都不合适，写下你的想法',
-		picked: [],
+		picked: ['方案 B：先做科技树'],
 		custom: [],
 	},
 	{
 		header: '可以多选',
 		question: '哪些东西必须一起改？',
-		options: [{ label: '筛选行' }, { label: '空间条' }, { label: '详情头部' }],
+		options: [
+			{ label: '筛选行', description: 'FilterRow / FilterBox' },
+			{ label: '空间条', description: 'SpaceBar / SpacePicker' },
+			{ label: '详情头部', description: 'DetailHead' },
+		],
 		multiSelect: true,
 		placeholder: '补充说明',
-		picked: [],
-		custom: [],
+		picked: ['筛选行'],
+		custom: ['还有配色'],
 	},
 ];
 
@@ -66,7 +70,7 @@ const INITIAL_ITEMS: readonly AskItem[] = [
    栏 1：create —— askCompose（编辑问卷本身）
    ══════════════════════════════════════════════════════════ */
 
-function CreateColumn(): React.ReactNode {
+export function CreateColumn(): React.ReactNode {
 	const [items, setItems] = useState<readonly AskItem[]>(INITIAL_ITEMS);
 
 	/**
@@ -86,13 +90,39 @@ function CreateColumn(): React.ReactNode {
 	 * @param optionIndex 选项下标
 	 * @param label 新文字
 	 */
-	const patchOption = (itemIndex: number, optionIndex: number, label: string): void => {
+	const patchOptionLabel = (itemIndex: number, optionIndex: number, label: string): void => {
 		setItems((prev) =>
 			prev.map((one, i) =>
 				i === itemIndex
 					? {
 							...one,
 							options: one.options.map((opt, j) => (j === optionIndex ? { ...opt, label } : opt)),
+						}
+					: one,
+			),
+		);
+	};
+
+	/**
+	 * 改一个选项的说明（`description` —— JSON 里本来就有这一项）。
+	 *
+	 * @param itemIndex 问题组下标
+	 * @param optionIndex 选项下标
+	 * @param description 新说明
+	 */
+	const patchOptionDescription = (
+		itemIndex: number,
+		optionIndex: number,
+		description: string,
+	): void => {
+		setItems((prev) =>
+			prev.map((one, i) =>
+				i === itemIndex
+					? {
+							...one,
+							options: one.options.map((opt, j) =>
+								j === optionIndex ? { ...opt, description } : opt,
+							),
 						}
 					: one,
 			),
@@ -145,17 +175,28 @@ function CreateColumn(): React.ReactNode {
 					/>
 					<span className="as-role">header</span>
 
-					{/* options：可增删改 */}
+					{/* options：可增删改（label + description 两个字段） */}
 					<div className="as-options">
 						{item.options.map((option, optionIndex) => (
-							<div className="as-option" key={optionIndex}>
-								<input
-									className="as-input"
-									value={option.label}
-									onChange={(e) => {
-										patchOption(itemIndex, optionIndex, e.target.value);
-									}}
-								/>
+							<div className="as-option as-option--two" key={optionIndex}>
+								<div className="as-option__fields">
+									<input
+										className="as-input"
+										value={option.label}
+										placeholder="选项文字"
+										onChange={(e) => {
+											patchOptionLabel(itemIndex, optionIndex, e.target.value);
+										}}
+									/>
+									<input
+										className="as-input as-input--desc"
+										value={option.description ?? ''}
+										placeholder="选项说明（可选）"
+										onChange={(e) => {
+											patchOptionDescription(itemIndex, optionIndex, e.target.value);
+										}}
+									/>
+								</div>
 								<button
 									type="button"
 									className="as-icon"
@@ -174,10 +215,12 @@ function CreateColumn(): React.ReactNode {
 							type="button"
 							className="as-add"
 							onClick={() => {
-								patchItem(itemIndex, { options: [...item.options, { label: '新选项' }] });
+								patchItem(itemIndex, {
+									options: [...item.options, { label: '新选项', description: '' }],
+								});
 							}}
 						>
-							＋ 添加选项
+							＋ 添加选项 <span className="as-role">option-add</span>
 						</button>
 					</div>
 
@@ -237,13 +280,19 @@ function CreateColumn(): React.ReactNode {
    栏 2：active —— askEditable（填答案，用真组件）
    ══════════════════════════════════════════════════════════ */
 
-function ActiveColumn(): React.ReactNode {
-	const [picked, setPicked] = useState<Readonly<Record<string, readonly string[]>>>({});
-	const [custom, setCustom] = useState<Readonly<Record<string, string>>>({});
+export function ActiveColumn(): React.ReactNode {
+	/* 预填一份「已经填过」的数据 —— 否则「未选择」看不出填答案的形态。 */
+	const [picked, setPicked] = useState<Readonly<Record<string, readonly string[]>>>({
+		'0': ['方案 B：先做科技树'],
+		'1': ['筛选行'],
+	});
+	const [custom, setCustom] = useState<Readonly<Record<string, string>>>({
+		'1': '还有配色',
+	});
 
 	/** payload 里带上当前选择，让真组件按真实数据渲染。 */
 	const payload = {
-		$type: 'taskboard.ask',
+		$type: 'ask',
 		items: INITIAL_ITEMS.map((item, i) => ({
 			header: item.header,
 			question: item.question,
@@ -291,7 +340,7 @@ function ActiveColumn(): React.ReactNode {
    栏 3：ended —— 只读结果
    ══════════════════════════════════════════════════════════ */
 
-function EndedColumn(): React.ReactNode {
+export function EndedColumn(): React.ReactNode {
 	return (
 		<div className="as-col">
 			<div className="as-col__head">
@@ -354,7 +403,7 @@ if (root !== null) {
 }
 
 /** 本页骨架样式。 */
-function injectAskStyles(): void {
+export function injectAskStyles(): void {
 	if (document.getElementById('as-style') !== null) return;
 	const STYLE = [
 		'.as{padding:20px 24px 60px;font:13px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:#16181d;background:#fff;min-height:100%}',
@@ -375,7 +424,10 @@ function injectAskStyles(): void {
 		'.as-input--header{font-size:11.5px;color:#9aa1ad}',
 		'.as-input--dashed{border-style:dashed;background:#fafbfc;color:#9aa1ad}',
 		'.as-options{display:flex;flex-direction:column;gap:5px}',
-		'.as-option{display:flex;gap:5px;align-items:center}',
+		'.as-option{display:flex;gap:5px;align-items:flex-start}',
+		'.as-option--two{}',
+		'.as-option__fields{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}',
+		'.as-input--desc{font-size:11px;color:#9aa1ad;border-style:dashed}',
 		'.as-add{padding:5px 10px;border:1px dashed #c7cdd6;border-radius:6px;background:#fafbfc;color:#2563eb;font-size:11.5px;cursor:pointer}',
 		'.as-add--block{width:100%;margin-top:4px}',
 		'.as-check{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5f6673}',

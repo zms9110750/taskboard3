@@ -23,6 +23,7 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { injectStyles } from '../../../src/styles.ts';
+import { ActiveColumn, CreateColumn, EndedColumn, injectAskStyles } from '../ask-shape/main.tsx';
 
 /* ══════════════════════════════════════════════════════════
    夹具
@@ -317,11 +318,19 @@ function App(): React.ReactNode {
 			<TextCandidateB />
 			<MarkdownCandidateA />
 			<MarkdownCandidateB />
+
+			<h2 className="sc-h2">ask · 三相位（契约 §2.9）</h2>
+			<div className="sc-ask-grid">
+				<CreateColumn />
+				<ActiveColumn />
+				<EndedColumn />
+			</div>
 		</div>
 	);
 }
 
 injectStyles();
+injectAskStyles();
 injectCandidateStyles();
 
 const root = document.getElementById('root');
@@ -362,6 +371,8 @@ function injectCandidateStyles(): void {
 		'.sc-md ol{margin:6px 0 0;padding-left:20px}',
 		'.sc-md li{margin:2px 0}',
 		'.sc-code{margin:8px 0 0;padding:8px;border-radius:5px;background:#f3f4f6;font-family:ui-monospace,Consolas,monospace;font-size:11px;overflow:auto}',
+		'.sc-h2{font-size:15px;margin:28px 0 10px}',
+		'.sc-ask-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}',
 	].join('\n');
 	const style = document.createElement('style');
 	style.id = 'sc-style';
