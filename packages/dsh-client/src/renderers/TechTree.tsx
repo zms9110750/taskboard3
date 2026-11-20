@@ -98,7 +98,12 @@ import { TreeCard } from './TreeCard.tsx';
  * ⚠ 这些是**视图参数**：`tree-layout.ts` 的路径函数收 `TreeMetrics`，不写死。
  */
 export const TREE_METRICS = {
-	cardWidth: 180,
+	/*
+	 * 宽度按最坏内容算（用户 2026-11-20：「编号默认是双字母的。卡不够长。
+	 * 要保证 4 字母。3 个 label 都是 4 个字。状态也是 4 个字的时候可以显示完整」）：
+	 * LT01（4 字符）+ 3 个 4 字 label + 4 字状态 ≈ 224px 内容 + padding。
+	 */
+	cardWidth: 240,
 	cardHeight: 78,
 	columnGap: 56,
 	rowGap: 14,

@@ -77,7 +77,8 @@ const TEMPLATE_LABEL: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /** 卡片尺寸（和 `TREE_METRICS` 一致；预览不 import 它是为了不依赖布局）。 */
-const W = 180;
+/* 宽度按最坏内容算：编号 4 字符（LT01）+ 3 个 4 字 label + 4 字状态 */
+const W = 240;
 const H = 78;
 
 /**
@@ -219,7 +220,7 @@ function App(): ReactNode {
 
 			{/* ── ② 布局警告 ── */}
 			<section className="pv-block">
-				<h2>② 布局警告：孤儿 / 环（▲ + title 里有原因）</h2>
+				<h2>② 布局警告：孤儿（▲ + title 里有原因）</h2>
 				<p className="pv-note">
 					▲ 是 `layoutTree()` 的 `warnings`；`title` 里写原因，`data-card-warning` 上是
 					orphan / cycle（SSR 断言查这个属性）。
@@ -237,16 +238,6 @@ function App(): ReactNode {
 							cardId: 'X01',
 							detail: 'parent 指向的卡不存在：NOPE，按第 0 层摆放',
 						}}
-						onSelect={onSelect}
-					/>
-					<Cell
-						col={1}
-						row={0}
-						card={card('CY01', { title: 'parent 链成环（环上的卡）' })}
-						kindLabel="设计"
-						templateLabel="决策"
-						layer={0}
-						warning={{ kind: 'cycle', cardId: 'CY01', detail: 'parent 链成环（这张卡在环上），按第 0 层摆放' }}
 						onSelect={onSelect}
 					/>
 					<Cell
