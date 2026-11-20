@@ -80,50 +80,6 @@ function Phase(props: {
    text 候选 A：单一 textarea（三相位只换 readOnly / placeholder）
    ══════════════════════════════════════════════════════════ */
 
-function TextCandidateA(): React.ReactNode {
-	return (
-		<Case
-			title="text · 候选 A —— 单一 textarea"
-			note="三相位只有 readOnly / placeholder / 可编辑三处不同，元素类型不变"
-		>
-			<Phase name="create" tag="create">
-				<div className="sc-field">
-					<textarea
-						className="sc-textarea"
-						defaultValue={TEXT_VALUE}
-						placeholder={TEXT_HINT}
-						rows={3}
-					/>
-					<div className="sc-hint">正文可编辑 · 灰字是 placeholder（清空后仍在）</div>
-				</div>
-			</Phase>
-			<Phase name="active" tag="active">
-				<div className="sc-field">
-					<textarea
-						className="sc-textarea"
-						defaultValue={TEXT_VALUE}
-						placeholder={TEXT_HINT}
-						rows={3}
-					/>
-					<div className="sc-hint">可编辑 · 灰字同样是 placeholder</div>
-				</div>
-			</Phase>
-			<Phase name="ended" tag="ended">
-				<div className="sc-field">
-					<textarea
-						className="sc-textarea sc-textarea--readonly"
-						defaultValue={TEXT_VALUE}
-						placeholder={TEXT_HINT}
-						rows={3}
-						readOnly
-					/>
-					<div className="sc-hint">只读 textarea · 灰字仍在 · 可选中复制</div>
-				</div>
-			</Phase>
-		</Case>
-	);
-}
-
 /* ══════════════════════════════════════════════════════════
    text 候选 B：create 双框（正文 + 灰字分开），active/ended 单框
    ══════════════════════════════════════════════════════════ */
@@ -155,14 +111,117 @@ function TextCandidateB(): React.ReactNode {
 			</Phase>
 			<Phase name="ended" tag="ended">
 				<div className="sc-field">
+					{/*
+					 * 用户 2026-11-21：「无法分辨冻结态以后，文本是填写字还是灰字。」
+					 * ⇒ ended 不再用「只读 textarea + placeholder」那套（两者都只是框里的字），
+					 *   改成两段显式分开：正文一块、声明一块（带标签、灰色斜体）。
+					 */}
+					<div className="sc-ended-value">{TEXT_VALUE}</div>
+					<div className="sc-hint">↑ 填写字（正文）</div>
+					<div className="sc-ended-decl">
+						<span className="sc-ended-decl__tag">声明</span>
+						{TEXT_HINT}
+					</div>
+					<div className="sc-hint">↑ 灰字（声明）—— 现在一眼能分开</div>
+				</div>
+			</Phase>
+		</Case>
+	);
+}
+
+/* ══════════════════════════════════════════════════════════
+   text 候选 C：单框 + 「编辑声明」按钮（灰字按需展开）
+   ══════════════════════════════════════════════════════════ */
+
+function TextCandidateC(): React.ReactNode {
+	const [editingDecl, setEditingDecl] = useState(false);
+
+	return (
+		<Case
+			title="text · 候选 C —— 单框 + 「编辑声明」按钮"
+			note="默认只看到正文；灰字（声明）要显式点开才出现，不占日常视线"
+		>
+			<Phase name="create" tag="create">
+				<div className="sc-field">
+					<textarea className="sc-textarea" defaultValue={TEXT_VALUE} rows={3} />
+					<div className="sc-actions">
+						<button
+							type="button"
+							className="ghost-btn"
+							onClick={() => {
+								setEditingDecl(!editingDecl);
+							}}
+						>
+							{editingDecl ? '收起声明' : '编辑声明（灰字）'}
+						</button>
+					</div>
+					{editingDecl ? (
+						<>
+							<input className="sc-input" defaultValue={TEXT_HINT} />
+							<div className="sc-hint">↑ 灰字（声明）—— 只在点开时才出现</div>
+						</>
+					) : (
+						<div className="sc-hint">灰字默认收起</div>
+					)}
+				</div>
+			</Phase>
+			<Phase name="active" tag="active">
+				<div className="sc-field">
 					<textarea
-						className="sc-textarea sc-textarea--readonly"
+						className="sc-textarea"
 						defaultValue={TEXT_VALUE}
 						placeholder={TEXT_HINT}
 						rows={3}
-						readOnly
 					/>
-					<div className="sc-hint">只读 textarea · 灰字仍在</div>
+					<div className="sc-hint">合成一个框 · 灰字变 placeholder</div>
+				</div>
+			</Phase>
+			<Phase name="ended" tag="ended">
+				<div className="sc-field">
+					<div className="sc-ended-value">{TEXT_VALUE}</div>
+					<div className="sc-ended-decl">
+						<span className="sc-ended-decl__tag">声明</span>
+						{TEXT_HINT}
+					</div>
+				</div>
+			</Phase>
+		</Case>
+	);
+}
+
+/* ══════════════════════════════════════════════════════════
+   text 候选 D：三态都用「正文 / 声明」两段式（结构最稳定）
+   ══════════════════════════════════════════════════════════ */
+
+function TextCandidateD(): React.ReactNode {
+	return (
+		<Case
+			title="text · 候选 D —— 三态都保持「正文 / 声明」两段式"
+			note="不随相位换结构：永远两块，只是 create/active 可编辑、ended 只读"
+		>
+			<Phase name="create" tag="create">
+				<div className="sc-field">
+					<div className="sc-row-label">正文</div>
+					<textarea className="sc-textarea" defaultValue={TEXT_VALUE} rows={2} />
+					<div className="sc-row-label">声明（灰字）</div>
+					<input className="sc-input" defaultValue={TEXT_HINT} />
+				</div>
+			</Phase>
+			<Phase name="active" tag="active">
+				<div className="sc-field">
+					<div className="sc-row-label">正文</div>
+					<textarea className="sc-textarea" defaultValue={TEXT_VALUE} rows={2} />
+					<div className="sc-row-label">声明（灰字）</div>
+					<input className="sc-input sc-input--ro" defaultValue={TEXT_HINT} readOnly />
+					<div className="sc-hint">声明在 active 也可改（或按契约改成只读，你定）</div>
+				</div>
+			</Phase>
+			<Phase name="ended" tag="ended">
+				<div className="sc-field">
+					<div className="sc-row-label">正文</div>
+					<div className="sc-ended-value">{TEXT_VALUE}</div>
+					<div className="sc-row-label">声明（灰字）</div>
+					<div className="sc-ended-decl">{TEXT_HINT}</div>
 				</div>
 			</Phase>
 		</Case>
@@ -344,24 +403,46 @@ function App(): React.ReactNode {
 
 			{tab === 'text' ? (
 				<>
-					<TextCandidateA />
-					<TextCandidateB />
+						<TextCandidateB />
+				<hr className="sc-divider" />
+				<TextCandidateC />
+				<hr className="sc-divider" />
+				<TextCandidateD />
 				</>
 			) : null}
 
 			{tab === 'markdown' ? (
 				<>
 					<MarkdownCandidateA />
+					<hr className="sc-divider" />
 					<MarkdownCandidateB />
 				</>
 			) : null}
 
 			{tab === 'ask' ? (
-				<div className="sc-ask-grid">
-					<CreateColumn />
-					<ActiveColumn />
-					<EndedColumn />
-				</div>
+				<>
+					<Case
+						title="ask · 候选 A —— 三栏并排"
+						note="create / active / ended 横向同屏对比；适合看契约差异"
+					>
+						<div className="sc-ask-grid">
+							<CreateColumn />
+							<ActiveColumn />
+							<EndedColumn />
+						</div>
+					</Case>
+					<hr className="sc-divider" />
+					<Case
+						title="ask · 候选 B —— 单栏纵向"
+						note="从上到下走一遍生命周期；适合演示「先写题、再填、最后冻结」"
+					>
+						<div className="sc-ask-stack">
+							<CreateColumn />
+							<ActiveColumn />
+							<EndedColumn />
+						</div>
+					</Case>
+				</>
 			) : null}
 		</div>
 	);
@@ -410,7 +491,14 @@ function injectCandidateStyles(): void {
 		'.sc-md li{margin:2px 0}',
 		'.sc-code{margin:8px 0 0;padding:8px;border-radius:5px;background:#f3f4f6;font-family:ui-monospace,Consolas,monospace;font-size:11px;overflow:auto}',
 		'.sc-h2{font-size:15px;margin:28px 0 10px}',
+		'.sc-ended-value{padding:8px 10px;border:1px solid #e7e9ee;border-radius:7px;background:#fff;font-size:12px;line-height:1.6}',
+		'.sc-ended-decl{padding:7px 10px;border:1px dashed #d7dbe2;border-radius:7px;background:#fafbfc;color:#9aa1ad;font-size:11.5px;font-style:italic}',
+		'.sc-ended-decl__tag{display:inline-block;margin-right:6px;padding:0 5px;border-radius:3px;background:#f3f4f6;color:#5f6673;font-size:10px;font-style:normal}',
+		'.sc-row-label{font-size:10.5px;color:#9aa1ad}',
+		'.sc-input--ro{background:#fafbfc;color:#5f6673}',
 		'.sc-ask-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}',
+		'.sc-ask-stack{display:flex;flex-direction:column;gap:16px}',
+		'.sc-divider{height:1px;background:#e0e4ea;margin:26px 0 18px}',
 		'.sc-tabs{display:flex;gap:6px;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid #eef0f3}',
 		'.sc-tab{padding:6px 16px;border:1px solid #d7dbe2;border-radius:7px;background:#fff;color:#5f6673;font:12px/1 inherit;cursor:pointer}',
 		'.sc-tab.is-on{background:#16181d;border-color:#16181d;color:#fff;font-weight:600}',
