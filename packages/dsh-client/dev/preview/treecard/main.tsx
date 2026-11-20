@@ -78,7 +78,7 @@ const TEMPLATE_LABEL: Readonly<Record<string, string>> = Object.freeze({
 
 /** 卡片尺寸（和 `TREE_METRICS` 一致；预览不 import 它是为了不依赖布局）。 */
 /* 宽度按最坏内容算：编号 4 字符（LT01）+ 3 个 4 字 label + 4 字状态 */
-const W = 240;
+const W = 190;
 const H = 78;
 
 /**

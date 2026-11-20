@@ -76,7 +76,7 @@ export const TECHTREE_CSS = `
 .tb3t-card__warn{flex:0 0 auto;color:#ef4444;font-size:9px;line-height:1}
 .tb3t-card__title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;font-weight:600;line-height:1.35;color:var(--text,#1f2328);word-break:break-word}
 .tb3t-card .card-id{font-size:11px;flex:0 0 auto}
-.tb3t-card .badge{flex:0 1 auto;min-width:0;max-width:54px;padding:0 4px;font-size:9.5px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb3t-card .badge{flex:0 1 auto;min-width:0;max-width:76px;padding:0 4px;font-size:9.5px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* StatusCell 在卡片里：圆点 + 中文名（用户：不只靠颜色） */
 .tb3t-card .task-card__status{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;font-size:9px;color:var(--text-weak,#9aa1ad);white-space:nowrap}
 .tb3t-card .task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42px}

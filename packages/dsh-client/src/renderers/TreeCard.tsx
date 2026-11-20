@@ -143,10 +143,10 @@ export function TreeCard(props: TreeCardProps): ReactNode {
 						▲
 					</span>
 				)}
-				{props.kindLabel === '' ? null : (
-					<span className={`badge badge--${tone}`}>{props.kindLabel}</span>
-				)}
-				<span className="badge badge--domain">{card.template.domain}</span>
+				{/*
+				 * 用户 2026-11-20：「label 只显示模板的 label」——
+				 * 类别 / 领域两个 badge 不再画。类别信息已经在编号颜色里（card-id--{kindTone}）。
+				 */}
 				{props.templateLabel === '' ? null : (
 					<span className="badge badge--template" title={props.templateLabel}>
 						{props.templateLabel}
