@@ -26,6 +26,7 @@ import { createRoot } from 'react-dom/client';
 
 import { relationsOf, statusGroupOf } from '../../../src/pure/relations-block.ts';
 import { CardDetail } from '../../../src/renderers/CardDetail.tsx';
+import { injectStyles } from '../../../src/styles.ts';
 import type { Card, CardSection, HistoryEntry } from '../../../src/types.ts';
 
 /* ── 夹具 ── */
@@ -377,6 +378,9 @@ function App(): React.ReactNode {
 		</div>
 	);
 }
+
+/* 产品样式由 injectStyles() 在运行时注入 —— 不调用就是裸 HTML（这次的 bug）。 */
+injectStyles();
 
 const root = document.getElementById('root');
 if (root !== null) {
