@@ -100,6 +100,8 @@ export function AskGroupCard(props: {
 	readonly onAnswer?: (sectionId: string, value: string) => void;
 }): ReactNode {
 	const group = props.group;
+	/* 自填行是否被选中 —— 由**这一层**管，这样点「未选择」能把它一起重置。 */
+	const [customActive, setCustomActive] = useState(false);
 
 	/*
 	 * 空壳组（`items:[{options:[]}]`，core 的 defaultPayload 就是这样）：
@@ -123,7 +125,7 @@ export function AskGroupCard(props: {
 			 * 对着 `detail-ask-states.png` 说的）。
 			 */
 			/* 第 8 条：只有**可交互**且已作答时才给整页打边框（冻结态不打）。 */
-			data-ask-active={String(props.interactive && group.pickedState !== 'none')}
+			data-ask-active={String(props.interactive && group.pickedState === 'picked')}
 		>
 			{/*
 			 * 问题行（用户 2026-11-21 第 3 条：**不要「单选」「多选」胶囊**）。
@@ -139,9 +141,12 @@ export function AskGroupCard(props: {
 					<button
 						type="button"
 						className="ghost-btn ask-group__state-btn"
-						data-ask-state-btn="reset"
+						data-ask-state-btn={group.pickedState === 'unset' ? 'on' : 'reset'}
 						title="把这一题重置成「未选择」"
-						onClick={() => props.onAnswer?.(props.sectionId, NO_ANSWER)}
+						onClick={() => {
+							setCustomActive(false);
+							props.onAnswer?.(props.sectionId, NO_ANSWER);
+						}}
 					>
 						未选择
 					</button>
@@ -171,6 +176,8 @@ export function AskGroupCard(props: {
 					<CustomOption
 						sectionId={props.sectionId}
 						group={group}
+						active={customActive}
+						onActiveChange={setCustomActive}
 						{...(props.onAnswer === undefined ? {} : { onAnswer: props.onAnswer })}
 					/>
 				) : null}
@@ -319,10 +326,13 @@ export function AskOptionRow(props: {
 function CustomOption(props: {
 	readonly sectionId: string;
 	readonly group: AskGroupView;
+	/* 选中态由**父层**（AskGroupCard）管 —— 这样点「未选择」能一起重置。 */
+	readonly active: boolean;
+	readonly onActiveChange: (next: boolean) => void;
 	readonly onAnswer?: (sectionId: string, value: string) => void;
 }): ReactNode {
 	const [draft, setDraft] = useState('');
-	const [active, setActive] = useState(false);
+	const active = props.active;
 	const inputRef = useRef<HTMLInputElement>(null);
 	const hasValue = props.group.custom.some((one) => one !== '');
 	/*
@@ -337,7 +347,7 @@ function CustomOption(props: {
 		if (value === '') return;
 		props.onAnswer?.(props.sectionId, value);
 		setDraft('');
-		setActive(false);
+		props.onActiveChange(false);
 	};
 
 	/*
@@ -364,7 +374,7 @@ function CustomOption(props: {
 				if (!props.group.multiSelect) {
 					props.onAnswer?.(props.sectionId, NO_ANSWER);
 				}
-				setActive(true);
+				props.onActiveChange(true);
 				inputRef.current?.focus();
 			}}
 		>
@@ -378,7 +388,7 @@ function CustomOption(props: {
 					props.group.placeholder === '' ? '其它（自己填）…' : props.group.placeholder
 				}
 				onClick={() => {
-					setActive(true);
+					props.onActiveChange(true);
 				}}
 				onChange={(event) => setDraft(event.target.value)}
 				onKeyDown={(event) => {

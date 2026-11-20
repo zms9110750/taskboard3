@@ -1176,8 +1176,8 @@ export const SECTION_CSS = `
 .tb3w-root .ask-group__qrow .ask-group__question{margin:0;flex:1 1 auto;min-width:0}
 .tb3w-root .ask-group__multitag{flex:0 0 auto;padding:0 5px;border-radius:3px;background:#f3f4f6;color:var(--text-secondary);font-size:10px}
 .tb3w-root .ask-group__state-btn{flex:0 0 auto;padding:1px 8px;font-size:10.5px}
-.tb3w-root .ask-group__state-btn[data-ask-state-btn='none']{border-style:dashed;color:#b45309}
-.tb3w-root .ask-group__state-btn[data-ask-state-btn='picked']{color:#047857}
+/* 「未选择」按钮：当前就是未选择时**亮起**（黑底白字），点它能回到这个状态 */
+.tb3w-root .ask-group__state-btn[data-ask-state-btn='on']{background:var(--text);border-color:var(--text);color:#fff}
 /* ── 「激活」的题目：左边竖边框 ── */
 /* 可交互且已作答：整个问题页打左边框（同样不占位） */
 .tb3w-root .ask-group[data-ask-active=''true'']{position:relative}
