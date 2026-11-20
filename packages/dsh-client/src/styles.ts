@@ -514,7 +514,7 @@ export const WORKSPACE_CSS = `
 .tb3w-toolbar__actions{display:flex;align-items:center;gap:8px;order:3;margin-left:auto;min-width:0}
 .tb3w-seg{display:inline-flex;align-items:center;padding:2px;border-radius:6px;background:var(--bg-hover)}
 .tb3w-seg__btn{padding:3px 10px;border:0;border-radius:5px;background:transparent;color:var(--text-secondary);font-family:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
-.tb3w-seg__btn.is-on{background:var(--bg-card);color:var(--text);font-weight:600;box-shadow:0 0 0 1px var(--border)}
+.tb3w-seg__btn.is-on{background:var(--text);color:#fff;font-weight:600}
 .tb3w-btn-primary{padding:4px 12px;border:1px solid var(--text);border-radius:6px;background:var(--text);color:#fff;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
 .tb3w-btn-primary:hover{opacity:.88}
 

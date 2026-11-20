@@ -10,7 +10,7 @@
  * | 组件 | 形态 |
  * |---|---|
  * | `WorkspaceToolbar` | 列表视图 / 科技树视图 / 无权限按钮 / compact + 空间选择器 |
- * | `SpacePicker` | 收起 / 展开 8 个空间 / 展开 40 个空间（面板内滚动）/ 无空间 |
+ * | `SpaceBar`（工作空间展开后的内容）| 8 个空间 / 40 个空间（换行）/ 无空间 |
  * | `ListHeader` | 正常（12 条）/ 0 条 |
  * | `SplitHandle` | 水平（宽版两栏）/ 垂直（窄版上下堆叠）—— 都能真拖 |
  * | `ListEmpty` | 无卡 / 筛掉了 / 搜索无结果 / 两个都有 |
@@ -33,6 +33,7 @@ import { createRoot } from 'react-dom/client';
 import type { EmptyReason } from '../../../src/pure/card-filter.ts';
 import { ListEmpty } from '../../../src/renderers/workspace/ListEmpty.tsx';
 import { ListHeader } from '../../../src/renderers/workspace/ListHeader.tsx';
+import { SpaceBar } from '../../../src/renderers/SpaceBar.tsx';
 import { SpacePicker } from '../../../src/renderers/workspace/SpacePicker.tsx';
 import type { SpacePickerProps } from '../../../src/renderers/workspace/SpacePicker.tsx';
 import { SplitHandle } from '../../../src/renderers/workspace/SplitHandle.tsx';
@@ -232,13 +233,12 @@ function PickerCase(props: {
 					props.defaultOpen ? ' wsp-demo--picker' : ''
 				}`}
 			>
-				<SpacePicker
+				<SpaceBar
 					workspaces={props.workspaces}
 					currentId="core"
 					viewingId="core"
 					showArchived
 					cardCount={12}
-					defaultOpen={props.defaultOpen}
 					onView={(id) => {
 						record(`view: ${id}`);
 					}}
@@ -369,17 +369,17 @@ function App(): React.ReactNode {
 
 				<section className="wsp-block">
 					<h2>
-						② SpacePicker <code>SpacePicker.tsx</code>
+						② SpaceBar <code>SpaceBar.tsx</code>（工作空间展开后的内容）
 					</h2>
 					<p>
-						「工作空间 ▾」按钮 + 下拉面板（面板里是定稿的 <code>SpaceBar</code>）。
-						<b>开合由它自己管</b>：点自己身外就收起 —— 试试点页面空白处。
-						40 个空间那一档演示的是**面板内溢出滚动**（面板 <code>max-height:min(320px,60vh)</code> + <code>overflow:auto</code>）。
+						工作空间**展开后的内容**（不是「工作空间 ▾」打开按钮）—— 组件是 <code>SpaceBar</code>。
+						一行 chip + 「显示已归档」+「+」。
+						40 个空间那一档演示 chip 换行。
 					</p>
-					<PickerCase note="收起态 · 8 个空间" workspaces={SPACES_8} defaultOpen={false} />
-					<PickerCase note="展开态 · 8 个空间（defaultOpen —— 只为静态预览/SSR 能画出来）" workspaces={SPACES_8} defaultOpen />
-					<PickerCase note="展开态 · 40 个空间（chip 换行 → 面板内滚动，按钮行不动）" workspaces={SPACES_40} defaultOpen tall />
-					<PickerCase note="展开态 · 0 个空间（SpaceBar 自己画禁用态 + 「+」）" workspaces={[]} defaultOpen />
+					<PickerCase note="8 个空间（当前空间黑底白字）" workspaces={SPACES_8} defaultOpen={false} />
+					<PickerCase note="8 个空间 · 换行" workspaces={SPACES_8} defaultOpen />
+					<PickerCase note="40 个空间 · 换行溢出" workspaces={SPACES_40} defaultOpen tall />
+					<PickerCase note="0 个空间（禁用态 + 「+」）" workspaces={[]} defaultOpen />
 				</section>
 
 				<section className="wsp-block">
