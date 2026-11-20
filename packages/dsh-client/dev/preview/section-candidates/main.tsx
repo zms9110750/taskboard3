@@ -43,6 +43,8 @@ function StateSection(props: {
 	readonly action: string;
 	readonly state: string;
 	readonly contract: string;
+	/** 单列全宽（ask 的三栏/纵向需要整行，不能被 300px 网格压窄）。 */
+	readonly wide?: boolean;
 	readonly children: React.ReactNode;
 }): React.ReactNode {
 	return (
@@ -53,7 +55,9 @@ function StateSection(props: {
 				</span>
 				<span className="sp-section__contract">{props.contract}</span>
 			</header>
-			<div className="sp-cands">{props.children}</div>
+			<div className={props.wide === true ? 'sp-cands sp-cands--wide' : 'sp-cands'}>
+				{props.children}
+			</div>
 		</section>
 	);
 }
@@ -298,7 +302,7 @@ function App(): React.ReactNode {
 
 			{tab === 'ask' ? (
 				<>
-					<StateSection action="ask" state="全部三态" contract="ask 的候选按「实现」分：三栏并排 / 单栏纵向">
+					<StateSection action="ask" state="全部三态" contract="ask 的候选按「实现」分：三栏并排 / 单栏纵向" wide>
 						<Cand id="1" note="三栏并排：create / active / ended 同屏（改 create 右边跟着变）">
 							<AskColumns layout="grid" />
 						</Cand>
@@ -340,6 +344,7 @@ function injectPageStyles(): void {
 		'.sp-section__title{font-size:13px;font-weight:700}',
 		'.sp-section__contract{color:#5f6673;font-size:11.5px}',
 		'.sp-cands{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;align-items:start}',
+		'.sp-cands--wide{grid-template-columns:1fr}',
 		'.sp-cand{border:1px solid #e7e9ee;border-radius:9px;overflow:hidden;min-width:0;background:#fff}',
 		'.sp-cand__head{display:flex;align-items:baseline;gap:8px;padding:7px 10px;background:#f7f8fa;border-bottom:1px solid #eef0f3}',
 		'.sp-cand__id{font-weight:700;font-size:11.5px;color:#2563eb;white-space:nowrap}',
