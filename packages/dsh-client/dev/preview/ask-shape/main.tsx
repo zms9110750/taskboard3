@@ -70,8 +70,12 @@ const INITIAL_ITEMS: readonly AskItem[] = [
    栏 1：create —— askCompose（编辑问卷本身）
    ══════════════════════════════════════════════════════════ */
 
-export function CreateColumn(): React.ReactNode {
-	const [items, setItems] = useState<readonly AskItem[]>(INITIAL_ITEMS);
+export function CreateColumn(props: {
+	readonly items: readonly AskItem[];
+	readonly setItems: React.Dispatch<React.SetStateAction<readonly AskItem[]>>;
+}): React.ReactNode {
+	const items = props.items;
+	const setItems = props.setItems;
 
 	/**
 	 * 改一项。
@@ -280,7 +284,10 @@ export function CreateColumn(): React.ReactNode {
    栏 2：active —— askEditable（填答案，用真组件）
    ══════════════════════════════════════════════════════════ */
 
-export function ActiveColumn(): React.ReactNode {
+export function ActiveColumn(props: {
+	readonly items: readonly AskItem[];
+}): React.ReactNode {
+	const items = props.items;
 	/* 预填一份「已经填过」的数据 —— 否则「未选择」看不出填答案的形态。 */
 	const [picked, setPicked] = useState<Readonly<Record<string, readonly string[]>>>({
 		'0': ['方案 B：先做科技树'],
@@ -293,7 +300,7 @@ export function ActiveColumn(): React.ReactNode {
 	/** payload 里带上当前选择，让真组件按真实数据渲染。 */
 	const payload = {
 		$type: 'ask',
-		items: INITIAL_ITEMS.map((item, i) => ({
+		items: items.map((item, i) => ({
 			header: item.header,
 			question: item.question,
 			options: item.options,
@@ -340,7 +347,17 @@ export function ActiveColumn(): React.ReactNode {
    栏 3：ended —— 只读结果
    ══════════════════════════════════════════════════════════ */
 
-export function EndedColumn(): React.ReactNode {
+export function EndedColumn(props: {
+	readonly items: readonly AskItem[];
+}): React.ReactNode {
+	const items = props.items;
+	const first = items[0];
+	const question = first?.question ?? '';
+	const header = first?.header ?? '';
+	const options = first?.options ?? [];
+	const picked = first?.picked ?? [];
+	const custom = first?.custom ?? [];
+
 	return (
 		<div className="as-col">
 			<div className="as-col__head">
@@ -349,23 +366,67 @@ export function EndedColumn(): React.ReactNode {
 			</div>
 
 			<div className="as-readonly">
-				<div className="as-readonly__header">选一个就行（单选）</div>
-				<div className="as-readonly__question">这个卡的目的是什么？</div>
+				{header === '' ? null : <div className="as-readonly__header">{header}</div>}
+				{question === '' ? null : <div className="as-readonly__question">{question}</div>}
 
-				<div className="as-readonly__option">方案 A：先做详情页</div>
-				<div className="as-readonly__option as-readonly__option--picked">
-					方案 B：先做科技树 <span className="as-readonly__check">✓</span>
+				{options.map((option) => {
+					const isPicked = picked.includes(option.label);
+					return (
+						<div
+							key={option.label}
+							className={
+								isPicked ? 'as-readonly__option as-readonly__option--picked' : 'as-readonly__option'
+							}
+						>
+							<span>
+								{option.label}
+								{option.description === undefined || option.description === '' ? null : (
+									<span className="as-readonly__desc"> {option.description}</span>
+								)}
+							</span>
+							{isPicked ? <span className="as-readonly__check">✓</span> : null}
+						</div>
+					);
+				})}
+
+				<div className="as-pill">
+					{picked.length === 0 ? '未选择' : `单选 · 已选 ${String(picked.length)}`}
 				</div>
-				<div className="as-readonly__option">方案 C：两条并行</div>
 
-				<div className="as-pill">单选 · 已选 1</div>
-
-				<div className="as-readonly__custom">自填：先做详情页，科技树下一轮</div>
+				{custom.length === 0 ? null : (
+					<div className="as-readonly__custom">自填：{custom.join('、')}</div>
+				)}
 			</div>
 
 			<div className="as-note">⚠ 没有输入框、没有按钮 —— 只有文本（user-select: text）</div>
 		</div>
 	);
+}
+
+/* ══════════════════════════════════════════════════════════
+   三栏组合：**共享同一份 items 状态**（用户 2026-11-21：
+   「ask 的编辑状态，我要他是可以交互的」—— 改了 create 的题目/选项，
+   active 和 ended 必须跟着变，否则看起来像三份互不相干的残片）。
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * 三栏（或单栏纵向）组合。
+ *
+ * @param props layout：`grid` 三栏并排 / `stack` 单栏纵向
+ */
+export function AskColumns(props: {
+	readonly layout: 'grid' | 'stack';
+}): React.ReactNode {
+	const [items, setItems] = useState<readonly AskItem[]>(INITIAL_ITEMS);
+	const columns = (
+		<>
+			<CreateColumn items={items} setItems={setItems} />
+			<ActiveColumn items={items} />
+			<EndedColumn items={items} />
+		</>
+	);
+
+	return props.layout === 'grid' ? <div className="as-grid">{columns}</div> : <div className="as-stack">{columns}</div>;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -380,12 +441,10 @@ function App(): React.ReactNode {
 				契约来源 <code>taskboard2/docs/02-action.md</code> §2.9（四态语义）/
 				§2.9b（askCompose 的 7 件能力）/ §2.9d（灰字三相位）
 			</div>
-
-			<div className="as-grid">
-				<CreateColumn />
-				<ActiveColumn />
-				<EndedColumn />
+			<div className="as-note">
+				⚠ create 改了题目/选项，active 和 ended 会**跟着变**（共享同一份 items）
 			</div>
+			<AskColumns layout="grid" />
 		</div>
 	);
 }
@@ -440,6 +499,8 @@ export function injectAskStyles(): void {
 		'.as-readonly__check{color:#2563eb;font-weight:700}',
 		'.as-pill{align-self:flex-start;padding:1px 8px;border-radius:99px;background:#f3f4f6;color:#5f6673;font-size:10.5px}',
 		'.as-readonly__custom{font-size:12px;color:#16181d}',
+		'.as-readonly__desc{font-size:10.5px;color:#9aa1ad}',
+		'.as-stack{display:flex;flex-direction:column;gap:16px}',
 	].join('\n');
 	const style = document.createElement('style');
 	style.id = 'as-style';

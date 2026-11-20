@@ -23,7 +23,7 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { injectStyles } from '../../../src/styles.ts';
-import { ActiveColumn, CreateColumn, EndedColumn, injectAskStyles } from '../ask-shape/main.tsx';
+import { AskColumns, injectAskStyles } from '../ask-shape/main.tsx';
 
 /* ══════════════════════════════════════════════════════════
    夹具
@@ -423,24 +423,16 @@ function App(): React.ReactNode {
 				<>
 					<Case
 						title="ask · 候选 A —— 三栏并排"
-						note="create / active / ended 横向同屏对比；适合看契约差异"
+						note="create / active / ended 横向同屏对比；改 create 的题目，右边两栏跟着变"
 					>
-						<div className="sc-ask-grid">
-							<CreateColumn />
-							<ActiveColumn />
-							<EndedColumn />
-						</div>
+						<AskColumns layout="grid" />
 					</Case>
 					<hr className="sc-divider" />
 					<Case
 						title="ask · 候选 B —— 单栏纵向"
 						note="从上到下走一遍生命周期；适合演示「先写题、再填、最后冻结」"
 					>
-						<div className="sc-ask-stack">
-							<CreateColumn />
-							<ActiveColumn />
-							<EndedColumn />
-						</div>
+						<AskColumns layout="stack" />
 					</Case>
 				</>
 			) : null}
