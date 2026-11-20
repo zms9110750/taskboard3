@@ -118,11 +118,42 @@ function AskGroupBlock(props: {
 			className="ask-group"
 			data-ask-multi={String(group.multiSelect)}
 			data-ask-state={group.pickedState}
+			/*
+			 * 「激活」= 不是「未选择」⇒ 左边加竖边框（用户 2026-11-21，
+			 * 对着 `detail-ask-states.png` 说的）。
+			 */
+			data-ask-active={String(group.pickedState !== 'none')}
 		>
+			{/*
+			 * 问题行：问题（大字）+ 单选/多选标签 + 状态按钮。
+			 * 用户 2026-11-21：「多选放在问题标题的地方」
+			 *             「『已选择 xx』胶囊的位置，放『未选择』按钮，可点」
+			 */}
+			<div className="ask-group__qrow">
+				{group.question === '' ? null : (
+					<div className="ask-group__question">{group.question}</div>
+				)}
+				<span className="ask-group__multitag" data-ask-multitag>
+					{group.multiSelect ? '多选' : '单选'}
+				</span>
+				{props.interactive ? (
+					<button
+						type="button"
+						className="ghost-btn ask-group__state-btn"
+						data-ask-state-btn={group.pickedState}
+						title="把这一题重置成「未选择」"
+						onClick={() => props.onAnswer?.(props.sectionId, NO_ANSWER)}
+					>
+						{askStateLabelOf(group)}
+					</button>
+				) : (
+					<span className="ask-group__state-text" data-ask-state-label={group.pickedState}>
+						{askStateLabelOf(group)}
+					</span>
+				)}
+			</div>
+
 			{group.header === '' ? null : <div className="ask-group__header">{group.header}</div>}
-			{group.question === '' ? null : (
-				<div className="ask-group__question">{group.question}</div>
-			)}
 
 			<div className="ask-group__options">
 				{group.options.map((option) => (
@@ -130,19 +161,22 @@ function AskGroupBlock(props: {
 						key={option.label}
 						sectionId={props.sectionId}
 						option={option}
+						multiSelect={group.multiSelect}
 						{...(props.interactive ? { onAnswer: props.onAnswer } : {})}
 					/>
 				))}
-			</div>
 
-			{/* 三态徽标 —— 「未选择」/「都不要」/「单选·已选 N」，不只是装饰。 */}
-			<div className="ask-group__state" data-ask-state-label={group.pickedState}>
-				<span className="ask-group__state-text">{askStateLabelOf(group)}</span>
-				{group.custom.length === 0 ? null : (
-					<span className="ask-group__custom-values">
-						自填：{group.custom.filter((one) => one !== '').join('、')}
-					</span>
-				)}
+				{/*
+				 * 自填框 = **一个带圆圈的选项**，圈里是文本框（用户 2026-11-21）。
+				 * 只在可交互时出现；只读时自填值在下面单独一行。
+				 */}
+				{props.interactive ? (
+					<CustomOption
+						sectionId={props.sectionId}
+						group={group}
+						{...(props.onAnswer === undefined ? {} : { onAnswer: props.onAnswer })}
+					/>
+				) : null}
 			</div>
 
 			{props.interactive ? (
@@ -152,17 +186,10 @@ function AskGroupBlock(props: {
 						className="ghost-btn ask-group__none"
 						data-ask-none
 						title="看了但都不要（与「未选择」不同）"
-						onClick={() =>
-							props.onAnswer?.(props.sectionId, NO_ANSWER)
-						}
+						onClick={() => props.onAnswer?.(props.sectionId, NO_ANSWER)}
 					>
 						都不要
 					</button>
-					<CustomInput
-						sectionId={props.sectionId}
-						group={group}
-						{...(props.onAnswer === undefined ? {} : { onAnswer: props.onAnswer })}
-					/>
 				</div>
 			) : (
 				<CustomValuesReadonly values={group.custom} />
@@ -175,17 +202,39 @@ function AskGroupBlock(props: {
 function AskOption(props: {
 	readonly sectionId: string;
 	readonly option: AskOptionView;
+	/** 多选组：标记画**正方形**（单选画圆圈）—— 用户 2026-11-21。 */
+	readonly multiSelect: boolean;
 	readonly onAnswer?: (sectionId: string, value: string) => void;
 }): ReactNode {
 	const option = props.option;
+	const interactive = props.onAnswer !== undefined;
 	const className = ['ask-option'];
 	if (option.picked) className.push('is-picked');
 
+	/*
+	 * 标记的形状是**相位 + 多选**共同决定的（用户 2026-11-21 对着
+	 * `detail-ask-across-states.png` 说的）：
+	 *
+	 * | 相位 | 单选 | 多选 |
+	 * |---|---|---|
+	 * | 可选择（active）| ○ / ● | □ / ■ |
+	 * | 冻结（ended）| ✓（选中时）| ✓（选中时）|
+	 */
+	const mark = interactive ? (
+		<span
+			className="ask-option__mark ask-option__mark--box"
+			data-multi={String(props.multiSelect)}
+			aria-hidden="true"
+		/>
+	) : (
+		<span className="ask-option__mark ask-option__mark--check" aria-hidden="true">
+			{option.picked ? '✓' : ''}
+		</span>
+	);
+
 	const inner = (
 		<>
-			<span className="ask-option__mark" aria-hidden="true">
-				{option.picked ? '✓' : ''}
-			</span>
+			{mark}
 			<span className="ask-option__body">
 				<span className="ask-option__label">{option.label}</span>
 				{option.description === '' ? null : (
@@ -219,7 +268,7 @@ function AskOption(props: {
 }
 
 /**
- * 自填框。
+ * 自填框 —— **画成一个带圆圈的选项**，圈里是文本框（用户 2026-11-21）。
  *
  * 只在**提交**（回车 / 失焦且有内容）时上报一次 —— 不在每次按键都发，
  * 那会让父层每敲一个字写一次库。
@@ -227,12 +276,13 @@ function AskOption(props: {
  * ⚠ 输入框的本地状态只活到提交；提交后清空（父层会把新 payload 灌回来，
  *   自填值在 `group.custom` 里显示）。
  */
-function CustomInput(props: {
+function CustomOption(props: {
 	readonly sectionId: string;
 	readonly group: AskGroupView;
 	readonly onAnswer?: (sectionId: string, value: string) => void;
 }): ReactNode {
 	const [draft, setDraft] = useState('');
+	const hasValue = props.group.custom.some((one) => one !== '');
 
 	const commit = (): void => {
 		const value = draft.trim();
@@ -242,22 +292,31 @@ function CustomInput(props: {
 	};
 
 	return (
-		<input
-			type="text"
-			className="ask-group__custom"
-			data-ask-custom
-			value={draft}
-			placeholder={props.group.placeholder === '' ? '自填答案…' : props.group.placeholder}
-			onChange={(event) => setDraft(event.target.value)}
-			onKeyDown={(event) => {
-				if (event.key !== 'Enter') return;
-				event.preventDefault();
-				/* 别让回车冒泡到父层的键盘处理（比如关详情）。 */
-				event.stopPropagation();
-				commit();
-			}}
-			onBlur={commit}
-		/>
+		<div className="ask-option ask-option--custom" data-ask-custom-row>
+			<span
+				className={`ask-option__mark ask-option__mark--box${hasValue ? ' is-picked' : ''}`}
+				data-multi={String(props.group.multiSelect)}
+				aria-hidden="true"
+			/>
+			<input
+				type="text"
+				className="ask-group__custom"
+				data-ask-custom
+				value={draft}
+				placeholder={
+					props.group.placeholder === '' ? '其它（自己填）…' : props.group.placeholder
+				}
+				onChange={(event) => setDraft(event.target.value)}
+				onKeyDown={(event) => {
+					if (event.key !== 'Enter') return;
+					event.preventDefault();
+					/* 别让回车冒泡到父层的键盘处理（比如关详情）。 */
+					event.stopPropagation();
+					commit();
+				}}
+				onBlur={commit}
+			/>
+		</div>
 	);
 }
 

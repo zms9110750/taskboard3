@@ -1163,6 +1163,23 @@ export const SECTION_CSS = `
 .tb3w-root .ask-group__state[data-ask-state-label='unset'] .ask-group__state-text{color:#6b7280}
 .tb3w-root .ask-group__state[data-ask-state-label='none'] .ask-group__state-text{color:#b45309;background:#fef3c7}
 .tb3w-root .ask-group__state[data-ask-state-label='picked'] .ask-group__state-text{color:#047857;background:#d1fae5}
+/* ── 选项标记：单选圆圈 / 多选方框 / 冻结勾（用户 2026-11-21） ── */
+.tb3w-root .ask-option__mark--box{flex:0 0 14px;width:14px;height:14px;box-sizing:border-box;border:1.5px solid var(--border-strong,#c5ccd6);border-radius:50%;background:#fff;margin-top:2px}
+.tb3w-root .ask-option__mark--box[data-multi='true']{border-radius:3px}
+.tb3w-root .ask-option.is-picked .ask-option__mark--box{border-color:var(--accent);background:var(--accent)}
+.tb3w-root .ask-option__mark--check{flex:0 0 14px;width:14px;color:var(--accent);font-weight:700;text-align:center;line-height:14px}
+/* ── 问题行：问题 + 单选/多选标签 + 状态按钮 ── */
+.tb3w-root .ask-group__qrow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.tb3w-root .ask-group__qrow .ask-group__question{margin:0;flex:1 1 auto;min-width:0}
+.tb3w-root .ask-group__multitag{flex:0 0 auto;padding:0 5px;border-radius:3px;background:#f3f4f6;color:var(--text-secondary);font-size:10px}
+.tb3w-root .ask-group__state-btn{flex:0 0 auto;padding:1px 8px;font-size:10.5px}
+.tb3w-root .ask-group__state-btn[data-ask-state-btn='none']{border-style:dashed;color:#b45309}
+.tb3w-root .ask-group__state-btn[data-ask-state-btn='picked']{color:#047857}
+/* ── 「激活」的题目：左边竖边框 ── */
+.tb3w-root .ask-group[data-ask-active='true']{padding-left:10px;border-left:3px solid var(--accent)}
+/* ── 自填行：圆圈 + 文本框 ── */
+.tb3w-root .ask-option--custom{cursor:default;align-items:center}
+.tb3w-root .ask-option--custom .ask-group__custom{flex:1 1 auto;min-width:0;padding:4px 8px;border:1px dashed var(--border-strong,#c5ccd6);border-radius:5px;background:#fafbfc;font:12px/1.5 inherit;color:var(--text)}
 .tb3w-root .ask-group__custom-values{font-size:10.5px;color:var(--text-secondary)}
 /* 「都不要」+ 自填 */
 .tb3w-root .ask-group__actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:9px;padding-top:9px;border-top:1px dashed #f0f2f6}
