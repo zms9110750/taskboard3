@@ -444,7 +444,7 @@ function App(): React.ReactNode {
 			 * tb3w-root 是产品样式的唯一作用域 —— 所有规则都是 .tb3w-root .ask-option …。
 			 * 不加这个类，圆点 / 边框 / 左边框一条都不生效（真实踩过）。
 			 */}
-			<h1 className="as-title">ask · 三相位形状</h1>
+			<h1 className="as-title">ask · 三相位</h1>
 			<div className="as-sub">
 				契约来源 <code>taskboard2/docs/02-action.md</code> §2.9（四态语义）/
 				§2.9b（askCompose 的 7 件能力）/ §2.9d（灰字三相位）

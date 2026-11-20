@@ -76,11 +76,19 @@
 
 </div>
 
-<h2>三相位（text / markdown 候选 + ask 形状）</h2>
+<h2>三个 action 的组件页（真组件 + 真 state）</h2>
 <div class="grid">
-  <a class="card" href="../section-candidates/index.html">
-    <div class="name">三个 action × 三个相位（一个页面）</div>
-    <div class="desc">text 两套候选 + markdown 两套候选 + ask 三栏，全部 create / active / ended 并排。</div>
+  <a class="card" href="../text/index.html">
+    <div class="name">text · 三相位</div>
+    <div class="desc">产品组件 Section / TextBlock。create 的折叠区灰字和正文框是同一份数据；三栏共享 payload，改一栏另外两栏跟着变。</div>
+  </a>
+  <a class="card" href="../markdown-phase/index.html">
+    <div class="name">markdown · 三相位</div>
+    <div class="desc">产品组件 Section / MarkdownBlock。create 源码框 + 「查看预览」，active / ended 只读渲染；改源码另外两栏跟着变。</div>
+  </a>
+  <a class="card" href="../ask/index.html">
+    <div class="name">ask · 三相位</div>
+    <div class="desc">产品组件 AskGroupCard。create 是问卷编辑器，active 可作答（圆圈/方框、自填、未选择），ended 只读（勾 + 左侧竖线）。</div>
   </a>
 </div>
 <h2>拆出来的组件（task-77 / 78 / 79）</h2>

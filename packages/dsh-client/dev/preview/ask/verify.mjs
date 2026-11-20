@@ -2,7 +2,7 @@
  * `ask-shape` 预览的**网页级 DOM 测试**（真 Edge + CDP）。
  *
  * ```
- * node dev/preview/ask-shape/verify.mjs
+ * node dev/preview/ask/verify.mjs
  * ```
  *
  * ⚠ 故意不放进 `packages/dsh-client/test/`：

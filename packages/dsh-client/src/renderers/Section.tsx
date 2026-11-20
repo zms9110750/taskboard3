@@ -358,7 +358,12 @@ function MarkdownBlock(props: {
 					placeholder={view.placeholder}
 					rows={Math.max(4, view.source.split('\n').length)}
 					onChange={(event) => {
-						props.onPatch?.({ source: event.target.value });
+						/*
+						 * ⚠ 字段名必须是 `value`（markdownSchema 是 `{ value, placeholder }`）。
+						 * 之前写的是 `source` —— 那是**渲染视图**的字段名，不是 payload 字段，
+						 * 写进去等于丢数据（网页级 DOM 测试抓到的）。
+						 */
+						props.onPatch?.({ value: event.target.value });
 					}}
 					data-section-phase={props.phase}
 				/>
