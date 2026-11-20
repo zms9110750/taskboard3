@@ -723,8 +723,10 @@ export const WORKSPACE_CSS = `
 /* meta 行：状态是**固定 92px 首列**，不随 label 变宽而漂移 */
 .tb3w-root .detail-meta{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0;font-size:11.5px;color:var(--text-secondary)}
 .tb3w-root .detail-meta > *{flex:0 0 auto;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 用户 2026-11-20：「从状态的文字到后面的 label 间隔太远了」——92px 改成按最长状态（「需要信息」4 字 ≈ 62px）收到 53px，仍保持同一行内各状态的左边缘对齐。 */
-.tb3w-root .detail-status-col{display:inline-flex;align-items:center;flex:0 0 53px;min-width:0;margin-left:0;padding:0}
+/* 用户 2026-11-20：「为什么是固定宽度呢。应该是设计这个东西最小宽度 4em 啊」——
+ * 用 min-width 而不是 flex-basis：短状态保持 4em（中文 1em = 1 字，正好容纳「需要信息」这种 4 字状态），
+ * 更长的状态自动撑开，不会被截断。 */
+.tb3w-root .detail-status-col{display:inline-flex;align-items:center;min-width:4em;margin-left:0;padding:0}
 .tb3w-root .detail-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .tb3w-root .detail-action{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;font-size:12px}
 .tb3w-root .detail-action.is-primary{border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600}
