@@ -420,14 +420,17 @@ export const WORKSPACE_CSS = `
   --text-secondary: var(--dsw-alias-text-secondary, #5f6673);
   --text-weak: var(--dsw-alias-text-tertiary, #9aa1ad);
   /*
-   * 强调色 = **黑白**（用户 2026-11-20：「配色就用黑白的」）。
+   * 强调色 = **品牌蓝**。用户 2026-11-20 修正：
+   * 「改为用蓝色主题的。我让你用黑色是一些东西黑底白字。
+   *   你把面包屑做成黑色加粗字。这哪看的清他是可选的。」
    *
-   * 不再用宿主的 brand-primary（那是品牌蓝）。改跟随正文色：浅色主题下
-   * 是近黑、暗色主题下是近白 —— 两个主题都成立，不会出现「黑底黑字」。
+   * 上一版把 accent 改成正文色（黑）是理解错了 —— 结果面包屑选中态成了
+   * 黑色加粗字，看不出可点。黑色只用于**开关类**控件的激活态（黑底白字），
+   * 见 .space-chip.is-current / .space-action.is-on / .ghost-btn.is-active。
    * 状态色（--state-*）不动，那是九状态语义色。
    */
-  --accent: var(--text, #16181d);
-  --accent-strong: var(--text, #16181d);
+  --accent: var(--dsw-alias-brand-primary, #2563eb);
+  --accent-strong: var(--dsw-alias-brand-hover, #1d4ed8);
   --warn: #d97706;
   --font-mono: ui-monospace, Consolas, "Courier New", monospace;
   --fs-id: 11px;
@@ -484,6 +487,15 @@ export const WORKSPACE_CSS = `
 /* SpaceBar 自己带 6px 上下 padding ⇒ 这里只补左右对齐 */
 .tb3w-chrome > .space-bar{padding-left:2px;padding-right:2px}
 
+/*
+ * 行 1 的外层：工具栏 + 空间开关按钮并排。
+ *
+ * 用户 2026-11-20：「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮」
+ * ⇒ 开关按钮不进 WorkspaceToolbar，由 Workspace 在外面拼（见 Workspace.tsx）。
+ */
+.tb3w-chrome__bar{display:flex;align-items:center;gap:8px;min-width:0}
+.tb3w-chrome__bar > .tb3w-toolbar{flex:1 1 auto;min-width:0}
+
 /* ── 工具栏：条数 / 图例 / 视图切换 / 新建 ── */
 .tb3w-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;min-width:0;margin-top:10px;padding:0 2px}
 .tb3w-toolbar__title{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
@@ -506,10 +518,22 @@ export const WORKSPACE_CSS = `
 .tb3w-btn-primary{padding:4px 12px;border:1px solid var(--text);border-radius:6px;background:var(--text);color:#fff;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
 .tb3w-btn-primary:hover{opacity:.88}
 
-/* ── 筛选行：3 个 FilterBox + 尾部（AI 未读 / 搜索） ── */
-.tb3w-filters{min-width:0;margin-top:8px}
-.tb3w-filters .filter-row__spacer{flex:1 1 auto;min-width:0}
-.tb3w-filters__tail{display:flex;align-items:center;gap:8px;min-width:0}
+/* ── 筛选区：3 个 FilterBox 独占一行；尾部（AI 计数 / 搜索）另起一行 ──
+ *
+ * 用户 2026-11-20：
+ * 「筛选按钮是有弹出的文档流的。把别人挤走了怎么办」
+ * 「我要他参与文档流。所以他要独立一行」
+ *
+ * ⇒ 筛选按钮**参与文档流**（展开是撑宽这一行，不是浮层盖住别人），
+ *   所以必须独占一行 —— 行 1 只有筛选按钮，行 2 才是尾部。
+ *   这样展开/收起只改行 1 的宽度与高度，不会把搜索框挤走。
+ *
+ * ⚠ .tb3w-chrome 是 column flex，两行天然各占一行；这里去掉 spacer
+ *   （它原来把尾部推到行 1 的右边）并让尾部强制换行。
+ */
+.tb3w-filters{flex:1 0 100%;min-width:0;margin-top:8px}
+.tb3w-filters .filter-row__spacer{display:none}
+.tb3w-filters__tail{flex:1 0 100%;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;margin-top:8px}
 .tb3w-ai-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
 .tb3w-ai-chip b{font-weight:600;color:var(--text)}
 /*
@@ -566,7 +590,16 @@ export const WORKSPACE_CSS = `
 .tb3w-root .ghost-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-family:inherit;font-size:12px;white-space:nowrap;cursor:pointer;transition:border-color .12s,color .12s,background .12s}
 .tb3w-root .ghost-btn:hover:not(:disabled){border-color:var(--text-weak);color:var(--text)}
 .tb3w-root .ghost-btn:disabled{opacity:.45;cursor:default}
-.tb3w-root .ghost-btn.is-active{border-color:var(--accent);background:#eff6ff;color:var(--accent)}
+/*
+ * 开关类控件的激活态 = **黑底白字**。用户 2026-11-20：
+ * 「对于开关性质的。比如当前空间，展示已归档。这些切换开关的，
+ *   用黑底白字来表示现在选用/激活。」
+ *
+ * 这一条只作用于「显示已归档」这个开关（SpaceBar 里的 .space-toggle）。
+ * 筛选按钮（状态 / 类别 / 领域）不是开关，用蓝色 —— 见下面的 .filter-box 段。
+ */
+.tb3w-root .ghost-btn.is-active{border-color:var(--text);background:var(--text);color:#fff}
+.tb3w-root .ghost-btn.is-active:hover:not(:disabled){border-color:var(--text);background:var(--text);color:#fff}
 .tb3w-root .space-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;padding:6px 2px}
 .tb3w-root .space-bar > *{flex:0 0 auto}
 .tb3w-root .space-action{min-width:84px;justify-content:center}
@@ -590,14 +623,23 @@ export const WORKSPACE_CSS = `
 
 /* ── FilterBox / FilterRow ── */
 .tb3w-root .filter-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
-.tb3w-root .filter-box{position:relative;flex:0 0 auto;height:32px;max-width:100%;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);overflow:hidden;cursor:pointer;user-select:none;transition:width .18s ease}
-.tb3w-root .filter-box.is-open{border-color:#93c5fd}
+/*
+ * 筛选按钮 = **蓝色风格**（不是开关）。用户 2026-11-20：
+ * 「对状态筛选按钮这些，突出可交互的，但只是可以点击，不是切换性质的，
+ *   用蓝色的风格。」
+ *
+ * ⇒ 描边淡蓝、标题蓝字（看得出能点）；展开时描边变实蓝。
+ *   激活态**不用黑底白字** —— 那是开关类的语言（见上面 .ghost-btn.is-active）。
+ */
+.tb3w-root .filter-box{position:relative;flex:0 0 auto;height:32px;max-width:100%;border:1px solid #c7d9f7;border-radius:6px;background:var(--bg-card);overflow:hidden;cursor:pointer;user-select:none;transition:width .18s ease,border-color .12s ease}
+.tb3w-root .filter-box:hover{border-color:var(--accent)}
+.tb3w-root .filter-box.is-open{border-color:var(--accent)}
 .tb3w-root .filter-box__face{position:absolute;top:0;bottom:0;left:12px;display:inline-flex;align-items:center;white-space:nowrap;transition:opacity .12s ease}
 .tb3w-root .filter-box__face--expanded{opacity:0;pointer-events:none}
 .tb3w-root .filter-box.is-open .filter-box__face--collapsed{opacity:0;pointer-events:none}
 .tb3w-root .filter-box.is-open .filter-box__face--expanded{opacity:1;pointer-events:auto}
-.tb3w-root .filter-box__title{padding:0 2px;border:0;border-radius:4px;background:none;color:var(--text-secondary);font-family:inherit;font-size:12.5px;cursor:pointer}
-.tb3w-root .filter-box__title:hover{background:#f3f4f6;color:var(--text)}
+.tb3w-root .filter-box__title{padding:0 2px;border:0;border-radius:4px;background:none;color:var(--accent);font-family:inherit;font-size:12.5px;cursor:pointer}
+.tb3w-root .filter-box__title:hover{background:#eff6ff;color:var(--accent-strong)}
 .tb3w-root .filter-box__colon{font-size:12.5px;color:var(--text-secondary)}
 .tb3w-root .filter-box__crumbs{display:inline-flex;align-items:center}
 /* 分隔斜杠要看得见（用过 #cbd5e1，截图里几乎看不见） */
@@ -605,7 +647,15 @@ export const WORKSPACE_CSS = `
 .tb3w-root .filter-box__items{display:inline-flex;align-items:center}
 .tb3w-root .filter-box__item{display:inline-flex;align-items:center;gap:2px;padding:2px 4px;border:0;border-radius:4px;background:none;color:var(--text);font-family:inherit;font-size:12.5px;cursor:pointer}
 .tb3w-root .filter-box__item:hover{background:#f3f4f6}
-.tb3w-root .filter-box__item.is-picked{color:var(--accent);font-weight:700}
+/*
+ * 面包屑 / 选项的选中态 = **蓝字**（不是黑字加粗）。
+ *
+ * 用户 2026-11-20 骂的就是这一条：「你把面包屑做成黑色加粗字。
+ * 这哪看的清他是可选的。」⇒ accent 已恢复蓝，字重从 700 降到 600
+ * （700 看起来像小标题，不像可点的项）。
+ */
+.tb3w-root .filter-box__item.is-picked{color:var(--accent);font-weight:600}
+.tb3w-root .filter-box__item.is-picked:hover{background:#eff6ff}
 .tb3w-root .filter-box__item--crumb:not(.is-picked){text-decoration:underline dotted #b6bec9;text-underline-offset:3px}
 .tb3w-root .filter-box__item--crumb:not(.is-picked):hover{color:var(--accent);text-decoration-color:var(--accent)}
 .tb3w-root .filter-box__more{margin-left:1px;font-size:9px;opacity:.5}
@@ -954,16 +1004,20 @@ ${DRAWER_VARIANT_IDS.map(
  */
 .tb3d-panel .tb3w-page{padding:${px(DRAWER_COMPACT_SPACING.pagePadY)} ${px(DRAWER_COMPACT_SPACING.pagePadX)}}
 
-/* chip 行 + 工具栏并成一行（设计图顶栏就一条）——只调布局，不改 Workspace 自己的文件 */
-.tb3d-panel .tb3w-chrome{flex-direction:row;flex-wrap:wrap;align-items:center;gap:0 10px}
+/*
+ * chrome 固定两行（用户 2026-11-20：「我要的抽屉视图是两行」）。
+ *
+ * ⚠ 旧版这里把 chrome 改成 flex-direction:row 并 display:none 掉了
+ *   title / legend / filters —— 用户看到的「图例弄没了」「挤成一行」就是这 6 条
+ *   造成的，**不是 flex-wrap**。
+ *   行 1 = 任务条 + 关系图例 + 工具栏；行 2 = 筛选按钮 + 搜索。
+ */
+.tb3d-panel .tb3w-chrome{flex-direction:column;gap:0}
 .tb3d-panel .tb3w-chrome > .space-bar{flex:0 1 auto;min-width:0;padding:2px 2px;gap:5px}
-.tb3d-panel .tb3w-toolbar{flex:1 1 auto;justify-content:flex-end;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)};gap:4px 8px}
-/* 抽屉里标题在顶栏、条数在列表头 ⇒ 工具栏里那条「任务 共 N 条」不重复画 */
-.tb3d-panel .tb3w-toolbar__title{display:none}
-.tb3d-panel .tb3w-toolbar__legend{display:none}
+.tb3d-panel .tb3w-toolbar{flex:0 0 auto;justify-content:flex-end;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)};gap:4px 8px}
 .tb3d-panel .tb3w-toolbar__perm{display:none}
-/* 筛选行整行收掉（抽屉里放不下，用户看的是任务不是筛选器） */
-.tb3d-panel .tb3w-filters{display:none}
+/* 行 2：筛选 + 搜索。参与文档流（不浮层）—— 展开只撑高这一行。 */
+.tb3d-panel .tb3w-filters{flex:0 0 auto;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)}}
 .tb3d-panel .tb3w-main{margin-top:${px(DRAWER_COMPACT_SPACING.mainGap)}}
 
 /* 控件小一号（高度不变形，只影响视觉密度） */

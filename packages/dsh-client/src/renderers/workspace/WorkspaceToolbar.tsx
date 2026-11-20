@@ -1,8 +1,15 @@
 /**
- * 工作区工具栏 —— 计数 / 关系图例 / 权限 / 视图切换 / 新建 / 空间选择器。
+ * 工作区工具栏 —— 计数 / 关系图例 / 权限 / 视图切换 / 新建。
  *
  * 拆自 `Workspace.tsx`（用户 `2026-11-20`：「一个视图那么多能拆的。做了组件吗」）。
  * **行为、DOM、类名、可访问性属性全部与拆之前逐字一致** —— 这不是重设计，是搬家。
+ *
+ * ## ⚠ 不含空间选择器（用户 2026-11-20）
+ *
+ * > 「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮。」
+ *
+ * 所以「工作空间 ▾」按钮**不在这个组件里** —— 由 `Workspace` 在外面拼
+ * （`density=compact` 时）。这个组件只做「任务条 + 图例 + 视图切换 + 新建」。
  *
  * ## 它只做「画」
  *
@@ -27,9 +34,6 @@
  */
 
 import type { ReactNode } from 'react';
-
-import type { SpacePickerProps } from './SpacePicker.tsx';
-import { SpacePicker } from './SpacePicker.tsx';
 
 /** 图例一项。`rel` 只用于 CSS 选择颜色/线型（`data-rel`）。 */
 interface LegendItem {
@@ -66,11 +70,6 @@ export interface WorkspaceToolbarProps {
 	 * 「权限与约定」。**省略 = 不画这个按钮**（V2 还没做；compact 密度也折叠它）。
 	 */
 	readonly onOpenPermission?: () => void;
-	/**
-	 * 空间选择器。**传了才画** —— 它只在 `density=compact` 下出现
-	 * （full 密度时空间 chip 行常驻在最上面，不需要这个按钮）。
-	 */
-	readonly spacePicker?: SpacePickerProps;
 }
 
 /**
@@ -105,12 +104,6 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps): ReactNode {
 			</span>
 
 			<span className="tb3w-toolbar__actions">
-				{/*
-				 * 紧凑：空间切换是**下拉面板** —— 点开在按钮下方弹出，
-				 * 覆盖在内容上，不推挤布局。
-				 * 用户 `2026-11-20`：「是菜单往下打开区域的，不是在菜单身上就展开的」。
-				 */}
-				{props.spacePicker === undefined ? null : <SpacePicker {...props.spacePicker} />}
 				{/* 紧凑：权限与约定收起来（低频、用不上 —— 用户 2026-11-20「要折叠」） */}
 				{props.onOpenPermission === undefined ? null : (
 					<button

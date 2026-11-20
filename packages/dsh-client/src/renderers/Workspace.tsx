@@ -99,6 +99,7 @@ import { ListEmpty } from './workspace/ListEmpty.tsx';
 import { ListHeader } from './workspace/ListHeader.tsx';
 import { SplitHandle } from './workspace/SplitHandle.tsx';
 import { WorkspaceToolbar } from './workspace/WorkspaceToolbar.tsx';
+import { SpacePicker } from './workspace/SpacePicker.tsx';
 
 /* ══════════════════════════════════════════════════════════
    状态筛选的分组顺序
@@ -501,33 +502,41 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						/>
 					)}
 
-					<WorkspaceToolbar
-						shownCount={shownCount}
-						totalCount={props.cards.length}
-						queryActive={queryActive}
-						view={view}
-						onViewChange={setView}
-						onCreateCard={props.onCreateCard}
-						{...(compact || props.onOpenPermission === undefined
-							? {}
-							: { onOpenPermission: props.onOpenPermission })}
-						{...(compact
-							? {
-									spacePicker: {
-										workspaces: props.workspaces,
-										currentId: props.currentId,
-										viewingId: props.viewingId,
-										showArchived: props.showArchived,
-										cardCount: props.cards.length,
-										onView: props.onView,
-										onActivate: props.onActivate,
-										onToggleArchived: props.onToggleArchived,
-										onToggleShowArchived: props.onToggleShowArchived,
-										onCreate: props.onCreateWorkspace,
-									},
-								}
-							: {})}
-					/>
+					{/*
+					 * 行 1：工具栏 + 空间开关。
+					 *
+					 * ⚠ 「工作空间 ▾」**不在 `WorkspaceToolbar` 里** —— 用户 2026-11-20：
+					 *   「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮。」
+					 *   所以由本组件（拼装层）在外面拼。它只是**开关**；
+					 *   真正的选择（chip 列表）在展开后的折叠区里。
+					 */}
+					<div className="tb3w-chrome__bar">
+						<WorkspaceToolbar
+							shownCount={shownCount}
+							totalCount={props.cards.length}
+							queryActive={queryActive}
+							view={view}
+							onViewChange={setView}
+							onCreateCard={props.onCreateCard}
+							{...(compact || props.onOpenPermission === undefined
+								? {}
+								: { onOpenPermission: props.onOpenPermission })}
+						/>
+						{compact ? (
+							<SpacePicker
+								workspaces={props.workspaces}
+								currentId={props.currentId}
+								viewingId={props.viewingId}
+								showArchived={props.showArchived}
+								cardCount={props.cards.length}
+								onView={props.onView}
+								onActivate={props.onActivate}
+								onToggleArchived={props.onToggleArchived}
+								onToggleShowArchived={props.onToggleShowArchived}
+								onCreate={props.onCreateWorkspace}
+							/>
+						) : null}
+					</div>
 
 					<div className="tb3w-filters">
 						<FilterRow
