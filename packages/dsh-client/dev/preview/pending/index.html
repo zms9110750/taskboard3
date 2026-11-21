@@ -45,29 +45,17 @@
 <p class="lead">盘点报告结论：功能基本齐了，剩下的是<b>设计裁决</b>和<b>接线</b>。下面每项写明「为什么要你定」和「看什么 / 定什么」。</p>
 
 <div class="toc">
-	<a href="#g0">⓿ 候选组件（等你选）</a>
-	<a href="#g1">① 视觉布局（3 项）</a>
-	<a href="#g2">② 交互语义（4 项）</a>
-	<a href="#g3">③ 架构方案（3 项）</a>
-	<a href="#g3b">④ AI tool 规格 v2（12 点）</a>
+	<a href="#g0">⓿ 候选组件（1 项）</a>
+	<a href="#g1">① 视觉布局（2 项）</a>
+	<a href="#g2">② 交互语义（1 项）</a>
+	<a href="#g3">③ 架构方案（2 项）</a>
+	<a href="#g3b">④ AI tool 规格 v2（5 点）</a>
 	<a href="#g4">⑤ 发布与清理（2 项）</a>
 </div>
 
 <!-- ══════════ ① 视觉布局 ══════════ -->
-<h2 id="g0">⓿ 候选组件（已做完，等你选）</h2>
+<h2 id="g0">⓿ 候选组件（等你选）</h2>
 
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">✅</span>
-		<span class="item__title">空间选择器 · 折叠隐藏栏 —— <b>已选 A 款并落地</b></span>
-		<span class="item__tag tag--see">已定</span>
-	</div>
-	<div class="item__body">
-		<p>你选了 A 款（工具栏下一行整行展开、推挤筛选行），已落进产品（<code>4c20950</code>）。</p>
-		<p>折叠栏现在在<b>筛选行下面单独一行</b>。</p>
-		<div class="links"><a href="../vp-drawer/index.html">工作区预览（折叠栏在这）</a></div>
-	</div>
-</div>
 
 <div class="item">
 	<div class="item__head">
@@ -85,36 +73,7 @@
 	</div>
 </div>
 
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">2</span>
-		<span class="item__title">权限面板 —— 容器形态 3 个候选</span>
-		<span class="item__tag tag--wait">等你选</span>
-	</div>
-	<div class="item__body">
-		<p><span class="k">背景：</span>「UI 里面的权限面板需要做独立组件给我候选。」</p>
-		<p><span class="k">内容都是定稿的 <code>PermissionPanel</code></b>（两条正交轴，点哪档立刻保存），只换容器：</p>
-		<p>A · <b>模态弹窗</b>（居中 + 遮罩）<br>
-		B · <b>右侧滑出面板</b>（420px，和工作区同侧）<br>
-		C · <b>页签内嵌</b>（右侧页签多一页，不开浮层）</p>
-		<div class="links"><a href="../permission-container/index.html">权限面板容器 3 候选</a></div>
-	</div>
-</div>
 
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">3</span>
-		<span class="item__title">权限选择 —— 全屏页面 3 个候选</span>
-		<span class="item__tag tag--wait">等你选</span>
-	</div>
-	<div class="item__body">
-		<p><span class="k">背景：</span>「权限选择只能在全屏下开一个页面。而且 mcp 方式接入的还不支持显示。」</p>
-		<p>A · <b>单列居中</b>（复用 PermissionPanel，上下留白）<br>
-		B · <b>左说明 / 右选择</b>（双栏）<br>
-		C · <b>3×3 矩阵</b>（行=卡片动作、列=工具管控，点格子选组合）</p>
-		<div class="links"><a href="../permission-page/index.html">权限选择全屏页面 3 候选</a></div>
-	</div>
-</div>
 
 <h2 id="g1">① 视觉布局</h2>
 
@@ -139,19 +98,6 @@
 
 <div class="item">
 	<div class="item__head">
-		<span class="item__no">C8</span>
-		<span class="item__title">PermissionPanel 怎么接</span>
-		<span class="item__tag tag--see">有预览</span>
-	</div>
-	<div class="item__body">
-		<p><span class="k">为什么：</span>组件完整（376 行），但<b>产品里没有样式</b> —— CSS 全在 <code>dev/preview/permission/style.css</code>，<code>styles.ts</code> 的注入里没有它；也没有宿主容器。</p>
-		<p><span class="k">要你定：</span>在哪个容器展示（模态 / 侧栏 / 页签）、CSS 要不要并进产品。</p>
-		<div class="links"><a href="../permission/index.html">权限面板</a></div>
-	</div>
-</div>
-
-<div class="item">
-	<div class="item__head">
 		<span class="item__no">C9</span>
 		<span class="item__title">四个死代码组件：删掉还是接上</span>
 		<span class="item__tag tag--text">纯裁决</span>
@@ -165,46 +111,8 @@
 <!-- ══════════ ② 交互语义 ══════════ -->
 <h2 id="g2">② 交互语义</h2>
 
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">C4</span>
-		<span class="item__title">章节编辑 / ask 作答的语义</span>
-		<span class="item__tag tag--text">纯裁决</span>
-	</div>
-	<div class="item__body">
-		<p><span class="k">现状：</span>组件都能编辑（<code>Section</code> 的 <code>onChange</code>、<code>AskSection</code> 的 <code>onAsk</code> 都实现了），<code>api.patchCard</code> 也在，<b>但没人接线</b> —— 产品里 create/active 相位永远只读。</p>
-		<p><span class="k">要你定：</span>谁能编辑、只读边界、patch 粒度（整章还是单字段）、保存时机（失焦 / 防抖 / 显式保存）、编辑后要不要标未读。</p>
-	</div>
-</div>
 
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">C7</span>
-		<span class="item__title">AI 未读 / 更新筛选</span>
-		<span class="item__tag tag--text">纯裁决</span>
-	</div>
-	<div class="item__body">
-		<p><span class="k">现状：</span><code>pure/update-focus.ts</code> 已实现且有测试，<b>但没有任何组件 import 它</b>；<code>Workspace.tsx:552</code> 的 chip 写着「P4 的筛选还没接，这里只显示计数」。</p>
-		<p><span class="k">要你定：</span>chip 是筛选还是淡化？点开什么行为？</p>
-		<div class="links"><a href="../workspace/index.html">工作区（chip 在这）</a></div>
-	</div>
-</div>
 
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">C12</span>
-		<span class="item__title">建卡面板的 ask 编辑器</span>
-		<span class="item__tag tag--see">有预览</span>
-	</div>
-	<div class="item__body">
-		<p><span class="k">现状：</span><code>create/SectionFormList.tsx:77-88</code> 还是占位（「ask 编辑器还没迁进来」）。但编辑器本体其实已经在 <code>AskSection.tsx</code> 的 create 相位里，<code>dev/preview/ask</code> 用的就是 <code>src</code> 组件。</p>
-		<p><span class="k">要你定：</span>迁 <code>AskSection</code> 的 create 编辑器，还是保留独立表单？跟 <code>Section</code> 的内联编辑重不重复？</p>
-		<div class="links">
-			<a href="../cardcreate/index.html">建卡面板</a>
-			<a href="../ask/index.html">ask 三相位（create 栏就是那个编辑器）</a>
-		</div>
-	</div>
-</div>
 
 <div class="item">
 	<div class="item__head">
@@ -241,24 +149,6 @@
 	</div>
 </div>
 
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">C6</span>
-		<span class="item__title">AI tool 的 16 个工具行为</span>
-		<span class="item__tag tag--see">有预览</span>
-	</div>
-	<div class="item__body">
-		<p><span class="k">现状：</span><code>@taskboard/tools</code> 已合并（16 工具 / 74 测试）。架构语义（9 状态 / claim / 未读 / 权限四档）都有你的原话背书，<b>但下面 6 条是工具层自己加的默认语义，你没审过</b>：</p>
-		<p>① 「采纳」拆成独立工具 <code>taskboard_adopt</code>，<code>transition</code> 拒绝采纳并指路<br>
-		② claim/release 只能 AI 工具发起，<b>HTTP 一律 409</b>（界面不能领）<br>
-		③ holder 缺席回落 <code>'unknown'</code><br>
-		④ 默认空间：第一个；没有就<b>自动建「默认」</b>（MCP 走 fallback 会真建）<br>
-		⑤ <code>taskboard_cards</code> 默认<b>不含草稿</b><br>
-		⑥ <code>tool_policy_*</code> 允许 AI 在 <code>manage-edit</code> 档<b>自改权限</b></p>
-		<p><span class="k">还要看：</span>16 个工具的<b>文字输出样例</b>（模型看到的话）。</p>
-		<div class="links"><a href="../ai-tools/index.html">16 个工具定义（点开看 schema）</a></div>
-	</div>
-</div>
 
 <div class="item">
 	<div class="item__head">
@@ -274,27 +164,6 @@
 
 <!-- ══════════ ④ AI tool 规格 v2 ══════════ -->
 <h2 id="g3b">④ AI tool 规格 v2 —— 这套要求能覆盖 AI 的使用吗</h2>
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">已定</span>
-		<span class="item__title">你已裁决的 6 条（2026-11-21）</span>
-		<span class="item__tag tag--see">已定</span>
-	</div>
-	<div class="item__body">
-		<p><b>1. #4 名字可空</b> —— 不输入名字 = <b>列出</b>；给了鉴别参数（枚举）= <b>只列该分类下的东西</b>。<br>
-		⇒ 定义发现死循环已解除。</p>
-		<p><b>2. DSH 侧的 tool 额外列出当前激活空间</b> —— 激活空间的可观测性由宿主侧补，不进通用包。<br>
-		⇒ 这个回答了解释那个缺失。</p>
-		<p><b>3. 列卡加标题模糊搜索 + page 参数；看卡必须编号；编号强制看可以看草稿和已删除的卡</b><br>
-		⇒ 补齐了搜索、分页；「编号强制看」= 不受筛选限制，草稿和墓碑都能按编号取。</p>
-		<p><b>4. 建卡要先看定义；没有模板时提示先用「看定义」工具；加 title 参数</b><br>
-		⇒ 补齐了建卡 title；并建立了「先看定义再建卡」的流程约束。</p>
-		<p><b>5. 新增「看原始卡」工具</b> —— 先确认卡的原始 JSON，再改卡。<br>
-		⇒ 这就是 #6 的前置条件（AI 终于能看到卡的真实结构）。</p>
-		<p><b>6. 权限只匹配 tool 名字，不匹配重载和参数；AI 天然知道自己的 tool，不需要工具列出</b><br>
-		⇒ 消除了「需要列可授予工具名」和「重载/参数匹配」的复杂度。</p>
-	</div>
-</div>
 
 
 <div class="item">
@@ -398,23 +267,6 @@
 	</div>
 </div>
 
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">C13</span>
-		<span class="item__title">文档与验收资产已经漂了</span>
-		<span class="item__tag tag--text">纯事实修正</span>
-	</div>
-	<div class="item__body">
-		<p><span class="k">盘点发现（会误导下一个人）：</span></p>
-		<p>· <code>docs/组件清单.md</code> 说 V1~V4 全「未开始」—— 实际全实现了<br>
-		· <code>docs/渲染注册表.md</code> 说「设计（未实现）」—— 实际已实现<br>
-		· <code>docs/设计.md:148</code> 说 dsh-client「只到 MVP / 5 个组件」—— 实际 50 个 <code>.tsx</code><br>
-		· <code>dev/preview/drawer/verify.mjs</code> 断言「默认形态 a」，实际已定稿 <code>b</code> ⇒ <b>静态看必红</b><br>
-		· 还引用了已删除的 <code>drawer-composer/</code> ⇒ <b>verify 必红</b><br>
-		· <code>register-drawer.tsx:31</code> 说「单测 register-drawer.test.ts 钉住」—— <b>该文件不存在</b></p>
-		<p><span class="k">要你定：</span>什么时候一次性修（建议在布局/语义定完之后，否则确认过程中文档还会变）。</p>
-	</div>
-</div>
 
 <div class="item">
 	<div class="item__head">

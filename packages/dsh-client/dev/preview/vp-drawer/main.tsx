@@ -46,7 +46,7 @@ import type { Card, TemplateSummary, Workspace as SpaceEntity } from '../../../s
    ══════════════════════════════════════════════════════════ */
 
 /** 18 个模板（和 `dev/preview/cardcreate/main.tsx` 的 CATALOG 同源，这里只要摘要四字段）。 */
-const TEMPLATES: readonly TemplateSummary[] = Object.freeze([
+export const TEMPLATES: readonly TemplateSummary[] = Object.freeze([
 	{ ref: 'userNeed', displayName: '用户任务', kind: 'goal', domain: '核心' },
 	{ ref: 'decision', displayName: '决策', kind: 'design', domain: '核心' },
 	{ ref: 'question', displayName: '提问', kind: 'design', domain: '核心' },
@@ -68,7 +68,7 @@ const TEMPLATES: readonly TemplateSummary[] = Object.freeze([
 ]);
 
 /** 类别中文名 —— 客户端没有 `/api/kinds`，产品里由调用方注入（设计图上的那四个词）。 */
-const KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
+export const KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
 	goal: '目标',
 	design: '设计',
 	work: '工作',
@@ -173,7 +173,7 @@ function genericSections(title: string): Readonly<Record<string, { label: string
 }
 
 /** 12 张卡 —— 前 7 张的编号 / 状态 / 类别 / 领域 / 标题 / 时间全部照设计图。 */
-const CARDS: readonly Card[] = Object.freeze([
+export const CARDS: readonly Card[] = Object.freeze([
 	card(
 		{
 			id: 'U-01',
@@ -346,7 +346,7 @@ const CARDS: readonly Card[] = Object.freeze([
    空间 —— 6 个（含一个归档，演示「显示已归档」开着时 chip 的虚线态）
    ══════════════════════════════════════════════════════════ */
 
-const WORKSPACES: readonly SpaceEntity[] = Object.freeze([
+export const WORKSPACES: readonly SpaceEntity[] = Object.freeze([
 	{ id: 'core', displayName: '核心', archived: false, createdAt: at(11, 1, 9, 0) },
 	{ id: 'code', displayName: '代码', archived: false, createdAt: at(11, 2, 9, 0) },
 	{ id: 'writing', displayName: '写作', archived: false, createdAt: at(11, 3, 9, 0) },
@@ -376,7 +376,7 @@ const WORKSPACES: readonly SpaceEntity[] = Object.freeze([
  *
  * ⚠ **不要**为了让初始态「好看」去改 AND 语义：过滤逻辑是对的，错的是 seed。
  */
-const DEFAULT_PICKED: Readonly<Record<string, Picked>> = Object.freeze({
+export const DEFAULT_PICKED: Readonly<Record<string, Picked>> = Object.freeze({
 	kind: ['design'],
 });
 
@@ -395,7 +395,7 @@ interface Stage {
 	readonly tabHint: string | undefined;
 }
 
-const STAGES: readonly Stage[] = Object.freeze([
+export const STAGES: readonly Stage[] = Object.freeze([
 	{
 		id: 'narrow',
 		label: '抽屉',
