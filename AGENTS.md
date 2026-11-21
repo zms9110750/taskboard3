@@ -392,9 +392,9 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
 |---|---|---|
 | `protocol` | 词汇与判决：9 状态、4 组、6 关系、错误码 | 包级 |
 | `core` | 领域逻辑 + 唯一的 `CardStore` 端口 | ❌ |
-| `tools` | AI 工具定义层（16 个 `taskboard_*`，纯 JSON Schema，MCP / DSH 通用） | ❌ |
+| `tools` | AI 工具定义层（v2：9 条用户定义 + 原始卡 = 10 个 `taskboard_*`，纯 JSON Schema，MCP / DSH 通用） | ❌ |
 | `store` | `provide('taskboard3Store', …)` 的薄插件 | ✅ **插件行** |
-| `dsh` | 12 条 HTTP 路由 + 16 个 AI 工具（待改成 `tools` 的薄适配层）+ 3 个命令 | ❌ |
+| `dsh` | 12 条 HTTP 路由 + 16 个 AI 工具（v1；待改成 `tools` v2 的薄适配层）+ 3 个命令 | ❌ |
 | `dsh-client` | 右侧工作区标签页（列表 / 详情 / 状态按钮 / 空间切换） | ✅ 插件行 |
 
 ### 构建与测试

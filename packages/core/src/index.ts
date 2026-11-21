@@ -26,17 +26,23 @@ import type { Card, CardSection, CardUnread, WorkspaceId } from './card.ts';
 import { findCard, withHistory, withoutDeleted } from './card.ts';
 /* ⚠ 原型期脚手架，整个文件可删 —— 见 `bus.ts` 顶部的拆解步骤。 */
 import type { Bus } from './bus.ts';
+import { contentOfCard, parseContentPointer, replaceInContent } from './content-path.ts';
+import { transitionAdviceOf, type TransitionAdvice } from './advice.ts';
 import { buildCard, type CreateInput, type CreateResult } from './create.ts';
 import { createSearch, type SearchCondition } from './search.ts';
 import {
+	BASE_TOOLS,
 	CARD_ACTION_OPTIONS,
 	TOOL_GUARD_OPTIONS,
 	effectiveToolsOf,
+	isBaseTool,
 	judgeToolCall as judgeToolCallPure,
 	type CardActionLevel,
 	type ToolCallVerdict,
 	type ToolGuardLevel,
 	type ToolPolicyDelta,
+	type ToolPolicyScopeChange,
+	type ToolPolicyScopeInput,
 	type ToolPolicyStore,
 } from './permission.ts';
 import { createSqliteStore } from './storage/sqlite.ts';
@@ -173,6 +179,24 @@ function cleanDelta(delta: readonly string[]): readonly string[] {
 /** 清洗名字（组名 / 模板 ref）。 */
 function cleanName(name: string): string {
 	return name.trim();
+}
+
+/**
+ * 把内容路径的首段从「章节 label」归一成「章节 id」。
+ *
+ * 为什么需要：模型从 `taskboard_definitions` 的模板定义里看到的是
+ * `{ id, label }` 两个键；写路径时很可能用 label（人能读的那个）。
+ * 卡上存的是 `sections[sectionId]`，所以首段命中 label 时换回 id。
+ * 已经是 id 的路径**原样返回**（优先级：id > label，避免歧义）。
+ */
+function normalizeContentPath(card: Card, segments: readonly string[]): readonly string[] {
+	const first = segments[0];
+	if (first === undefined) return segments;
+	if (card.sections[first] !== undefined) return segments;
+	for (const [sectionId, section] of Object.entries(card.sections)) {
+		if (section.label === first) return [sectionId, ...segments.slice(1)];
+	}
+	return segments;
 }
 
 /** 空名字的失败。 */
@@ -352,6 +376,36 @@ export interface Taskboard {
 		readonly heldCards: readonly { readonly templateRef: string }[];
 	}): ToolCallVerdict;
 
+	/**
+	 * 改**某一个 scope** 的工具权限（tool contract v2，用户 `2026-11-21`）。
+	 *
+	 * ## 三个 scope
+	 *
+	 * | scope | 含义 | 存储 |
+	 * |---|---|---|
+	 * | `{ tier: 'unclaimed' }` | 没持有工作卡时的额外权限 | `unclaimed`（v2 新增） |
+	 * | `{ tier: 'claimed' }` | 持有工作卡时的额外权限 | 原 `common` |
+	 * | `{ templateRef }` | 某个工作模板的额外权限 | 原 `templates[ref]` |
+	 *
+	 * ## 增量语义（用户原话）
+	 *
+	 * > 允许的工具数组（和原有的取并集）、移除的工具数组（和原有的取交集）。
+	 *
+	 * ⇒ `next = (current ∪ allow) \ (current ∩ remove)`。
+	 *   remove 只对**已存在**的名字生效（这就是「取交集」）；不在集合里的记进
+	 *   `ignoredRemovals`，不报错（幂等，重复移除同一项不会失败）。
+	 *
+	 * ## ⚠ 硬底线：`BASE_TOOLS` 不能被移除
+	 *
+	 * 用户 `2026-11-13` 的裁定（放手永远允许 / 领取后能转态）靠 BASE 是常量保证。
+	 * 允许从「未领取档」移除 BASE 工具 = 能让 AI 把自己锁死。
+	 * ⇒ BASE 里的名字：`allow` 里出现视为已满足（记 `alreadyBase`），
+	 *   `remove` 里出现拒绝执行（记 `protectedRemovals`），**不报错但明确告知**。
+	 *
+	 * @returns 该 scope 的**新配置**（不含 BASE）+ 生效/忽略明细
+	 */
+	setToolPolicyScope(input: ToolPolicyScopeInput): Promise<{ readonly ok: true; readonly change: ToolPolicyScopeChange } | Failure>;
+
 	/* ── 两条轴的档位（持久化在 kv，默认 见 permission.ts） ── */
 
 	/** 读 UI 轴档位（用户授权 AI 能不能领卡 / 采纳草稿）。 */
@@ -365,7 +419,34 @@ export interface Taskboard {
 
 	/* ── 写 ── */
 	create(input: CreateInput): Promise<CreateResult>;
-	/** 改标题 / 备注 / 章节（整体替换，不是增量合并）。 */
+	/**
+	 * 按 **JSON Pointer 路径**替换卡的内容（tool contract v2）。
+	 *
+	 * 用户 `2026-11-21`：
+	 * > 参数为**一个编号和一个空间，和一个 JSON 路径，一个 JSON object**。
+	 * > **JSON 路径之后的全部内容被这个 object 覆盖掉**（替换语义，不是合并）。
+	 *
+	 * 「内容」= 卡的**模板内 JSON**：`{ [sectionKey]: actionPayload }`（用户裁定）。
+	 * ⇒ 这个入口**碰不到** title / status / holders / history / unread / relations，
+	 *   所以不存在「用路径绕过状态机或改审计」的通路。
+	 *
+	 * 步骤：读卡 → 拼路径 → 替换 → **整份内容重新过模板校验** → 落库（走 `withHistory`）。
+	 *
+	 * @param pointer JSON Pointer（`''` = 替换整个内容对象；`-` = 数组末尾追加）
+	 * @param value 替换值
+	 * @param actor 谁改的（AI 工具传 `'ai'`）
+	 * @returns 更新后的卡 + 合并后的完整内容（工具层直接回给模型）
+	 */
+	replaceContentAt(
+		workspaceId: WorkspaceId,
+		cardId: string,
+		pointer: string,
+		value: unknown,
+		actor?: Actor,
+	): Promise<{ readonly ok: true; readonly card: Card; readonly content: Readonly<Record<string, unknown>> } | Failure>;
+	/**
+	 * 改标题 / 备注 / 章节（整体替换，不是增量合并）。
+	 */
 	update(
 		workspaceId: WorkspaceId,
 		cardId: string,
@@ -489,6 +570,18 @@ export interface Taskboard {
 	 * @returns 被改动的父卡（自底向上）
 	 */
 	recomputeUpward(workspaceId: WorkspaceId, cardId: string): Promise<readonly Card[]>;
+	/**
+	 * 「接下来能去哪」—— **读**，不改任何东西（tool contract v2）。
+	 *
+	 * 用户 `2026-11-21`：
+	 * > 目标字符串为空时，展示接下来可转移的目标和条件目标。
+	 *
+	 * 每个目标带：动作（采纳/领取/释放/普通转移）、AI 能不能做、
+	 * 现在能不能执行、不能执行的具体原因与卡死的卡（依赖 / 子任务 / 配额）。
+	 *
+	 * @param holder 当前调用者（判领取/释放准入用；省略 = 没有身份）
+	 */
+	transitionAdvice(workspaceId: WorkspaceId, cardId: string, holder?: string): TransitionAdvice | Failure;
 
 	/* ── 模板 / 类别 / 领域 / action 注册面 ── */
 	templates(): TemplateRegistry;
@@ -588,13 +681,20 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	 *   对外 `getToolPolicies()` 返回的是**浅拷贝**，防止调用方改到缓存。
 	 */
 	const toolPolicies: {
+		unclaimed: readonly string[];
 		common: readonly string[];
 		groups: Record<string, readonly string[]>;
 		groupMembers: Record<string, readonly string[]>;
 		templates: Record<string, readonly string[]>;
 	} = (() => {
 		const raw = store.kvGet(TOOL_POLICY_KEY);
-		const empty = { common: [] as readonly string[], groups: {}, groupMembers: {}, templates: {} };
+		const empty = {
+			unclaimed: [] as readonly string[],
+			common: [] as readonly string[],
+			groups: {},
+			groupMembers: {},
+			templates: {},
+		};
 		if (raw === undefined) return empty;
 		try {
 			const parsed = JSON.parse(raw) as unknown;
@@ -602,6 +702,11 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 
 			const source = parsed as Record<string, unknown>;
 			return {
+				/*
+				 * v2 新增字段：旧 kv（v1/v2 早期）里没有它 ⇒ 读成空增量。
+				 * 不升 key 版本：同一个 JSON 加字段向后兼容，升版本反而要迁移。
+				 */
+				unclaimed: readDelta(source['unclaimed']),
 				common: readDelta(source['common']),
 				groups: readDeltaMap(source['groups']),
 				groupMembers: readStringListMap(source['groupMembers']),
@@ -851,6 +956,103 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true };
 		},
 
+		async setToolPolicyScope(input) {
+			const hasTier = input.tier !== undefined;
+			const hasTemplate = input.templateRef !== undefined;
+			if (hasTier === hasTemplate) {
+				return failure(ErrorCode.FIELD_REQUIRED, 'tier 与 templateRef 必须二选一（正好给一个）。', {
+					issues: [{ path: '/tier', message: '与 /templateRef 二选一' }],
+				});
+			}
+
+			/* ── 1. 定位 scope 与当前配置 ── */
+			let scope: 'unclaimed' | 'claimed' | 'template';
+			let templateRef: string | undefined;
+			let current: readonly string[];
+			if (hasTier) {
+				if (input.tier === 'unclaimed') {
+					scope = 'unclaimed';
+					current = toolPolicies.unclaimed;
+				} else if (input.tier === 'claimed') {
+					scope = 'claimed';
+					current = toolPolicies.common;
+				} else {
+					return failure(ErrorCode.FIELD_REQUIRED, `tier 只能是 unclaimed / claimed；收到「${String(input.tier)}」。`, {
+						issues: [{ path: '/tier', message: 'unclaimed | claimed' }],
+					});
+				}
+			} else {
+				const ref = (input.templateRef ?? '').trim();
+				if (ref === '') {
+					return failure(ErrorCode.FIELD_REQUIRED, 'templateRef 不能为空。', {
+						issues: [{ path: '/templateRef', message: '必填' }],
+					});
+				}
+				if (!templates.has(ref)) {
+					return failure(ErrorCode.TEMPLATE_NOT_FOUND, `模板「${ref}」不存在。`, { detail: { templateRef: ref } });
+				}
+				scope = 'template';
+				templateRef = ref;
+				current = toolPolicies.templates[ref] ?? [];
+			}
+
+			/* ── 2. 增量运算：next = (current ∪ allow) \ (current ∩ remove) ── */
+			const requestedAllow = cleanDelta(input.allow ?? []);
+			const requestedRemove = cleanDelta(input.remove ?? []);
+
+			/*
+			 * ⚠ BASE 硬底线：allow 里出现 BASE 名字 ⇒ 本来就恒可用（记 alreadyBase）；
+			 *   remove 里出现 BASE 名字 ⇒ 拒绝移除（记 protectedRemovals）。
+			 *   **不报错**，但把「你这条操作没生效」明确回给调用方，避免静默。
+			 */
+			const alreadyBase = requestedAllow.filter((name) => isBaseTool(name));
+			const protectedRemovals = requestedRemove.filter((name) => isBaseTool(name));
+			const allow = requestedAllow.filter((name) => !isBaseTool(name));
+			const remove = requestedRemove.filter((name) => !isBaseTool(name));
+
+			const present = new Set(current);
+			const next: string[] = [...current];
+			const added: string[] = [];
+			for (const name of allow) {
+				if (present.has(name)) continue;
+				present.add(name);
+				next.push(name);
+				added.push(name);
+			}
+			const removed: string[] = [];
+			const ignoredRemovals: string[] = [];
+			for (const name of remove) {
+				if (!present.has(name)) {
+					ignoredRemovals.push(name);
+					continue;
+				}
+				present.delete(name);
+				removed.push(name);
+			}
+			/* 同时出现在 allow / remove 里的名字：remove 优先（上面的循环顺序保证）。 */
+			const configured: readonly string[] = Object.freeze(next.filter((name) => present.has(name)));
+
+			/* ── 3. 落库 ── */
+			if (scope === 'unclaimed') toolPolicies.unclaimed = configured;
+			else if (scope === 'claimed') toolPolicies.common = configured;
+			else if (templateRef !== undefined) toolPolicies.templates[templateRef] = configured;
+			await saveToolPolicies();
+
+			return {
+				ok: true,
+				change: {
+					scope,
+					...(templateRef === undefined ? {} : { templateRef }),
+					configured,
+					added: Object.freeze(added),
+					removed: Object.freeze(removed),
+					ignoredRemovals: Object.freeze(ignoredRemovals),
+					protectedRemovals: Object.freeze(protectedRemovals),
+					alreadyBase: Object.freeze(alreadyBase),
+				},
+			};
+		},
+
 		async setGroupMembers(groupName, members) {
 			const name = cleanName(groupName);
 			if (name === '') return emptyNameFailure('组名');
@@ -979,6 +1181,58 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true, card: next };
 		},
 
+		async replaceContentAt(workspaceId, cardId, pointer, value, actor: Actor = 'user') {
+			const cards = load(workspaceId);
+			const existing = findCard(cards, cardId);
+			if (existing === undefined) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `编号「${cardId}」不存在。`);
+			}
+			if (existing.deleted) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
+			}
+
+			/* ── 1. 解析路径（JSON Pointer；允许省略开头 `/`） ── */
+			const parsed = parseContentPointer(pointer);
+			if (!parsed.ok) {
+				return failure(ErrorCode.FIELD_REQUIRED, parsed.message, {
+					issues: [{ path: '/path', message: '不是合法的 JSON 路径' }],
+				});
+			}
+
+			/* ── 2. 首段允许用章节 label（模型从定义里拿到的是 label；卡上存的是 id） ── */
+			const segments = normalizeContentPath(existing, parsed.segments);
+
+			/* ── 3. 在「模板内 JSON」上做替换 ── */
+			const current = contentOfCard(existing);
+			const replaced = replaceInContent(current, segments, value);
+			if (!replaced.ok) {
+				return failure(ErrorCode.CONTENT_INVALID, replaced.message, {
+					issues: [{ path: '/path', message: '路径指向的位置不可替换' }],
+				});
+			}
+
+			/* ── 4. 整份内容重新过模板校验（替换语义下这是唯一的安全网） ── */
+			const validated = schemas.validate(existing.template.ref, replaced.next);
+			if (!validated.ok) return validated;
+
+			const sections: Record<string, CardSection> = {};
+			const template = templates.get(existing.template.ref);
+			if (template !== undefined) {
+				for (const section of template.sections) {
+					const payload = validated.payloads.get(section.id);
+					if (payload === undefined) continue;
+					sections[section.id] = { label: section.label, payload };
+				}
+			}
+
+			const at = now();
+			/* 同 `update`：走 `withHistory` 这条唯一 funnel，不手写 history/unread。 */
+			const next = withHistory({ ...existing, sections }, { at, action: 'update', actor });
+			await persist(workspaceId, next);
+
+			return { ok: true, card: next, content: contentOfCard(next) };
+		},
+
 		async remove(workspaceId, cardId, actor: Actor = 'user') {
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
@@ -1104,6 +1358,21 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return { ok: true, card: result.card, recomputed };
 		},
 
+		transitionAdvice(workspaceId, cardId, holder = '') {
+			const cards = load(workspaceId);
+			const existing = findCard(cards, cardId);
+			if (existing === undefined) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `编号「${cardId}」不存在。`);
+			}
+			if (existing.deleted) {
+				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除，无法转移。`);
+			}
+			return transitionAdviceOf(existing, cards, {
+				claimableKinds: needsClaimKinds(),
+				holder,
+			});
+		},
+
 		/** 见 `recomputeUpward` 的内部实现（闭包里那份）。 */
 		recomputeUpward,
 		templates() {
@@ -1210,6 +1479,23 @@ export type {
 /** 持有者工具（多人协作）。 */
 export { isHeldBy, holderIdsOf, withHolder, withoutHolder } from './card.ts';
 
+/** 「模板内 JSON」投影（tool contract v2：`{ [sectionKey]: actionPayload }`）。 */
+export { contentOfCard } from './content-path.ts';
+
+/** 建卡入参（AI 工具层要构造它；公开面的一部分）。 */
+export type { CreateInput, CreateOrigin, CreateResult } from './create.ts';
+
+/** 状态转移建议（「接下来能去哪 + 条件目标」，tool contract v2）。 */
+export {
+	transitionAdviceOf,
+	type TransitionAction,
+	type TransitionAdvice,
+	type TransitionAdviceOptions,
+	type TransitionBlocker,
+	type TransitionCondition,
+	type TransitionTargetAdvice,
+} from './advice.ts';
+
 /** 工具权限（BASE 常量 + 四档增量 + 两条正交轴 + 纯判定）。 */
 export {
 	BASE_TOOLS,
@@ -1231,6 +1517,8 @@ export {
 	type ToolGuardLevel,
 	type ToolPolicyDelta,
 	type ToolPolicyGroup,
+	type ToolPolicyScopeChange,
+	type ToolPolicyScopeInput,
 	type ToolPolicyStore,
 } from './permission.ts';
 
