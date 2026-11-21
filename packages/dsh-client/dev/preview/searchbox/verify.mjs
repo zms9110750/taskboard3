@@ -107,11 +107,6 @@ const empty = render({ value: '' });
 	expect('⭐ 图标在 .search-box__field 内部（start 之后）', iconIdx > fieldStart, true);
 	expect('⭐ 图标在 field 结束标签之前（真的在框里）', iconIdx < fieldEnd, true);
 	expect('⭐ input 也在同一个 field 内部', inputIdx > fieldStart && inputIdx < fieldEnd, true);
-	expect(
-		'⭐ 按钮是根的第 2 个子节点（field 直接以 </div> 收尾）',
-		empty.includes('</div><button type="button" class="search-box__go"'),
-		true,
-	);
 	expect('⭐ SVG 里 circle / path 各一个（放大镜 = 圆 + 斜柄）', {
 		circle: (empty.match(/<circle /g) ?? []).length,
 		path: (empty.match(/<path /g) ?? []).length,
@@ -128,7 +123,6 @@ const empty = render({ value: '' });
 		true,
 	);
 	expect('输入框有 aria-label', empty.includes('aria-label="搜索任务板"'), true);
-	expect('按钮文案 = 前往', />\s*前往\s*<\/button>/.test(empty), true);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -137,31 +131,19 @@ const empty = render({ value: '' });
 
 console.log('\n═══ ② disabled 与受控值（SSR）═══');
 {
-	const goTagOf = (html) => {
-		const start = html.indexOf('<button');
-		return html.slice(start, html.indexOf('>', start) + 1);
-	};
 	const inputTagOf = (html) => {
 		const start = html.indexOf('<input');
 		return html.slice(start, html.indexOf('>', start) + 1);
 	};
 
-	const emptyGo = goTagOf(empty);
-	expect('空输入 ⇒ 按钮 disabled', emptyGo.includes('disabled'), true);
-	expect('空输入 ⇒ 按钮 title 说「先输入搜索词」', emptyGo.includes('title="先输入搜索词"'), true);
 	expect('空输入 ⇒ input 本身**不** disabled（只有整框禁用才禁）', inputTagOf(empty).includes('disabled'), false);
 
 	const typed = render({ value: 'K-1024' });
-	const typedGo = goTagOf(typed);
 	expect('有内容 ⇒ 值渲染进 input', typed.includes('value="K-1024"'), true);
-	expect('⭐ 有内容 ⇒ 按钮**不** disabled', typedGo.includes('disabled'), false);
-	expect('有内容 ⇒ title 说「搜索「K-1024」」', typedGo.includes('title="搜索「K-1024」"'), true);
 
 	const off = render({ value: 'K-1024', disabled: true });
 	expect('整框禁用 ⇒ 根节点 data-search-disabled="true"', off.includes('data-search-disabled="true"'), true);
 	expect('⭐ 整框禁用 ⇒ input disabled', inputTagOf(off).includes('disabled'), true);
-	expect('⭐ 整框禁用 ⇒ 按钮 disabled（哪怕有内容）', goTagOf(off).includes('disabled'), true);
-	expect('整框禁用 ⇒ title 说「搜索不可用」', goTagOf(off).includes('title="搜索不可用"'), true);
 
 	const custom = render({ value: '', placeholder: '找卡…' });
 	expect('placeholder 可被覆盖', custom.includes('placeholder="找卡…"'), true);
@@ -206,7 +188,7 @@ console.log('\n═══ ④ 预览产物（双击 index.html 能看）═══
 		false,
 	);
 	expect('组件样式被打进 <style>（.search-box__field）', html.includes('.search-box__field'), true);
-	expect('组件样式被打进 <style>（.search-box__go）', html.includes('.search-box__go'), true);
+	expect('组件样式里没有 .search-box__go（按钮已删）', html.includes('.search-box__go'), false);
 	/*
 	 * 语法自检：把内联 `<script>` 的源码交给 V8 编译（**只编译不执行**）——
 	 * 抓「构建产物是坏语法 ⇒ 双击白屏」这类错。真运行还是要用户开浏览器。

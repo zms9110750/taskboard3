@@ -13,7 +13,6 @@
  * .search-box          一行：field + 按钮（都没换行，都在同一行）
  * └─ .search-box__field   有边框的输入框；图标绝对定位在左内边距里
  *    └─ .search-box__input  铺满 field
- * └─ .search-box__go     贴住 field 右边的「前往」
  * ```
  *
  * ⚠ field 和按钮是**贴在一起**的（field 右侧无圆角、按钮左侧无圆角，
@@ -89,47 +88,13 @@
 }
 
 /* ── 「前往」按钮 ── */
-.search-box__go {
-	flex: 0 0 auto;
-	height: 36px;
-	padding: 0 20px;
-	border: 1px solid var(--accent);
-	/* 左侧 -1px：压住 field 的右边线 ⇒ 中间只有一条 1px 分隔线，不是双线 */
-	margin-left: -1px;
-	border-radius: 0 8px 8px 0;
-	background: var(--accent);
-	color: #fff;
-	font-family: inherit;
-	font-size: 13px;
-	font-weight: 600;
-	letter-spacing: 0.02em;
-	cursor: pointer;
-	transition:
-		background 0.12s,
-		border-color 0.12s,
-		color 0.12s;
-}
 
-.search-box__go:hover:not(:disabled) {
-	background: #1d4ed8;
-	border-color: #1d4ed8;
-}
 
-.search-box__go:active:not(:disabled) {
-	background: #1e40af;
-	border-color: #1e40af;
-}
 
 /*
  * 空输入 / 禁用 ⇒ 视觉弱化：灰底、灰字、灰边，**看起来就不能点**。
  * 它是真 `disabled`（键盘也点不了），不是只换了颜色。
  */
-.search-box__go:disabled {
-	background: #f1f3f6;
-	border-color: var(--border);
-	color: var(--text-weak);
-	cursor: default;
-}
 
 /* ── 整框禁用：field 也灰掉（输入框本体已 disabled，这里只是视觉跟着）── */
 .search-box[data-search-disabled='true'] .search-box__field {

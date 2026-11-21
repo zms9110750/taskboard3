@@ -364,18 +364,18 @@ export const CREATE_CSS = `
  */
 export const SEARCHBOX_CSS = `
 .tb3w-root .search-box{display:flex;align-items:stretch;min-width:0}
-.tb3w-root .search-box__field{position:relative;display:flex;align-items:center;flex:1 1 auto;min-width:0;height:36px;border:1px solid var(--border,#e7e9ee);border-right:0;border-radius:8px 0 0 8px;background:var(--bg-card,#fff);transition:border-color .12s,background .12s}
+.tb3w-root .search-box__field{position:relative;display:flex;align-items:center;flex:1 1 auto;min-width:0;height:28px;border:1px solid var(--border,#e7e9ee);border-radius:8px;background:var(--bg-card,#fff);transition:border-color .12s,background .12s}
 .tb3w-root .search-box__field:focus-within{border-color:var(--accent,#2563eb)}
-.tb3w-root .search-box__icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;color:var(--text-weak,#9aa1ad);pointer-events:none}
-/* 左内边距 33px = 图标左 11px + 图标 14px + 间距 8px —— 文字不会压到图标 */
-.tb3w-root .search-box__input{width:100%;height:100%;padding:0 12px 0 33px;border:0;border-radius:8px 0 0 8px;outline:none;background:transparent;font-family:inherit;font-size:13px;line-height:1.5;color:var(--text,#16181d)}
+.tb3w-root .search-box__icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;color:var(--text-weak,#9aa1ad);pointer-events:none}
+/* 左内边距 30px = 图标左 9px + 图标 14px + 间距 7px —— 文字不会压到图标 */
+.tb3w-root .search-box__input{width:100%;height:100%;padding:0 10px 0 30px;border:0;border-radius:8px;outline:none;background:transparent;font-family:inherit;font-size:12.5px;line-height:1.5;color:var(--text,#16181d)}
 .tb3w-root .search-box__input::placeholder{color:var(--text-weak,#9aa1ad)}
 .tb3w-root .search-box__input:disabled{cursor:not-allowed}
-.tb3w-root .search-box__go{flex:0 0 auto;height:36px;padding:0 20px;border:1px solid var(--accent,#2563eb);margin-left:-1px;border-radius:0 8px 8px 0;background:var(--accent,#2563eb);color:#fff;font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.02em;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
-.tb3w-root .search-box__go:hover:not(:disabled){background:var(--accent-strong,#1d4ed8);border-color:var(--accent-strong,#1d4ed8)}
-.tb3w-root .search-box__go:active:not(:disabled){background:#1e40af;border-color:#1e40af}
-/* 空输入 / 禁用 ⇒ 视觉弱化：灰底、灰字、灰边（它是真 disabled，不是只换颜色） */
-.tb3w-root .search-box__go:disabled{background:#f1f3f6;border-color:var(--border,#e7e9ee);color:var(--text-weak,#9aa1ad);cursor:default}
+
+
+
+
+
 .tb3w-root .search-box[data-search-disabled='true'] .search-box__field{background:#f7f8fa;border-color:var(--border,#e7e9ee)}
 `;
 
@@ -559,7 +559,7 @@ export const WORKSPACE_CSS = `
  * 尾部搜索框 = 定稿的 SearchBox（类名 .search-box，样式在 SEARCHBOX_CSS）。
  * 这里只管**布局**：宽版固定 250px（和原来的行内输入框同宽），窄版整行。
  */
-.tb3w-filters__tail .search-box{flex:0 0 auto;width:250px}
+.tb3w-filters__tail .search-box{flex:0 0 auto;width:200px}
 
 /* ── 左栏：列表 ── */
 .tb3w-list{flex:2 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
@@ -898,7 +898,7 @@ export const WORKSPACE_CSS = `
   .tb3w-root .filter-box__csep,.tb3w-root .filter-box__sep{font-size:11px}
   .tb3w-root .filter-box__vline{margin:0 7px}
   .tb3w-ai-chip{display:inline-flex}
-  .tb3w-filters__tail .search-box{flex:0 0 auto;width:190px}
+  .tb3w-filters__tail .search-box{flex:0 0 auto;width:160px}
   .tb3w-list__head{padding:9px 12px 5px}
   .tb3w-list__title{font-size:12px}
   .tb3w-list__body{padding:6px 12px 10px}

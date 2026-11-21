@@ -1,5 +1,12 @@
 /**
- * 搜索框 —— **框内放大镜图标 + 「前往」按钮 + 回车提交**。
+ * 搜索框 —— **框内放大镜图标 + 回车提交**。
+ *
+ * 用户 2026-11-22：
+ * > 「这个框长得有点太大了，弄小一点。右边也不需要一个按钮。
+ * >   做框内内联图标。放大镜或者纸飞机表示去往或者搜索就行。」
+ *
+ * ⇒ 删掉右侧「前往」按钮；提交入口只剩**回车**。
+ *   图标继续用放大镜（框内左侧，内联）—— 它同时表达「搜索」和「前往」。
  *
  * 用户 `2026-11-19`：
  * > 「加一个按钮。为搜索框加一个框内图标。别的组件框架都提供这种插槽的。
@@ -43,7 +50,7 @@ export interface SearchBoxProps {
 	readonly value: string;
 	/** 输入变化。 */
 	readonly onChange: (next: string) => void;
-	/** 回车 或 点「前往」时触发。参数是 **trim 过** 的值。 */
+	/** 回车时触发。参数是 **trim 过** 的值。 */
 	readonly onSubmit: (query: string) => void;
 	/** 占位文字。省略用默认。 */
 	readonly placeholder?: string;
@@ -67,7 +74,7 @@ export function SearchBox(props: SearchBoxProps): ReactNode {
 	const canSubmit = canSubmitOf(props.value, disabled);
 
 	/**
-	 * **唯一的提交入口**：回车 / 点「前往」都调它。
+	 * **唯一的提交入口**：回车调它。
 	 *
 	 * 两个前置条件缺一不可：有 trim 过的词（`query !== null`）、
 	 * 且没有被禁用（`canSubmit`）。不满足就**不触发 `onSubmit`**。
@@ -123,22 +130,7 @@ export function SearchBox(props: SearchBoxProps): ReactNode {
 				/>
 			</div>
 
-			<button
-				type="button"
-				className="search-box__go"
-				data-search-go="1"
-				disabled={!canSubmit}
-				title={
-					disabled
-						? '搜索不可用'
-						: query === null
-							? '先输入搜索词'
-							: `搜索「${query}」`
-				}
-				onClick={submit}
-			>
-				前往
-			</button>
+
 		</div>
 	);
 }
