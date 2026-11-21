@@ -38,6 +38,39 @@ function SkelToolbar(): React.ReactNode {
 	);
 }
 
+/**
+ * 关系图例 —— **用户 2026-11-22 专门骂过**：
+ * 「不是说图例这种元素就可以少了。」
+ *
+ * 6 种关系：派生 / 依赖 / 取代 / 约束 / 相关 / 参考。
+ */
+const LEGEND: readonly { readonly rel: string; readonly label: string }[] = [
+	{ rel: 'derives', label: '派生' },
+	{ rel: 'depends', label: '依赖' },
+	{ rel: 'supersedes', label: '取代' },
+	{ rel: 'constrains', label: '约束' },
+	{ rel: 'related', label: '相关' },
+	{ rel: 'references', label: '参考' },
+];
+
+/** 关系图例行 —— 6 条彩色线段 + 说明「只在科技树视图显示」。 */
+function SkelLegend(): React.ReactNode {
+	return (
+		<div className="dl-legend">
+			<span className="dl-legend__label">关系图例</span>
+			{LEGEND.map(function one(item) {
+				return (
+					<span className="dl-legend__item" key={item.rel}>
+						<i className="dl-legend__line" data-rel={item.rel} />
+						<span>{item.label}</span>
+					</span>
+				);
+			})}
+			<span className="dl-legend__hint">（只在科技树视图显示）</span>
+		</div>
+	);
+}
+
 /** 筛选行。 */
 function SkelFilters(): React.ReactNode {
 	return (
@@ -126,6 +159,7 @@ export function DrawerLayoutA(): React.ReactNode {
 	return (
 		<div className="dl-stage" data-layout="A">
 			<SkelToolbar />
+			<SkelLegend />
 			<SkelFilters />
 			<SkelFold />
 			<div className="dl-split">
@@ -156,6 +190,7 @@ export function DrawerLayoutB(): React.ReactNode {
 	return (
 		<div className="dl-stage" data-layout="B">
 			<SkelToolbar />
+			<SkelLegend />
 			<SkelFilters />
 			<SkelFold />
 			<div className="dl-stack">
@@ -185,6 +220,7 @@ export function DrawerLayoutC(): React.ReactNode {
 	return (
 		<div className="dl-stage" data-layout="C">
 			<SkelToolbar />
+			<SkelLegend />
 			<SkelFilters />
 			<div className="dl-three">
 				<div className="dl-three__rail">
@@ -266,6 +302,7 @@ function App(): React.ReactNode {
 					<Candidate id="竖" title="工作区（竖 570×920）：上下结构" note="工具栏 / 筛选行 / 空间折叠栏竖排；列表与详情用分隔条可拖（现有实现）。">
 						<div className="dl-ws">
 							<SkelToolbar />
+			<SkelLegend />
 							<SkelFilters />
 							<SkelFold />
 							<div className="dl-ws__body">
@@ -325,6 +362,17 @@ function injectPageStyles(): void {
 		'.dl-seg__on{background:#16181d;color:#fff !important}',
 		'.dl-primary{padding:3px 10px;border-radius:5px;background:#16181d;color:#fff;font-size:10px;font-weight:600}',
 		'.dl-filters{display:flex;flex-wrap:wrap;gap:5px;align-items:center}',
+		'.dl-legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px 9px;font-size:10px;color:#5f6673}',
+		'.dl-legend__label{font-weight:600;color:#374151}',
+		'.dl-legend__item{display:inline-flex;align-items:center;gap:4px}',
+		'.dl-legend__line{display:inline-block;width:16px;height:2px;border-radius:1px;background:#9aa1ad}',
+		'.dl-legend__line[data-rel=derives]{background:#94a3b8}',
+		'.dl-legend__line[data-rel=depends]{background:#d97706}',
+		'.dl-legend__line[data-rel=supersedes]{background:#7c3aed}',
+		'.dl-legend__line[data-rel=constrains]{background:#dc2626}',
+		'.dl-legend__line[data-rel=related]{background:#16a34a}',
+		'.dl-legend__line[data-rel=references]{background:transparent;border-top:1px dashed #9aa1ad;height:0}',
+		'.dl-legend__hint{color:#9aa1ad}',
 		'.dl-search{flex:1 1 100px;padding:3px 8px;border:1px solid #d7dbe2;border-radius:5px;font-size:10px;color:#9aa1ad}',
 		'.dl-fold{display:flex;flex-wrap:wrap;gap:5px;padding:6px;border:1px solid #dbe5fb;border-radius:6px;background:#f8faff}',
 		'.dl-list{display:flex;flex-direction:column;gap:5px;min-width:0}',
@@ -366,3 +414,4 @@ function injectPageStyles(): void {
 	style.textContent = STYLE;
 	document.head.appendChild(style);
 }
+
