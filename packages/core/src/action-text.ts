@@ -134,6 +134,16 @@ function askOf(payload: Record<string, unknown>): string {
 			lines.push(description === '' ? `  ${String(optionIndex + 1)}. ${label}` : `  ${String(optionIndex + 1)}. ${label} — ${description}`);
 		}
 
+		const picked = Array.isArray(item['picked'])
+			? item['picked'].filter((one): one is string => typeof one === 'string')
+			: [];
+		if (picked.length > 0) lines.push(`  已选：${picked.join('、')}`);
+		const custom = Array.isArray(item['custom'])
+			? item['custom'].filter((one): one is string => typeof one === 'string')
+			: [];
+		if (custom.length > 0) lines.push(`  自填：${custom.join('、')}`);
+		if (picked.length === 0 && custom.length === 0) lines.push('  状态：未选择');
+
 		if (lines.length > 0) blocks.push(lines.join('\n'));
 	}
 

@@ -19,6 +19,7 @@
 
 import type { Card, CardUnread, TransitionAdvice } from '@taskboard/core';
 import { groupOf, labelOf, type TaskState } from '@taskboard/protocol';
+import { textOfAction } from '@taskboard/core';
 
 /** 单段视图的字符上限 —— 防止一张长卡把上下文打爆。 */
 export const SECTION_VIEW_LIMIT = 2000;
@@ -71,23 +72,23 @@ export function jsonText(value: unknown): string {
  *
  * @param payload 卡上的 raw payload
  */
+/**
+ * 一个 action payload 的文本视图。
+ *
+ * ## 走 `ActionTextRegistry`，不是 if/else（用户 2026-11-22）
+ *
+ * > 「多出来的 action，翻译为 tool 的文字，这个也是渲染器。也要有分发器。」
+ *
+ * 内置三件（text / markdown / ask）由 `core/src/action-text.ts` 的
+ * `DEFAULT_ACTION_TEXT` 注册；第三方可以 `DEFAULT_ACTION_TEXT.register(type, fn)`。
+ * 没注册的 type ⇒ `textOfAction` 兜底成 `JSON.stringify`。
+ *
+ * @param payload 卡上的 raw payload
+ */
 export function renderPayload(payload: unknown): string {
 	if (typeof payload === 'string') return truncate(payload);
 	if (typeof payload !== 'object' || payload === null) return truncate(String(payload));
-
-	const type = stringField(payload, '$type');
-	if (type === 'text' || type === 'markdown') {
-		const value = stringField(payload, 'value');
-		return truncate(value === undefined || value === '' ? '（空）' : value);
-	}
-	if (type === 'ask') return truncate(renderAsk(payload));
-
-	/* 没有 $type 但有 value：按文本展示（兼容旧数据）。 */
-	const value = stringField(payload, 'value');
-	if (value !== undefined && type === undefined) return truncate(value);
-
-	/* 未知 action / 无形状：JSON 降级，不猜。 */
-	return truncate(jsonText(payload));
+	return truncate(textOfAction(payload));
 }
 
 /** `ask` 的视图：问题、选项、已选、自填。 */

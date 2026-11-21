@@ -175,7 +175,8 @@ describe('taskboard_card', () => {
 		const text = await runOk(fixture, 'taskboard_card', { id });
 		assert.ok(text.includes('正文内容'), text);
 		assert.ok(text.includes('选哪个'), text);
-		assert.ok(text.includes('[x] A'), text);
+		/* 现在走 ActionTextRegistry 的 askOf：选项列成 1. A，已选单独一行。 */
+		assert.ok(text.includes('已选：A'), text);
 		assert.ok(text.includes('这是备注'), text);
 		assert.ok(text.includes('状态：未指定（TASK_STATE_UNSPECIFIED）'), text);
 		assert.ok(text.includes('action=text'), text);
