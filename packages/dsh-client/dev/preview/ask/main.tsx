@@ -385,25 +385,15 @@ export function EndedColumn(props: {
  */
 export function AskColumns(props: {
 	readonly layout: 'grid' | 'stack';
+	readonly items: readonly AskItem[];
+	readonly setItems: React.Dispatch<React.SetStateAction<readonly AskItem[]>>;
+	/** 当前答案 payload（由 App 持有，和 JSON 面板共用）。 */
+	readonly payload: Record<string, unknown>;
+	readonly onPayload: (next: Record<string, unknown>) => void;
 }): React.ReactNode {
-	const [items, setItems] = useState<readonly AskItem[]>(INITIAL_ITEMS);
-	/*
-	 * 答案 state 提到这一层 ⇒ active 栏的作答**实时反映到 ended 栏**。
-	 * 之前两栏各存各的 state，改 active 时 ended 纹丝不动，
-	 * 「三态同屏」就只对了一半（create → 其他 联动，active → ended 不联动）。
-	 */
-	const [payload, setPayload] = useState<Record<string, unknown>>(() => ({
-		$type: 'ask',
-		items: items.map((item, i) => ({
-			header: item.header,
-			question: item.question,
-			options: item.options,
-			multi_select: item.multiSelect,
-			placeholder: item.placeholder,
-			...(i === 0 ? { picked: ['方案 B：先做科技树'] } : {}),
-			...(i === 1 ? { picked: ['筛选行'], custom: ['还有配色'] } : {}),
-		})),
-	}));
+	const items = props.items;
+	const setItems = props.setItems;
+	const payload = props.payload;
 
 	/* items 被 create 栏改动时，答案 payload 也要跟着重建（题目/选项变了）。 */
 	const answered: Record<string, unknown> = {
@@ -425,7 +415,7 @@ export function AskColumns(props: {
 	const columns = (
 		<>
 			<CreateColumn items={items} setItems={setItems} />
-			<ActiveColumn items={items} payload={answered} onAsk={setPayload} />
+			<ActiveColumn items={items} payload={answered} onAsk={props.onPayload} />
 			<EndedColumn items={items} payload={answered} />
 		</>
 	);
@@ -438,6 +428,26 @@ export function AskColumns(props: {
    ══════════════════════════════════════════════════════════ */
 
 function App(): React.ReactNode {
+	/*
+	 * state 都在这一层：
+	 *   items   = 问卷本身（create 栏编辑）
+	 *   payload = 答案（active 栏作答）
+	 * ⇒ 三个相位 + 底下的 JSON 面板看到的是**同一份数据**。
+	 */
+	const [items, setItems] = useState<readonly AskItem[]>(INITIAL_ITEMS);
+	const [payload, setPayload] = useState<Record<string, unknown>>(() => ({
+		$type: 'ask',
+		items: INITIAL_ITEMS.map((item, i) => ({
+			header: item.header,
+			question: item.question,
+			options: item.options,
+			multi_select: item.multiSelect,
+			placeholder: item.placeholder,
+			...(i === 0 ? { picked: ['方案 B：先做科技树'] } : {}),
+			...(i === 1 ? { picked: ['筛选行'], custom: ['还有配色'] } : {}),
+		})),
+	}));
+
 	return (
 		<div className="as tb3w-root">
 			{/*
@@ -446,13 +456,16 @@ function App(): React.ReactNode {
 			 */}
 			<h1 className="as-title">ask · 三相位</h1>
 			<div className="as-sub">
-				契约来源 <code>taskboard2/docs/02-action.md</code> §2.9（四态语义）/
-				§2.9b（askCompose 的 7 件能力）/ §2.9d（灰字三相位）
+				产品组件 <code>AskGroupCard</code>。create 是问卷编辑器，active 可作答，ended 只读。
+				三栏 + 下面 JSON 面板共用同一份数据。
 			</div>
-			<div className="as-note">
-				⚠ create 改了题目/选项，active 和 ended 会**跟着变**（共享同一份 items）
+
+			<AskColumns layout="grid" items={items} setItems={setItems} payload={payload} onPayload={setPayload} />
+
+			<div className="as-json">
+				<div className="as-json__label">当前 payload（实时）</div>
+				<pre className="as-json__body">{JSON.stringify(payload, null, 2)}</pre>
 			</div>
-			<AskColumns layout="grid" />
 		</div>
 	);
 }
@@ -511,6 +524,9 @@ export function injectAskStyles(): void {
 		'.as-readonly__custom{font-size:12px;color:#16181d}',
 		'.as-readonly__desc{font-size:10.5px;color:#9aa1ad}',
 		'.as-stack{display:flex;flex-direction:column;gap:16px}',
+		'.as-json{margin-top:20px;border:1px solid #e7e9ee;border-radius:9px;overflow:hidden}',
+		'.as-json__label{padding:6px 10px;background:#f7f8fa;border-bottom:1px solid #eef0f3;font-size:11px;color:#5f6673}',
+		'.as-json__body{margin:0;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.6;overflow:auto;max-height:240px}',
 	].join('\n');
 	const style = document.createElement('style');
 	style.id = 'as-style';
