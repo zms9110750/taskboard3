@@ -118,12 +118,13 @@
 	<div class="item__head">
 		<span class="item__no">C2 / C3</span>
 		<span class="item__title">产品切新 UI + 抽屉数据源</span>
-		<span class="item__tag tag--text">纯裁决</span>
+		<span class="item__tag tag--wait">等你定</span>
 	</div>
 	<div class="item__body">
 		<p><span class="k">C2 现状：</span><code>client.tsx:27</code> 挂的还是旧 <code>BoardBody</code>；26 个新组件里 <code>Workspace</code> 全仓只有一个 type-only 引用。一次全换还是并存？</p>
 		<p><span class="k">C3 现状：</span><code>registerDrawerSlots</code> 的 <code>workspace: WorkspaceProps</code> 是<b>注册那一刻的静态快照</b>，抽屉反映不了实时数据。抽屉和右侧 tab 共享状态还是独立实例？接口改成 <code>() =&gt; WorkspaceProps</code> 还是组件自取 store？</p>
-		<p><span class="k">⚠ 连带发现：</span>没有 V3 数据容器 —— <code>useBoardState</code> 只有 4 个字段，<code>WorkspaceProps</code> 要 <code>currentId</code> + <code>viewingId</code> + <code>showArchived</code>。<b>数据层要扩。</b></p>
+		<p><span class="k">⚠ 数据层要扩：</span><code>useBoardState</code> 只有 4 个字段，<code>WorkspaceProps</code> 要 <code>viewingId</code> + <code>showArchived</code> + 一整套回调。</p>
+		<p><span class="k">✅ 已变：</span>用户 2026-11-22 取消「激活空间」设定 ⇒ <code>WorkspaceProps</code> 的 <code>currentId</code> <b>不再需要</b>（UI 也没有激活按钮了，见 <code>a3f33ec</code>）；工具层 <code>workspaceId</code> 必须显式给（<code>2daf924</code>）。</p>
 	</div>
 </div>
 
