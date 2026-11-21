@@ -1464,6 +1464,19 @@ export { createSqliteStore } from './storage/sqlite.ts';
  */
 export { createBus, type Bus, type TaskboardMessage } from './bus.ts';
 
+/**
+ * action 的字符串输出 —— 每个 action 注册一个函数（JSON object → string）。
+ *
+ * 用户 2026-11-22：「每个 action 要注册一个函数。从 json Object 到 string。」
+ */
+export {
+	createActionTextRegistry,
+	DEFAULT_ACTION_TEXT,
+	textOfAction,
+	type ActionTextFn,
+	type ActionTextRegistry,
+} from './action-text.ts';
+
 
 /*
  * ── 搜索（core 强依赖） ──

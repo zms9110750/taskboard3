@@ -16,7 +16,17 @@ import { createRoot } from 'react-dom/client';
 
 import { buttonsOf, type ButtonAction } from '@taskboard/protocol';
 
-import { StatusPill } from '../../../src/renderers/StatusPill.tsx';
+/* StatusPill 已删（产品零引用）。预览用它当触发器，这里内联一个等价的。 */
+function FakePill(props: { readonly status: string; readonly open?: boolean; readonly onClick?: () => void }): React.ReactNode {
+	const label = props.status.replace('TASK_STATE_', '');
+	return (
+		<button type="button" className={props.open === true ? "fake-pill is-open" : "fake-pill"} onClick={props.onClick}>
+			<span className="fake-pill__dot" />
+			{label}
+			<span className="fake-pill__caret">⌄</span>
+		</button>
+	);
+}
 import { StatusMenu } from '../../../src/renderers/StatusMenu.tsx';
 import { sectionsOf } from '../../../src/pure/status-menu.ts';
 
@@ -39,7 +49,7 @@ function Live(props: LiveProps): React.ReactNode {
 			<div className="pv-row" data-live-row>
 				<span className="pv-k">状态</span>
 				<span ref={setAnchor} data-live-anchor>
-					<StatusPill
+					<FakePill
 						status={status}
 						open={open}
 						onClick={() => {
@@ -162,7 +172,7 @@ function Edge(props: EdgeProps): React.ReactNode {
 		<div className={`pv-edge pv-edge--${props.which}`} data-edge={props.which}>
 			<span className="pv-case__note">{props.label}</span>
 			<span ref={setAnchor}>
-				<StatusPill
+				<FakePill
 					status="TASK_STATE_SUBMITTED"
 					open={open}
 					onClick={() => setOpen((one) => !one)}
@@ -194,7 +204,7 @@ function Empty(): React.ReactNode {
 			<h2>④ 空按钮表（终结态，没有可点的项）</h2>
 			<div className="pv-row">
 				<span ref={setAnchor}>
-					<StatusPill status="TASK_STATE_COMPLETED" open={open} onClick={() => setOpen((one) => !one)} />
+					<FakePill status="TASK_STATE_COMPLETED" open={open} onClick={() => setOpen((one) => !one)} />
 				</span>
 				<span className="pv-note">点开它 —— 菜单里应该只有一行「没有可用的操作」</span>
 			</div>

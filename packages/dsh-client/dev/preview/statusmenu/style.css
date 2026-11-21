@@ -190,3 +190,10 @@
 .pv-edge--right > span:nth-child(2) {
 	margin-right: 2px;
 }
+
+/* FakePill —— StatusPill 已删（产品零引用），预览触发器内联版 */
+.fake-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid #d7dbe2;border-radius:999px;background:#fff;font:inherit;font-size:12px;cursor:pointer;color:#374151}
+.fake-pill:hover{border-color:#2563eb;color:#2563eb}
+.fake-pill.is-open{border-color:#2563eb;background:#eff6ff;color:#2563eb}
+.fake-pill__dot{width:7px;height:7px;border-radius:50%;background:#9aa1ad}
+.fake-pill__caret{color:#9aa1ad;font-size:10px}
