@@ -263,6 +263,17 @@ export interface ToolPolicyGroup {
  * ⚠ 四档都是**增量**，都不含 BASE —— 生效集永远是 `BASE ∪ 四档`。
  */
 export interface ToolPolicyStore {
+	/**
+	 * **未领取档**（v2 新增）：没有持有工作卡时额外允许的工具。
+	 *
+	 * 用户 `2026-11-21`（tool contract v2）：
+	 * > 设置未领取卡 / 领取了工作卡 / 一个指定工作模板，允许的工具调用。
+	 *
+	 * ⚠ **只存增量，不能覆盖 `BASE_TOOLS`**：基础任务板工具是硬底线
+	 *   （放手永远允许、领取后能转态），不允许被这个档移除 —— 否则 AI 会把自己锁死。
+	 *   理由见 `packages/tools` 的 `taskboard_tool_policy` 实现与 `docs/设计.md`。
+	 */
+	readonly unclaimed: ToolPolicyDelta;
 	/** **通用档**：所有工作卡都生效。 */
 	readonly common: ToolPolicyDelta;
 	/** **组档**：组名 → 增量。 */
@@ -275,6 +286,7 @@ export interface ToolPolicyStore {
 
 /** 空策略（全部档位为空）。 */
 export const EMPTY_POLICY_STORE: ToolPolicyStore = Object.freeze({
+	unclaimed: Object.freeze([]),
 	common: Object.freeze([]),
 	groups: Object.freeze({}),
 	groupMembers: Object.freeze({}),
@@ -282,7 +294,43 @@ export const EMPTY_POLICY_STORE: ToolPolicyStore = Object.freeze({
 });
 
 /**
- * 算一个模板的**生效工具集** = `BASE ∪ common ∪ 命中的组 ∪ 独立档`。
+ * `setToolPolicyScope` 的入参（tool contract v2）。
+ *
+ * `tier` 与 `templateRef` **二选一**（用户：「工作模板（这个参数和档位互斥）」）。
+ */
+export interface ToolPolicyScopeInput {
+	/** 档位：未领取卡 / 领取了工作卡。 */
+	readonly tier?: 'unclaimed' | 'claimed';
+	/** 指定工作模板的 ref（`templates[ref]`）。 */
+	readonly templateRef?: string;
+	/** 与原有取并集。 */
+	readonly allow?: readonly string[];
+	/** 与原有取交集（只移除已存在的）。 */
+	readonly remove?: readonly string[];
+}
+
+/** `setToolPolicyScope` 的结果明细（给 AI 回话用）。 */
+export interface ToolPolicyScopeChange {
+	/** 实际改的 scope。 */
+	readonly scope: 'unclaimed' | 'claimed' | 'template';
+	/** `scope === 'template'` 时是模板 ref。 */
+	readonly templateRef?: string;
+	/** 改完之后该 scope 的配置（**不含 BASE**）。 */
+	readonly configured: readonly string[];
+	/** 本次新增的名字。 */
+	readonly added: readonly string[];
+	/** 本次真正移除的名字。 */
+	readonly removed: readonly string[];
+	/** 请求移除但本来就不在集合里的名字（幂等，不算错）。 */
+	readonly ignoredRemovals: readonly string[];
+	/** 请求移除但属于 BASE 硬底线、被保护下来的名字。 */
+	readonly protectedRemovals: readonly string[];
+	/** `allow` 里属于 BASE 的名字（恒可用，无需额外授权）。 */
+	readonly alreadyBase: readonly string[];
+}
+
+/**
+ * 算一个模板的**生效工具集** = `BASE ∪ 未领取 ∪ common ∪ 命中的组 ∪ 独立档`。
  *
  * @returns 去重后的工具名（**稳定顺序**：先 BASE 原序，再按档位叠加顺序）
  *
@@ -292,6 +340,14 @@ export const EMPTY_POLICY_STORE: ToolPolicyStore = Object.freeze({
  */
 export function effectiveToolsOf(store: ToolPolicyStore, templateRef: string): readonly string[] {
 	const out = new Set<string>(BASE_TOOLS);
+
+	/*
+	 * 未领取档：没有工作卡时也生效；持有卡时继续生效（并集语义）。
+	 *
+	 * `?? []`：v1 的调用方/测试可能传没有这个字段的 store 字面量
+	 * （v2 加字段时旧数据/旧构造路径不应炸；缺失 = 空增量）。
+	 */
+	for (const tool of store.unclaimed ?? []) out.add(tool);
 
 	/* 通用档：所有工作卡都吃。 */
 	for (const tool of store.common) out.add(tool);
@@ -399,6 +455,81 @@ export const TOOL_GUARD_OPTIONS = [
 	readonly label: string;
 	readonly description: string;
 }[];
+
+/* ────────────────────────── 领卡类动作的 UI 轴判定 ────────────────────────── */
+
+/** 领卡类动作（v2 合并进一个 `taskboard_transition` 工具后，判定改按“动作”而不是工具名）。 */
+export type CardActionName = 'adopt' | 'claim' | 'release';
+
+/** UI 轴放行。 */
+export interface CardActionAllowed {
+	readonly ok: true;
+}
+
+/** UI 轴拒绝。 */
+export interface CardActionDenied {
+	readonly ok: false;
+	readonly reason: 'CARD_ACTION_LEVEL';
+	/** 人话原因。 */
+	readonly message: string;
+	/** 需要在 UI 上打开到哪一档。 */
+	readonly requiredLevel: 'claim' | 'adopt';
+	/** 当前档位。 */
+	readonly current: CardActionLevel;
+}
+
+/** UI 轴判定结果。 */
+export type CardActionVerdict = CardActionAllowed | CardActionDenied;
+
+const CARD_ACTION_ALLOW: CardActionAllowed = Object.freeze({ ok: true });
+
+/**
+ * 判定一次**领卡类动作**是否被 UI 轴允许（用户 `2026-11-21` 第二轮要求）。
+ *
+ * 用户原话：
+ * > 这个有权限拦截。必须在 ui 侧用户手开这个权限才能让 ai 领取。
+ *
+ * ## 与 `judgeToolCall` 第一段的关系
+ *
+ * v1 按**工具名**判（`taskboard_claim` / `taskboard_adopt` / `taskboard_release`）；
+ * v2 把三个动作合并进 `taskboard_transition`，工具名不再携带动作信息
+ * ⇒ 判定改按**动作**（`adopt` / `claim` / `release`），规则与旧第一段逐条一致：
+ *
+ * | 动作 | no-claim | claim | adopt |
+ * |---|---|---|---|
+ * | `release` | ✅ 永远允许（放手；否则 AI 会被卡锁死） | ✅ | ✅ |
+ * | `claim` | ❌ | ✅ | ✅ |
+ * | `adopt` | ❌ | ❌ | ✅ |
+ *
+ * ⚠ 本函数**只看 UI 轴**（用户授权），不看宿主轴 —— 领卡类动作与
+ *   `ToolGuardLevel` 正交（旧的同一条规则）。
+ */
+export function judgeCardAction(input: {
+	readonly action: CardActionName;
+	readonly cardLevel: CardActionLevel;
+}): CardActionVerdict {
+	if (input.action === 'release') return CARD_ACTION_ALLOW;
+
+	if (input.action === 'claim') {
+		if (input.cardLevel !== 'no-claim') return CARD_ACTION_ALLOW;
+		return {
+			ok: false,
+			reason: 'CARD_ACTION_LEVEL',
+			message: '当前任务板档位不允许 AI 领取工作卡。',
+			requiredLevel: 'claim',
+			current: input.cardLevel,
+		};
+	}
+
+	if (input.cardLevel === 'adopt') return CARD_ACTION_ALLOW;
+	return {
+		ok: false,
+		reason: 'CARD_ACTION_LEVEL',
+		message: '当前任务板档位不允许 AI 采纳草稿。',
+		requiredLevel: 'adopt',
+		current: input.cardLevel,
+	};
+}
 
 /* ────────────────────────── 判定 ────────────────────────── */
 
@@ -511,8 +642,9 @@ export function judgeToolCall(input: ToolCallJudgement, facts: PermissionFacts):
 		);
 	}
 
-	/* ⑥ 基础策略：不需要任何卡。 */
+	/* ⑥ 基础策略 + 未领取档：不需要任何卡。 */
 	if (BASE_SET.has(toolName)) return ALLOW;
+	if ((facts.policies.unclaimed ?? []).includes(toolName)) return ALLOW;
 
 	/* ⑦ 没有工作卡 ⇒ 拒绝。 */
 	if (heldCards.length === 0) {

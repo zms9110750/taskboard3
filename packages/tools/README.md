@@ -1,6 +1,6 @@
 # `@taskboard/tools`
 
-任务板的 **AI 工具定义层** —— 与宿主无关，**MCP 与 DSH 通用**。
+任务板的 **AI 工具定义层**（**tool contract v2**）—— 与宿主无关，**MCP 与 DSH 通用**。
 
 ```
 packages/tools  ──►  packages/core  ──►  packages/protocol
@@ -10,73 +10,119 @@ packages/tools  ──►  packages/core  ──►  packages/protocol
   「ai tool 是一个独立在 core 之外的包。这个包只对 core 进行调用。
   core 不会调用他，因此他们的层级不一样。」）。
 - 同一个包既能被 MCP server 消费，也能被 DSH 插件消费 ⇒ **不依赖**
-  `@deepseek-ai/dsh-tools`、cordis 或任何 HTTP 框架。
+  `@deepseek-ai/dsh-tools`、cordis、任何 HTTP 框架、任何 `node:` 内置或 zod。
 
-## 为什么独立于 core
+## v2 的工具（10 个）
 
-core 是领域逻辑（卡 / 状态机 / 校验 / 存储端口）。工具定义是**另一个消费者**
-的契约：工具名、给模型看的描述、JSON Schema、文案。把它塞进 core 会让
-core 背上「模型怎么用」的知识，并且 core 反过来要认识「工具」这个概念 ——
-那正是要避免的层级倒置。
+9 条用户定义 + 用户后续裁决新增的「看原始卡」。名字、顺序、参数都定义在
+`src/tools.ts`（顺序是 prompt 前缀契约）。
+
+| # | 工具 | 一句话 |
+|---|---|---|
+| 1 | `taskboard_workspaces` | 列空间 + 卡数 + `includeArchived`；DSH 额外标出激活空间 |
+| 2 | `taskboard_cards` | 列卡/搜索：空间 + 标题模糊 + 状态/领域/分类/模板 + 用户没看/AI 没看 + `page` |
+| 3 | `taskboard_card` | 按编号查看卡（强制含草稿/墓碑；acton 视图；**查看即 AI 已读**） |
+| — | `taskboard_raw_card` | 看**原始 JSON** `{ [章节key]: actionPayload }`（改卡前先确认结构） |
+| 4 | `taskboard_definitions` | 查看定义：`name` 可空=列出；`type` 枚举（domain/state/template/kind）消歧 |
+| 5 | `taskboard_create` | 建卡：title + 模板 + 关系数组 + 模板对 action 的 JSON；content 三条约束（见下）；空模板要 kind/domain |
+| 6 | `taskboard_update` | JSON 路径替换（替换语义）；返回合并 JSON + 当前状态 + 接下来可以做什么 |
+| 7 | `taskboard_update_note` | 改备注（任何状态）+ 改标题（**仅草稿期**）；返回状态 + 接下来可以做什么 |
+| 8 | `taskboard_transition` | 采纳 / 领取 / 释放 / 普通转移；**采纳/领取须 UI 档位打开**；空目标 = 查「可转移 + 条件目标」 |
+| 9 | `taskboard_tool_policy` | **仅 DSH**：三 scope 工具权限；需 agent 侧权限开关 |
 
 ## 形状
 
 ```ts
 interface TaskboardTool {
-  name: string;                       // taskboard_*
-  description: string;                // 给模型看
-  inputSchema: JsonObjectSchema;      // 纯 JSON Schema（深冻结）
+  name: string;
+  description: string;
+  inputSchema: JsonObjectSchema;  // 纯 JSON Schema，深冻结
   handler(args, ctx): Promise<{ text: string; isError?: boolean }>;
+  hosts?: ('dsh' | 'mcp')[];      // v2：仅某些宿主可用（#9 = ['dsh']）
 }
 
-const tools = createTaskboardTools(taskboard, {
-  defaultWorkspaceId: async () => 'ws-1',   // 可选：入口的默认空间策略
-});
-const registry = createTaskboardToolRegistry(tools);
-const result = await registry.invoke('taskboard_cards', { status: ['active'] }, { holder: 'lead' });
+const tools = createTaskboardTools(taskboard);                       // 全部 10 个
+const dsh = createTaskboardToolRegistry(tools, { host: 'dsh' });     // 10 个
+const mcp = createTaskboardToolRegistry(tools, { host: 'mcp' });     // 9 个（无 #9）
 ```
 
-### 三个刻意的取舍
+### 宿主事实全部走 `ctx`（`TaskboardToolContext`）
 
-| 取舍 | 理由 |
-|---|---|
-| **纯 JSON Schema**，不用 zod 等运行时库 | 那是 MCP 与 DSH 协议里唯一的共同语言；用运行时库会把参数形状绑死在库版本上 |
-| `handler` 只碰 `Taskboard` + `ctx.holder` | 任何 HTTP / cordis / DSH 概念一进来，包就只能被那个宿主消费 |
-| 结果统一是 `{ text }` | 模型读得懂自然语言；每个工具各写一份 output schema 是把同一件事抄十六遍 |
-| `inputSchema` 深冻结 | 工具 schema 在 prompt 前缀里，**一动就击穿 KV cache**（用户裁定） |
-
-### 调用上下文只有 `holder`
-
-其余事实的归属：
-
-| 事实 | 放哪 | 为什么 |
+| 字段 | 谁提供 | 缺失时 |
 |---|---|---|
-| `Taskboard` 实例 | 工厂参数 | 绑定一次，不随调用变 |
-| 默认空间策略 | 工厂参数 | 入口装配时确定（用户：「整个激活都只对 dsh 会话有效。mcp 是没法提供的。」） |
-| 当前调用者的名字 | **每次调用的 `ctx.holder`** | 同一个任务板实例会被不同 agent 调用 |
+| `holder` | 宿主的 agent 身份 | claim / release 明确失败（不编名字） |
+| `resolveDefaultWorkspace()` | 注册了「空间为空 = 激活空间」的宿主 | **工具报错**（MCP 等），并教 AI 显式传 workspaceId |
+| `activeWorkspaceId` | DSH 的激活空间可观测性 | #1 不显示激活空间 |
+| `canManageToolPolicies` | DSH 的 agent 侧权限开关 | #9 拒绝执行 |
 
-`holder` 由**宿主**算好再传：DSH 用 `ctx.subagents.namesOf(agent).self`（兜底 UUID），
-MCP 用自己配置的身份。本包不认识 `agent` / `subagents` / `exec`。
+## 失败契约（v2 自定，用户待审）
 
-## 怎么接到宿主上
+```
+失败：<说清发生了什么>
+原因码：<Failure.code>
+能否重试：<修正参数后可重试 | 不要重试（先修装配 / 权限）>
+下一步：<可执行动作：调哪个工具、改哪个参数、找谁>
+具体问题：
+· /path：message
+```
 
-两个适配层都只做「形状转换」，不碰业务规则。
+`isError: true`。所有写操作都是「先校验 → 单次落库」，**没有部分成功**
+（建卡关系失败时卡不会建；更新校验失败时内容不变）。
 
-### DSH（`@deepseek-ai/dsh-tools`）
+### 警告契约（不是失败）
 
-DSH 的 `parameters` 是「键 → 子 schema」记录（`required` 内联在每个属性上），
-而本包的 `inputSchema` 是标准 JSON Schema（`required: [...]` 在顶层）
-⇒ 适配层做一次形状转换：
+建卡时「章节完整 + 有模板外的 key」⇒ 成功（草稿）+ 警告块：
+
+```
+⚠ 警告（卡已按草稿创建，但提交内容有需要注意的地方）：
+  · content 里有模板未声明的 key，已忽略：xxx。
+  · 下一步：…（可行动）
+```
+
+`isError` **不置位** —— 模型据此知道「提交成功了，但内容有被丢弃的部分」。
+
+### 建卡 content 的三条规则（第二轮 ⑤）
+
+| 缺失章节 | 非章节 key | 结果 |
+|---|---|---|
+| 有 | 无 | ✅ 允许（缺的章节用模板默认值） |
+| 有 | 有 | ❌ `CONTENT_INVALID`（两种问题一次报全 + 可用章节） |
+| 无 | 有 | ✅ 建卡（草稿）+ ⚠ 警告（非章节 key 不存进卡） |
+
+### UI 轴权限拦截（第二轮 ④）
+
+`taskboard_transition` 的采纳/领取/释放都要过 core 的 `cardActionLevel`
+（默认 `no-claim` = AI 不能领卡/采纳，用户在 UI 打开后才行）。
+被拦时失败文本的「下一步」会写清：**需要用户在任务板界面上把档位调到「允许领卡」/「允许采纳草稿」**。
+释放永远允许（放手，否则 AI 会被卡锁死）。
+
+## 返回契约
+
+| 工具 | 返回 |
+|---|---|
+| #1 | 文本：空间清单 + 卡数 + 激活空间 |
+| #2 | 文本：总数/页码 + 每行一张卡（含未读标记）+ 下一页提示 |
+| #3 | 文本：状态/历史/关系/备注 + 每章节的 action 视图 + 查看前后未读 |
+| raw | **纯 JSON**：`{ [章节key]: payload }` |
+| #4 | 文本：清单（可只列一类）或某条定义详情（模板含章节/action/默认 payload） |
+| #5 | 文本：已建卡 + 模板的「下一步」+ 分类描述 + 章节 + 关系；额外的非章节 key ⇒ 草稿 + ⚠ 警告（isError 不置位） |
+| #6 | **纯 JSON（合并后完整内容）** + `—— 当前状态与接下来可以做什么 ——` 段（状态/分类/可转移目标/条件） |
+| #7 | 文本：已改标题/备注 + `—— 当前状态与接下来可以做什么 ——` 段 |
+| #8 | 文本：执行结果（from→to、动作、持有者）；空目标时是目标/条件清单；UI 轴拦截时下一步写清让用户开哪一档 |
+| #9 | 文本：scope + 新配置 + 新增/移除/忽略/受保护明细 |
+
+## 接到宿主上
+
+### DSH
 
 ```ts
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import {
-  createTaskboardToolRegistry, createTaskboardTools,
-  TEXT_OUTPUT_SCHEMA, textContentBlocks,
+  createTaskboardToolRegistry, TEXT_OUTPUT_SCHEMA, textContentBlocks,
   type JsonObjectSchema,
 } from '@taskboard/tools';
 
-/** 标准 JSON Schema → DSH 的 parameters 记录。 */
+/** 标准 JSON Schema → DSH 的 parameters 记录（required 内联）。 */
 function toDshParameters(schema: JsonObjectSchema): Record<string, unknown> {
   const required = new Set(schema.required ?? []);
   return Object.fromEntries(
@@ -87,19 +133,20 @@ function toDshParameters(schema: JsonObjectSchema): Record<string, unknown> {
   );
 }
 
-const registry = createTaskboardToolRegistry(createTaskboardTools(taskboard, { defaultWorkspaceId }));
-
+const registry = createTaskboardToolRegistry(createTaskboardTools(taskboard), { host: 'dsh' });
 for (const definition of registry.tools) {
   ctx.tools.register(defineTool({
     name: definition.name,
     description: definition.description,
     parameters: toDshParameters(definition.inputSchema),
-    output: {
-      schema: TEXT_OUTPUT_SCHEMA,
-      render: (_args, value) => textContentBlocks(value),
-    },
+    output: { schema: TEXT_OUTPUT_SCHEMA, render: (_a, value) => textContentBlocks(value) },
     execute: (args, exec) =>
-      definition.handler(args, { holder: holderOf(ctx.subagents, exec) }),
+      definition.handler(args, {
+        holder: holderOf(ctx.subagents, exec),
+        resolveDefaultWorkspace: activeWorkspaceId,   // DSH 的「激活空间」
+        activeWorkspaceId: await activeWorkspaceId(),
+        canManageToolPolicies: toolGuardLevel === 'manage-edit',
+      }),
   }));
 }
 ```
@@ -107,60 +154,42 @@ for (const definition of registry.tools) {
 ### MCP
 
 ```ts
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { createTaskboardToolRegistry, createTaskboardTools } from '@taskboard/tools';
-
-const registry = createTaskboardToolRegistry(createTaskboardTools(taskboard));
-
+const registry = createTaskboardToolRegistry(createTaskboardTools(taskboard), { host: 'mcp' });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: registry.tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
 }));
-
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  /* MCP 没注册「空间为空 = 激活空间」⇒ 不传 resolveDefaultWorkspace，工具会报错让 AI 显式传。 */
   const result = await registry.invoke(request.params.name, request.params.arguments, { holder: 'mcp' });
-  return {
-    content: textContentBlocks(result),
-    ...(result.isError === true ? { isError: true } : {}),
-  };
+  return { content: textContentBlocks(result), ...(result.isError === true ? { isError: true } : {}) };
 });
 ```
 
-## 工具清单（16 个，名字与 `@taskboard/dsh` 的旧实现完全一致）
+## core 侧为 v2 补的公开 API
 
-| 工具 | 职责 |
+| API | 为什么不能在 tools 层做 |
 |---|---|
-| `taskboard_workspaces` | 列空间（可含归档） |
-| `taskboard_cards` | 列卡 / 搜索（标题、状态、类别、领域、模板、未读维度） |
-| `taskboard_card` | 单卡详情（元数据 + 章节 + 历史，含墓碑） |
-| `taskboard_create` | 建卡（AI actor） |
-| `taskboard_update_content` | 改章节内容（只改传入的章节） |
-| `taskboard_update_note` | 改备注 |
-| `taskboard_transition` | 查 / 执行状态转移（不执行采纳） |
-| `taskboard_adopt` | 采纳草稿（独立授权档位） |
-| `taskboard_claim` | 领取工作卡（holder = 当前 agent） |
-| `taskboard_release` | 释放领取 |
-| `taskboard_registry` | 模板 / action 注册表 |
-| `taskboard_mark_seen` | 标记 AI 已读 |
-| `taskboard_tool_policies` | 读四档工具权限 |
-| `taskboard_tool_policy_set` | 写某一档增量 |
-| `taskboard_tool_policy_members` | 设组成员 |
-| `taskboard_tool_policy_reset` | 清空某一档 / 删组 |
+| `replaceContentAt(ws, id, pointer, value, actor)` | 要「整份内容重新过模板校验 + 走 `withHistory` 落库」，绕开就是第二套写路径 |
+| `transitionAdvice(ws, id, holder?)` | 领取准入（依赖/子任务/配额）在 core 的 `judgeClaim`，工具层重写就是第二份真值 |
+| `setToolPolicyScope({ tier \| templateRef, allow, remove })` | 权限持久化在 core 的 kv + 判定在 `judgeToolCall`，tools 层碰不到 |
+| `judgeCardAction('adopt'\|'claim'\|'release')` | 领卡类动作的 **UI 轴**判定在 core（`cardActionLevel`）；v2 合并工具后按动作判 |
+| `CreateInput.kind/domain`（空模板覆盖） | 发号字母与卡上 `template` 快照由 core 的 create 决定 |
+| `CreateResult.warnings` + content 章节三条规则 | 「哪些 key 算章节」由模板决定；判定完还要用过滤后的 content 过 schema，属 core 校验 |
+| `contentOfCard(card)` | 「模板内 JSON」的唯一投影（raw 工具与 update 路径共用） |
 
 ## 开发
 
 ```powershell
-# 构建（会先构建 protocol / core：project references）
-node node_modules/typescript/bin/tsc -b packages/tools
-
-# 测试（直接跑 src/*.ts；跨包 import 走包名 → core/lib，所以先构建）
-node --test "packages/tools/test/*.test.ts"
+node node_modules/typescript/bin/tsc -b packages/tools   # 会先构建 protocol / core
+node --test "packages/tools/test/*.test.ts"             # 直跑 src/*.ts；跨包 import 走包名 → core/lib
 ```
 
-测试**不依赖 cwd**：模板目录从 `@taskboard/core/package.json` 反推，存储用内存实现。
+测试不依赖 cwd；`packages/tools/lib` 删掉后测试仍应全绿（跑的是 `src/`）。
 
 ## ⚠ 还没做
 
-- `packages/dsh` 仍是旧实现（工具直接绑 `defineTool`）。下一步应改成**薄适配层**
-  （照上面的示例），然后删掉 `packages/dsh/src/tools.ts` 里的 16 个工具本体与
-  `actions.ts` 的重复判据。本包先把「宿主无关的那一半」立住，`dsh` 的改动单独做。
-- MCP server 本身（`packages/mcp`）还没建。
+- `packages/dsh/src/tools.ts` 仍是 v1 的 16 个工具实现（不是薄适配层）。
+  迁移时注意：`taskboard_tool_policy` 要加进 core 的 `POLICY_TOOLS`，并更新 dsh 的权限测试。
+- `taskboard_update` 只能改「模板内 JSON」；**改标题**没有入口（用户 v2 参数里没有 title，
+  需要时再补）。
+- #5 的「先看定义」是**描述 + 错误指引**，不是硬门（工具无状态，无法真的校验调用顺序）。

@@ -34,6 +34,7 @@ import { nextId, prefixOf } from './ids.ts';
 import type { ContentSchemaCache } from './template/schema.ts';
 import type { KindRegistry } from './template/kinds.ts';
 import type { TemplateRegistry } from './template/registry.ts';
+import type { TemplateDef } from './template/types.ts';
 
 /** 建卡来源。 */
 export type CreateOrigin = 'panel' | 'derive' | 'fork' | 'import';
@@ -53,6 +54,21 @@ export interface CreateInput {
 		readonly parent?: string | null;
 		readonly links?: readonly { readonly label: string; readonly to: string }[];
 	};
+	/**
+	 * **「目的」/ 分类覆盖**（tool contract v2，用户 `2026-11-21`）。
+	 *
+	 * 用户原话：
+	 * > 需要选择空间、模板，选择领域和目的（这个可空，通常不要。但是在使用空模板时，这两个必要）。
+	 *
+	 * 「空模板」= 模板自身没写 `kind` / `domain`（`loader.ts` 允许两者缺省为空串）。
+	 * 这时建卡必须补上，否则发号拿不到分类字母。
+	 * - 模板已声明 ⇒ 入参必须省略或与模板一致（不一致说明调用方选错了模板，拒绝）；
+	 * - 模板未声明 ⇒ 必须由入参提供。
+	 *
+	 * ⚠ 卡上的 `template.kind/domain` 是**快照**，取的是实际生效值。
+	 */
+	readonly kind?: string;
+	readonly domain?: string;
 	readonly note?: string;
 	readonly origin?: CreateOrigin;
 	/**
@@ -79,7 +95,17 @@ export interface CreateDeps {
 }
 
 /** 建卡结果。 */
-export type CreateResult = { readonly ok: true; readonly card: Card } | Failure;
+export type CreateResult =
+	| {
+			readonly ok: true;
+			readonly card: Card;
+			/**
+			 * 建卡成功但有需要告知调用方的警告（不是失败）——tool contract v2 的第二轮规则：
+			 * 「章节完整，但有额外的 key ⇒ 提交为草稿 + 警告」。
+			 */
+			readonly warnings?: readonly string[];
+	  }
+	| Failure;
 
 /**
  * 建一张卡。
@@ -103,8 +129,27 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 		});
 	}
 
-	/* ── 3. content 校验（动态 schema） ── */
-	const validated = deps.schemas.validate(input.templateRef, input.content);
+	/* ── 2.5 分类 / 领域：模板没声明时必须由入参补（空模板） ── */
+	const classification = resolveClassification(template, input);
+	if (!classification.ok) return classification;
+
+	/*
+	 * ── 3. content 与模板章节的关系（tool contract v2 第二轮规则） ──
+	 *
+	 * 用户原话：
+	 * > 创建卡添加约束。可以缺少部分。但是如果缺少部分章节同时有非章节的 key，
+	 * > 拦截这次提交，报错。如果是有完整的章节，然后有额外的章节。提交为草稿然后进行警告。
+	 *
+	 * 三条规则（见 `inspectCreateContent`）：
+	 * ① 部分缺失、无未知 key ⇒ 允许（缺的用模板默认值）；
+	 * ② 部分缺失 + 有未知 key ⇒ 拒绝；
+	 * ③ 章节完整 + 有未知 key ⇒ 建卡成功（草稿）+ warning。
+	 */
+	const contentCheck = inspectCreateContent(template, input.content);
+	if (!contentCheck.ok) return contentCheck.failure;
+
+	/* 只把「模板认识的 key」交给 schema 校验（未知 key 已在上面分流）。 */
+	const validated = deps.schemas.validate(input.templateRef, contentCheck.content);
 	if (!validated.ok) return validated;
 
 	/* ── 4. 关系目标校验 ── */
@@ -112,15 +157,16 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 	if (!relationsChecked.ok) return relationsChecked;
 
 	/* ── 5. 发号 ── */
-	const letter = deps.kinds.letterOf(template.kind);
+	const letter = deps.kinds.letterOf(classification.kind);
 	const prefix = prefixOf(letter, template.codePrefix);
 	if (!prefix.ok) {
 		return failure(
 			ErrorCode.FIELD_REQUIRED,
 			prefix.reason === 'KIND_UNKNOWN'
-				? `模板「${template.ref}」的类别「${template.kind}」未注册，无法发号。`
+				? `模板「${template.ref}」的类别「${classification.kind}」未注册，无法发号。` +
+					'（先用 taskboard_definitions 查看可用分类）'
 				: `模板「${template.ref}」拼出的编号前缀非法（分类字母「${letter ?? '?'}」+ codePrefix「${template.codePrefix}」）。`,
-			{ detail: { templateRef: template.ref, kind: template.kind, codePrefix: template.codePrefix } },
+			{ detail: { templateRef: template.ref, kind: classification.kind, codePrefix: template.codePrefix } },
 		);
 	}
 	const id = nextId(prefix.prefix, deps.usedIds);
@@ -135,8 +181,8 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 
 	const templateRef: TemplateRef = {
 		ref: template.ref,
-		kind: template.kind,
-		domain: template.domain,
+		kind: classification.kind,
+		domain: classification.domain,
 	};
 
 	const relations: Relations = {
@@ -180,7 +226,161 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 		unread: unreadAfter(UNREAD_NONE, createEntry),
 	};
 
-	return { ok: true, card };
+	return {
+		ok: true,
+		card,
+		...(contentCheck.warnings.length === 0 ? {} : { warnings: contentCheck.warnings }),
+	};
+}
+
+/**
+ * 建卡时 content 与模板章节的关系检查（v2 第二轮规则）。
+ *
+ * ## 为什么放在 core
+ *
+ * 「哪些 key 算章节」由模板定义决定（`sections[].id/label`）；判定完还要用
+ * **过滤后的 content** 去过模板 schema。工具层只做「把 core 的 warning/失败翻给模型」，
+ * 不重写这套规则。
+ *
+ * ## 三种情形
+ *
+ * | 缺失章节 | 有未知 key | 结果 |
+ * |---|---|---|
+ * | 有 | 无 | ✅ 允许（缺失章节用模板默认值） |
+ * | 有 | 有 | ❌ `CONTENT_INVALID`（两次错误一起报） |
+ * | 无 | 有 | ✅ 建卡（草稿）+ `warnings`（未知 key 被忽略） |
+ *
+ * ⚠ 未知 key 的 payload **不存进卡** —— `Card.sections` 只能装模板声明的章节。
+ *   所以 warning 必须说清「已忽略」，否则调用方会以为内容被保留了。
+ */
+function inspectCreateContent(
+	template: TemplateDef,
+	raw: unknown,
+): { readonly ok: true; readonly content: unknown; readonly warnings: readonly string[] } | { readonly ok: false; readonly failure: Failure } {
+	if (raw === undefined || raw === null) return { ok: true, content: raw, warnings: [] };
+	/* 非对象交给 schema 校验去报（那里有统一的人话错误）。 */
+	if (typeof raw !== 'object' || Array.isArray(raw)) return { ok: true, content: raw, warnings: [] };
+
+	const record = raw as Record<string, unknown>;
+	/** 章节 id / label → sectionId。 */
+	const byKey = new Map<string, string>();
+	for (const section of template.sections) {
+		byKey.set(section.id, section.id);
+		byKey.set(section.label, section.id);
+	}
+
+	const known: Record<string, unknown> = {};
+	const unknownKeys: string[] = [];
+	const supplied = new Set<string>();
+	for (const [key, value] of Object.entries(record)) {
+		const sectionId = byKey.get(key);
+		if (sectionId === undefined) {
+			unknownKeys.push(key);
+			continue;
+		}
+		known[key] = value;
+		supplied.add(sectionId);
+	}
+	const missing = template.sections.filter((section) => !supplied.has(section.id));
+
+	/* ② 部分缺失 + 未知 key ⇒ 拦截（两种问题一起报，让调用方一次改对）。 */
+	if (unknownKeys.length > 0 && missing.length > 0) {
+		const available = template.sections.map((one) => one.label);
+		return {
+			ok: false,
+			failure: failure(
+				ErrorCode.CONTENT_INVALID,
+				`content 既缺少章节（${missing.map((one) => one.label).join('、')}），` +
+					`又有模板里不存在的 key（${unknownKeys.join('、')}）。` +
+					`可用的章节：${available.join('、')}。` +
+					'要允许缺失章节，就不能同时带非章节 key：要么补全章节，要么删掉这些 key。',
+				{
+					issues: [
+						...missing.map((one) => ({ path: `/content/${one.label}`, message: '章节缺失' })),
+						...unknownKeys.map((key) => ({ path: `/content/${key}`, message: '模板里没有这个章节' })),
+					],
+				},
+			),
+		};
+	}
+
+	/* ③ 章节完整 + 未知 key ⇒ 成功 + 警告（未知 key 被忽略）。 */
+	if (unknownKeys.length > 0) {
+		return {
+			ok: true,
+			content: known,
+			warnings: [`content 里有模板未声明的 key，已忽略：${unknownKeys.join('、')}。`],
+		};
+	}
+
+	/* ① 正常 / 部分缺失（交给 schema 校验补默认值）。 */
+	return { ok: true, content: known, warnings: [] };
+}
+
+/**
+ * 解析一张新卡的**分类 / 领域**实际生效值（tool contract v2）。
+ *
+ * ## 为什么需要
+ *
+ * 「空模板」（模板没写 `kind` / `domain`）要能在建卡时补上这两个值，
+ * 否则发号拿不到分类字母、筛选也不知道它属于哪一类。
+ *
+ * ## 三条规则
+ *
+ * | 模板 | 入参 | 结果 |
+ * |---|---|---|
+ * | 已声明 | 省略 / 相同 | 用模板值 |
+ * | 已声明 | 不同 | **拒绝**（说明选错模板；静默忽略会让卡上的快照与模板不一致） |
+ * | 未声明 | 提供 | 用入参 |
+ * | 未声明 | 省略 | **拒绝**（空模板必须补） |
+ *
+ * 领域只做同规则，不校验是否在 `DomainRegistry` 里 —— 领域是**纯展示 + 筛选**
+ * （`domains.ts` 顶部），允许第三方模板使用尚未注册的领域名。
+ */
+function resolveClassification(
+	template: TemplateDef,
+	input: CreateInput,
+): { readonly ok: true; readonly kind: string; readonly domain: string } | Failure {
+	const kindInput = input.kind?.trim();
+	const domainInput = input.domain?.trim();
+
+	let kind = template.kind;
+	if (kind === '') {
+		if (kindInput === undefined || kindInput === '') {
+			return failure(
+				ErrorCode.FIELD_REQUIRED,
+				`模板「${template.ref}」是空模板（没有声明分类），建卡时必须给 kind（目的/分类）。`,
+				{ issues: [{ path: '/kind', message: '必填（空模板）' }] },
+			);
+		}
+		kind = kindInput;
+	} else if (kindInput !== undefined && kindInput !== '' && kindInput !== kind) {
+		return failure(
+			ErrorCode.FIELD_REQUIRED,
+			`模板「${template.ref}」的分类是「${kind}」，入参 kind「${kindInput}」不一致；不允许覆盖已声明的分类。`,
+			{ issues: [{ path: '/kind', message: `与模板一致：${kind}` }] },
+		);
+	}
+
+	let domain = template.domain;
+	if (domain === '') {
+		if (domainInput === undefined || domainInput === '') {
+			return failure(
+				ErrorCode.FIELD_REQUIRED,
+				`模板「${template.ref}」是空模板（没有声明领域），建卡时必须给 domain（领域）。`,
+				{ issues: [{ path: '/domain', message: '必填（空模板）' }] },
+			);
+		}
+		domain = domainInput;
+	} else if (domainInput !== undefined && domainInput !== '' && domainInput !== domain) {
+		return failure(
+			ErrorCode.FIELD_REQUIRED,
+			`模板「${template.ref}」的领域是「${domain}」，入参 domain「${domainInput}」不一致；不允许覆盖已声明的领域。`,
+			{ issues: [{ path: '/domain', message: `与模板一致：${domain}` }] },
+		);
+	}
+
+	return { ok: true, kind, domain };
 }
 
 /**
