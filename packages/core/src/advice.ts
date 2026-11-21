@@ -50,7 +50,7 @@ export interface TransitionCondition {
 	readonly message: string;
 	/** 具体卡死的卡（依赖 / 子任务 / 手上那张）。 */
 	readonly blockers?: readonly TransitionBlocker[];
-	/** 修正后重试能否解决（false = 需要用户 / 宿主 / 身份层面的变化）。 */
+	/** 修正后重试能否解决（false = 用户授意 / 宿主 / 身份层面的变化）。 */
 	readonly retryable: boolean;
 }
 
@@ -142,7 +142,7 @@ function targetOf(
 			return cardLevelDenied(
 				base,
 				'CARD_ACTION_LEVEL_ADOPT',
-				'当前任务板档位不允许 AI 采纳草稿；需要用户在界面上把档位调到「允许采纳草稿」。',
+				'当前任务板档位不允许 AI 采纳草稿；如果用户授意，可以由用户把档位调到「允许采纳草稿」。',
 			);
 		}
 		return { ...base, aiAllowed: true, available: true, conditions: [] };
@@ -157,7 +157,7 @@ function targetOf(
 			return cardLevelDenied(
 				base,
 				'CARD_ACTION_LEVEL_CLAIM',
-				'当前任务板档位不允许 AI 领取工作卡；需要用户在界面上把档位调到「允许领卡」（或「允许采纳草稿」）。',
+				'当前任务板档位不允许 AI 领取工作卡；如果用户授意，可以由用户把档位调到「允许领卡」（或「允许采纳草稿」）。',
 			);
 		}
 		if (holder === '') return needHolder(base, '领取');
@@ -234,7 +234,7 @@ function userOnly(base: Pick<TransitionTargetAdvice, 'to' | 'label' | 'action'>)
 		conditions: [
 			{
 				code: 'USER_ONLY',
-				message: '这个动作只开放给用户；AI 不能执行，需要请用户操作。',
+				message: '这个动作只开放给用户；如果用户授意，由用户执行。',
 				retryable: false,
 			},
 		],
@@ -257,7 +257,7 @@ function needHolder(base: Pick<TransitionTargetAdvice, 'to' | 'label' | 'action'
 	};
 }
 
-/** UI 轴（用户授权）没打开 ⇒ 目标不可执行，并告诉 AI 需要用户去 UI 开哪一档。 */
+/** UI 轴（用户授权）没打开 ⇒ 目标不可执行，并告诉 AI「如果用户授意，由用户开哪一档」。 */
 function cardLevelDenied(
 	base: Pick<TransitionTargetAdvice, 'to' | 'label' | 'action'>,
 	code: string,
@@ -283,7 +283,7 @@ function blockersOf(ids: readonly CardId[], cards: readonly Card[]): readonly Tr
 function rejectMessage(reason: string): string {
 	switch (reason) {
 		case 'AI_CANNOT_END':
-			return '这是终结态；AI 不能把卡推进终结态，需要用户操作。';
+			return '这是终结态；AI 不能把卡推进终结态；如果用户授意，由用户推进。';
 		case 'NOT_A_BUTTON':
 			return '当前状态到目标状态在按钮表里没有合法动作。';
 		case 'SAME_STATE':

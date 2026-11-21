@@ -89,7 +89,7 @@ describe('transitionAdvice', () => {
 	it('领取的条件：依赖没结束 ⇒ 列出 blockers（具体卡）', async () => {
 		const { tb, ws } = await makeBoard(TEMPLATES);
 		const dep = await makeCard(tb, ws, 't-work', '依赖卡');
-		/* 依赖卡推到提交（未结束 —— 终结态只能用户操作，所以它一直未结束）。 */
+		/* 依赖卡推到提交（未结束 —— 终结态由用户决定，所以它一直未结束）。 */
 		await submit(tb, ws, dep);
 		/* 关系在创建时写：重建一张带 dependsOn 的卡。 */
 		const created = await tb.create({

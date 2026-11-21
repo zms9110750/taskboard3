@@ -604,7 +604,7 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 				}
 
 				if (userOnly.length > 0) {
-					lines.push('', '只能由用户点的：');
+					lines.push('', '只开放给用户的：');
 					for (const target of userOnly) {
 						lines.push(`  · ${stateText(target)}`);
 					}

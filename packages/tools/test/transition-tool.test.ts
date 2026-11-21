@@ -123,7 +123,7 @@ describe('taskboard_transition', () => {
 		assert.equal(adopt.isError, true);
 		assert.ok(adopt.text.includes('不允许 AI 采纳草稿'), adopt.text);
 		assert.ok(adopt.text.includes('允许采纳草稿'), adopt.text);
-		assert.ok(adopt.text.includes('需要用户在任务板界面上'), adopt.text);
+		assert.ok(adopt.text.includes('如果用户授意'), adopt.text);
 
 		const submitted = await seedCard(fixture, 't-work', '默认档位提交');
 		await submitCard(fixture, submitted);

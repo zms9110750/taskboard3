@@ -162,7 +162,7 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 			'释放 = 处理中 → 提交。' +
 			'**目标字符串省略/为空时只查询**：列出接下来可转移的目标、对应动作、AI 能不能做、' +
 			'不能做的具体原因与阻塞卡（依赖没结束 / 子任务等授权 / 手上已有处理中工作卡 / 只有用户能点 / UI 档位未开）。' +
-			'采纳与领取还需要用户先在任务板 UI 打开对应档位（默认关闭）；被拦时下一步会说清让用户开哪一档。' +
+			'采纳与领取默认关闭；如果用户授意，可以由用户在任务板 UI 打开对应档位。' +
 			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 		inputSchema: {
 			type: 'object',
@@ -210,10 +210,10 @@ function conditionFailure(
 function uiNextOf(conditions: TransitionAdvice['targets'][number]['conditions']): string | undefined {
 	const codes = new Set(conditions.map((one) => one.code));
 	if (codes.has('CARD_ACTION_LEVEL_ADOPT')) {
-		return '需要用户在任务板界面上把档位调到「允许采纳草稿」后重试（AI 自己打不开这一档）。';
+		return '如果用户授意，可以由用户把档位调到「允许采纳草稿」后重试。';
 	}
 	if (codes.has('CARD_ACTION_LEVEL_CLAIM')) {
-		return '需要用户在任务板界面上把档位调到「允许领卡」或「允许采纳草稿」后重试（AI 自己打不开这一档）。';
+		return '如果用户授意，可以由用户把档位调到「允许领卡」或「允许采纳草稿」后重试。';
 	}
 	return undefined;
 }
@@ -224,7 +224,7 @@ function actionLevelFailure(verdict: CardActionDenied, action: 'adopt' | 'claim'
 		CARD_ACTION_OPTIONS.find((one) => one.value === verdict.requiredLevel)?.label ?? verdict.requiredLevel;
 	const currentLabel = CARD_ACTION_OPTIONS.find((one) => one.value === verdict.current)?.label ?? verdict.current;
 	return toolFailure(action === 'claim' ? ErrorCode.CLAIM_REJECTED : ErrorCode.TRANSITION_REJECTED, verdict.message, {
-		next: `需要用户在任务板界面上把档位调到「${requiredLabel}」（当前档位是「${currentLabel}」）后重试；AI 自己打不开这一档。`,
+		next: `如果用户授意，可以由用户把档位调到「${requiredLabel}」（当前档位是「${currentLabel}」）后重试。`,
 	});
 }
 
@@ -234,7 +234,7 @@ function transitionNext(code: string): string {
 		case 'CLAIM_REJECTED':
 			return '不传 to 调一次看条件目标；按 blockers 先完成依赖，或先释放手上另一张处理中工作卡。';
 		case 'TRANSITION_REJECTED':
-			return '不传 to 调一次看当前可转移目标；终结态只能由用户操作。';
+			return '不传 to 调一次看当前可转移目标；终结态如果用户授意，由用户推进。';
 		case 'CARD_NOT_FOUND':
 			return '先用 taskboard_cards 确认编号；已删除的卡不能转移。';
 		default:
