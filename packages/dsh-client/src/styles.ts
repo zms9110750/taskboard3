@@ -547,7 +547,7 @@ export const WORKSPACE_CSS = `
  */
 .tb3w-filters{flex:1 0 100%;min-width:0;margin-top:8px}
 .tb3w-filters .filter-row__spacer{display:none}
-.tb3w-filters__tail{flex:0 1 auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+.tb3w-filters__tail{flex:0 1 auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;margin-left:auto}
 .tb3w-ai-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
 .tb3w-ai-chip b{font-weight:600;color:var(--text)}
 /* 未读筛选按钮：可点 + 选中态（用户 2026-11-21 要「两个筛选按钮」）*/
