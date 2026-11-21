@@ -213,12 +213,38 @@ export interface CardTimes {
  * @param unread 卡的未读字段
  * @returns `'left'` = AI 改过（左）、`'right'` = 我改过（右）、`'none'` = 两边都不亮
  */
+/**
+ * 未读 → 卡片哪一侧亮边框。
+ *
+ * 用户 2026-11-21：
+ * > 「用户未读的在卡左侧加边框。AI 未读的在卡右侧加边框。」
+ *
+ * ⇒ **用户未读 = 左，AI 未读 = 右**（跟旧实现的 ai→左 / user→右 正好相反）。
+ *
+ * @param unread 卡的未读字段
+ */
+export function unreadSides(unread: {
+	readonly ai: boolean;
+	readonly user: boolean;
+}): { readonly left: boolean; readonly right: boolean } {
+	return { left: unread.user === true, right: unread.ai === true };
+}
+
+/**
+ * 兼容旧调用方的单侧判决。
+ *
+ * ⚠ 两边都亮时返回 `'left'`（旧行为）；**新代码请用 `unreadSides()`**，
+ *   因为它能同时表达两侧。
+ *
+ * @param unread 卡的未读字段
+ */
 export function unreadSide(unread: {
 	readonly ai: boolean;
 	readonly user: boolean;
 }): 'left' | 'right' | 'none' {
-	if (unread.ai) return 'left';
-	if (unread.user) return 'right';
+	const sides = unreadSides(unread);
+	if (sides.left) return 'left';
+	if (sides.right) return 'right';
 	return 'none';
 }
 

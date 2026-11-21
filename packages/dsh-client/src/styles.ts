@@ -542,6 +542,11 @@ export const WORKSPACE_CSS = `
 .tb3w-filters__tail{flex:0 1 auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
 .tb3w-ai-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
 .tb3w-ai-chip b{font-weight:600;color:var(--text)}
+/* 未读筛选按钮：可点 + 选中态（用户 2026-11-21 要「两个筛选按钮」）*/
+.tb3w-ai-chip{cursor:pointer;font:inherit;font-size:10.5px;border-color:var(--card-border,#9aa1ad)}
+.tb3w-ai-chip:hover{background:#f1f3f6}
+.tb3w-ai-chip.is-on{border-color:var(--accent);background:#eff6ff;color:var(--accent)}
+.tb3w-ai-chip.is-on b{color:var(--accent)}
 /*
  * 尾部搜索框 = 定稿的 SearchBox（类名 .search-box，样式在 SEARCHBOX_CSS）。
  * 这里只管**布局**：宽版固定 250px（和原来的行内输入框同宽），窄版整行。
@@ -706,8 +711,8 @@ export const WORKSPACE_CSS = `
 .tb3w-root .task-card.is-draft{border-color:transparent}
 .tb3w-root .task-card.is-draft:hover{border-color:var(--card-border,#9aa1ad)}
 .tb3w-root .task-card.is-draft.is-selected{border-color:var(--accent)}
-.tb3w-root .task-card.is-unread-ai{border-left-width:4px;border-left-color:var(--accent);padding-left:10px}
-.tb3w-root .task-card.is-unread-user{border-right-width:4px;border-right-color:var(--warn);padding-right:10px}
+.tb3w-root .task-card.is-unread-user{border-left-width:4px;border-left-color:var(--warn);padding-left:10px}
+.tb3w-root .task-card.is-unread-ai{border-right-width:4px;border-right-color:var(--accent);padding-right:10px}
 .tb3w-root .task-card__square{flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0}
 .tb3w-root .task-card__square-id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;letter-spacing:-.2px}
 .tb3w-root .task-card__body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;min-width:0}
@@ -716,7 +721,7 @@ export const WORKSPACE_CSS = `
 .tb3w-root .task-card__title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-body);font-weight:600}
 .tb3w-root .task-card__when{flex:0 0 90px;overflow:hidden;text-align:right;font-size:11px;color:var(--text-weak);white-space:nowrap}
 .tb3w-root .task-card__when-label{display:block;font-size:9px;opacity:.7}
-.tb3w-root .task-card.is-unread-ai .card-id{font-weight:800}
+.tb3w-root .task-card.is-unread-user .card-id{font-weight:800}
 
 /* ── CardDetail ── */
 .tb3w-root .detail{display:flex;flex-direction:column;gap:14px;min-width:0;padding:16px 18px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card)}
@@ -890,8 +895,8 @@ export const WORKSPACE_CSS = `
   .tb3w-list__title{font-size:12px}
   .tb3w-list__body{padding:6px 12px 10px}
   .tb3w-root .task-card{margin-bottom:5px;padding:6px 10px}
-  .tb3w-root .task-card.is-unread-ai{padding-left:8px}
-  .tb3w-root .task-card.is-unread-user{padding-right:8px}
+  .tb3w-root .task-card.is-unread-user{padding-left:8px}
+  .tb3w-root .task-card.is-unread-ai{padding-right:8px}
   .tb3w-root .detail{padding:12px 14px;gap:11px}
   .tb3w-root .detail-title{font-size:14px}
   .tb3w-root .detail-history__item{font-size:10.5px}

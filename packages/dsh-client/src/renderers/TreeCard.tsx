@@ -44,7 +44,7 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 
-import { isDraftStatus, kindTone } from '../pure/card-view.ts';
+import { isDraftStatus, kindTone, unreadSides } from '../pure/card-view.ts';
 import type { TreeLayoutWarning } from '../pure/tree-layout.ts';
 import type { Card } from '../types.ts';
 import { StatusCell } from './StatusCell.tsx';
@@ -107,11 +107,18 @@ export function TreeCard(props: TreeCardProps): ReactNode {
 	const warning = props.warning;
 	const tone = kindTone(card.template.kind);
 
-	/* 类名顺序是契约的一部分：`tb3t-card` → `is-draft` → `is-selected`。 */
+	/* 类名顺序是契约的一部分：`tb3t-card` → `is-draft` → `is-selected` → 未读两侧。 */
+	const sides = unreadSides(card.unread);
 	const className = [
 		'tb3t-card',
 		isDraftStatus(card.status) ? 'is-draft' : '',
 		props.selected ? 'is-selected' : '',
+		/*
+		 * 用户 2026-11-21：「用户未读的在卡左侧加边框。AI 未读的在卡右侧加边框。」
+		 * ⇒ 树卡跟列表卡用**同一套**两侧判决（`unreadSides`），不要各写一份。
+		 */
+		sides.left ? 'is-unread-user' : '',
+		sides.right ? 'is-unread-ai' : '',
 	]
 		.filter((one) => one !== '')
 		.join(' ');

@@ -220,6 +220,15 @@ export interface WorkspaceProps {
 export function Workspace(props: WorkspaceProps): ReactNode {
 	/* ── 纯 UI 状态 ── */
 	const [view, setView] = useState<'list' | 'tree'>(() => props.defaultView ?? 'tree');
+
+	/*
+	 * 未读筛选 —— 用户 2026-11-21：
+	 * 「UI上面要有两个筛选按钮，AI未读，用户未读。」
+	 *
+	 * ⚠ 是**筛选**（不匹配的卡根本不渲染），不是淡化。
+	 *   卡上的左右边框是另一件事（`unreadSides`），两者共存。
+	 */
+	const [unreadMode, setUnreadMode] = useState<'none' | 'ai' | 'user'>('none');
 	/*
 	 * `density === 'compact'` 时空间 chip 行默认折叠（用户 2026-11-20：
 	 * 「需要点但是用不上的东西要折叠」）。点「工作空间 ▾」展开成一行。
@@ -268,8 +277,14 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 * 在 `visibleCardIds()`，本组件不判第二遍。
 	 */
 	const treeFilter = useMemo<TreeFilterCriteria>(
-		() => ({ status: filter.status, kind: filter.kind, domain: filter.domain, search }),
-		[filter, search],
+		() => ({
+			status: filter.status,
+			kind: filter.kind,
+			domain: filter.domain,
+			search,
+			...(unreadMode === 'none' ? {} : { unread: unreadMode }),
+		}),
+		[filter, search, unreadMode],
 	);
 
 	/**
@@ -291,10 +306,15 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 * 不匹配的卡在 `applyCardQuery()` 里就被去掉了 ⇒ 渲染时**根本不存在**
 	 * （用户 `2026-11-19` 要的「隐藏」，不是 CSS 变淡）。计数 / 空态都跟着它走。
 	 */
-	const visibleCards = useMemo<readonly Card[]>(
-		() => applyCardQuery(sortedCards, filter, search),
-		[sortedCards, filter, search],
-	);
+	const visibleCards = useMemo<readonly Card[]>(() => {
+		const matched = applyCardQuery(sortedCards, filter, search);
+		if (unreadMode === 'none') return matched;
+		return matched.filter((one) => (unreadMode === 'ai' ? one.unread.ai === true : one.unread.user === true));
+	}, [sortedCards, filter, search, unreadMode]);
+
+	/* 两个未读按钮上的数字 —— 用**当前列表**算，跟左侧边框同一份数据。 */
+	const userUnreadCount = sortedCards.filter((one) => one.unread.user === true).length;
+	const aiUnreadCount = sortedCards.filter((one) => one.unread.ai === true).length;
 
 	/** 有没有在筛 / 在搜 —— 只影响文案（计数、空态），判决不在这里。 */
 	const filtering = isFilterActive(filter);
@@ -554,25 +574,37 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							onChange={changeFilter}
 							trailing={
 								<span className="tb3w-filters__tail">
-									{/* 紧凑：AI chip 收起（低频、用不上 —— 用户 2026-11-20「要折叠」） */}
-									{compact || props.aiUnreadCount === undefined || props.aiUnreadCount <= 0 ? null : (
-										<span
-											className="tb3w-ai-chip"
-											data-ai-chip="unread"
-											title="AI 改过、我还没读的卡（P4 的筛选还没接，这里只显示计数）"
-										>
-											AI未读 <b>{String(props.aiUnreadCount)}</b>
-										</span>
-									)}
-									{compact || props.aiUpdatedCount === undefined || props.aiUpdatedCount <= 0 ? null : (
-										<span
-											className="tb3w-ai-chip"
-											data-ai-chip="updated"
-											title="AI 更新过的卡（P4 的筛选还没接，这里只显示计数）"
-										>
-											AI 更新过 <b>{String(props.aiUpdatedCount)}</b>
-										</span>
-									)}
+									{/*
+									 * 两个未读筛选按钮 —— 用户 2026-11-21：
+									 * 「UI上面要有两个筛选按钮，AI未读，用户未读。」
+									 *
+									 * ⚠ 这里**不受 compact 限制**（旧实现 compact 下收起，用户现在要它常驻）。
+									 *   计数用**当前列表**算（`sortedCards`），不是 props 里的旧口径。
+									 */}
+									<button
+										type="button"
+										className={unreadMode === 'user' ? 'tb3w-ai-chip is-on' : 'tb3w-ai-chip'}
+										data-unread-btn="user"
+										aria-pressed={unreadMode === 'user'}
+										title="用户改过、AI 还没读的卡（点一下筛选）"
+										onClick={() => {
+											setUnreadMode((now) => (now === 'user' ? 'none' : 'user'));
+										}}
+									>
+										用户未读 <b>{String(userUnreadCount)}</b>
+									</button>
+									<button
+										type="button"
+										className={unreadMode === 'ai' ? 'tb3w-ai-chip is-on' : 'tb3w-ai-chip'}
+										data-unread-btn="ai"
+										aria-pressed={unreadMode === 'ai'}
+										title="AI 改过、用户还没读的卡（点一下筛选）"
+										onClick={() => {
+											setUnreadMode((now) => (now === 'ai' ? 'none' : 'ai'));
+										}}
+									>
+										AI 未读 <b>{String(aiUnreadCount)}</b>
+									</button>
 									<SearchBox
 										value={search}
 										onChange={(next) => {

@@ -464,13 +464,13 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	const kind = props.filter?.kind;
 	const domain = props.filter?.domain;
 	const search = props.filter?.search;
+	const unread = props.filter?.unread;
+
 	const filtering = isFiltering(props.filter);
-
-	const visibleIds = useMemo(
-		() => visibleCardIds(props.cards, { status, kind, domain, search }),
-		[props.cards, status, kind, domain, search],
+	const visibleIds = useMemo<ReadonlySet<string>>(
+		() => visibleCardIds(props.cards, { status, kind, domain, search, unread }),
+		[props.cards, status, kind, domain, search, unread],
 	);
-
 	const treeCards = useMemo(
 		() => treeCardsOf(props.cards, visibleIds),
 		[props.cards, visibleIds],

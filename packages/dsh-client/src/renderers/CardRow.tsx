@@ -42,7 +42,7 @@
 
 import type { ReactNode } from 'react';
 
-import { cardTimes, fmtDateTime, isDraftStatus, kindTone, unreadSide } from '../pure/card-view.ts';
+import { cardTimes, fmtDateTime, isDraftStatus, kindTone, unreadSides } from '../pure/card-view.ts';
 import type { Card } from '../types.ts';
 import { StatusCell } from './StatusCell.tsx';
 
@@ -80,9 +80,9 @@ export function CardRow(props: CardRowProps): ReactNode {
 	 * ⇒ 判决在 `unreadSide()`（已单测）—— 两边都真时只亮左边。
 	 *   组件这里不做任何判断。
 	 */
-	const side = unreadSide(card.unread);
-	if (side === 'left') cls.push('is-unread-ai');
-	if (side === 'right') cls.push('is-unread-user');
+	const sides = unreadSides(card.unread);
+	if (sides.left) cls.push('is-unread-user');
+	if (sides.right) cls.push('is-unread-ai');
 
 	return (
 		<button

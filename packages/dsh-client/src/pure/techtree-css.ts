@@ -69,6 +69,9 @@ export const TECHTREE_CSS = `
 .tb3t-card.is-selected{border-color:var(--accent,#2563eb);box-shadow:0 0 0 4px rgb(37 99 235 / 16%),0 1px 2px rgb(15 23 42 / 7%)}
 /* 草稿：无可见边框，但保留 2px 占位（用户 2026-11-10：草稿无边框） */
 .tb3t-card.is-draft{border-color:transparent;box-shadow:none}
+/* 用户 2026-11-21：用户未读=左，AI 未读=右（跟列表卡同一套判决）*/
+.tb3t-card.is-unread-user{border-left-width:4px;border-left-color:var(--warn,#d97706)}
+.tb3t-card.is-unread-ai{border-right-width:4px;border-right-color:var(--accent,#2563eb)}
 .tb3t-card.is-draft:hover{border-color:var(--card-border,#9aa1ad)}
 .tb3t-card.is-draft.is-selected{border-color:var(--accent,#2563eb)}
 .tb3t-card__top{display:flex;align-items:center;gap:4px;min-width:0;height:16px}

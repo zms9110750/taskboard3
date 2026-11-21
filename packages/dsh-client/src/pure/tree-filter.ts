@@ -95,6 +95,12 @@ export interface TreeFilterCriteria {
 	readonly domain?: Picked | undefined;
 	/** 搜索框原文（未 trim）。空串 = 不搜索。 */
 	readonly search?: string | undefined;
+	/**
+	 * 未读筛选 —— 用户 2026-11-21：「UI上面要有两个筛选按钮，AI未读，用户未读。」
+	 *
+	 * 'ai' = 只留 AI 未读的卡；'user' = 只留用户未读的卡；省略 = 不筛。
+	 */
+	readonly unread?: 'ai' | 'user' | undefined;
 }
 
 /** 什么都没选 —— 默认值（冻结，避免调用方改到共享对象）。 */
@@ -170,6 +176,8 @@ export function matchesFilter(
 	if (!pathMatches(domain, [card.template.domain, card.template.kind, card.template.ref])) {
 		return false;
 	}
+	if (criteria.unread === 'ai' && (card as { unread?: { ai?: boolean } }).unread?.ai !== true) return false;
+	if (criteria.unread === 'user' && (card as { unread?: { user?: boolean } }).unread?.user !== true) return false;
 	return matchesSearch(card, criteria.search);
 }
 
