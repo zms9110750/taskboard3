@@ -96,9 +96,6 @@ function Stage(props: StageProps): React.ReactNode {
 					onView={(id) => {
 						setViewingId(id);
 					}}
-					onActivate={(id) => {
-						setCurrentId(id);
-					}}
 					onToggleArchived={(id) => {
 						setWorkspaces((prev) =>
 							prev.map((one) => (one.id === id ? { ...one, archived: !one.archived } : one)),

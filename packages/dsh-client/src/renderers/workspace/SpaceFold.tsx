@@ -72,7 +72,6 @@ export interface SpaceFoldBodyProps {
 	readonly showArchived: boolean;
 	readonly cardCount: number;
 	readonly onView: (id: string) => void;
-	readonly onActivate: (id: string) => void;
 	readonly onToggleArchived: (id: string) => void;
 	readonly onToggleShowArchived: () => void;
 	readonly onCreate: () => void;
@@ -95,7 +94,6 @@ export function SpaceFoldBody(props: SpaceFoldBodyProps): ReactNode {
 				showArchived={props.showArchived}
 				cardCount={props.cardCount}
 				onView={props.onView}
-				onActivate={props.onActivate}
 				onToggleArchived={props.onToggleArchived}
 				onToggleShowArchived={props.onToggleShowArchived}
 				onCreate={props.onCreate}

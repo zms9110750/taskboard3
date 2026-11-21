@@ -62,7 +62,6 @@ export interface SpacePickerProps {
 
 	/* ── 原样转给 SpaceBar 的回调 ── */
 	readonly onView: (id: string) => void;
-	readonly onActivate: (id: string) => void;
 	readonly onToggleArchived: (id: string) => void;
 	readonly onToggleShowArchived: () => void;
 	readonly onCreate: () => void;
@@ -122,7 +121,6 @@ export function SpacePicker(props: SpacePickerProps): ReactNode {
 						showArchived={props.showArchived}
 						cardCount={props.cardCount}
 						onView={props.onView}
-						onActivate={props.onActivate}
 						onToggleArchived={props.onToggleArchived}
 						onToggleShowArchived={props.onToggleShowArchived}
 						onCreate={props.onCreate}

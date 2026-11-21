@@ -515,10 +515,6 @@ function App(): React.ReactNode {
 							onView={(id) => {
 								setViewingId(id);
 							}}
-							onActivate={(id) => {
-								setCurrentId(id);
-								say(`「${id}」现在是当前空间（预览：不落库）`);
-							}}
 							onToggleArchived={(id) => {
 								setWorkspaces((prev) =>
 									prev.map((one) => (one.id === id ? { ...one, archived: !one.archived } : one)),

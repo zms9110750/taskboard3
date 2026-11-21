@@ -170,7 +170,6 @@ export interface WorkspaceProps {
 
 	/* ── 回调 ── */
 	readonly onView: (id: string) => void;
-	readonly onActivate: (id: string) => void;
 	readonly onToggleArchived: (id: string) => void;
 	readonly onToggleShowArchived: () => void;
 	readonly onCreateWorkspace: () => void;
@@ -518,7 +517,6 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							showArchived={props.showArchived}
 							cardCount={props.cards.length}
 							onView={props.onView}
-							onActivate={props.onActivate}
 							onToggleArchived={props.onToggleArchived}
 							onToggleShowArchived={props.onToggleShowArchived}
 							onCreate={props.onCreateWorkspace}
@@ -647,7 +645,6 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							showArchived={props.showArchived}
 							cardCount={props.cards.length}
 							onView={props.onView}
-							onActivate={props.onActivate}
 							onToggleArchived={props.onToggleArchived}
 							onToggleShowArchived={props.onToggleShowArchived}
 							onCreate={props.onCreateWorkspace}

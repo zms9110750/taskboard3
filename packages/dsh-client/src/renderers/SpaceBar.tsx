@@ -73,8 +73,6 @@ export interface SpaceBarProps {
 	readonly cardCount: number;
 	/** 点 chip：**只**切换正在查看的空间。 */
 	readonly onView: (id: string) => void;
-	/** 点操作按钮（激活态）：把正在查看的空间变成当前空间。 */
-	readonly onActivate: (id: string) => void;
 	/** 点操作按钮（归档态）：切换该空间的归档状态。 */
 	readonly onToggleArchived: (id: string) => void;
 	/** 点「显示已归档 / 隐藏已归档」。 */

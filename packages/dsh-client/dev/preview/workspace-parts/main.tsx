@@ -153,9 +153,6 @@ function ToolbarCase(props: {
 				onView: (id) => {
 					record(`view: ${id}`);
 				},
-				onActivate: (id) => {
-					record(`activate: ${id}`);
-				},
 				onToggleArchived: (id) => {
 					record(`toggle-archived: ${id}`);
 				},
@@ -241,9 +238,6 @@ function PickerCase(props: {
 					cardCount={12}
 					onView={(id) => {
 						record(`view: ${id}`);
-					}}
-					onActivate={(id) => {
-						record(`activate: ${id}`);
 					}}
 					onToggleArchived={(id) => {
 						record(`toggle-archived: ${id}`);

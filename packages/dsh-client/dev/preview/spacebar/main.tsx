@@ -85,11 +85,6 @@ function WrapSection(props: WrapSectionProps): React.ReactNode {
 							props.onEvent(`wrap/view:${id}`);
 							setViewingId(id);
 						}}
-						onActivate={(id) => {
-							props.onEvent(`wrap/activate:${id}`);
-							setCurrentId(id);
-							setViewingId(id);
-						}}
 						onToggleArchived={(id) => props.onEvent(`wrap/toggle-archived:${id}`)}
 						onToggleShowArchived={() => {
 							props.onEvent('wrap/toggle-show');
@@ -143,11 +138,6 @@ function Live(props: LiveProps): React.ReactNode {
 					cardCount={cardCount}
 					onView={(id) => {
 						props.onEvent(`view:${id}`);
-						setViewingId(id);
-					}}
-					onActivate={(id) => {
-						props.onEvent(`activate:${id}`);
-						setCurrentId(id);
 						setViewingId(id);
 					}}
 					onToggleArchived={(id) => {
@@ -265,7 +255,6 @@ function Matrix(props: LiveProps): React.ReactNode {
 						showArchived={s.showArchived}
 						cardCount={s.cardCount}
 						onView={(id) => props.onEvent(`${s.key}/view:${id}`)}
-						onActivate={(id) => props.onEvent(`${s.key}/activate:${id}`)}
 						onToggleArchived={(id) => props.onEvent(`${s.key}/toggle-archived:${id}`)}
 						onToggleShowArchived={() => props.onEvent(`${s.key}/toggle-show`)}
 						onCreate={() => props.onEvent(`${s.key}/create`)}

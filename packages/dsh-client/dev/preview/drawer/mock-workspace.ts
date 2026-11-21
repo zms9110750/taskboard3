@@ -43,9 +43,6 @@ export function mockWorkspaceProps(options: MockWorkspaceOptions): WorkspaceProp
 		onView: (id) => {
 			say(`切换视图：${id}（预览：不落库）`);
 		},
-		onActivate: (id) => {
-			say(`「${id}」设为当前空间（预览：不落库）`);
-		},
 		onToggleArchived: (id) => {
 			say(`切换「${id}」归档态（预览：不落库）`);
 		},

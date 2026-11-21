@@ -95,7 +95,6 @@ export function sampleWorkspaceProps(selectedId: string | null = 'GU-02'): Works
 		aiUnreadCount: 1,
 		aiUpdatedCount: 2,
 		onView: noop,
-		onActivate: noop,
 		onToggleArchived: noop,
 		onToggleShowArchived: noop,
 		onCreateWorkspace: noop,

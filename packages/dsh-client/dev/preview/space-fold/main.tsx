@@ -51,7 +51,6 @@ function useSpaceState(count: number): {
 	readonly showArchived: boolean;
 	readonly cardCount: number;
 	readonly onView: (id: string) => void;
-	readonly onActivate: (id: string) => void;
 	readonly onToggleArchived: (id: string) => void;
 	readonly onToggleShowArchived: () => void;
 	readonly onCreate: () => void;
@@ -70,7 +69,6 @@ function useSpaceState(count: number): {
 		showArchived,
 		cardCount: 12,
 		onView: setViewingId,
-		onActivate: setCurrentId,
 		onToggleArchived: (id) => {
 			/* 预览里不真改 workspace 的 archived（它是 readonly 夹具）。 */
 			void id;
