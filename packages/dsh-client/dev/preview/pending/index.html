@@ -45,6 +45,7 @@
 <p class="lead">盘点报告结论：功能基本齐了，剩下的是<b>设计裁决</b>和<b>接线</b>。下面每项写明「为什么要你定」和「看什么 / 定什么」。</p>
 
 <div class="toc">
+	<a href="#g0">⓿ 候选组件（等你选）</a>
 	<a href="#g1">① 视觉布局（3 项）</a>
 	<a href="#g2">② 交互语义（4 项）</a>
 	<a href="#g3">③ 架构方案（3 项）</a>
@@ -53,6 +54,68 @@
 </div>
 
 <!-- ══════════ ① 视觉布局 ══════════ -->
+<h2 id="g0">⓿ 候选组件（已做完，等你选）</h2>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">✅</span>
+		<span class="item__title">空间选择器 · 折叠隐藏栏 —— <b>已选 A 款并落地</b></span>
+		<span class="item__tag tag--see">已定</span>
+	</div>
+	<div class="item__body">
+		<p>你选了 A 款（工具栏下一行整行展开、推挤筛选行），已落进产品（<code>4c20950</code>）。</p>
+		<p>折叠栏现在在<b>筛选行下面单独一行</b>。</p>
+		<div class="links"><a href="../vp-drawer/index.html">工作区预览（折叠栏在这）</a></div>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">1</span>
+		<span class="item__title">抽屉布局 —— 3 个候选</span>
+		<span class="item__tag tag--wait">等你选</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">背景：</span>「抽屉和工作区一横一竖不一样。不是说图例这种元素就可以少了。」</p>
+		<p><span class="k">三个候选（都保留全套元素）：</span></p>
+		<p>A · <b>双栏并排</b>（列表 62% / 详情 38%，详情挤压列表）<br>
+		B · <b>上下分栏</b>（列表上、详情下；抽屉 476 高会很挤）<br>
+		C · <b>三栏</b>（空间 chips 变 78px 左侧窄栏 + 列表 + 详情）</p>
+		<div class="links"><a href="../drawer-layout/index.html">抽屉布局 3 候选（含工作区竖版对照）</a></div>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">2</span>
+		<span class="item__title">权限面板 —— 容器形态 3 个候选</span>
+		<span class="item__tag tag--wait">等你选</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">背景：</span>「UI 里面的权限面板需要做独立组件给我候选。」</p>
+		<p><span class="k">内容都是定稿的 <code>PermissionPanel</code></b>（两条正交轴，点哪档立刻保存），只换容器：</p>
+		<p>A · <b>模态弹窗</b>（居中 + 遮罩）<br>
+		B · <b>右侧滑出面板</b>（420px，和工作区同侧）<br>
+		C · <b>页签内嵌</b>（右侧页签多一页，不开浮层）</p>
+		<div class="links"><a href="../permission-container/index.html">权限面板容器 3 候选</a></div>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">3</span>
+		<span class="item__title">权限选择 —— 全屏页面 3 个候选</span>
+		<span class="item__tag tag--wait">等你选</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">背景：</span>「权限选择只能在全屏下开一个页面。而且 mcp 方式接入的还不支持显示。」</p>
+		<p>A · <b>单列居中</b>（复用 PermissionPanel，上下留白）<br>
+		B · <b>左说明 / 右选择</b>（双栏）<br>
+		C · <b>3×3 矩阵</b>（行=卡片动作、列=工具管控，点格子选组合）</p>
+		<div class="links"><a href="../permission-page/index.html">权限选择全屏页面 3 候选</a></div>
+	</div>
+</div>
+
 <h2 id="g1">① 视觉布局</h2>
 
 <div class="item">
