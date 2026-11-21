@@ -64,12 +64,12 @@ export const TECHTREE_CSS = `
 .tb3t-arrow--references path{fill:#6b7280}
 
 /* ── 卡片 ── */
-.tb3t-card{position:absolute;display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:2px solid var(--border-strong,#c5ccd6);border-radius:10px;background:var(--bg-card,#fff);color:inherit;font-family:inherit;text-align:left;cursor:pointer;overflow:hidden;box-shadow:0 1px 2px rgb(15 23 42 / 7%);transition:border-color .12s,background .12s,box-shadow .12s}
+.tb3t-card{position:absolute;display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:2px solid var(--card-border,#9aa1ad);border-radius:10px;background:var(--bg-card,#fff);color:inherit;font-family:inherit;text-align:left;cursor:pointer;overflow:hidden;box-shadow:0 1px 2px rgb(15 23 42 / 7%);transition:border-color .12s,background .12s,box-shadow .12s}
 .tb3t-card:hover{background:#fbfcfe;border-color:#cbd5e1}
 .tb3t-card.is-selected{border-color:var(--accent,#2563eb);box-shadow:0 0 0 4px rgb(37 99 235 / 16%),0 1px 2px rgb(15 23 42 / 7%)}
 /* 草稿：无可见边框，但保留 2px 占位（用户 2026-11-10：草稿无边框） */
 .tb3t-card.is-draft{border-color:transparent;box-shadow:none}
-.tb3t-card.is-draft:hover{border-color:var(--border-strong,#c5ccd6)}
+.tb3t-card.is-draft:hover{border-color:var(--card-border,#9aa1ad)}
 .tb3t-card.is-draft.is-selected{border-color:var(--accent,#2563eb)}
 .tb3t-card__top{display:flex;align-items:center;gap:4px;min-width:0;height:16px}
 .tb3t-card__spacer{flex:1 1 auto;min-width:2px}

@@ -416,6 +416,12 @@ export const WORKSPACE_CSS = `
   --bg-hover: var(--dsw-alias-bg-hover, #f3f4f6);
   --border: var(--dsw-alias-border-secondary, #e7e9ee);
   --border-strong: var(--dsw-alias-border-primary, #d7dbe2);
+	/*
+	 * 卡片 / 列表行的边框 —— 比 --border-strong 深一档。
+	 * 用户 2026-11-21：先加深（草稿的无边框才看得出来）；
+	 * 具体色值 / 要不要跟状态色同步，他之后定。
+	 */
+	--card-border: #9aa1ad;
   --text: var(--dsw-alias-text-primary, #16181d);
   --text-secondary: var(--dsw-alias-text-secondary, #5f6673);
   --text-weak: var(--dsw-alias-text-tertiary, #9aa1ad);
@@ -694,11 +700,11 @@ export const WORKSPACE_CSS = `
 .tb3w-root .task-card__status.is-compact{flex:0 0 auto;align-items:center;gap:3px;font-size:9px;color:var(--text-weak)}
 
 /* ── CardRow ── */
-.tb3w-root .task-card{display:flex;align-items:stretch;gap:0;width:100%;margin-bottom:6px;padding:8px 12px;border:2px solid var(--border);border-radius:8px;background:var(--bg-card);color:inherit;font-family:inherit;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
+.tb3w-root .task-card{display:flex;align-items:stretch;gap:0;width:100%;margin-bottom:6px;padding:8px 12px;border:2px solid var(--card-border,#9aa1ad);border-radius:8px;background:var(--bg-card);color:inherit;font-family:inherit;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
 .tb3w-root .task-card:hover{background:#f8f9fb}
 .tb3w-root .task-card.is-selected{border-color:var(--accent);background:#f5f9ff}
 .tb3w-root .task-card.is-draft{border-color:transparent}
-.tb3w-root .task-card.is-draft:hover{border-color:var(--border)}
+.tb3w-root .task-card.is-draft:hover{border-color:var(--card-border,#9aa1ad)}
 .tb3w-root .task-card.is-draft.is-selected{border-color:var(--accent)}
 .tb3w-root .task-card.is-unread-ai{border-left-width:4px;border-left-color:var(--accent);padding-left:10px}
 .tb3w-root .task-card.is-unread-user{border-right-width:4px;border-right-color:var(--warn);padding-right:10px}
