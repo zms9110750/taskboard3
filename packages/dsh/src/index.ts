@@ -30,11 +30,12 @@
  * ⚠ `taskboard3Store` **没有兜底**。「不提供 ⇒ 不生效」是用户明确要的语义 ——
  *   留兜底会让「关掉那一行」看起来没效果，那是更坏的失败方式。
  *
- * ## 为什么 `defineTool` 走静态 import
+ * ## 为什么 `defineTool` 只出现在 `tools.ts`
  *
- * 它不是 Cordis 服务，只能从 `@deepseek-ai/dsh-tools` 拿。
- * 而它在 npm 上没有与 DSH 同版本 ⇒ 编译期用 `src/dsh-tools.d.ts` 垫片，
- * 详见该文件头。
+ * 它不是 Cordis 服务，只能从 `@deepseek-ai/dsh-tools` 拿；
+ * 而它在 npm 上没有与 DSH 同版本 ⇒ 编译期用 `src/dsh-tools.d.ts` 垫片。
+ * `2026-11-22` 迁移到 tool contract v2 后，**整个 `src/` 只有 `tools.ts`
+ * 适配层 import 它一次**（本文件不再直接依赖）。
  *
  * ## 默认空间是入口策略，不是 core 概念
  *
@@ -51,7 +52,6 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createBus, createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
 
 import { registerCommands } from './commands.ts';
@@ -202,10 +202,9 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	const permissionGuard = createPermissionGuard({ taskboard, subagents: ctx.subagents });
 	const disposeGuard = ctx.tools.guard(permissionGuard);
 
-	/* 工具：`defineTool` 来自 DSH 的 `@deepseek-ai/dsh-tools`。 */
+	/* 工具：v2 工具定义在 `@taskboard/tools`，本文件只负责接线（见 `tools.ts` 文件头）。 */
 	const tools = createTools({
 		taskboard,
-		defineTool,
 		defaultWorkspaceId,
 		subagents: ctx.subagents,
 	});
@@ -251,7 +250,7 @@ export {
 	type GuardDeps,
 	type GuardVerdict,
 } from './permission.ts';
-export { adoptTargetOf, isAdoptTransition } from './actions.ts';
+export { adoptTargetOf, isAdoptTransition } from '@taskboard/core';
 /* ⚠ 原型期脚手架导出 —— 与 `core/src/bus.ts` 同生共死。 */
 export {
 	createSseHub,

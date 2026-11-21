@@ -1,54 +1,57 @@
 /**
- * AI 工具 —— 把 core 的能力包成模型可调用的工具。
+ * DSH 工具**适配层** —— 把 `@taskboard/tools` 的 v2 工具定义转成 DSH `defineTool`。
  *
- * ## schema 必须静态
+ * ## 这个文件是什么
  *
- * 用户裁定：工具 schema 在 prompt 前缀里，**一动就击穿 KV cache**。
- * ⇒ 参数表逐字节固定，**不按模板 / 空间 / actor / 状态动态生成**。
+ * v1 这里放着 16 个工具的本体（约 1000 行：参数解析、失败翻译、文案、调用 core）。
+ * `2026-11-22` 起这些全在 `@taskboard/tools`（MCP / DSH 通用），本文件只做三件事：
  *
- * 两个直接的后果：
+ * 1. **schema 转换**：v2 的 `inputSchema` 是纯 JSON Schema
+ *    （`{ type:'object', properties, required: [...] }`），DSH 的 `parameters`
+ *    是「每个参数一条 spec，required 内联成 `required: true`」⇒ `toDshSchema`。
+ * 2. **宿主上下文注入**：v2 的 `handler(args, ctx)` 需要 holder / 默认空间 /
+ *    激活空间 / 权限开关 —— 全部在每次 `execute` 时从 DSH 侧事实现取。
+ * 3. **hosts 过滤**：v2 的 `taskboard_tool_policy` 标了 `hosts: ['dsh']`，
+ *    用 `toolsForHost(..., 'dsh')` 过滤（MCP 适配层将来自己按 'mcp' 过滤）。
  *
- * · `content` 是**开放对象**（`additionalProperties: true`），不按模板展开；
- * · `taskboard_transition` 的 `to` 是 **`string`**，不用 `enum`
- *   —— 状态表若扩了，`enum` 会让 schema 变、缓存全废。合法性在 `execute` 里判。
+ * ## ⚠ `@deepseek-ai/dsh-tools` 在本包只出现在这里
  *
- * ## 校验在 core，不在工具
+ * `defineTool` 是 DSH 的静态依赖（不是 Cordis 服务）。为了**测试能注入假实现**，
+ * `createTools` 接受可选的 `defineTool`；省略时用真实现。
+ * ⇒ 全 `dsh/src` 只有这一处 `import '@deepseek-ai/dsh-tools'`。
  *
- * 用户裁定：「就在 core 里面验证就好了。因为用户从 ui 里面创建卡，也是走数据给 core 的。」
- * ⇒ 工具**不重复实现校验**，只把 core 返回的 `Failure.issues` 翻译成人话。
+ * ## 三个 ctx 事实从哪来（不编造 API）
  *
- * ## 工具只做三件事
+ * | ctx 字段 | 来源 | 说明 |
+ * |---|---|---|
+ * | `holder` | `holderOf(ctx.subagents, exec)` | 与 v1 同一实现（`src/holder.ts`）：subagent 名字 → UUID → unknown 三条回落 |
+ * | `resolveDefaultWorkspace` | `deps.defaultWorkspaceId()` | DSH 入口策略：显式 `workspaceId` 优先，否则「第一个空间；没有就建默认」（`index.ts` 原注释） |
+ * | `activeWorkspaceId` | `taskboard.listWorkspaces(false)[0]?.id` | **DSH 没有服务端的「UI 当前空间」状态**（`docs/设计.md` 说 `currentId` 在客户端；HTTP 路由靠 `?workspace=`）。这里把「激活空间」定义为**第一个未归档空间**，与默认空间策略一致 —— 不是新 API，只是复用 core 的列表。真实 UI 当前空间要等 HTTP 层把 `?workspace=` 持久化后再接。 |
+ * | `canManageToolPolicies` | `taskboard.getToolGuardLevel() === 'manage-edit'` | core 的宿主轴档位，选项文案就是「允许编辑档位权限」；它同时是 `POLICY_TOOLS` 的放行条件 ⇒ 单真值复用，不在 dsh 侧再存一份开关 |
  *
- * 1. 把模型参数映射成 core 入参
- * 2. 调 core
- * 3. 把结果 / `Failure` 翻译成模型能据此改对的话
+ * ## 输出
  *
- * ## ⚠ 本模块不 import `@deepseek-ai/dsh-tools`
- *
- * 那个包随 DSH 安装分发，作为 peerDependency 在运行时可用；
- * 但它在 npm 上没有同版本，编译期装不到（见 `src/dsh-tools.d.ts`）。
- *
- * ⇒ 本模块只声明 `ToolLike` / `DefineTool` 两个**窄形状**，
- *   `defineTool` 由调用方注入。好处：本模块可以**纯本地测试**，不需要 DSH 运行时。
+ * 所有 v2 工具共用 `TEXT_OUTPUT_SCHEMA`（`{ text }`），同样转成 DSH 的内联 required 形状。
+ * v2 结果里的 `isError` **不透传**：DSH 的 output schema 不允许额外字段，
+ * 且 v1 的失败也是「正常返回一段文字」。失败文案本身已带原因码/下一步。
  */
 
-import type { Card, Taskboard } from '@taskboard/core';
-import { BASE_TOOLS, EXECUTION_TOOLS, READONLY_TOOLS } from '@taskboard/core';
-import type { Failure, TaskState } from '@taskboard/protocol';
+import { defineTool as dshDefineTool } from '@deepseek-ai/dsh-tools';
+import type { Taskboard } from '@taskboard/core';
+import { ERROR_HINTS, type Failure } from '@taskboard/protocol';
 import {
-	ERROR_HINTS,
-	STATE_LABELS,
-	TASK_STATES,
-	buttonsOf,
-	buttonTargetsOf,
-	groupOf as groupOfState,
-	isTaskState,
-	judgeTransition,
-	labelOf,
-} from '@taskboard/protocol';
+	TEXT_OUTPUT_SCHEMA,
+	createTaskboardTools,
+	textContentBlocks,
+	toolsForHost,
+	type JsonObjectSchema,
+	type JsonSchema,
+	type TaskboardToolContext,
+} from '@taskboard/tools';
 
-import { adoptTargetOf, isAdoptTransition } from './actions.ts';
 import { holderOf } from './holder.ts';
+
+/* ────────────────────────── 形状（与 v1 公开面兼容） ────────────────────────── */
 
 /** 一个已定义工具的最小形状（对齐 DSH `ToolDefinition` 的字段子集）。 */
 export interface ToolLike {
@@ -62,7 +65,7 @@ export interface ToolLike {
 	execute(args: unknown, exec: unknown): Promise<unknown>;
 }
 
-/** `defineTool` 的窄形状；由 `index.ts` 注入真实实现。 */
+/** `defineTool` 的窄形状；默认用 DSH 真实现，测试可注入假实现。 */
 export type DefineTool = (options: {
 	readonly name: string;
 	readonly description: string;
@@ -74,10 +77,11 @@ export type DefineTool = (options: {
 	execute(args: never, exec: never): Promise<unknown>;
 }) => ToolLike;
 
-/** 工具依赖。 */
+/** 工具依赖（入口策略，不是 core 概念）。 */
 export interface ToolDeps {
 	readonly taskboard: Taskboard;
-	readonly defineTool: DefineTool;
+	/** 测试注入用；省略 = DSH 的 `defineTool`。 */
+	readonly defineTool?: DefineTool;
 	/** 解析默认空间（入口策略，不是 core 概念）。 */
 	readonly defaultWorkspaceId: () => Promise<string>;
 	/**
@@ -85,35 +89,105 @@ export interface ToolDeps {
 	 *
 	 * ⚠ 可以是 `undefined`：没有 subagent 环境的 profile 也该能用任务板。
 	 *   那时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
-	 *
-	 * ⚠ 档位**不在这里注入**：`taskboard_adopt` 直接读
-	 *   `taskboard.getCardActionLevel()`（core 是唯一真值）。
-	 *   传进来就变成第二份状态，两个入口会漂。
 	 */
 	readonly subagents?: unknown;
 }
 
-/*
- * ⚠ 输出 schema：**所有工具共用同一个**。
+/* ────────────────────────── 工厂 ────────────────────────── */
+
+/**
+ * 建全部 DSH 工具（v2 的 10 个，其中 `taskboard_tool_policy` 仅 DSH）。
  *
- * 只回一段文字给模型 —— 模型读得懂、不需要结构化 JSON。
- * 若每个工具各写一份 output schema，那是把同一件事抄九遍。
+ * @returns 工具定义数组（调用方逐个 `ctx.tools.register`）
  */
-const OUTPUT_SCHEMA = {
-	type: 'object',
-	additionalProperties: false,
-	properties: {
-		text: { type: 'string', required: true },
-	},
-} as const;
+export function createTools(deps: ToolDeps): readonly ToolLike[] {
+	const define = deps.defineTool ?? dshDefineTool;
+	/* DSH 侧过滤 `hosts`：MCP 专属/仅其它宿主的不注册。 */
+	const visible = toolsForHost(createTaskboardTools(deps.taskboard), 'dsh');
 
-/** 所有工具共用的 output 块。 */
-const OUTPUT = {
-	schema: OUTPUT_SCHEMA,
-	render: (_args: unknown, value: unknown) => [{ type: 'text', text: (value as { text: string }).text }],
-} as const;
+	return visible.map((tool) => {
+		const output = { schema: toDshSchema(TEXT_OUTPUT_SCHEMA), render: renderText };
+		return define({
+			name: tool.name,
+			description: tool.description,
+			parameters: toDshParameters(tool.inputSchema),
+			output,
+			async execute(args: unknown, exec: unknown): Promise<unknown> {
+				const result = await tool.handler(args, contextOf(deps, exec));
+				return { text: result.text };
+			},
+		});
+	});
+}
 
-/** 把 `Failure` 翻译成模型能据此改对的话。 */
+/* ────────────────────────── ① schema 转换 ────────────────────────── */
+
+/**
+ * 纯 JSON Schema → DSH 的 `parameters` 记录。
+ *
+ * DSH 用「每个参数一条 spec + 属性级 `required: true`」，不是 JSON Schema 的
+ * `required: [...]` 数组。递归保留 `type / description / enum / items /
+ * additionalProperties / 嵌套 properties`。
+ */
+export function toDshParameters(schema: JsonObjectSchema): Record<string, unknown> {
+	return propertiesOf(schema);
+}
+
+/** 把一个 schema 节点转成 DSH 参数 spec（`required` 内联）。 */
+export function toDshSchema(node: JsonSchema): Record<string, unknown> {
+	const spec: Record<string, unknown> = {};
+	if (node.type !== undefined) spec['type'] = node.type;
+	if (node.description !== undefined) spec['description'] = node.description;
+	if (node.enum !== undefined) spec['enum'] = node.enum;
+	if (node.additionalProperties !== undefined) spec['additionalProperties'] = node.additionalProperties;
+	if (node.items !== undefined) spec['items'] = toDshSchema(node.items);
+	if (node.properties !== undefined) spec['properties'] = propertiesOf(node);
+	return spec;
+}
+
+/** `properties` 表 → DSH 参数记录（`required` 从数组变成属性上的 true）。 */
+function propertiesOf(node: JsonSchema): Record<string, unknown> {
+	const required = new Set(node.required ?? []);
+	const out: Record<string, unknown> = {};
+	for (const [name, property] of Object.entries(node.properties ?? {})) {
+		out[name] = {
+			...toDshSchema(property),
+			...(required.has(name) ? { required: true } : {}),
+		};
+	}
+	return out;
+}
+
+/** DSH 的 output.render：把 `{ text }` 翻成 content 块（与 MCP 同形）。 */
+function renderText(_args: unknown, value: unknown): readonly unknown[] {
+	return textContentBlocks(value);
+}
+
+/* ────────────────────────── ② 宿主上下文 ────────────────────────── */
+
+/** 一次执行的宿主事实（三个能力 + 激活空间）。 */
+function contextOf(deps: ToolDeps, exec: unknown): TaskboardToolContext {
+	const first = deps.taskboard.listWorkspaces(false)[0];
+	return {
+		holder: holderOf(deps.subagents, exec),
+		/* DSH 入口策略：显式 workspaceId 优先，否则「第一个空间；没有就建默认」。 */
+		resolveDefaultWorkspace: () => deps.defaultWorkspaceId(),
+		/* 激活空间 = 第一个未归档空间（见文件头：DSH 没有服务端 UI currentId）。 */
+		...(first === undefined ? {} : { activeWorkspaceId: first.id }),
+		/* 宿主轴「允许编辑档位权限」= core 的 manage-edit；不在 dsh 侧另存开关。 */
+		canManageToolPolicies: deps.taskboard.getToolGuardLevel() === 'manage-edit',
+	};
+}
+
+/* ────────────────────────── 公开面兼容（v1 导出） ────────────────────────── */
+
+/**
+ * 把 `Failure` 翻译成模型能据此改对的话。
+ *
+ * ⚠ v2 的工具内部已经用 `@taskboard/tools` 的失败契约输出（原因码/可重试/
+ *   下一步/字段问题），本函数只保留给 `index.ts` 的**公开导出**（v1 API 兼容），
+ *   不再被任何工具调用。新代码不要用它。
+ */
 export function describeFailure(fail: Failure): string {
 	const lines: string[] = [fail.message];
 	const hint = ERROR_HINTS[fail.code];
@@ -138,985 +212,12 @@ export function describeFailure(fail: Failure): string {
  * ```
  *
  * 即字段名是「**谁改的**」，而不是「谁没读」。
- * 记忆法：`ai: true` 的意思是「有 AI 写的、待读的东西」。
- *
- * 这个方向由 core 的 `CardUnread` 定义（`core/src/card.ts:192`），
- * 本函数只做措辞，不改语义。
+ * v2 的列表/详情工具内部用自己的渲染（`@taskboard/tools` 的 `render.ts`）；
+ * 本函数保留给 `index.ts` 的公开导出。
  */
 export function describeUnread(unread: { readonly ai: boolean; readonly user: boolean }): string {
 	if (!unread.ai && !unread.user) return '双方都已读';
 	if (!unread.ai && unread.user) return '用户改过，AI 待读';
 	if (unread.ai && !unread.user) return 'AI 改过，用户待读';
 	return '双方都有未读';
-}
-
-/** 人类可读的卡行。 */
-function cardLine(card: Card): string {
-	return `${card.id}  [${labelOf(card.status)}]  ${card.title}  （${card.template.ref} / ${card.template.kind} / ${card.template.domain}）`;
-}
-
-/** 状态的中文名 + id（`提交（TASK_STATE_SUBMITTED）`）。 */
-function stateText(state: string): string {
-	return `${labelOf(state)}（${state}）`;
-}
-
-/** 把 payload 压成一行预览（避免把整个 payload 抖给模型）。 */
-function previewOf(value: unknown, limit = 120): string {
-	const text = typeof value === 'string' ? value : JSON.stringify(value);
-	if (text === undefined) return '(无)';
-	const flat = text.replace(/\s+/g, ' ');
-	return flat.length <= limit ? flat : `${flat.slice(0, limit)}…`;
-}
-
-/** 从 `payload` 里取可读正文（`value` 字段或整体）。 */
-function bodyOf(payload: unknown): string {
-	if (typeof payload === 'object' && payload !== null && 'value' in payload) {
-		const value = (payload as { value?: unknown }).value;
-		if (typeof value === 'string') return value;
-	}
-	return previewOf(payload);
-}
-
-/** 读参数里的字符串。 */
-function str(args: unknown, key: string): string | undefined {
-	if (typeof args !== 'object' || args === null) return undefined;
-	const value = (args as Record<string, unknown>)[key];
-	return typeof value === 'string' ? value : undefined;
-}
-
-/** 读参数里的数组（字符串数组）。 */
-function strs(args: unknown, key: string): readonly string[] | undefined {
-	if (typeof args !== 'object' || args === null) return undefined;
-	const value = (args as Record<string, unknown>)[key];
-	if (!Array.isArray(value)) return undefined;
-	return value.filter((one): one is string => typeof one === 'string');
-}
-
-/** 读参数里的布尔值（严格：只认 `true`，其它一律 `undefined`）。 */
-function boolOf(args: unknown, key: string): boolean | undefined {
-	if (typeof args !== 'object' || args === null) return undefined;
-	const value = (args as Record<string, unknown>)[key];
-	return typeof value === 'boolean' ? value : undefined;
-}
-
-/** 读参数里的任意值。 */
-function rawOf(args: unknown, key: string): unknown {
-	if (typeof args !== 'object' || args === null) return undefined;
-	return (args as Record<string, unknown>)[key];
-}
-
-/**
- * 建全部 AI 工具（**名字与顺序都是契约**，见 `test/tools.test.ts`）。
- *
- * @returns 工具定义数组（调用方逐个 `ctx.tools.register`）
- */
-export function createTools(deps: ToolDeps): readonly ToolLike[] {
-	const { taskboard, defineTool } = deps;
-
-	/** 解析目标空间：参数优先，否则入口默认。 */
-	const resolveWorkspace = async (args: unknown): Promise<string> =>
-		str(args, 'workspaceId') ?? (await deps.defaultWorkspaceId());
-
-	/** 取一张卡（带失败翻译）。 */
-	const mustGetCard = (
-		workspaceId: string,
-		cardId: string,
-	): { readonly ok: true; readonly card: Card } | { readonly ok: false; readonly text: string } => {
-		const found = taskboard.get(workspaceId, cardId);
-		if (!found.ok) return { ok: false, text: describeFailure(found) };
-		return found;
-	};
-
-	/* ── 1. 空间清单 ── */
-	const workspaces = defineTool({
-		name: 'taskboard_workspaces',
-		description: '列任务板的工作空间（容器）。每个空间有自己的卡。',
-		parameters: {
-			includeArchived: {
-				type: 'boolean',
-				description: '是否包含已归档的空间。省略 = 不包含。',
-			},
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const { includeArchived } = args as { includeArchived?: boolean };
-			const list = taskboard.listWorkspaces(includeArchived === true);
-			if (list.length === 0) {
-				return {
-					text: '还没有任何工作空间。可以先建一个（POST /taskboard3/api/workspaces，或界面上点「新建」）。',
-				};
-			}
-			const lines = list.map(
-				(ws) =>
-					`${ws.id}  ${ws.displayName}${ws.archived ? '（已归档）' : ''}  ${taskboard.list(ws.id).length} 张卡`,
-			);
-			return { text: `工作空间（${list.length} 个）：\n${lines.join('\n')}` };
-		},
-	});
-
-	/* ── 2. 卡列表 / 搜索 ── */
-	const cards = defineTool({
-		name: 'taskboard_cards',
-		description:
-			'列任务卡，可按标题、状态、类别、领域、模板、以及「谁改过而对方未读」筛选。不填条件时列出当前空间的全部有效卡（不含草稿）。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			title: { type: 'string', description: '标题子串（大小写不敏感）。' },
-			status: {
-				type: 'array',
-				items: { type: 'string' },
-				description: '状态 id 或组 id（draft / active / shelved / ended）。数组内 OR。',
-			},
-			kind: { type: 'array', items: { type: 'string' }, description: '类别 id。数组内 OR。' },
-			domain: { type: 'array', items: { type: 'string' }, description: '领域名。数组内 OR。' },
-			templateRef: { type: 'array', items: { type: 'string' }, description: '模板 ref。数组内 OR。' },
-			/*
-			 * ⚠ **两个 boolean 的名字容易搞反，注释必须写清对应关系。**
-			 *
-			 * 字段名按「**谁改的**」命名（core 的口径）：
-			 *   updates.user —— 用户改过，**AI** 还没看过
-			 *   updates.ai   —— AI 改过，**用户**还没看过
-			 *
-			 * 所以：
-			 *   userChanged ⇒ updates.user（**用户**改的）
-			 *   userUnread  ⇒ updates.ai  （**用户**未读的，也就是 AI 改的）
-			 *
-			 * 记忆法：「Changed」说的是**作者**（谁改的）；「Unread」说的是**读者**
-			 * （谁还没看）—— 两个词的视角正好相反，这是文件名最容易错的地方。
-			 */
-			userChanged: {
-				type: 'boolean',
-				description:
-					'只看「用户改过、而 AI 还没看过」的卡（对应 core 的 updates.user）。想找「AI 需要处理什么」时用它。',
-			},
-			userUnread: {
-				type: 'boolean',
-				description:
-					'只看「AI 改过、而用户还没看过」的卡（对应 core 的 updates.ai）。想找「用户还没看到的改动」时用它。',
-			},
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const title = str(args, 'title');
-			const status = strs(args, 'status');
-			const kind = strs(args, 'kind');
-			const domain = strs(args, 'domain');
-			const templateRef = strs(args, 'templateRef');
-
-			/*
-			 * 「谁改过、对方未读」这个**事件维度** search 自己算不出来
-			 * ⇒ 这里先问 core 要结果集，再交给 search 做集合判定。
-			 *
-			 * ⚠ 曾经这份结果集来自卡外的「读游标 + 历史下标」计算。
-			 *   现已改成读卡自己的 `Card.unread` 字段（用户裁定：「不能再用胶水代码了」）。
-			 *   ⇒ 本工具的**调用方式没变**（`updates()` 的返回值形状一样），
-			 *     但底层语义变了：**标记已读会直接改卡字段**。
-			 *
-			 * ⚠ 两个 boolean 的映射见上面参数注释 —— **名和方向是反的**，别照字面理解。
-			 */
-			const wantUserChanged = boolOf(args, 'userChanged');
-			const wantUserUnread = boolOf(args, 'userUnread');
-			let updatedBy: readonly ('ai' | 'user')[] | undefined;
-			let updatedCardIds: readonly string[] | undefined;
-			if (wantUserChanged === true || wantUserUnread === true) {
-				const updates = await taskboard.updates(workspaceId);
-				const ids = new Set<string>();
-				if (wantUserChanged === true) for (const id of updates.user) ids.add(id);
-				if (wantUserUnread === true) for (const id of updates.ai) ids.add(id);
-				updatedCardIds = [...ids];
-				/* 只用于让 search 走「集合判定」分支；具体是哪个集合已由 `updatedCardIds` 决定。 */
-				updatedBy = [
-					...(wantUserChanged === true ? (['user'] as const) : []),
-					...(wantUserUnread === true ? (['ai'] as const) : []),
-				];
-			}
-
-			const list = taskboard.search(workspaceId, {
-				...(title === undefined ? {} : { title }),
-				...(status === undefined ? {} : { status }),
-				...(kind === undefined ? {} : { kind }),
-				...(domain === undefined ? {} : { domain }),
-				...(templateRef === undefined ? {} : { templateRef }),
-				...(updatedBy === undefined ? {} : { updatedBy }),
-				...(updatedCardIds === undefined ? {} : { updatedCardIds }),
-			});
-			if (list.length === 0) return { text: '没有符合条件的卡。' };
-			return {
-				text: `空间「${workspaceId}」共 ${list.length} 张卡：\n${list.map(cardLine).join('\n')}`,
-			};
-		},
-	});
-
-	/* ── 3. 看单卡详情 ── */
-	const card = defineTool({
-		name: 'taskboard_card',
-		description:
-			'看一张任务卡的详情：元数据（状态、模板、关系、备注、历史）+ 各章节内容。按编号直查，能看到草稿和已删除的卡。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			id: { type: 'string', required: true, description: '卡编号，如 GU01。' },
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const found = mustGetCard(workspaceId, str(args, 'id') ?? '');
-			if (!found.ok) return { text: found.text };
-
-			const one = found.card;
-			const lines: string[] = [
-				`${one.id}  ${one.title}`,
-				`状态：${stateText(one.status)}（组：${groupOfState(one.status)}）`,
-				`模板：${one.template.ref}（${one.template.kind} / ${one.template.domain}）`,
-			];
-			if (one.deleted) lines.push('⚠ 这张卡已被删除（墓碑）。');
-			if (one.holders.length > 0) {
-				lines.push(`占用者：${one.holders.map((held) => held.holder).join('、')}`);
-			}
-			if (one.note !== '') lines.push(`备注：${one.note}`);
-
-			const parent = one.relations.parent;
-			if (parent !== null) lines.push(`父卡：${parent}`);
-			if (one.relations.links.length > 0) {
-				const links = one.relations.links.map((link) => `${link.label}→${link.to}`).join('、');
-				lines.push(`关系：${links}`);
-			}
-
-			const sections = Object.entries(one.sections);
-			if (sections.length === 0) {
-				lines.push('', '（没有章节）');
-			} else {
-				lines.push('', '章节：');
-				for (const [sectionId, section] of sections) {
-					lines.push(`【${section.label}】（${sectionId}）`);
-					lines.push(bodyOf(section.payload));
-					lines.push('');
-				}
-			}
-
-			if (one.history.length > 0) {
-				const last = one.history.slice(-5);
-				lines.push(`历史（最近 ${last.length} 条，共 ${one.history.length} 条）：`);
-				for (const entry of last) {
-					const when = new Date(entry.at).toISOString();
-					lines.push(`  ${when}  ${entry.action}`);
-				}
-			}
-
-			return { text: lines.join('\n') };
-		},
-	});
-
-	/* ── 4. 建卡 ── */
-	const create = defineTool({
-		name: 'taskboard_create',
-		description:
-			'建一张新任务卡。title 必填；templateRef 是模板 ref（省略 = 第一个可用模板）。content 是对象：key = 模板章节名，value = 该章节的 action payload。省略的章节用模板默认值。先调 taskboard_registry 看这个模板有哪些章节。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			title: { type: 'string', required: true, description: '卡标题。' },
-			templateRef: { type: 'string', description: '模板 ref。省略 = 第一个可用模板。' },
-			content: {
-				type: 'object',
-				additionalProperties: true,
-				description: 'key = 模板章节名（label），value = action payload 对象。可省略整个章节。',
-			},
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const title = str(args, 'title') ?? '';
-
-			let templateRef = str(args, 'templateRef') ?? '';
-			if (templateRef === '') {
-				const first = taskboard.listTemplates()[0];
-				if (first === undefined) {
-					return {
-						text: '当前没有任何可用模板，无法建卡。检查模板加载错误（GET /taskboard3/api/templates）。',
-					};
-				}
-				templateRef = first.ref;
-			}
-
-			const content = rawOf(args, 'content');
-			const created = await taskboard.create({
-				workspaceId,
-				templateRef,
-				title,
-				/* ⚠ 必须显式标 `'ai'` —— 省略会默认成 `'user'`，于是「AI 改过」的角标永远不出现。 */
-				actor: 'ai',
-				...(content === undefined ? {} : { content }),
-			});
-			if (!created.ok) return { text: `建卡失败：\n${describeFailure(created)}` };
-
-			const made = created.card;
-			const sectionLines = Object.entries(made.sections)
-				.map(([, section]) => `  · ${section.label}`)
-				.join('\n');
-			return {
-				text: [
-					`已建卡 ${made.id}「${made.title}」（模板 ${made.template.ref}，状态 ${labelOf(made.status)}）。`,
-					sectionLines === '' ? '(无章节)' : `章节：\n${sectionLines}`,
-					'下一步：让用户确认后再采纳（采纳会把草稿转为提交或需要授权）。',
-				].join('\n'),
-			};
-		},
-	});
-
-	/* ── 5. 改章节内容 ── */
-	const updateContent = defineTool({
-		name: 'taskboard_update_content',
-		description:
-			'改一张卡里章节的内容。content 是对象：key = 章节名（模板里的 label）或 sectionId，value = action payload。只传要改的章节；没传的保持原样。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			id: { type: 'string', required: true, description: '卡编号。' },
-			content: {
-				type: 'object',
-				additionalProperties: true,
-				description: 'key = 章节名或 sectionId，value = action payload。',
-			},
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const cardId = str(args, 'id') ?? '';
-
-			/*
-			 * ⚠ `core.update()` 的 `content` 是**整体替换**（`if (patch.content !== undefined)` 重建 sections），
-			 *   不是增量合并。而本工具的语义是「只改这几章」。
-			 *   ⇒ 先把现有章节读出来、与传入的合并，再整体提交。
-			 *
-			 *   这一步必须由工具做，不能指望 core —— core 的 update 语义是「给定完整 content」。
-			 */
-			const found = mustGetCard(workspaceId, cardId);
-			if (!found.ok) return { text: found.text };
-
-			const incoming = rawOf(args, 'content');
-			if (typeof incoming !== 'object' || incoming === null || Array.isArray(incoming)) {
-				return { text: 'content 必须是对象：key = 章节名，value = action payload。' };
-			}
-
-			/* 现有章节：key 用 label（core 的 validate 认 label 也认 sectionId）。 */
-			const merged: Record<string, unknown> = {};
-			for (const section of Object.values(found.card.sections)) {
-				merged[section.label] = section.payload;
-			}
-			for (const [key, value] of Object.entries(incoming as Record<string, unknown>)) {
-				merged[key] = value;
-			}
-
-			const updated = await taskboard.update(workspaceId, cardId, { content: merged }, 'ai');
-			if (!updated.ok) return { text: `改内容失败：\n${describeFailure(updated)}` };
-
-			const changed = Object.keys(incoming as Record<string, unknown>);
-			return {
-				text: `已改 ${updated.card.id}「${updated.card.title}」的 ${changed.length} 个章节：${changed.join('、')}`,
-			};
-		},
-	});
-
-	/* ── 6. 改备注 ── */
-	const updateNote = defineTool({
-		name: 'taskboard_update_note',
-		description: '改一张卡的备注（追加型文本，不随采纳清空）。传空串 = 清空备注。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			id: { type: 'string', required: true, description: '卡编号。' },
-			note: { type: 'string', required: true, description: '新备注内容。空串 = 清空。' },
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const cardId = str(args, 'id') ?? '';
-			const note = str(args, 'note') ?? '';
-
-			const updated = await taskboard.update(workspaceId, cardId, { note }, 'ai');
-			if (!updated.ok) return { text: `改备注失败：\n${describeFailure(updated)}` };
-			return {
-				text: note === ''
-					? `已清空 ${updated.card.id} 的备注。`
-					: `已更新 ${updated.card.id} 的备注（${note.length} 字）。`,
-			};
-		},
-	});
-
-	/* ── 7. 状态转移 / 查询可转移目标 ── */
-	const transition = defineTool({
-		name: 'taskboard_transition',
-		description:
-			'改一张卡的状态。to 为空 ⇒ 只回答：当前状态含义、现在能转去哪（附按钮文案）、哪些目标被拒及原因，不执行。to 有值 ⇒ 执行转移。状态 id 用协议全名（如 TASK_STATE_SUBMITTED），中文名也能认。⚠ 「采纳草稿」不是转移，用 taskboard_adopt。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			id: { type: 'string', required: true, description: '卡编号。' },
-			/*
-			 * ⚠ **不用 `enum`** —— 状态表扩了会让 schema 变，击穿 prompt 缓存。
-			 *   合法性在 execute 里判（`resolveStateId`）。
-			 */
-			to: { type: 'string', description: '目标状态 id。省略 = 只查询不执行。' },
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const cardId = str(args, 'id') ?? '';
-
-			const found = mustGetCard(workspaceId, cardId);
-			if (!found.ok) return { text: found.text };
-			const one = found.card;
-			const kind = one.template.kind;
-
-			const toRaw = str(args, 'to');
-			const to = toRaw === undefined || toRaw === '' ? undefined : resolveStateId(toRaw);
-			if (toRaw !== undefined && toRaw !== '' && to === undefined) {
-				return {
-					text: `「${toRaw}」不是已知状态。可用：${TASK_STATES.map((one2) => `${labelOf(one2)}=${one2}`).join('、')}`,
-				};
-			}
-
-			/* ── 只查询 ── */
-			if (to === undefined) {
-				const allowed = buttonTargetsOf(kind, one.status, 'ai');
-				const userOnly = buttonTargetsOf(kind, one.status, 'user').filter(
-					(target) => !allowed.includes(target),
-				);
-				const lines: string[] = [
-					`${one.id}「${one.title}」当前状态：${stateText(one.status)}`,
-					`类别：${kind}`,
-				];
-
-				lines.push('', 'AI 现在可以转去：');
-				if (allowed.length === 0) {
-					lines.push('  （无）');
-				} else {
-					for (const target of allowed) {
-						const button = buttonsOf(kind, one.status, 'ai').find((one2) => one2.to === target);
-						const verdict = judgeTransition({ kind, from: one.status, to: target, trigger: 'ai' });
-						const suffix = verdict.ok ? '' : `（当前不可：${verdict.reason}）`;
-						/*
-						 * ⚠ 采纳不是「转移」：它要写 `adoptedAt`，走的是 `taskboard_adopt`。
-						 *   列表里不标这一句，模型会照着按钮文案拿 transition 去点采纳。
-						 */
-						const adoptNote = isAdoptTransition(kind, one.status, target)
-							? '（这是「采纳」，请用 taskboard_adopt，不要用本工具）'
-							: '';
-						lines.push(`  · ${stateText(target)} —— 按钮「${button?.label ?? ''}」${suffix}${adoptNote}`);
-					}
-				}
-
-				if (userOnly.length > 0) {
-					lines.push('', '只开放给用户的：');
-					for (const target of userOnly) {
-						lines.push(`  · ${stateText(target)}`);
-					}
-				}
-
-				/*
-				 * 被拒的原因：遍历全部九个状态，看哪些到不了、为什么。
-				 * ⚠ 这是**状态机的事实**，不是命运判定 —— 依赖闸门等条件由 core 在真正执行时判。
-				 */
-				const blocked: string[] = [];
-				for (const target of TASK_STATES) {
-					if (target === one.status) continue;
-					if (allowed.includes(target) || userOnly.includes(target)) continue;
-					const verdict = judgeTransition({ kind, from: one.status, to: target, trigger: 'ai' });
-					if (!verdict.ok) blocked.push(`  · ${labelOf(target)}：${verdict.reason}`);
-				}
-				if (blocked.length > 0) {
-					lines.push('', '到不了的（原因）：');
-					lines.push(...blocked);
-				}
-				return { text: lines.join('\n') };
-			}
-
-			/* ── 执行转移：AI 触发 ── */
-			/*
-			 * ⚠ **采纳不是转移** —— 它是独立工具 `taskboard_adopt`（从本工具拆出来的）。
-			 *
-			 * 理由（`2026-11-19`）：
-			 * ① 用户把「允许采纳草稿」当成一条独立授权（core 的 `judgeToolCall`
-			 *    第一段 ③ 按工具名 `taskboard_adopt` 判）—— 藏在一个「万能转移」的
-			 *    action 参数里，guard 就永远命不中那条规则；
-			 * ② 采纳要同时写 `adoptedAt`（与 history 那条用同一个 `at`），
-			 *    与普通转移是两个 core 方法，混在一个工具里迟早漏。
-			 *
-			 * ⇒ 这里明确让路：告诉模型改用哪个工具，而不是静默按普通转移处理。
-			 */
-			if (isAdoptTransition(kind, one.status, to)) {
-				return {
-					text:
-						`「${stateText(to)}」是**采纳草稿**，不是普通状态转移。` +
-						'请改用 taskboard_adopt 工具（参数：workspaceId、id）—— ' +
-						'它会走 core 的 adopt()，同时写 adoptedAt。',
-				};
-			}
-
-			const applied = await taskboard.transition(workspaceId, cardId, to, 'ai');
-			if (!applied.ok) return { text: `转移失败：\n${describeFailure(applied)}` };
-			return {
-				text: `已把 ${applied.card.id} 从「${labelOf(one.status)}」改为「${labelOf(applied.card.status)}」。`,
-			};
-		},
-	});
-
-	/* ── 8. 采纳草稿（从 transition 拆出的独立工具） ── */
-	/*
-	 * ## 为什么必须是独立工具
-	 *
-	 * 用户把「允许采纳草稿」当成一档**独立授权**。core 的 `judgeToolCall`
-	 * 第一段 ③ 就是按 `toolName === 'taskboard_adopt'` 判的 ——
-	 * 如果采纳还藏在 `taskboard_transition` 的 `to` 参数里，
-	 * 那条 guard 规则**永远不会命中**，用户开的档位就是个摆设。
-	 *
-	 * ## 参数里没有 `to`
-	 *
-	 * 采纳的目标状态由**类别**决定（goal/work → 提交，design/record → 需要授权），
-	 * 那是 `protocol` 的 `BUTTON_ACTIONS` 里的事实（`method === 'adopt'`）。
-	 * 让模型传 `to` 只会多一个可以传错的参数 —— 目标由 core 算。
-	 *
-	 * ## 档位
-	 *
-	 * 读 `taskboard.getCardActionLevel()`（core 是唯一真值），
-	 * 非 `adopt` ⇒ 直接拒绝并指路（正常路径上 guard 已经先拦了一次，
-	 * 这里是 guard 缺席时的兜底 —— 加装模块没装也不该绕开用户授权）。
-	 */
-	const adopt = defineTool({
-		name: 'taskboard_adopt',
-		description:
-			'采纳一张草稿卡：按类别转到「提交」（目标 / 工作）或「需要授权」（设计 / 记录），并写 adoptedAt。只有草稿能采纳；能否由 AI 采纳取决于任务板档位「允许采纳草稿」。普通状态转移请用 taskboard_transition。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			id: { type: 'string', required: true, description: '草稿卡的编号。' },
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const cardId = str(args, 'id') ?? '';
-
-			const found = mustGetCard(workspaceId, cardId);
-			if (!found.ok) return { text: found.text };
-			const one = found.card;
-			const kind = one.template.kind;
-
-			/*
-			 * 先看这个 (类别, 状态) 有没有采纳按钮 —— 没有就直接说清，
-			 * 不把「只有草稿能采纳」这种事实留给 core 的 TRANSITION_REJECTED
-			 * （那个错误码对模型来说太泛，容易让它以为换个 to 就能过）。
-			 */
-			const target = adoptTargetOf(one.template.kind, one.status);
-			if (target === undefined) {
-				return {
-					text:
-						`${one.id}「${one.title}」当前状态是「${labelOf(one.status)}」（类别 ${kind}），` +
-						'现在没有「采纳」这个动作。只有草稿能采纳。',
-				};
-			}
-
-			const cardLevel = taskboard.getCardActionLevel();
-			if (cardLevel !== 'adopt') {
-				return {
-					text:
-						'采纳失败：当前任务板档位不允许 AI 采纳草稿。' +
-						'只有「允许采纳草稿」档位才能由 AI 采纳；其它档位要用户自己在界面上点采纳。',
-				};
-			}
-
-			const adopted = await taskboard.adopt(workspaceId, cardId, 'ai', { allowAiAdopt: true });
-			if (!adopted.ok) return { text: `采纳失败：\n${describeFailure(adopted)}` };
-			return {
-				text:
-					`已把 ${adopted.card.id}「${adopted.card.title}」从草稿采纳为` +
-					`「${labelOf(adopted.card.status)}」（类别 ${kind} 的采纳目标是 ${stateText(target)}）。`,
-			};
-		},
-	});
-
-	/* ── 9. 领取 ── */
-	const claim = defineTool({
-		name: 'taskboard_claim',
-		description:
-			'领取一张工作卡（提交 → 处理中）。持有者 = 你（当前 agent 的名字）。要满足核心的准入条件（依赖已结束、手上没有别的处理中工作卡等）；不满足时返回原因。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			id: { type: 'string', required: true, description: '卡编号。' },
-		},
-		output: OUTPUT,
-		async execute(args: unknown, exec: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const cardId = str(args, 'id') ?? '';
-			const holder = holderOf(deps.subagents, exec);
-
-			const claimed = await taskboard.claim(workspaceId, cardId, 'ai', holder);
-			if (!claimed.ok) return { text: `领取失败：\n${describeFailure(claimed)}` };
-			return {
-				text: `已领取 ${claimed.card.id}「${claimed.card.title}」，状态 ${labelOf(claimed.card.status)}，持有者 ${holder}。`,
-			};
-		},
-	});
-
-	/* ── 10. 释放 ── */
-	const release = defineTool({
-		name: 'taskboard_release',
-		description:
-			'释放对一张处理中工作卡的领取（把自己从持有者里移除）。不算取消，改天还能再领。释放后若还有别人持有，状态不变。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			id: { type: 'string', required: true, description: '卡编号。' },
-		},
-		output: OUTPUT,
-		async execute(args: unknown, exec: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const cardId = str(args, 'id') ?? '';
-			const holder = holderOf(deps.subagents, exec);
-
-			const released = await taskboard.release(workspaceId, cardId, 'ai', holder);
-			if (!released.ok) return { text: `释放失败：\n${describeFailure(released)}` };
-			return {
-				text: `已释放 ${released.card.id}「${released.card.title}」，状态 ${labelOf(released.card.status)}。`,
-			};
-		},
-	});
-
-	/* ── 11. 注册表 ── */
-	const registry = defineTool({
-		name: 'taskboard_registry',
-		description:
-			'看注册表。id 为空 ⇒ 列出所有模板与 action 的清单。给 id ⇒ 返回该模板 / action 的注册内容（模板含章节名与每章可用的 action）。kind 用来区分同名（template / action）。',
-		parameters: {
-			id: { type: 'string', description: '模板 ref 或 action 的 $type。省略 = 列清单。' },
-			kind: { type: 'string', description: '`template` 或 `action`。id 有值且同名时用来区分。' },
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const id = str(args, 'id');
-			const kind = str(args, 'kind');
-
-			/* ── 列清单 ── */
-			if (id === undefined || id === '') {
-				const templates = taskboard.listTemplates();
-				const actions = taskboard.actions().list();
-				const errors = taskboard.templateErrors();
-
-				const lines: string[] = [`模板（${templates.length} 个）：`];
-				for (const one of templates) {
-					lines.push(`  ${one.ref}  ${one.displayName}  （${one.kind} / ${one.domain}）`);
-				}
-				lines.push('', `action（${actions.length} 个）：`);
-				for (const one of actions) {
-					lines.push(`  ${one.$type}  ${one.summary}`);
-				}
-				if (errors.length > 0) {
-					lines.push('', `⚠ 模板加载错误（${errors.length} 条）：`);
-					for (const one of errors) lines.push(`  ${one.file}：${one.message}`);
-				}
-				lines.push('', '给 id 看某一项的详情（模板会列出章节名与每章可用的 action）。');
-				return { text: lines.join('\n') };
-			}
-
-			/* ── 单个模板 ── */
-			if (kind === 'template' || kind === undefined) {
-				const meta = taskboard.templateMeta(id);
-				if (meta !== undefined) {
-					const lines: string[] = [
-						`模板「${meta.displayName}」（${meta.ref}）`,
-						`类别：${meta.kind}　领域：${meta.domain}`,
-					];
-					if (meta.usage !== '') lines.push('', `用法：${meta.usage}`);
-					if (meta.description !== '') lines.push('', `说明：${meta.description}`);
-					lines.push('', `章节（${meta.sections.length} 个，content 的 key 用引号里的名字）：`);
-					for (const section of meta.sections) {
-						lines.push(`  「${section.label}」→ action=${section.action}（id=${section.id}）`);
-						if (section.hint !== '') lines.push(`      ${section.hint.split('\n')[0]}`);
-					}
-					if (meta.derives.length > 0) {
-						lines.push('', '可派生：');
-						for (const one of meta.derives) lines.push(`  ${one.label} → ${one.template}`);
-					}
-					return { text: lines.join('\n') };
-				}
-				if (kind === 'template') return { text: `模板「${id}」不存在。` };
-			}
-
-			/* ── 单个 action ── */
-			const action = taskboard.actions().get(id);
-			if (action === undefined) {
-				return { text: `没有名为「${id}」的模板或 action。先不带 id 调一次看清单。` };
-			}
-			return {
-				text: [
-					`action「${action.$type}」：${action.summary}`,
-					`默认 payload：${previewOf(action.defaultPayload)}`,
-				].join('\n'),
-			};
-		},
-	});
-
-	/* ── 12. 标记已读 ── */
-	const markSeen = defineTool({
-		name: 'taskboard_mark_seen',
-		description:
-			'把一张卡标记为「AI 已读过」。看过之后，这张卡上「用户改过、AI 待读」的标记会被清掉。你读完一张卡、处理完用户的改动后调一次。',
-		parameters: {
-			workspaceId: { type: 'string', description: '空间 id。省略 = 入口的默认空间。' },
-			id: { type: 'string', required: true, description: '卡编号。' },
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const workspaceId = await resolveWorkspace(args);
-			const cardId = str(args, 'id') ?? '';
-			/*
-			 * ⚠ `reader` 写死 `'ai'` —— 这是 AI 工具路径。
-			 *   界面侧的「用户已读」走 `POST /api/cards/:id/seen`（那里固定 `'user'`）。
-			 */
-			const result = await taskboard.markSeen(workspaceId, cardId, 'ai');
-			if (!result.ok) return { text: `标记已读失败：\n${describeFailure(result)}` };
-			return {
-				text: `已把 ${cardId} 标记为 AI 已读。当前未读状态：${describeUnread(result.unread)}。`,
-			};
-		},
-	});
-
-	/* ── 13. 权限管理：读四档策略 ── */
-	const toolPolicies = defineTool({
-		name: 'taskboard_tool_policies',
-		description:
-			'读工具权限策略。权限分四档，生效集永远是「BASE ∪ 通用档 ∪ 命中的组 ∪ 独立档」。⚠ BASE 是常量、改不了（也不该改）—— 它已经有 11 个任务板工具。要放开执行类 / 读文件类工具，只能往「通用档 / 组 / 独立档」里加增量。改之前先读它。',
-		parameters: {},
-		output: OUTPUT,
-		async execute(): Promise<unknown> {
-			const store = taskboard.getToolPolicies();
-			const lines: string[] = [
-				'## BASE（固定，改不了）',
-				'这 11 个工具任何时候都有，不需要领卡：',
-				...BASE_TOOLS.map((name) => `  ${name}`),
-				'',
-				'⚠ **不要试图把 BASE 里的工具配进任何档** —— 它们已经在里面了，配了也没用。',
-				'',
-				'## 需要增量才放开的工具',
-				'执行类（会改动工作区）：',
-				...EXECUTION_TOOLS.map((name) => `  ${name}`),
-				'',
-				'只读 / 外部信息类（会绕过「不知道就问」—— 用户判据：无法获得不知道的信息）：',
-				...READONLY_TOOLS.map((name) => `  ${name}`),
-				'',
-				`## 通用档（${store.common.length} 个，所有工作卡都生效）`,
-				store.common.length === 0 ? '  （空）' : `  ${store.common.join('、')}`,
-			];
-
-			/* 组：成员 + 增量。 */
-			const groupNames = [...new Set([...Object.keys(store.groups), ...Object.keys(store.groupMembers)])].sort();
-			lines.push('', `## 组（${groupNames.length} 个，批量设置用；组之间没有优先级，命中就叠加）`);
-			if (groupNames.length === 0) {
-				lines.push('  （没有组）');
-			} else {
-				for (const name of groupNames) {
-					const members = store.groupMembers[name] ?? [];
-					const delta = store.groups[name] ?? [];
-					lines.push(`  「${name}」`);
-					lines.push(`    成员（${members.length}）：${members.length === 0 ? '（空 —— 谁都不会命中）' : members.join('、')}`);
-					lines.push(`    增量（${delta.length}）：${delta.length === 0 ? '（空）' : delta.join('、')}`);
-				}
-			}
-
-			/* 独立档。 */
-			const refs = Object.keys(store.templates).sort();
-			lines.push('', `## 独立档（${refs.length} 个模板，只对那个模板生效）`);
-			if (refs.length === 0) {
-				lines.push('  （空）');
-			} else {
-				for (const ref of refs) {
-					const delta = store.templates[ref] ?? [];
-					lines.push(`  ${ref}：${delta.length === 0 ? '（空）' : delta.join('、')}`);
-				}
-			}
-
-			lines.push(
-				'',
-				'生效规则：未持有工作卡 = 只有 BASE；持有工作卡 X = BASE ∪ 通用档 ∪ X 命中的组 ∪ X 的独立档。',
-			);
-			return { text: lines.join('\n') };
-		},
-	});
-
-	/* ── 14. 权限管理：改某一档的增量 ── */
-	const toolPolicySet = defineTool({
-		name: 'taskboard_tool_policy_set',
-		description:
-			'改某一档的工具增量（持久化）。只存增量 —— 生效永远是「BASE ∪ 各档」，不可能把 BASE 挤掉。granularity 三选一：common（通用，所有工作卡都吃）/ group（按组，要先有组和成员）/ template（独立，只管一个模板）。传空数组 = 清空那一档。',
-		parameters: {
-			granularity: {
-				type: 'string',
-				required: true,
-				/*
-				 * ⚠ `enum` 在这里安全：三档是我们的**结构**，不随数据变。
-				 *   （对比 `taskboard_transition` 的 `to`：那个随状态表变，不能用 enum。）
-				 */
-				enum: ['common', 'group', 'template'],
-				description: 'common = 通用档 / group = 组档 / template = 独立档。',
-			},
-			name: {
-				type: 'string',
-				description: 'granularity=group 时是组名；=template 时是模板 ref；=common 时忽略。',
-			},
-			delta: {
-				type: 'array',
-				items: { type: 'string' },
-				required: true,
-				description: '增量工具名（如 bash / write / read_file）。传空数组 = 清空那一档。',
-			},
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const granularity = str(args, 'granularity') ?? '';
-			const name = str(args, 'name') ?? '';
-			const delta = strs(args, 'delta') ?? [];
-
-			if (granularity === 'common') {
-				const result = await taskboard.setCommonPolicy(delta);
-				if (!result.ok) return { text: `改权限失败：\n${describeFailure(result)}` };
-				return {
-					text:
-						delta.length === 0
-							? '已清空通用档。'
-							: `已把通用档设为：${delta.join('、')}（所有工作卡都多这些）。`,
-				};
-			}
-
-			if (granularity === 'group') {
-				if (name.trim() === '') {
-					return { text: 'granularity=group 时必须给 name（组名）。' };
-				}
-				const result = await taskboard.setGroupPolicy(name, delta);
-				if (!result.ok) return { text: `改权限失败：\n${describeFailure(result)}` };
-				return {
-					text:
-						delta.length === 0
-							? `已清空组「${name}」的增量（成员还在，但不再授予任何工具）。`
-							: `已把组「${name}」的增量设为：${delta.join('、')}（该组成员的工作卡生效）。`,
-				};
-			}
-
-			if (granularity === 'template') {
-				if (name.trim() === '') {
-					return { text: 'granularity=template 时必须给 name（模板 ref）。' };
-				}
-				const result = await taskboard.setTemplatePolicy(name, delta);
-				if (!result.ok) return { text: `改权限失败：\n${describeFailure(result)}` };
-				return {
-					text:
-						delta.length === 0
-							? `已清空模板「${name}」的独立档。`
-							: `已把模板「${name}」的独立档设为：${delta.join('、')}。`,
-				};
-			}
-
-			return { text: `granularity 必须是 common / group / template 之一；收到「${granularity}」。` };
-		},
-	});
-
-	/* ── 15. 权限管理：设组成员 ── */
-	const toolPolicyMembers = defineTool({
-		name: 'taskboard_tool_policy_members',
-		description:
-			'设一个组的成员（模板列表）。组 = 一个命名的模板集合，用来批量设权限。组名不存在会自动建。传空数组 = 清空成员（组和它的增量都还在，但谁都不命中）。',
-		parameters: {
-			groupName: { type: 'string', required: true, description: '组名（如「代码类」）。' },
-			templates: {
-				type: 'array',
-				items: { type: 'string' },
-				required: true,
-				description: '组成员：模板 ref 列表。传空数组 = 清空成员。',
-			},
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const groupName = str(args, 'groupName') ?? '';
-			const templates = strs(args, 'templates') ?? [];
-			const result = await taskboard.setGroupMembers(groupName, templates);
-			if (!result.ok) return { text: `设组成员失败：\n${describeFailure(result)}` };
-			return {
-				text:
-					templates.length === 0
-						? `已清空组「${groupName}」的成员。`
-						: `已把组「${groupName}」的成员设为：${templates.join('、')}。`,
-			};
-		},
-	});
-
-	/* ── 16. 权限管理：清空某一档 ── */
-	const toolPolicyReset = defineTool({
-		name: 'taskboard_tool_policy_reset',
-		description:
-			'清空某一档。granularity=common ⇒ 清空通用档；=group ⇒ **整个删掉那个组**（成员 + 增量）；=template ⇒ 清空该模板的独立档。语义比 taskboard_tool_policy_set 传空数组更明确。',
-		parameters: {
-			granularity: {
-				type: 'string',
-				required: true,
-				enum: ['common', 'group', 'template'],
-				description: 'common = 通用档 / group = 整组删除 / template = 独立档。',
-			},
-			name: {
-				type: 'string',
-				description: 'granularity=group 时是组名；=template 时是模板 ref；=common 时忽略。',
-			},
-		},
-		output: OUTPUT,
-		async execute(args: unknown): Promise<unknown> {
-			const granularity = str(args, 'granularity') ?? '';
-			const name = str(args, 'name') ?? '';
-
-			if (granularity === 'common') {
-				const result = await taskboard.setCommonPolicy([]);
-				if (!result.ok) return { text: `重置失败：\n${describeFailure(result)}` };
-				return { text: '已清空通用档。' };
-			}
-
-			if (granularity === 'group') {
-				if (name.trim() === '') return { text: 'granularity=group 时必须给 name（组名）。' };
-				const result = await taskboard.removeGroup(name);
-				if (!result.ok) return { text: `重置失败：\n${describeFailure(result)}` };
-				return { text: `已删除组「${name}」（成员 + 增量都删了）。` };
-			}
-
-			if (granularity === 'template') {
-				if (name.trim() === '') return { text: 'granularity=template 时必须给 name（模板 ref）。' };
-				const result = await taskboard.setTemplatePolicy(name, []);
-				if (!result.ok) return { text: `重置失败：\n${describeFailure(result)}` };
-				return { text: `已清空模板「${name}」的独立档。` };
-			}
-
-			return { text: `granularity 必须是 common / group / template 之一；收到「${granularity}」。` };
-		},
-	});
-
-	return [
-		workspaces,
-		cards,
-		card,
-		create,
-		updateContent,
-		updateNote,
-		transition,
-		adopt,
-		claim,
-		release,
-		registry,
-		markSeen,
-		toolPolicies,
-		toolPolicySet,
-		toolPolicyMembers,
-		toolPolicyReset,
-	];
-}
-
-/**
- * 把用户/模型给的字符串解析成状态 id。
- *
- * 认两种写法：协议全名（`TASK_STATE_SUBMITTED`）与中文名（`提交`）。
- * ⚠ 不认「热闹但不精确」的写法 —— 认不出就是 `undefined`，由调用方报错。
- */
-export function resolveStateId(raw: string): TaskState | undefined {
-	if (isTaskState(raw)) return raw;
-	const trimmed = raw.trim();
-	if (isTaskState(trimmed)) return trimmed;
-	return TASK_STATES.find((state) => STATE_LABELS[state] === trimmed);
 }

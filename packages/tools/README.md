@@ -188,8 +188,11 @@ node --test "packages/tools/test/*.test.ts"             # 直跑 src/*.ts；跨�
 
 ## ⚠ 还没做
 
-- `packages/dsh/src/tools.ts` 仍是 v1 的 16 个工具实现（不是薄适配层）。
-  迁移时注意：`taskboard_tool_policy` 要加进 core 的 `POLICY_TOOLS`，并更新 dsh 的权限测试。
-- `taskboard_update` 只能改「模板内 JSON」；**改标题**没有入口（用户 v2 参数里没有 title，
-  需要时再补）。
+- MCP 适配层还没写（本包工具已按 `hosts` 与纯 JSON Schema 设计好，MCP 侧只需
+  `createTaskboardToolRegistry(tools, { host: 'mcp' })` + 一张 `ListTools` 映射）。
+- `taskboard_update` 只能改「模板内 JSON」；**改标题**走 `taskboard_update_note`
+  的 `title?`（仅草稿期），`update` 本身不管标题。
 - #5 的「先看定义」是**描述 + 错误指引**，不是硬门（工具无状态，无法真的校验调用顺序）。
+
+> `packages/dsh` 已于 `2026-11-22` 迁成薄适配层（`feat/dsh-adapter`），
+> 使用这里的 10 个工具；v1 的 16 个工具实现已删除。

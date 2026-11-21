@@ -241,7 +241,7 @@ describe('createPermissionGuard', () => {
 
 		/* toolLevel = off ⇒ 第二段不管理工具。 */
 		assert.equal(guard(exec('bash')), undefined, 'off 档不管理工具调用');
-		assert.equal(guard(exec('taskboard_tool_policy_set')), undefined, 'off 档连权限工具都不管');
+		assert.equal(guard(exec('taskboard_tool_policy')), undefined, 'off 档连权限工具都不管');
 	});
 
 	it('⚠ 第一段不看 toolLevel：off 档也不等于替用户放开领卡', async () => {
@@ -347,13 +347,13 @@ describe('createPermissionGuard', () => {
 	it('⚠ 权限管理工具：manage 拒、manage-edit 放行', async () => {
 		await taskboard.setToolGuardLevel('manage');
 		let guard = guardOf({ subagents: subagentsOf('lead') });
-		const verdict = guard(exec('taskboard_tool_policy_set'));
+		const verdict = guard(exec('taskboard_tool_policy'));
 		assert.notEqual(verdict, undefined, 'manage 下不该能改档位权限');
 		assert.ok(verdict?.includes('允许编辑档位权限'), `理由该指向那一档：${verdict}`);
 
 		await taskboard.setToolGuardLevel('manage-edit');
 		guard = guardOf({ subagents: subagentsOf('lead') });
-		assert.equal(guard(exec('taskboard_tool_policy_set')), undefined, 'manage-edit ⇒ 允许改权限');
+		assert.equal(guard(exec('taskboard_tool_policy')), undefined, 'manage-edit ⇒ 允许改权限');
 	});
 
 	it('⚠ 即使把权限工具写进 common 增量，manage 下仍拒绝', async () => {
@@ -362,9 +362,9 @@ describe('createPermissionGuard', () => {
 		 * 这里从 dsh 侧确认：把权限工具配进 common 也绕不过去。
 		 */
 		await taskboard.setToolGuardLevel('manage');
-		await taskboard.setCommonPolicy(['taskboard_tool_policy_set']);
+		await taskboard.setCommonPolicy(['taskboard_tool_policy']);
 		const guard = guardOf({ subagents: subagentsOf('lead') });
-		assert.notEqual(guard(exec('taskboard_tool_policy_set')), undefined, '能给自己发权限的工具必须硬拒');
+		assert.notEqual(guard(exec('taskboard_tool_policy')), undefined, '能给自己发权限的工具必须硬拒');
 	});
 
 	/* ── 依赖面：参数里有什么、没什么 ── */
@@ -460,3 +460,4 @@ describe('createPermissionGuard', () => {
 		assert.equal(guard(exec('bash')), undefined, '内部错应放行（并 console.error）');
 	});
 });
+

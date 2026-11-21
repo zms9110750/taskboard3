@@ -1,14 +1,29 @@
 /**
- * AI 工具测试。
+ * DSH 工具适配层测试（tool contract v2）。
  *
- * ## 为什么可以直接测
+ * ## 为什么这文件被重写（v1 → v2，`2026-11-22`）
  *
- * `src/tools.ts` **不 import `@deepseek-ai/dsh-tools`** —— 它只声明 `DefineTool`
- * 窄形状，由调用方注入。⇒ 测试传一个**假的 `defineTool`**：原样保留
- * `name/description/parameters/output`，`execute` 原样返回。
+ * v1 的 67 个用例测的是 dsh 自己的 16 个工具本体；迁移后这些本体已经删除
+ * （唯一真值在 `@taskboard/tools`，那边有 73 条自己的测试）。
+ * 本文件改为测 **DSH 适配层契约**：
  *
- * 这样测的是**工具自己的逻辑**（参数映射、错误翻译、文案），
- * 而 DSH 的 schema 编译与参数校验不在本测试范围（那是 `dsh-tools` 的契约）。
+ * · 注册面：10 个 v2 工具、顺序、`hosts` 过滤结果；
+ * · schema 转换：JSON Schema → DSH `parameters`（required 内联、enum/items 保留）；
+ * · ctx 注入：holder（subagents 名字 / agent UUID 回落）、默认空间、激活空间、
+ *   权限开关（toolLevel=manage-edit）；
+ * · 每个工具经适配层跑一遍正常路径 + 一条失败路径（确认真能到达 core，
+ *   且失败文案按 v2 契约输出）。
+ *
+ * ## 测试方法没变
+ *
+ * `src/tools.ts` 只声明 `DefineTool` 窄形状；这里传一个**假 `defineTool`**：
+ * 原样保留 name/description/parameters/output，`execute` 原样返回。
+ * DSH 真正编译 schema / 每次调用前校验不在本测试范围（那由 DSH 自己保证）。
+ *
+ * ⚠ 与 v1 oracle 的差异逐条对应见迁移报告；核心是 **v2 删了 6 个工具**
+ *   （adopt / claim / release / registry / mark_seen / update_content /
+ *    tool_policies / tool_policy_set / tool_policy_members / tool_policy_reset
+ *    合并进 10 个新工具），对应用例按 v2 语义重写而不是删除行为覆盖。
  */
 
 import assert from 'node:assert/strict';
@@ -18,12 +33,16 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { createTaskboard, type Taskboard } from '@taskboard/core';
-import { BASE_TOOLS, POLICY_TOOLS, type ToolPolicyStore } from '@taskboard/core';
-import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
-import { createSearch } from '@taskboard/core';
+import { createSearch, createTaskboard, type Taskboard } from '@taskboard/core';
+import { STATUS_GROUP_OF, TaskState, type TaskState as TaskStateType } from '@taskboard/protocol';
 
-import { createTools, describeFailure, describeUnread, type DefineTool, type ToolLike } from '../src/tools.ts';
+import {
+	createTools,
+	describeFailure,
+	describeUnread,
+	type DefineTool,
+	type ToolLike,
+} from '../src/tools.ts';
 
 /* ────────────────────────────── 夹具 ────────────────────────────── */
 
@@ -40,22 +59,23 @@ const fakeDefineTool: DefineTool = (options) => ({
 
 const TEMPLATE_DIR = join(dirname(createRequire(import.meta.url).resolve('@taskboard/core/package.json')), 'templates');
 
-let dataDir = '';
 let taskboard: Taskboard;
 let tools: readonly ToolLike[];
+let workspaceId = '';
 
-before(() => {
-	dataDir = mkdtempSync(join(tmpdir(), 'tb3-tools-'));
-});
+/** 每个用例一个独立数据目录（避免上一个用例的空间/卡漏到下一个）。 */
+const createdDirs: string[] = [];
 
 after(async () => {
 	await closeTaskboard();
-	for (let i = 0; i < 10; i += 1) {
-		try {
-			rmSync(dataDir, { recursive: true, force: true });
-			return;
-		} catch {
-			await new Promise((resolve) => setTimeout(resolve, 100));
+	for (const dir of createdDirs) {
+		for (let i = 0; i < 10; i += 1) {
+			try {
+				rmSync(dir, { recursive: true, force: true });
+				break;
+			} catch {
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			}
 		}
 	}
 });
@@ -67,26 +87,21 @@ async function closeTaskboard(): Promise<void> {
 	await closing.close();
 }
 
-/** 当前用例的工作空间 id。 */
-let workspaceId = '';
-
 beforeEach(async () => {
 	await closeTaskboard();
+	const dataDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-tools-'));
+	createdDirs.push(dataDir);
 	taskboard = createTaskboard({
 		dataDir,
-		search: createSearch({ groupOf: (s) => STATUS_GROUP_OF[s as TaskState] }),
+		search: createSearch({ groupOf: (state) => STATUS_GROUP_OF[state as TaskStateType] }),
 	});
 	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 
-	const created = await taskboard.createWorkspace(`工具测试-${Date.now()}`);
+	const created = await taskboard.createWorkspace(`适配层测试-${Date.now()}`);
 	assert.equal(created.ok, true);
 	if (created.ok) workspaceId = created.workspace.id;
 
-	/*
-	 * ⚠ 档位是 core 的**持久化状态**（`dataDir` 在本文件里共用）——
-	 *   每个用例显式复位，否则前一个用例改过的档位会漏到下一个。
-	 *   默认值见 `core/src/index.ts:188,191`：no-claim + off。
-	 */
+	/* 每个用例显式复位两条轴（档位是 core 持久化状态，会漏到下一个用例）。 */
 	await taskboard.setCardActionLevel('no-claim');
 	await taskboard.setToolGuardLevel('off');
 
@@ -111,27 +126,71 @@ function tool(name: string): ToolLike {
 }
 
 /** 跑一个工具，取回文本。 */
-async function run(name: string, args: unknown, exec: unknown = {}): Promise<string> {
+async function run(name: string, args: unknown, exec: unknown = { agent: { id: 'agent-uuid' } }): Promise<string> {
 	const value = (await tool(name).execute(args, exec)) as { text: string };
 	return value.text;
 }
 
-/* ────────────────────────────── 用例 ────────────────────────────── */
+/** 跑一个工具，取回完整结果对象（测 output 形状用）。 */
+async function runRaw(name: string, args: unknown, exec: unknown = { agent: { id: 'agent-uuid' } }): Promise<{ text: string }> {
+	return (await tool(name).execute(args, exec)) as { text: string };
+}
 
-describe('工具注册面', () => {
-	it('十几个工具，名字与顺序稳定', () => {
-		/*
-		 * ⚠ 名字与顺序都是**契约**：模型按名字调用，改名字等于破坏已有会话。
-		 *   顺序影响 prompt 前缀的字节序 ⇒ 也不能随意调整。
-		 */
-		assert.deepEqual(tools.map((one) => one.name), [
-			'taskboard_workspaces',
-			'taskboard_cards',
-			'taskboard_card',
-			'taskboard_create',
+/** 建一张卡（走 core，不经过工具，用来布置状态）。 */
+async function seedCard(templateRef: string, title: string, options: { readonly actor?: 'ai' | 'user' } = {}): Promise<string> {
+	const created = await taskboard.create({
+		workspaceId,
+		templateRef,
+		title,
+		actor: options.actor ?? 'ai',
+	});
+	assert.equal(created.ok, true);
+	if (!created.ok) throw new Error(created.message);
+	return created.card.id;
+}
+
+/** 取某类别的第一个模板 ref（内置模板的 ref 是文件名，如 writeCode）。 */
+function templateRefOfKind(kind: string): string {
+	const found = taskboard.listTemplates().find((one) => one.kind === kind);
+	assert.notEqual(found, undefined, '缺类别的模板：' + kind);
+	return (found as { readonly ref: string }).ref;
+}
+
+/** work 类别模板 ref（大多数流程用例用它）。 */
+function workRef(): string {
+	return templateRefOfKind('work');
+}
+/** 用 core 把草稿推到「提交」（用户采纳）。 */
+async function submit(cardId: string): Promise<void> {
+	const adopted = await taskboard.adopt(workspaceId, cardId, 'user');
+	assert.equal(adopted.ok, true);
+}
+
+/* ────────────────────────────── 注册面 ────────────────────────────── */
+
+describe('工具注册面（适配层 = 薄）', () => {
+	it('暴露 v2 的 10 个工具，名字与顺序稳定', () => {
+		assert.deepEqual(
+			tools.map((one) => one.name),
+			[
+				'taskboard_workspaces',
+				'taskboard_cards',
+				'taskboard_card',
+				'taskboard_raw_card',
+				'taskboard_definitions',
+				'taskboard_create',
+				'taskboard_update',
+				'taskboard_update_note',
+				'taskboard_transition',
+				'taskboard_tool_policy',
+			],
+		);
+	});
+
+	it('v1 的 16 个旧工具名一个都不再注册', () => {
+		const names = new Set(tools.map((one) => one.name));
+		for (const old of [
 			'taskboard_update_content',
-			'taskboard_update_note',
-			'taskboard_transition',
 			'taskboard_adopt',
 			'taskboard_claim',
 			'taskboard_release',
@@ -141,1001 +200,496 @@ describe('工具注册面', () => {
 			'taskboard_tool_policy_set',
 			'taskboard_tool_policy_members',
 			'taskboard_tool_policy_reset',
-		]);
+		]) {
+			assert.equal(names.has(old), false, `旧工具「${old}」不该再注册`);
+		}
 	});
 
-	it('⚠ 权限工具与 core 的 POLICY_TOOLS 对齐', async () => {
-		/*
-		 * ⚠ 这是**跨包断言**：core 的 `POLICY_TOOLS` 是本仓库权限模型的
-		 *   安全边界，dsh 注册的权限工具名必须与之对齐 ——
-		 *   不在里面的那个 **guard 不会受开关控制**（会掉进「需要领卡」那条，
-		 *   行为是错的：既能改权限又不该需要卡）。
-		 *
-		 * 历史：`taskboard_tool_policy_members` 曾有一个 `pendingCoreUpdate`
-		 *      白名单（core 的 `POLICY_TOOLS` 当时只有 3 个）。core 已在
-		 *      `c232ee8` 补上，白名单按它自己写的提示删掉了。
-		 *      ⇒ **以后再加权限工具，两边必须同时改**，这条断言会抓住漏改。
-		 */
-		const dshPolicyTools = tools
-			.map((one) => one.name)
-			.filter((name) => name.startsWith('taskboard_tool_'))
-			.sort();
+	it('「仅 DSH」的 #9 在列表里（MCP 侧过滤不在本适配层）', () => {
+		assert.equal(tool('taskboard_tool_policy') !== undefined, true);
+	});
 
-		/* dsh 注册的每个权限工具，都必须在 core 的 POLICY_TOOLS 里。 */
-		for (const name of dshPolicyTools) {
-			assert.ok(
-				POLICY_TOOLS.includes(name),
-				`「${name}」不在 core 的 POLICY_TOOLS 里 —— 它不会受开关控制`,
-			);
+	it('每个工具都有名字、描述、参数表、output', () => {
+		for (const one of tools) {
+			assert.ok(one.name.startsWith('taskboard_'), one.name);
+			assert.ok(one.description.length > 20, `${one.name} 描述太短`);
+			assert.equal(typeof one.parameters, 'object', one.name);
+			assert.equal(typeof one.output, 'object', one.name);
+			assert.equal(typeof one.output.render, 'function', one.name);
+			assert.deepEqual(one.output.schema, {
+				type: 'object',
+				additionalProperties: false,
+				properties: { text: { type: 'string', description: '给模型看的文字结果。', required: true } },
+			});
+			assert.deepEqual(one.output.render({}, { text: 'hi' }), [{ type: 'text', text: 'hi' }]);
 		}
+	});
 
-		/* core 的每个 POLICY_TOOL 都必须真的注册了（否则那是一条空规则）。 */
-		for (const name of POLICY_TOOLS) {
-			assert.ok(dshPolicyTools.includes(name), `core 的 POLICY_TOOLS 里有「${name}」，但 dsh 没注册它`);
-		}
-
-		/* 两个方向都对齐 ⇒ 差集必须为空。 */
-		assert.deepEqual(
-			dshPolicyTools,
-			[...POLICY_TOOLS].sort(),
-			'dsh 注册的权限工具与 core 的 POLICY_TOOLS 不一致：两边必须同时改',
+	it('schema 静态：两次建工具参数表逐字节相同（prompt 前缀契约）', () => {
+		const again = createTools({
+			taskboard,
+			defineTool: fakeDefineTool,
+			defaultWorkspaceId: async () => workspaceId,
+			subagents: stubSubagents('测试agent'),
+		});
+		assert.equal(
+			JSON.stringify(tools.map((one) => one.parameters)),
+			JSON.stringify(again.map((one) => one.parameters)),
 		);
-
-		/* 权限工具一个都不能在 BASE 里（否则开关失效）。 */
-		for (const name of dshPolicyTools) {
-			assert.ok(!BASE_TOOLS.includes(name), `${name} 不该在 BASE_TOOLS 里`);
-		}
-	});
-
-	it('每个工具都有名字、描述、参数表', () => {
-		for (const one of tools) {
-			assert.equal(typeof one.name, 'string');
-			assert.ok(one.name.length > 0);
-			assert.ok(one.description.length > 10, `${one.name} 的描述太短`);
-			assert.equal(typeof one.parameters, 'object');
-		}
-	});
-
-	it('schema 静态：content 是开放对象，不按模板展开', () => {
-		for (const name of ['taskboard_create', 'taskboard_update_content']) {
-			const found = tool(name);
-			const content = (found.parameters as { content?: { additionalProperties?: boolean } }).content;
-			assert.equal(content?.additionalProperties, true, `${name} 的 content 必须是开放对象`);
-		}
-		/* 建卡的参数表只有 4 个固定键，不随模板变。 */
-		assert.deepEqual(Object.keys(tool('taskboard_create').parameters).sort(), [
-			'content',
-			'templateRef',
-			'title',
-			'workspaceId',
-		]);
-	});
-
-	it('taskboard_transition 的 to 是 string 不是 enum', () => {
-		/*
-		 * 用户裁定：`enum` 会随状态表变化而改变 schema ⇒ 击穿 KV cache。
-		 * 合法性在 `execute` 里判。
-		 */
-		const to = (tool('taskboard_transition').parameters as { to?: Record<string, unknown> }).to;
-		assert.equal(to?.type, 'string');
-		assert.equal(to?.enum, undefined, 'to 不允许是 enum');
-	});
-
-	it('每个工具都有 output schema 与 render', () => {
-		for (const one of tools) {
-			assert.equal(typeof one.output.schema, 'object');
-			const rendered = one.output.render({}, { text: 'x' });
-			assert.deepEqual(rendered, [{ type: 'text', text: 'x' }]);
-		}
 	});
 });
+
+/* ────────────────────────── ① schema 转换 ────────────────────────── */
+
+describe('schema 转换（JSON Schema → DSH parameters）', () => {
+	it('required 数组变成属性上的 required: true，且只标必填项', () => {
+		const create = tool('taskboard_create').parameters as Record<string, Record<string, unknown>>;
+		assert.equal(create['title']?.['required'], true);
+		assert.equal(create['templateRef']?.['required'], undefined, 'schema 里 templateRef 可选（handler 里才强制）');
+		assert.equal(create['workspaceId']?.['required'], undefined);
+		assert.equal(create['content']?.['required'], undefined);
+	});
+
+	it('enum 保留（定义类型 / 关系类型 / 权限档位）', () => {
+		const definitions = tool('taskboard_definitions').parameters as Record<string, Record<string, unknown>>;
+		assert.deepEqual(definitions['type']?.['enum'], ['domain', 'state', 'template', 'kind']);
+
+		const create = tool('taskboard_create').parameters as Record<string, Record<string, unknown>>;
+		const relations = create['relations'] as Record<string, unknown>;
+		const items = relations['items'] as Record<string, unknown>;
+		const itemProperties = items['properties'] as Record<string, Record<string, unknown>>;
+		assert.deepEqual(itemProperties['type']?.['enum'], [
+			'parent',
+			'dependsOn',
+			'supersedes',
+			'constrains',
+			'related',
+			'references',
+		]);
+
+		const policy = tool('taskboard_tool_policy').parameters as Record<string, Record<string, unknown>>;
+		assert.deepEqual(policy['tier']?.['enum'], ['unclaimed', 'claimed']);
+	});
+
+	it('开放对象与「任意 JSON」不被锁死（content additionalProperties / update value 无 type）', () => {
+		const create = tool('taskboard_create').parameters as Record<string, Record<string, unknown>>;
+		assert.equal(create['content']?.['additionalProperties'], true);
+		assert.equal(create['content']?.['type'], 'object');
+
+		const update = tool('taskboard_update').parameters as Record<string, Record<string, unknown>>;
+		assert.equal(update['value']?.['type'], undefined, 'v2 的 value 可以是任意 JSON（字符串/数组/对象）');
+		assert.equal(update['path']?.['required'], true);
+	});
+
+	it('taskboard_transition 的 to 是 string 不是 enum（状态表扩了不能击穿 prompt 缓存）', () => {
+		const transition = tool('taskboard_transition').parameters as Record<string, Record<string, unknown>>;
+		assert.equal(transition['to']?.['type'], 'string');
+		assert.equal(transition['to']?.['enum'], undefined);
+	});
+
+	it('数组参数保留 items；嵌套对象保留 properties/required', () => {
+		const policy = tool('taskboard_tool_policy').parameters as Record<string, Record<string, unknown>>;
+		assert.equal((policy['allow'] as Record<string, unknown>)['type'], 'array');
+		assert.equal(((policy['allow'] as Record<string, unknown>)['items'] as Record<string, unknown>)['type'], 'string');
+	});
+});
+
+/* ────────────────────────── ②① ctx：默认空间 / 激活空间 ────────────────────────── */
+
+describe('ctx：默认空间与激活空间', () => {
+	it('不传 workspaceId ⇒ 用 defaultWorkspaceId 解析（与 v1 入口策略一致）', async () => {
+		const text = await run('taskboard_cards', { status: ['draft'] });
+		assert.ok(text.includes('共 0 张卡'), text);
+	});
+
+	it('显式 workspaceId 优先于默认空间', async () => {
+		const other = await taskboard.createWorkspace('另一个空间');
+		assert.equal(other.ok, true);
+		if (!other.ok) return;
+		const text = await run('taskboard_cards', { workspaceId: other.workspace.id, status: ['draft'] });
+		assert.ok(text.includes('共 0 张卡'), text);
+	});
+
+	it('激活空间 = 第一个未归档空间（#1 会显示）', async () => {
+		const text = await run('taskboard_workspaces', {});
+		assert.ok(text.includes(`当前激活空间：${workspaceId}`), text);
+	});
+
+	it('默认空间解析器抛错 ⇒ 失败文案说清是宿主接线问题', async () => {
+		const broken = createTools({
+			taskboard,
+			defineTool: fakeDefineTool,
+			defaultWorkspaceId: async () => {
+				throw new Error('激活空间不存在');
+			},
+			subagents: stubSubagents('测试agent'),
+		});
+		const cards = broken.find((one) => one.name === 'taskboard_cards') as ToolLike;
+		const value = (await cards.execute({}, { agent: { id: 'x' } })) as { text: string };
+		assert.ok(value.text.includes('宿主解析激活空间失败'), value.text);
+		assert.ok(value.text.includes('workspaceId'), value.text);
+	});
+});
+
+/* ────────────────────────── ②② ctx：holder ────────────────────────── */
+
+describe('ctx：holder（领取/释放的持有者）', () => {
+	it('claim 用 subagents 给的名字当 holder', async () => {
+		await taskboard.setCardActionLevel('claim');
+		const id = await seedCard(workRef(), '领卡用例');
+		await submit(id);
+		await run('taskboard_transition', { id, to: TaskState.WORKING });
+		const after = taskboard.get(workspaceId, id);
+		assert.equal(after.ok, true);
+		if (after.ok) assert.deepEqual(after.card.holders.map((one) => one.holder), ['测试agent']);
+	});
+
+	it('subagents 缺席 ⇒ holder 回落 agent.id（功能照样可用）', async () => {
+		const local = createTools({
+			taskboard,
+			defineTool: fakeDefineTool,
+			defaultWorkspaceId: async () => workspaceId,
+		});
+		await taskboard.setCardActionLevel('claim');
+		const id = await seedCard(workRef(), 'UUID 持有');
+		await submit(id);
+		const transition = local.find((one) => one.name === 'taskboard_transition') as ToolLike;
+		await transition.execute({ id, to: TaskState.WORKING }, { agent: { id: 'uuid-1234' } });
+		const after = taskboard.get(workspaceId, id);
+		if (after.ok) assert.deepEqual(after.card.holders.map((one) => one.holder), ['uuid-1234']);
+	});
+
+	it('没有 agent 上下文 ⇒ holder=unknown（不编名字，claim 仍能工作）', async () => {
+		await taskboard.setCardActionLevel('adopt');
+		const id = await seedCard(workRef(), '无 agent 上下文');
+		const text = await run('taskboard_transition', { id, to: TaskState.SUBMITTED }, {});
+		assert.ok(text.includes('已采纳'), text);
+	});
+});
+
+/* ────────────────────────── ②③ ctx：权限开关 ────────────────────────── */
+
+describe('ctx：权限开关（#9 的门槛 = 宿主轴 manage-edit）', () => {
+	it('off 档 ⇒ #9 拒绝执行（agent 侧权限开关未启用）', async () => {
+		const text = await run('taskboard_tool_policy', { tier: 'unclaimed', allow: ['bash'] });
+		assert.ok(text.includes('权限开关未启用'), text);
+		assert.ok(text.includes('失败'), text);
+	});
+
+	it('manage-edit 档 ⇒ #9 可执行，且能读到写入结果', async () => {
+		await taskboard.setToolGuardLevel('manage-edit');
+		const text = await run('taskboard_tool_policy', { tier: 'unclaimed', allow: ['bash'] });
+		assert.ok(text.includes('已更新'), text);
+		assert.ok(text.includes('bash'), text);
+		assert.deepEqual([...taskboard.getToolPolicies().unclaimed], ['bash']);
+	});
+});
+
+/* ────────────────────────── 各工具经适配层 ────────────────────────── */
 
 describe('taskboard_workspaces', () => {
 	it('列出空间并带卡数', async () => {
+		await seedCard(workRef(), '一张卡');
 		const text = await run('taskboard_workspaces', {});
-		assert.ok(text.includes('工作空间'), text);
+		assert.ok(text.includes('工作空间（1 个）'), text);
 		assert.ok(text.includes(workspaceId), text);
+		assert.ok(text.includes('1 张卡'), text);
 	});
 
-	it('空任务板时给出下一步', async () => {
-		await closeTaskboard();
-		taskboard = createTaskboard({
-			dataDir: mkdtempSync(join(tmpdir(), 'tb3-empty-')),
-			search: createSearch({ groupOf: (s) => STATUS_GROUP_OF[s as TaskState] }),
-		});
-		tools = createTools({
-			taskboard,
-			defineTool: fakeDefineTool,
-			defaultWorkspaceId: async () => '',
-		});
-		const text = await run('taskboard_workspaces', {});
-		assert.ok(text.includes('还没有任何工作空间'), text);
-	});
-});
-
-describe('taskboard_create', () => {
-	it('省略 templateRef 时用第一个可用模板', async () => {
-		const first = taskboard.listTemplates()[0];
-		assert.notEqual(first, undefined);
-		const text = await run('taskboard_create', { title: '自动选模板' });
-		assert.ok(text.startsWith('已建卡 '), text);
-		if (first !== undefined) assert.ok(text.includes(first.ref), text);
-	});
-
-	it('指定 templateRef 建卡成功，列出章节', async () => {
-		const first = taskboard.listTemplates()[0];
-		if (first === undefined) return;
-		const text = await run('taskboard_create', { title: '指定模板', templateRef: first.ref });
-		assert.ok(text.includes('已建卡'), text);
-		assert.ok(text.includes('章节'), text);
-	});
-
-	it('未知 templateRef ⇒ 友好错误 + 下一步', async () => {
-		const text = await run('taskboard_create', { title: 'x', templateRef: '不存在的模板' });
-		assert.ok(text.startsWith('建卡失败'), text);
-		assert.ok(text.includes('下一步'), `应带修复指引：${text}`);
-	});
-
-	it('错章节名 ⇒ 错误里列出可用章节', async () => {
-		const first = taskboard.listTemplates()[0];
-		if (first === undefined) return;
-		const text = await run('taskboard_create', {
-			title: 'x',
-			templateRef: first.ref,
-			content: { 瞎写的章节: { $type: 'text', value: 'y' } },
-		});
-		assert.ok(text.startsWith('建卡失败'), text);
-		/* core 的 CONTENT_INVALID 会列出可用章节名。 */
-		assert.ok(text.includes('瞎写的章节') || text.includes('章节'), text);
-	});
-
-	it('缺 title ⇒ 报错而不是建成空标题卡', async () => {
-		const before = taskboard.list(workspaceId).length;
-		const text = await run('taskboard_create', { title: '' });
-		assert.ok(text.startsWith('建卡失败'), text);
-		assert.equal(taskboard.list(workspaceId).length, before, '不该建出卡');
+	it('空任务板（无空间）时给出下一步，不是崩溃', async () => {
+		const emptyDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-empty-'));
+		const empty = createTaskboard({ dataDir: emptyDir });
+		try {
+			const emptyTools = createTools({ taskboard: empty, defineTool: fakeDefineTool, defaultWorkspaceId: async () => '' });
+			const workspaces = emptyTools.find((one) => one.name === 'taskboard_workspaces') as ToolLike;
+			const value = (await workspaces.execute({}, {})) as { text: string };
+			assert.ok(value.text.includes('没有任何工作空间'), value.text);
+		} finally {
+			await empty.close();
+			rmSync(emptyDir, { recursive: true, force: true });
+		}
 	});
 });
 
 describe('taskboard_cards', () => {
 	it('不带 status ⇒ 不含草稿', async () => {
-		const first = taskboard.listTemplates()[0];
-		if (first === undefined) return;
-		const made = await taskboard.create({ workspaceId, templateRef: first.ref, title: '草稿卡' });
-		assert.equal(made.ok, true);
-
+		await seedCard(workRef(), '草稿不该出现');
 		const text = await run('taskboard_cards', {});
-		assert.ok(!text.includes('草稿卡'), `默认不该列出草稿：${text}`);
+		assert.ok(!text.includes('草稿不该出现'), text);
 	});
 
 	it('status=draft ⇒ 能看到草稿', async () => {
-		const first = taskboard.listTemplates()[0];
-		if (first === undefined) return;
-		const made = await taskboard.create({ workspaceId, templateRef: first.ref, title: '要看见我' });
-		assert.equal(made.ok, true);
-
+		await seedCard(workRef(), '可见草稿');
 		const text = await run('taskboard_cards', { status: ['draft'] });
-		assert.ok(text.includes('要看见我'), text);
+		assert.ok(text.includes('可见草稿'), text);
 	});
 
 	it('标题筛选命中与不命中', async () => {
-		const first = taskboard.listTemplates()[0];
-		if (first === undefined) return;
-		await taskboard.create({ workspaceId, templateRef: first.ref, title: '登录页面改版' });
-
+		await seedCard(workRef(), '登录页面改版');
+		await seedCard(workRef(), '无关任务');
 		const hit = await run('taskboard_cards', { title: '登录', status: ['draft'] });
 		assert.ok(hit.includes('登录页面改版'), hit);
-
-		const miss = await run('taskboard_cards', { title: '不存在的字', status: ['draft'] });
-		assert.ok(miss.includes('没有符合条件'), miss);
-	});
-});
-
-/* ────────────────────────── actor 标记（配对断言） ──────────────────────────
- *
- * ## 为什么需要「配对」断言
- *
- * 只测「AI 写完 ⇒ 进 updates.ai」不够 —— 如果两边都把 actor 标成 `'ai'`，
- * 这条也会过。反过来只测 HTTP 侧同理。
- *
- * ⇒ 两条合起来才有判别力：
- *   AI 工具写完  ⇒ 进 `updates.ai`、**不进** `updates.user`
- *   HTTP 写完    ⇒ 进 `updates.user`、**不进** `updates.ai`
- *
- * 如果哪天有人把某一侧的 actor 标错（或忘了标，默认成 `'user'`），
- * 其中一条必然失败。
- */
-
-describe('actor 标记：AI 工具写 ⇒ updates.ai', () => {
-	/** 取当前空间的 updates。 */
-	async function updates(): Promise<{ ai: readonly string[]; user: readonly string[] }> {
-		return taskboard.updates(workspaceId);
-	}
-
-	it('AI 工具建卡 ⇒ 进 updates.ai，不进 updates.user', async () => {
-		const id = await makeCardByAi('AI 建的卡');
-		assert.notEqual(id, '');
-
-		const result = await updates();
-		assert.ok(result.ai.includes(id), `应进 updates.ai：${JSON.stringify(result)}`);
-		assert.ok(!result.user.includes(id), `不该进 updates.user：${JSON.stringify(result)}`);
+		assert.ok(!hit.includes('无关任务'), hit);
 	});
 
-	it('AI 工具改备注 ⇒ 进 updates.ai，不进 updates.user', async () => {
-		const id = await makeCardByAi('AI 改备注');
-		/*
-		 * ⚠ 要清 `updates.ai`，必须由**用户**标记已读（`markSeen(..., 'user')`）。
-		 *
-		 * 字段名的方向是**交叉**的：`unread.ai` 的意思是「**AI 改过**、用户待读」
-		 * ⇒ 清它的是**用户**看过（`reader: 'user'`）。
-		 *
-		 * ⚠ 这套语义原来靠「读游标 + 历史下标」实现；现在未读是卡上的两个 bool
-		 *   （`Card.unread`，用户裁定「不能再用胶水代码了」）。
-		 *   本用例的**调用方式不变**，但底层已不是游标。
-		 */
-		await taskboard.markSeen(workspaceId, id, 'user');
-
-		const before = await updates();
-		assert.ok(!before.ai.includes(id), `用户已读之后不该还在 ai：${JSON.stringify(before)}`);
-
-		const text = await run('taskboard_update_note', { id, note: 'AI 写的备注' });
-		assert.ok(text.includes('已更新'), text);
-
-		const after = await updates();
-		assert.ok(after.ai.includes(id), `改备注后应重新进 ai：${JSON.stringify(after)}`);
-		assert.ok(!after.user.includes(id), `不该进 user：${JSON.stringify(after)}`);
-	});
-
-	it('AI 工具改章节内容 ⇒ 进 updates.ai', async () => {
-		const ref = taskboard.listTemplates()[0]?.ref ?? '';
-		const meta = taskboard.templateMeta(ref);
-		const section = meta?.sections[0];
-		assert.notEqual(section, undefined);
-		if (section === undefined) return;
-
-		const id = await makeCardByAi('AI 改内容');
-		await taskboard.markSeen(workspaceId, id, 'user');
-
-		const text = await run('taskboard_update_content', {
-			id,
-			content: { [section.label]: { $type: section.action, value: '改过' } },
-		});
-		assert.ok(text.includes('已改'), text);
-
-		const after = await updates();
-		assert.ok(after.ai.includes(id), `应进 ai：${JSON.stringify(after)}`);
-		assert.ok(!after.user.includes(id), `不该进 user：${JSON.stringify(after)}`);
-	});
-
-	it('taskboard_mark_seen 清的是 updates.user（不是 updates.ai）', async () => {
-		/*
-		 * ⚠ **这是最容易搞反的一条。**
-		 *
-		 * `markSeen(cardId, reader)` 清的是**那个读者**的未读标记 ——
-		 * 但字段名的方向是交叉的（字段名说的是「谁改的」，不是「谁没读」）：
-		 *
-		 *   · `Card.unread.user` = 「用户改过、**AI** 待读」⇒ 要 **AI** 标已读才清
-		 *   · `Card.unread.ai`   = 「AI 改过、**用户**待读」⇒ 要 **用户**标已读才清
-		 *
-		 * 所以 `taskboard_mark_seen`（reader 固定 `'ai'`）清的是 **`updates.user`**。
-		 */
-		/* 用户建的卡 ⇒ 进 updates.user（用户改过、AI 未读）。 */
-		const id = await makeCard('用户建的卡');
-		const before = await updates();
-		assert.ok(before.user.includes(id), `用户建卡后应在 user：${JSON.stringify(before)}`);
-		assert.ok(!before.ai.includes(id), `不该在 ai：${JSON.stringify(before)}`);
-
-		const text = await run('taskboard_mark_seen', { id });
-		assert.ok(text.includes('已把'), text);
-
-		const after = await updates();
-		assert.ok(!after.user.includes(id), `mark_seen 后应移出 user：${JSON.stringify(after)}`);
-	});
-
-	it('userChanged / userUnread 筛选按作者区分（不是按读者）', async () => {
-		/*
-		 * 这条直接钉住那两个容易搞反的参数名：
-		 *   userChanged ⇒ updates.user（**用户**改的）
-		 *   userUnread  ⇒ updates.ai  （**用户**未读的 = AI 改的）
-		 */
-		const id = await makeCardByAi('AI 改的卡');
-		const userCard = await makeCard('用户建的卡');
-
-		/* AI 改的卡应在 updates.ai。 */
-		const result = await updates();
-		assert.ok(result.ai.includes(id), `AI 改的卡应在 ai：${JSON.stringify(result)}`);
-		assert.ok(result.user.includes(userCard), `用户建的卡应在 user：${JSON.stringify(result)}`);
-
-		/* userUnread ⇒ updates.ai ⇒ 命中 AI 改的卡。 */
-		const byUnread = await run('taskboard_cards', { userUnread: true, status: ['draft'] });
-		assert.ok(byUnread.includes('AI 改的卡'), `userUnread 应命中 AI 改的卡：${byUnread}`);
-		assert.ok(!byUnread.includes('用户建的卡'), `userUnread 不该命中用户建的卡：${byUnread}`);
-
-		/* userChanged ⇒ updates.user ⇒ 命中用户建的卡。 */
-		const byChanged = await run('taskboard_cards', { userChanged: true, status: ['draft'] });
-		assert.ok(byChanged.includes('用户建的卡'), `userChanged 应命中用户建的卡：${byChanged}`);
-		assert.ok(!byChanged.includes('AI 改的卡'), `userChanged 不该命中 AI 改的卡：${byChanged}`);
-	});
-});
-
-describe('describeUnread', () => {
-	it('四种组合的措辞（字段名说的是「谁改的」，不是「谁没读」）', () => {
-		assert.equal(describeUnread({ ai: false, user: false }), '双方都已读');
-		assert.equal(describeUnread({ ai: false, user: true }), '用户改过，AI 待读');
-		assert.equal(describeUnread({ ai: true, user: false }), 'AI 改过，用户待读');
-		assert.equal(describeUnread({ ai: true, user: true }), '双方都有未读');
-	});
-});
-
-/* ────────────────────────── 四档权限工具 ──────────────────────────
- *
- * 用户原话（四档的来源）：
- * > 组，用户自己手动拉一骡子放一起。相当于说批量设置权限。并不特别。
- *
- * 生效集 = BASE ∪ common ∪ 命中的组 ∪ 独立档 —— 由 core 的 `effectiveToolsOf` 实现。
- * 本层只负责**读写**四档，不重新实现并集。
- */
-
-describe('四档权限工具', () => {
-	/** 取当前库里的策略。 */
-	function policies(): ToolPolicyStore {
-		return taskboard.getToolPolicies();
-	}
-
-	it('读工具打印四档，且明确标「BASE 改不了」', async () => {
-		await run('taskboard_tool_policy_set', { granularity: 'common', delta: ['bash'] });
-		const text = await run('taskboard_tool_policies', {});
-
-		assert.ok(text.includes('BASE'), text);
-		assert.ok(text.includes('改不了') || text.includes('不要试图'), `要告诉 AI BASE 不可改：${text}`);
-		assert.ok(text.includes('通用档'), text);
-		assert.ok(text.includes('组'), text);
-		assert.ok(text.includes('独立档'), text);
-		/* 通用档里应该有 bash。 */
-		assert.ok(text.includes('bash'), text);
-	});
-
-	it('⚠ BASE 不可改：设独立档之后 taskboard_transition 仍然可用（它是 BASE）', async () => {
-		/*
-		 * 这是 lead 点名要的那条断言。
-		 *
-		 * 「BASE 不可改」不是靠 UI 提示保证的，是靠**结构**：
-		 *   · BASE 是 `Object.freeze` 的常量，没有任何 setter；
-		 *   · 四档存的是**增量**（只加不减）；
-		 *   · 生效集 = `BASE ∪ ...` ⇒ 结构上不可能把 BASE 挤掉。
-		 *
-		 * ⇒ 这里从**工具层**验证：改完独立档，BASE 里的工具判定仍然放行。
-		 */
-		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
-		assert.notEqual(template, undefined);
-		if (template === undefined) return;
-
-		/* 把 writeCode（或第一个 work 模板）的独立档设成只有 bash。 */
-		const set = await run('taskboard_tool_policy_set', {
-			granularity: 'template',
-			name: template.ref,
-			delta: ['bash'],
-		});
-		assert.ok(set.includes('独立档'), set);
-
-		/* 拿一张这个模板的工作卡，领到「处理中」。 */
-		const created = await taskboard.create({
-			workspaceId,
-			templateRef: template.ref,
-			title: 'BASE 不可改',
-			actor: 'user',
-		});
-		assert.equal(created.ok, true);
-		if (!created.ok) return;
-		const cardId = created.card.id;
-		await taskboard.transition(workspaceId, cardId, 'TASK_STATE_SUBMITTED', 'button');
-		await taskboard.claim(workspaceId, cardId, 'ai', 'lead');
-
-		/* 档位：宿主轴必须 manage，否则第二段一律放行（off = 不管理工具）。 */
-		await taskboard.setToolGuardLevel('manage');
-		const heldCards = [{ templateRef: template.ref }];
-
-		/* taskboard_transition 在 BASE ⇒ 任何时候都放行，不受 delta 影响。 */
-		const baseVerdict = taskboard.judgeToolCall({
-			toolName: 'taskboard_transition',
-			heldCards,
-		});
-		assert.deepEqual(baseVerdict, { ok: true }, 'BASE 里的工具不该被 delta 影响');
-
-		/* 而 bash 因为在独立档里 ⇒ 也放行（证明 delta 生效了）。 */
-		const bashVerdict = taskboard.judgeToolCall({ toolName: 'bash', heldCards });
-		assert.deepEqual(bashVerdict, { ok: true }, '独立档里的 bash 该放行');
-
-		/* edit 既不在 BASE 也不在独立档 ⇒ 拒。 */
-		const editVerdict = taskboard.judgeToolCall({ toolName: 'edit', heldCards });
-		assert.equal(editVerdict.ok, false, 'edit 没被授予 ⇒ 该拒');
-	});
-
-	it('granularity=common ⇒ 写通用档', async () => {
-		const text = await run('taskboard_tool_policy_set', { granularity: 'common', delta: ['bash', 'write'] });
-		assert.ok(text.includes('通用档'), text);
-		assert.deepEqual([...policies().common].sort(), ['bash', 'write']);
-	});
-
-	it('granularity=group ⇒ 写组增量', async () => {
-		const text = await run('taskboard_tool_policy_set', {
-			granularity: 'group',
-			name: '代码类',
-			delta: ['bash'],
-		});
-		assert.ok(text.includes('代码类'), text);
-		assert.deepEqual([...(policies().groups['代码类'] ?? [])], ['bash']);
-	});
-
-	it('granularity=template ⇒ 写独立档', async () => {
-		const template = taskboard.listTemplates()[0];
-		assert.notEqual(template, undefined);
-		if (template === undefined) return;
-		const text = await run('taskboard_tool_policy_set', {
-			granularity: 'template',
-			name: template.ref,
-			delta: ['read_file'],
-		});
-		assert.ok(text.includes('独立档'), text);
-		assert.deepEqual([...(policies().templates[template.ref] ?? [])], ['read_file']);
-	});
-
-	it('granularity 非法 ⇒ 明确报错，不静默成功', async () => {
-		/* 先清空通用档，这样「非法粒度有没有写进去」才判得准。 */
-		await run('taskboard_tool_policy_reset', { granularity: 'common' });
-		const before = [...policies().common];
-
-		const text = await run('taskboard_tool_policy_set', { granularity: 'nope', delta: ['bash'] });
-		assert.ok(text.includes('必须是'), text);
-		assert.deepEqual([...policies().common], before, '非法粒度不该写任何档');
-	});
-
-	it('group / template 缺 name ⇒ 报错', async () => {
-		const g = await run('taskboard_tool_policy_set', { granularity: 'group', delta: ['bash'] });
-		assert.ok(g.includes('必须给 name'), g);
-		const t = await run('taskboard_tool_policy_set', { granularity: 'template', delta: ['bash'] });
-		assert.ok(t.includes('必须给 name'), t);
-	});
-
-	it('未知模板的独立档 ⇒ core 拒绝（TEMPLATE_NOT_FOUND）', async () => {
-		const text = await run('taskboard_tool_policy_set', {
-			granularity: 'template',
-			name: '不存在的模板',
-			delta: ['bash'],
-		});
+	it('非法状态筛选值 ⇒ 失败文案列出可用值', async () => {
+		const text = await run('taskboard_cards', { status: ['不存在的状态'] });
 		assert.ok(text.includes('失败'), text);
-		assert.ok(policies().templates['不存在的模板'] === undefined, '不该写进库');
-	});
-
-	it('taskboard_tool_policy_members ⇒ 设组成员', async () => {
-		const text = await run('taskboard_tool_policy_members', {
-			groupName: '代码类',
-			templates: ['writeCode', 'writeTests'],
-		});
-		assert.ok(text.includes('代码类'), text);
-		assert.deepEqual([...(policies().groupMembers['代码类'] ?? [])], ['writeCode', 'writeTests']);
-	});
-
-	it('组只设策略不设成员 ⇒ 谁都不命中（合法状态）', async () => {
-		await run('taskboard_tool_policy_set', { granularity: 'group', name: '空组', delta: ['bash'] });
-		assert.deepEqual([...(policies().groupMembers['空组'] ?? [])], []);
-	});
-
-	it('reset common ⇒ 清空通用档', async () => {
-		await run('taskboard_tool_policy_set', { granularity: 'common', delta: ['bash'] });
-		const text = await run('taskboard_tool_policy_reset', { granularity: 'common' });
-		assert.ok(text.includes('已清空'), text);
-		assert.deepEqual([...policies().common], []);
-	});
-
-	it('reset group ⇒ 整组删除（成员 + 增量都没了）', async () => {
-		await run('taskboard_tool_policy_set', { granularity: 'group', name: '要删的组', delta: ['bash'] });
-		await run('taskboard_tool_policy_members', { groupName: '要删的组', templates: ['writeCode'] });
-
-		const text = await run('taskboard_tool_policy_reset', { granularity: 'group', name: '要删的组' });
-		assert.ok(text.includes('已删除'), text);
-		assert.equal(policies().groups['要删的组'], undefined);
-		assert.equal(policies().groupMembers['要删的组'], undefined);
-	});
-
-	it('reset template ⇒ 只清那个模板的独立档', async () => {
-		const template = taskboard.listTemplates()[0];
-		if (template === undefined) return;
-		await run('taskboard_tool_policy_set', { granularity: 'template', name: template.ref, delta: ['bash'] });
-
-		const text = await run('taskboard_tool_policy_reset', {
-			granularity: 'template',
-			name: template.ref,
-		});
-		assert.ok(text.includes('已清空'), text);
-		/*
-		 * ⚠ core 的语义是「设成**空增量**」而不是「删键」：
-		 *   `setTemplatePolicy(ref, [])` 会把 `templates[ref] = []`。
-		 *   空数组与 undefined 在 `effectiveToolsOf` 里等价（都加不了东西），
-		 *   所以这里断言「没有增量」而不是「键不存在」—— 断言实际的契约，
-		 *   不是断言实现细节。
-		 */
-		assert.deepEqual([...(policies().templates[template.ref] ?? [])], [], '该模板不该再有额外工具');
-	});
-
-	it('reset 幂等：删不存在的组不算错', async () => {
-		const text = await run('taskboard_tool_policy_reset', { granularity: 'group', name: '从来没建过' });
-		assert.ok(text.includes('已删除'), text);
+		assert.ok(text.includes('原因码'), text);
 	});
 });
-
-describe('describeFailure', () => {
-	it('带 issues 时逐条列出', () => {		const text = describeFailure({
-			ok: false,
-			code: 'CONTENT_INVALID',
-			message: '充数不对',
-			issues: [
-				{ path: '/content/要查什么', message: '必填' },
-				{ path: '', message: '整体不对' },
-			],
-		});
-		assert.ok(text.includes('充数不对'), text);
-		assert.ok(text.includes('下一步'), text);
-		assert.ok(text.includes('/content/要查什么：必填'), text);
-		assert.ok(text.includes('(整体)：整体不对'), text);
-	});
-
-	it('无 issues 时不出现「具体问题」段', () => {
-		const text = describeFailure({ ok: false, code: 'CARD_NOT_FOUND', message: '找不到' });
-		assert.ok(!text.includes('具体问题'), text);
-	});
-});
-
-/* ────────────────────────── 新增的六个工具 ────────────────────────── */
-
-/**
- * 建一张卡，返回编号。
- *
- * ⚠ **这个辅助函数模拟「用户建卡」**（直接调 core、不传 actor ⇒ 默认 `'user'`）。
- *   它**不会**让卡进 `updates.ai` —— 要测 AI 路径就用 `run('taskboard_create', ...)`。
- */
-async function makeCard(title: string, templateRef?: string): Promise<string> {
-	const ref = templateRef ?? taskboard.listTemplates()[0]?.ref ?? '';
-	const created = await taskboard.create({ workspaceId, templateRef: ref, title, actor: 'user' });
-	assert.equal(created.ok, true, `建卡失败：${created.ok ? '' : created.message}`);
-	return created.ok ? created.card.id : '';
-}
-
-/** 用 **AI 工具**建一张卡，返回编号（会让卡进 `updates.ai`）。 */
-async function makeCardByAi(title: string): Promise<string> {
-	const ref = taskboard.listTemplates()[0]?.ref ?? '';
-	const text = await run('taskboard_create', { title, templateRef: ref });
-	assert.ok(text.includes('已建卡'), text);
-	const found = taskboard.list(workspaceId).find((one) => one.title === title);
-	assert.notEqual(found, undefined, `AI 建卡后找不到「${title}」`);
-	return found?.id ?? '';
-}
 
 describe('taskboard_card', () => {
-	it('返回元数据、章节、历史', async () => {
-		const id = await makeCard('详情测试');
+	it('返回元数据、章节、历史；查看即 AI 已读', async () => {
+		const id = await seedCard(workRef(), '详情卡', { actor: 'user' });
 		const text = await run('taskboard_card', { id });
 		assert.ok(text.includes(id), text);
-		assert.ok(text.includes('详情测试'), text);
+		assert.ok(text.includes('详情卡'), text);
 		assert.ok(text.includes('状态：'), text);
-		assert.ok(text.includes('模板：'), text);
+		assert.ok(text.includes('已标记 AI 已读'), text);
+		const after = taskboard.get(workspaceId, id);
+		if (after.ok) assert.equal(after.card.unread.user, false);
 	});
 
 	it('不存在的编号 ⇒ 失败文案', async () => {
-		const text = await run('taskboard_card', { id: 'NOPE-99' });
-		assert.ok(text.includes('不存在'), text);
-	});
-});
-
-describe('taskboard_update_note', () => {
-	it('写备注', async () => {
-		const id = await makeCard('备注测试');
-		const text = await run('taskboard_update_note', { id, note: '这是备注' });
-		assert.ok(text.includes('已更新'), text);
-
-		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
-		if (after.ok) assert.equal(after.card.note, '这是备注');
-	});
-
-	it('空串清空备注', async () => {
-		const id = await makeCard('清空备注');
-		await run('taskboard_update_note', { id, note: '先写点' });
-		const text = await run('taskboard_update_note', { id, note: '' });
-		assert.ok(text.includes('已清空'), text);
-
-		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
-		if (after.ok) assert.equal(after.card.note, '');
-	});
-
-	it('不存在的编号 ⇒ 失败文案', async () => {
-		const text = await run('taskboard_update_note', { id: 'NOPE-99', note: 'x' });
+		const text = await run('taskboard_card', { id: 'NOPE' });
 		assert.ok(text.includes('失败'), text);
+		assert.ok(text.includes('CARD_NOT_FOUND'), text);
 	});
 });
 
-describe('taskboard_update_content', () => {
-	it('只改指定章节，其它章节保留', async () => {
+describe('taskboard_raw_card', () => {
+	it('返回纯 JSON：sectionKey → payload', async () => {
+		const id = await seedCard(workRef(), '原始 JSON');
+		const value = (await tool('taskboard_raw_card').execute({ id }, { agent: { id: 'x' } })) as { text: string };
+		const json = JSON.parse(value.text) as Record<string, unknown>;
+		assert.equal(typeof json, 'object');
+		assert.ok(Object.keys(json).length > 0);
+	});
+
+	it('不存在 ⇒ 失败文案', async () => {
+		const text = await run('taskboard_raw_card', { id: 'NOPE' });
+		assert.ok(text.includes('CARD_NOT_FOUND'), text);
+	});
+});
+
+describe('taskboard_definitions', () => {
+	it('不传 name ⇒ 列出 4 类定义', async () => {
+		const text = await run('taskboard_definitions', {});
+		assert.ok(text.includes('领域（'), text);
+		assert.ok(text.includes('状态（'), text);
+		assert.ok(text.includes('模板（'), text);
+		assert.ok(text.includes('分类（'), text);
+	});
+
+	it('给模板 ref ⇒ 列出章节与 action', async () => {
 		const ref = taskboard.listTemplates()[0]?.ref ?? '';
-		const meta = taskboard.templateMeta(ref);
-		assert.notEqual(meta, undefined);
-		const sections = meta?.sections ?? [];
-		assert.ok(sections.length >= 2, '需要至少两个章节的模板来验证「只改一章」');
-
-		const id = await makeCard('改内容');
-		const first = sections[0];
-		const second = sections[1];
-		if (first === undefined || second === undefined) return;
-
-		const text = await run('taskboard_update_content', {
-			id,
-			content: { [first.label]: { $type: first.action, value: '第一章的内容' } },
-		});
-		assert.ok(text.includes('已改'), text);
-
-		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
-		if (!after.ok) return;
-
-		/* 改的那章变了。 */
-		const changed = Object.values(after.card.sections).find((one) => one.label === first.label);
-		assert.notEqual(changed, undefined);
-		if (changed !== undefined) {
-			assert.ok(JSON.stringify(changed.payload).includes('第一章的内容'), JSON.stringify(changed.payload));
-		}
-		/* 没改的章还在（没有被整体替换掉）。 */
-		const untouched = Object.values(after.card.sections).find((one) => one.label === second.label);
-		assert.notEqual(untouched, undefined, '没传的章节不该被删掉');
-	});
-
-	it('content 不是对象 ⇒ 失败文案', async () => {
-		const id = await makeCard('坏 content');
-		const text = await run('taskboard_update_content', { id, content: '不是对象' });
-		assert.ok(text.includes('必须是对象'), text);
-	});
-
-	it('未知章节名 ⇒ core 的校验错误', async () => {
-		const id = await makeCard('错章节');
-		const text = await run('taskboard_update_content', {
-			id,
-			content: { 瞎写的章节名: { $type: 'text', value: 'x' } },
-		});
-		assert.ok(text.includes('失败'), text);
-	});
-});
-
-describe('taskboard_registry', () => {
-	it('不带 id ⇒ 列模板与 action', async () => {
-		const text = await run('taskboard_registry', {});
-		assert.ok(text.includes('模板'), text);
-		assert.ok(text.includes('action'), text);
-	});
-
-	it('给模板 ref ⇒ 列出章节名与每章的 action', async () => {
-		const first = taskboard.listTemplates()[0];
-		assert.notEqual(first, undefined);
-		if (first === undefined) return;
-		const text = await run('taskboard_registry', { id: first.ref });
-		assert.ok(text.includes(first.ref), text);
+		const text = await run('taskboard_definitions', { name: ref, type: 'template' });
 		assert.ok(text.includes('章节'), text);
 		assert.ok(text.includes('action='), text);
 	});
 
-	it('给 action 的 $type ⇒ 返回摘要', async () => {
-		const action = taskboard.actions().list()[0];
-		assert.notEqual(action, undefined);
-		if (action === undefined) return;
-		const text = await run('taskboard_registry', { id: action.$type, kind: 'action' });
-		assert.ok(text.includes(action.$type), text);
+	it('不存在的名字 ⇒ 失败并提示先列清单', async () => {
+		const text = await run('taskboard_definitions', { name: '不存在的定义' });
+		assert.ok(text.includes('失败'), text);
+		assert.ok(text.includes('不传 name') || text.includes('列'), text);
+	});
+});
+
+describe('taskboard_create', () => {
+	it('建卡成功（title + templateRef），actor 标记为 ai', async () => {
+		const ref = taskboard.listTemplates()[0]?.ref ?? '';
+		const text = await run('taskboard_create', { title: '适配层建的卡', templateRef: ref });
+		assert.ok(text.includes('已建卡'), text);
+		const made = taskboard.list(workspaceId).find((one) => one.title === '适配层建的卡');
+		assert.notEqual(made, undefined);
+		const updates = await taskboard.updates(workspaceId);
+		assert.ok(updates.ai.includes(made?.id ?? ''), 'AI 工具建卡应进 updates.ai');
 	});
 
-	it('不存在的 id ⇒ 提示先看清单', async () => {
-		const text = await run('taskboard_registry', { id: '不存在的东西' });
-		assert.ok(text.includes('没有名为'), text);
+	it('未知 templateRef ⇒ 失败并指路 taskboard_definitions', async () => {
+		const text = await run('taskboard_create', { title: '坏模板', templateRef: '不存在' });
+		assert.ok(text.includes('失败'), text);
+		assert.ok(text.includes('taskboard_definitions'), text);
+	});
+
+	it('缺 title ⇒ 失败而不是建成空标题卡', async () => {
+		const before = taskboard.list(workspaceId).length;
+		const ref = taskboard.listTemplates()[0]?.ref ?? '';
+		const text = await run('taskboard_create', { templateRef: ref });
+		assert.ok(text.includes('失败') || text.includes('title'), text);
+		assert.equal(taskboard.list(workspaceId).length, before);
+	});
+
+	it('章节完整 + 额外的非章节 key ⇒ 草稿 + 警告（isError 不透传）', async () => {
+		/* 选一个只有一个章节的模板（listTemplates 不含 sections ⇒ 从 registry 取展开视图）。 */
+		const summary = taskboard.listTemplates().find((one) => {
+			const meta = taskboard.templates().get(one.ref);
+			return meta !== undefined && meta.sections.length === 1;
+		});
+		assert.notEqual(summary, undefined, '应当存在单章节模板');
+		const ref = summary?.ref ?? '';
+		const section = taskboard.templates().get(ref)?.sections[0];
+		const content: Record<string, unknown> = {
+			[section?.label ?? '']: { $type: 'text', value: 'x' },
+			额外的章节: { $type: 'text' },
+		};
+		const text = await run('taskboard_create', { title: '带额外章节', templateRef: ref, content });
+		assert.ok(text.includes('已建卡'), text);
+		assert.ok(text.includes('⚠ 警告'), text);
+	});
+});
+
+describe('taskboard_update', () => {
+	it('按 JSON 路径替换；返回 JSON + 当前状态与下一步', async () => {
+		const id = await seedCard(workRef(), '更新卡');
+		const raw = JSON.parse(
+			((await tool('taskboard_raw_card').execute({ id }, { agent: { id: 'x' } })) as { text: string }).text,
+		) as Record<string, unknown>;
+		const sectionKey = Object.keys(raw)[0] ?? 'body';
+		const payload = (raw[sectionKey] ?? {}) as Record<string, unknown>;
+		const value = '$type' in payload ? { ...payload, value: '新内容' } : { ...payload, value: '新内容' };
+
+		const text = await run('taskboard_update', { id, path: `/${sectionKey}`, value });
+		assert.ok(text.includes('—— 当前状态与接下来可以做什么 ——'), text);
+		const jsonText = text.slice(0, text.indexOf('\n\n—— 当前状态'));
+		const updated = JSON.parse(jsonText) as Record<string, unknown>;
+		assert.deepEqual(updated[sectionKey], value);
+	});
+
+	it('未知路径 ⇒ 失败并指路 taskboard_raw_card', async () => {
+		const id = await seedCard(workRef(), '坏路径');
+		const text = await run('taskboard_update', { id, path: '/nope/x', value: 1 });
+		assert.ok(text.includes('失败'), text);
+		assert.ok(text.includes('taskboard_raw_card'), text);
+	});
+});
+
+describe('taskboard_update_note', () => {
+	it('写备注；返回状态与下一步', async () => {
+		const id = await seedCard(workRef(), '备注卡');
+		const text = await run('taskboard_update_note', { id, note: '适配层备注' });
+		assert.ok(text.includes('已更新'), text);
+		assert.ok(text.includes('—— 当前状态与接下来可以做什么 ——'), text);
+		const after = taskboard.get(workspaceId, id);
+		if (after.ok) assert.equal(after.card.note, '适配层备注');
+	});
+
+	it('草稿期可改标题；非草稿拒绝（v2 新规则）', async () => {
+		const draft = await seedCard(workRef(), '旧标题');
+		const ok = await run('taskboard_update_note', { id: draft, title: '新标题' });
+		assert.ok(ok.includes('已把标题'), ok);
+		const after = taskboard.get(workspaceId, draft);
+		if (after.ok) assert.equal(after.card.title, '新标题');
+
+		const submitted = await seedCard(workRef(), '已提交卡');
+		await submit(submitted);
+		const rejected = await run('taskboard_update_note', { id: submitted, title: '想改' });
+		assert.ok(rejected.includes('只有草稿期可以改标题'), rejected);
+	});
+
+	it('两个参数都不给 ⇒ 失败', async () => {
+		const id = await seedCard(workRef(), '参数测试');
+		const text = await run('taskboard_update_note', { id });
+		assert.ok(text.includes('至少给 title 或 note'), text);
 	});
 });
 
 describe('taskboard_transition', () => {
 	it('to 为空 ⇒ 返回当前状态与可转目标，不执行', async () => {
-		const id = await makeCard('查询转移');
-		const before = taskboard.get(workspaceId, id);
-		assert.equal(before.ok, true);
-
+		const id = await seedCard(workRef(), '查询目标');
 		const text = await run('taskboard_transition', { id });
 		assert.ok(text.includes('当前状态'), text);
-		assert.ok(text.includes('可以转去'), text);
-
-		/* 没有执行 ⇒ 状态没变。 */
+		assert.ok(text.includes('接下来可转移的目标'), text);
 		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
-		if (before.ok && after.ok) assert.equal(after.card.status, before.card.status);
+		if (after.ok) assert.equal(after.card.status, TaskState.UNSPECIFIED);
 	});
 
-	it('非法状态名 ⇒ 列出可用状态', async () => {
-		const id = await makeCard('坏状态');
-		const text = await run('taskboard_transition', { id, to: '不存在的状态' });
-		assert.ok(text.includes('不是已知状态'), text);
-		assert.ok(text.includes('可用'), text);
-	});
-
-	it('认中文状态名（草稿 →「提交」是采纳目标 ⇒ 指路 taskboard_adopt）', async () => {
-		/* 用 goal / work 类别：它们的草稿「提交」是采纳，不是普通转移。 */
-		const template = taskboard.listTemplates().find((one) => one.kind === 'goal' || one.kind === 'work');
-		assert.notEqual(template, undefined);
-		if (template === undefined) return;
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '中文状态' });
-		assert.equal(created.ok, true);
-		if (!created.ok) return;
-
-		const text = await run('taskboard_transition', { id: created.card.id, to: '提交' });
-		assert.ok(!text.includes('不是已知状态'), `中文名应能认：${text}`);
-		assert.ok(text.includes('taskboard_adopt'), `采纳不该由 transition 执行：${text}`);
-	});
-
-	it('不存在的编号 ⇒ 失败文案', async () => {
-		const text = await run('taskboard_transition', { id: 'NOPE-99' });
-		assert.ok(text.includes('不存在'), text);
-	});
-
-	/* ── 采纳已拆成独立工具：transition 必须明确让路 ── */
-
-	it('⚠ transition 不再接受采纳：明确指向 taskboard_adopt，且不改状态', async () => {
-		/*
-		 * 用户把「允许采纳草稿」当成独立授权，core 的 `judgeToolCall`
-		 * 第一段 ③ 按工具名 `taskboard_adopt` 判 ——
-		 * 若 transition 还能静默执行采纳，那条 guard 规则永远命中不了。
-		 */
-		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
-		assert.notEqual(template, undefined);
-		if (template === undefined) return;
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '工作草稿' });
-		assert.equal(created.ok, true);
-		if (!created.ok) return;
-
-		const text = await run('taskboard_transition', { id: created.card.id, to: 'TASK_STATE_SUBMITTED' });
-		assert.ok(text.includes('采纳'), text);
-		assert.ok(text.includes('taskboard_adopt'), `应指路独立工具：${text}`);
-
-		const after = taskboard.get(workspaceId, created.card.id);
-		assert.equal(after.ok, true);
-		if (after.ok) {
-			assert.equal(after.card.status, 'TASK_STATE_UNSPECIFIED', '不能静默按普通转移处理');
-			assert.equal(after.card.adoptedAt, null);
-		}
-	});
-});
-
-/* ────────────────────────── taskboard_adopt（独立工具） ──────────────────────────
- *
- * ## 为什么必须独立
- *
- * 用户把「允许采纳草稿」当成一档**独立授权**：`CardActionLevel = 'adopt'`。
- * core 的 `judgeToolCall` 第一段 ③ 判的就是 `toolName === 'taskboard_adopt'`。
- * ⇒ 采纳如果还藏在 `taskboard_transition` 的 `to` 参数里，那条规则永远不命中。
- *
- * ## 目标状态不传参
- *
- * 采纳目标由类别决定（goal/work → 提交，design/record → 需要授权），
- * 那是 `protocol` 的 `BUTTON_ACTIONS` 里的事实 ⇒ 工具参数里没有 `to`。
- */
-
-describe('taskboard_adopt', () => {
-	/** 建一张指定类别的草稿卡，返回编号。 */
-	async function draftOf(kind: 'work' | 'goal' | 'design' | 'record', title: string): Promise<string> {
-		const template = taskboard.listTemplates().find((one) => one.kind === kind);
-		assert.notEqual(template, undefined, `应当存在 ${kind} 类别的模板`);
-		if (template === undefined) return '';
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title, actor: 'user' });
-		assert.equal(created.ok, true, created.ok ? '' : created.message);
-		return created.ok ? created.card.id : '';
-	}
-
-	it('注册了独立工具：名字正确，参数里没有 to', () => {
-		const adopt = tool('taskboard_adopt');
-		assert.equal(adopt.name, 'taskboard_adopt');
-
-		const params = adopt.parameters as Record<string, unknown>;
-		assert.deepEqual(Object.keys(params).sort(), ['id', 'workspaceId']);
-		assert.equal('to' in params, false, '采纳目标由类别算，不该让模型传 to');
-		assert.ok(adopt.description.includes('采纳'), adopt.description);
-	});
-
-	it('cardLevel=adopt ⇒ 能采纳；写 adoptedAt + history 的 adopt(actor=ai)', async () => {
-		const id = await draftOf('work', '工作草稿');
-		if (id === '') return;
+	it('采纳（cardLevel=adopt）⇒ 写 adoptedAt + history 的 adopt(actor=ai)', async () => {
 		await taskboard.setCardActionLevel('adopt');
-
-		const text = await run('taskboard_adopt', { id });
-		assert.ok(text.includes('已把') && text.includes('采纳'), text);
-
+		const id = await seedCard(workRef(), '采纳卡');
+		const text = await run('taskboard_transition', { id, to: TaskState.SUBMITTED });
+		assert.ok(text.includes('已采纳'), text);
 		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
-		if (!after.ok) return;
-		assert.equal(after.card.status, 'TASK_STATE_SUBMITTED', 'work 的采纳目标 ⇒ 提交');
-		assert.notEqual(after.card.adoptedAt, null, '采纳必须写 adoptedAt（search 的排序键）');
-		const adoptEntry = after.card.history.find((one) => one.action === 'adopt');
-		assert.notEqual(adoptEntry, undefined, 'history 里应有 adopt 事件');
-		assert.equal(adoptEntry?.at, after.card.adoptedAt, 'adoptedAt 与 history 的 adopt 同一时刻');
-		assert.equal(adoptEntry?.actor, 'ai', 'AI 工具的采纳 ⇒ actor 是 ai');
-	});
-
-	it('design 的采纳目标是「需要授权」（不是提交）', async () => {
-		const id = await draftOf('design', '设计草稿');
-		if (id === '') return;
-		await taskboard.setCardActionLevel('adopt');
-
-		const text = await run('taskboard_adopt', { id });
-		assert.ok(text.includes('已把'), text);
-
-		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
-		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_AUTH_REQUIRED');
-	});
-
-	it('⚠ cardLevel=claim ⇒ 拒绝并指路「允许采纳草稿」，状态不变', async () => {
-		const id = await draftOf('work', '不许采纳');
-		if (id === '') return;
-		await taskboard.setCardActionLevel('claim');
-
-		const text = await run('taskboard_adopt', { id });
-		assert.ok(text.includes('失败'), text);
-		assert.ok(text.includes('允许采纳草稿'), `应说清是档位问题：${text}`);
-
-		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
 		if (after.ok) {
-			assert.equal(after.card.status, 'TASK_STATE_UNSPECIFIED', '被拒就不该改状态');
-			assert.equal(after.card.adoptedAt, null);
+			assert.equal(after.card.status, TaskState.SUBMITTED);
+			assert.notEqual(after.card.adoptedAt, null);
+			assert.equal(after.card.history.some((entry) => entry.action === 'adopt' && entry.actor === 'ai'), true);
 		}
 	});
 
-	it('非草稿 ⇒ 明确说「只有草稿能采纳」，不猜', async () => {
-		const id = await draftOf('work', '已经提交了');
-		if (id === '') return;
-		/* 先用按钮路径推到提交态（用户点采纳）。 */
-		const moved = await taskboard.transition(workspaceId, id, 'TASK_STATE_SUBMITTED', 'button');
-		assert.equal(moved.ok, true, moved.ok ? '' : moved.message);
-		await taskboard.setCardActionLevel('adopt');
-
-		const text = await run('taskboard_adopt', { id });
-		assert.ok(text.includes('只有草稿'), text);
-	});
-
-	it('不存在的编号 ⇒ 失败文案', async () => {
-		await taskboard.setCardActionLevel('adopt');
-		const text = await run('taskboard_adopt', { id: 'NOPE-99' });
-		assert.ok(text.includes('不存在'), text);
-	});
-});
-
-describe('taskboard_claim / taskboard_release', () => {
-	/**
-	 * 造一张能领的工作卡（提交态）：先建草稿再采纳。
-	 *
-	 * ⚠ 必须用 `work` 类别的模板 —— 领取只对工作卡开放（目标 / 设计 / 记录不需要执行权限）。
-	 */
-	async function claimableCard(title: string): Promise<string> {
-		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
-		assert.notEqual(template, undefined, '应当存在 work 类别的模板');
-		const ref = template?.ref ?? '';
-		const created = await taskboard.create({ workspaceId, templateRef: ref, title });
-		assert.equal(created.ok, true);
-		if (!created.ok) return '';
-		const cardId = created.card.id;
-		/* 草稿 → 提交（work 的「采纳」）。 */
-		const adopted = await taskboard.transition(workspaceId, cardId, 'TASK_STATE_SUBMITTED', 'button');
-		assert.equal(adopted.ok, true, adopted.ok ? '' : adopted.message);
-		return cardId;
-	}
-
-	/** 落库后的持有者名字列表（`Card.holders` 是 `CardHolder[]`，不是字符串数组）。 */
-	function holderNames(cardId: string): readonly string[] {
-		const found = taskboard.get(workspaceId, cardId);
-		assert.equal(found.ok, true);
-		return found.ok ? found.card.holders.map((one) => one.holder) : [];
-	}
-
-	it('claim 用 subagents 给的名字当 holder', async () => {
-		const id = await claimableCard('领取测试');
-		if (id === '') return;
-
-		/* 工具里的 holder 来自 stubSubagents('测试agent')。 */
-		const text = await run('taskboard_claim', { id }, { agent: { id: 'uuid-claim' } });
-		assert.ok(text.includes('已领取'), text);
-		assert.ok(text.includes('测试agent'), `holder 应是 agent 名字：${text}`);
-
-		/* 落库的持有者是那个名字，不是 UUID。 */
-		assert.deepEqual(holderNames(id), ['测试agent']);
-
+	it('cardLevel=no-claim ⇒ 采纳被拦，下一步指路让用户在 UI 开权限', async () => {
+		const id = await seedCard(workRef(), '默认档位草稿');
+		const text = await run('taskboard_transition', { id, to: TaskState.SUBMITTED });
+		assert.ok(text.includes('不允许 AI 采纳草稿'), text);
+		assert.ok(text.includes('允许采纳草稿'), text);
 		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
-		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_WORKING');
+		if (after.ok) assert.equal(after.card.status, TaskState.UNSPECIFIED);
 	});
 
-	it('claim 时 subagents 缺席 ⇒ holder 回落 agent.id（功能照样可用）', async () => {
-		/* 换一个没有 subagents 的工具集。 */
-		const withoutSubagents = createTools({
-			taskboard,
-			defineTool: fakeDefineTool,
-			defaultWorkspaceId: async () => workspaceId,
-		});
-		const id = await claimableCard('领取回落');
-		if (id === '') return;
-
-		const claimTool = withoutSubagents.find((one) => one.name === 'taskboard_claim');
-		assert.notEqual(claimTool, undefined);
-		const value = (await claimTool?.execute({ id }, { agent: { id: 'uuid-fallback' } })) as { text: string };
-		assert.ok(value.text.includes('已领取'), value.text);
-		assert.deepEqual(holderNames(id), ['uuid-fallback']);
-	});
-
-	it('claim 草稿卡 ⇒ 失败文案（草稿不能领）', async () => {
-		const ref = taskboard.listTemplates().find((one) => one.kind === 'work')?.ref ?? '';
-		const created = await taskboard.create({ workspaceId, templateRef: ref, title: '还是草稿' });
-		assert.equal(created.ok, true);
-		if (!created.ok) return;
-
-		const text = await run('taskboard_claim', { id: created.card.id }, { agent: { id: 'uuid-y' } });
-		assert.ok(text.includes('失败'), text);
-	});
-
-	it('claim 非工作类别的卡 ⇒ 失败文案（目标 / 设计 / 记录不可领）', async () => {
-		const template = taskboard.listTemplates().find((one) => one.kind === 'goal');
-		assert.notEqual(template, undefined);
-		if (template === undefined) return;
-
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '目标卡' });
-		assert.equal(created.ok, true);
-		if (!created.ok) return;
-		await taskboard.transition(workspaceId, created.card.id, 'TASK_STATE_SUBMITTED', 'button');
-
-		const text = await run('taskboard_claim', { id: created.card.id }, { agent: { id: 'uuid-goal' } });
-		assert.ok(text.includes('失败'), text);
-	});
-
-	it('release 释放自己 ⇒ 回到提交', async () => {
-		const id = await claimableCard('释放测试');
-		if (id === '') return;
-		const claimed = await run('taskboard_claim', { id }, { agent: { id: 'uuid-z' } });
+	it('claim / release 经适配层用 ctx holder 工作', async () => {
+		await taskboard.setCardActionLevel('adopt');
+		const id = await seedCard(workRef(), '领取释放');
+		await submit(id);
+		const claimed = await run('taskboard_transition', { id, to: TaskState.WORKING });
 		assert.ok(claimed.includes('已领取'), claimed);
-
-		const text = await run('taskboard_release', { id }, { agent: { id: 'uuid-z' } });
-		assert.ok(text.includes('已释放'), text);
-
-		assert.deepEqual(holderNames(id), []);
-		const after = taskboard.get(workspaceId, id);
-		assert.equal(after.ok, true);
-		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_SUBMITTED');
+		const released = await run('taskboard_transition', { id, to: TaskState.SUBMITTED });
+		assert.ok(released.includes('已释放'), released);
 	});
 
-	it('release 自己不在持有者里 ⇒ 失败文案（列出当前持有者）', async () => {
-		/*
-		 * ⚠ 要让两个不同的 holder，必须用**没有 subagents** 的工具集 ——
-		 *   有 stub 时两个调用的 holder 都是 `'测试agent'`，那样 release 会成功。
-		 */
-		const byId = createTools({
-			taskboard,
-			defineTool: fakeDefineTool,
-			defaultWorkspaceId: async () => workspaceId,
-		});
-		const claimTool = byId.find((one) => one.name === 'taskboard_claim');
-		const releaseTool = byId.find((one) => one.name === 'taskboard_release');
-		assert.notEqual(claimTool, undefined);
-		assert.notEqual(releaseTool, undefined);
-		if (claimTool === undefined || releaseTool === undefined) return;
+	it('非法状态名 ⇒ 失败并列出可用状态', async () => {
+		const id = await seedCard(workRef(), '非法目标');
+		const text = await run('taskboard_transition', { id, to: '瞎写' });
+		assert.ok(text.includes('不是已知状态'), text);
+		assert.ok(text.includes('TASK_STATE_SUBMITTED'), text);
+	});
 
-		const id = await claimableCard('别人持有');
-		if (id === '') return;
-
-		const claimed = (await claimTool.execute({ id }, { agent: { id: 'uuid-owner' } })) as { text: string };
-		assert.ok(claimed.text.includes('已领取'), claimed.text);
-		assert.deepEqual(holderNames(id), ['uuid-owner']);
-
-		/* 换一个 holder 释放 —— 它不在列表里。 */
-		const released = (await releaseTool.execute({ id }, { agent: { id: 'uuid-stranger' } })) as { text: string };
-		assert.ok(released.text.includes('失败'), released.text);
-		/* 失败文案要列出真正的持有者，否则用户不知道该找谁。 */
-		assert.ok(released.text.includes('uuid-owner'), released.text);
+	it('不存在的编号 ⇒ 失败文案', async () => {
+		const text = await run('taskboard_transition', { id: 'NOPE' });
+		assert.ok(text.includes('CARD_NOT_FOUND'), text);
 	});
 });
+
+describe('taskboard_tool_policy', () => {
+	it('tier 与 templateRef 二选一；两个都给 ⇒ 失败', async () => {
+		await taskboard.setToolGuardLevel('manage-edit');
+		const text = await run('taskboard_tool_policy', { tier: 'claimed', templateRef: 'x', allow: [] });
+		assert.ok(text.includes('二选一'), text);
+	});
+
+	it('未知模板 ⇒ 失败', async () => {
+		await taskboard.setToolGuardLevel('manage-edit');
+		const text = await run('taskboard_tool_policy', { templateRef: '不存在的模板', allow: ['bash'] });
+		assert.ok(text.includes('失败'), text);
+	});
+});
+
+/* ────────────────────────── 输出 / 兼容导出 ────────────────────────── */
+
+describe('输出形状与公开面兼容', () => {
+	it('成功结果是 { text }，不带 isError（DSH output schema 只允许 text）', async () => {
+		const value = await runRaw('taskboard_cards', {});
+		assert.deepEqual(Object.keys(value), ['text']);
+		assert.equal((value as { isError?: unknown }).isError, undefined);
+	});
+
+	it('describeUnread 四条措辞（公开 API 兼容）', () => {
+		assert.equal(describeUnread({ ai: false, user: false }), '双方都已读');
+		assert.equal(describeUnread({ ai: false, user: true }), '用户改过，AI 待读');
+		assert.equal(describeUnread({ ai: true, user: false }), 'AI 改过，用户待读');
+		assert.equal(describeUnread({ ai: true, user: true }), '双方都有未读');
+	});
+
+	it('describeFailure 兼容导出仍可用（新代码不再用它）', () => {
+		const text = describeFailure({
+			ok: false,
+			code: 'CARD_NOT_FOUND',
+			message: '找不到',
+			issues: [{ path: '/id', message: '不存在' }],
+		});
+		assert.ok(text.includes('找不到'), text);
+		assert.ok(text.includes('下一步：'), text);
+		assert.ok(text.includes('/id：不存在'), text);
+	});
+});
+

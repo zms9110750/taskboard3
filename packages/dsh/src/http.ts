@@ -28,11 +28,10 @@
  */
 
 import type { CardActionLevel, SearchCondition, Taskboard, ToolGuardLevel } from '@taskboard/core';
-import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS, missingRenderers } from '@taskboard/core';
+import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS, isAdoptTransition, missingRenderers } from '@taskboard/core';
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
-import { isAdoptTransition } from './actions.ts';
 import type { SseHub, SseResponseLike } from './sse.ts';
 import type { ConnectionLike, IncomingLike, OutgoingLike, ReadableIncoming, WebServerLike } from './types.ts';
 

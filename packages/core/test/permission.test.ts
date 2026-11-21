@@ -100,9 +100,9 @@ function reasonOf(
 
 /* ────────────────────────── BASE 清单 ────────────────────────── */
 
-describe('BASE_TOOLS：11 个，全部 taskboard_*', () => {
-	it('★ 恰好 11 个', () => {
-		assert.equal(BASE_TOOLS.length, 11);
+describe('BASE_TOOLS：9 个，全部 taskboard_*', () => {
+	it('★ 恰好 9 个', () => {
+		assert.equal(BASE_TOOLS.length, 9);
 	});
 
 	it('★ 全部以 taskboard_ 开头', () => {
@@ -111,19 +111,17 @@ describe('BASE_TOOLS：11 个，全部 taskboard_*', () => {
 		}
 	});
 
-	it('含 11 个任务板工具（逐个断言）', () => {
+	it('含 9 个任务板工具（tool contract v2 名字，逐个断言）', () => {
 		const expected = [
 			'taskboard_workspaces',
 			'taskboard_cards',
 			'taskboard_card',
+			'taskboard_raw_card',
+			'taskboard_definitions',
 			'taskboard_create',
-			'taskboard_update_content',
+			'taskboard_update',
 			'taskboard_update_note',
 			'taskboard_transition',
-			'taskboard_claim',
-			'taskboard_release',
-			'taskboard_registry',
-			'taskboard_mark_seen',
 		];
 		assert.deepEqual([...BASE_TOOLS].sort(), [...expected].sort());
 	});
@@ -241,7 +239,7 @@ describe('★ 两条轴正交：第一段不受 toolLevel 影响', () => {
 			'unknown_tool',
 			'taskboard_create',
 			'taskboard_transition',
-			'taskboard_tool_policy_set',
+			'taskboard_tool_policy',
 		]) {
 			assert.ok(judge('no-claim', 'off', toolName), `off 下 ${toolName} 应放行`);
 		}
@@ -461,7 +459,7 @@ const MATRIX_CASES: readonly MatrixCase[] = [
 
 	/* ④ 权限管理工具：只看 toolLevel（off 在 ⑤ 先放行；manage-edit 放开）。 */
 	{
-		toolName: 'taskboard_tool_policy_set',
+		toolName: 'taskboard_tool_policy',
 		allow: (_cardLevel, toolLevel) => toolLevel === 'off' || toolLevel === 'manage-edit',
 	},
 
@@ -694,7 +692,7 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 
 		/* manage-edit 放开权限管理工具；但第一段的 adopt 仍只看 UI 轴。 */
 		await tb.setToolGuardLevel('manage-edit');
-		assert.ok(tb.judgeToolCall({ toolName: 'taskboard_tool_policy_set', heldCards: [] }).ok);
+		assert.ok(tb.judgeToolCall({ toolName: 'taskboard_tool_policy', heldCards: [] }).ok);
 		assert.equal(
 			tb.judgeToolCall({ toolName: 'taskboard_adopt', heldCards: [] }).ok,
 			false,
@@ -796,3 +794,5 @@ describe('adopt：AI 采纳草稿的域逻辑（与权限判定无关）', () =>
 		assert.equal(again.ok, false, '只有草稿能采纳');
 	});
 });
+
+
