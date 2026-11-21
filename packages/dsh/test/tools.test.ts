@@ -316,7 +316,7 @@ describe('schema 转换（JSON Schema → DSH parameters）', () => {
 describe('ctx：默认空间与激活空间', () => {
 	it('不传 workspaceId ⇒ 用 defaultWorkspaceId 解析（与 v1 入口策略一致）', async () => {
 		const text = await run('taskboard_cards', { status: ['draft'] });
-		assert.ok(text.includes('共 0 张卡'), text);
+		assert.ok(text.includes('（0 张）'), text);
 	});
 
 	it('显式 workspaceId 优先于默认空间', async () => {
@@ -324,7 +324,7 @@ describe('ctx：默认空间与激活空间', () => {
 		assert.equal(other.ok, true);
 		if (!other.ok) return;
 		const text = await run('taskboard_cards', { workspaceId: other.workspace.id, status: ['draft'] });
-		assert.ok(text.includes('共 0 张卡'), text);
+		assert.ok(text.includes('（0 张）'), text);
 	});
 
 });
