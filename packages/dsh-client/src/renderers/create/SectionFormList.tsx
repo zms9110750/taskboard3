@@ -20,6 +20,7 @@ import type { ReactNode } from 'react';
 
 import type { CreateError } from '../../pure/create-validate.ts';
 import type { SectionDraft } from '../../pure/create-types.ts';
+import { SectionEditorAsk } from './SectionEditorAsk.tsx';
 import { SectionFormItem } from './SectionFormItem.tsx';
 
 /** 组件属性。 */
@@ -76,14 +77,16 @@ function SectionEditor(props: {
 
 	if (section.kind === 'ask') {
 		/*
-		 * ⚠ 待迁入。**明确占位**，不假装能用 ——
-		 *   假装的话用户填不了却不知道为什么提交不了。
+		 * 用户 2026-11-22：「C12 建卡面板的 ask 编辑器 这个东西应该可以更新了。」
+		 * ⇒ 产品版 `SectionEditorAsk`（题目 / 选项 / 单选多选 / 灰字）。
 		 */
 		return (
-			<div className="tb3cc-sec__pending" data-pending-kind="ask">
-				⚠ 选项（ask）的编辑器还没迁进来（等左栏变体定稿后一起做）。
-				这一章暂时保持模板默认值。
-			</div>
+			<SectionEditorAsk
+				payload={section.payload}
+				onPayloadChange={(payload) => {
+					props.onPayloadChange(section.sectionId, payload);
+				}}
+			/>
 		);
 	}
 

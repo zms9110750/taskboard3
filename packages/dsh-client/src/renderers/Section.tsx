@@ -91,7 +91,13 @@ export function Section(props: SectionProps): ReactNode {
 	const phase: SectionPhase = props.phase ?? (props.readonly === true ? 'ended' : 'active');
 	const readonlyFlag = phase === 'ended';
 	const view = sectionViewOf(section.payload);
-	const label = typeof section.label === 'string' ? section.label : '';
+	/** 内容类型的中文名 —— 草稿后「控件不可改」，但要让用户看见现在是什么控件。 */
+const KIND_LABEL: Readonly<Record<string, string>> = {
+	text: '文本',
+	markdown: '富文本',
+	ask: '选项',
+};
+const label = typeof section.label === 'string' ? section.label : '';
 
 	/*
 	 * 能不能点进编辑：**结构**（只读 / 有没有回调）翻出来就完了，
@@ -124,6 +130,10 @@ export function Section(props: SectionProps): ReactNode {
 			{label === '' ? null : (
 				<div className="section-block__label">
 					<span className="section-block__label-text">{label}</span>
+					{/* 内容类型：已建卡/草稿里只显示、不可改（用户 2026-11-22）。 */}
+					<span className="section-block__kind" data-section-kind-label={view.kind}>
+						{KIND_LABEL[view.kind] ?? view.kind}
+					</span>
 					{clickToEdit ? <span className="section-block__edit-hint">编辑</span> : null}
 				</div>
 			)}

@@ -1105,6 +1105,8 @@ export const SECTION_CSS = `
 .tb3w-root .section-block.is-editable:hover{border-color:var(--accent);background:#f8fbff}
 .tb3w-root .section-block__label{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;font-size:11.5px;color:var(--text-secondary)}
 .tb3w-root .section-block__label-text{font-weight:600}
+/* 内容类型标签（已建卡/草稿里只显示、不可改 —— 用户 2026-11-22） */
+.tb3w-root .section-block__kind{padding:1px 8px;border-radius:999px;background:#f1f3f6;color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
 .tb3w-root .section-block__edit-hint{margin-left:auto;font-size:10.5px;color:var(--accent);opacity:0;transition:opacity .12s}
 .tb3w-root .section-block.is-editable:hover .section-block__edit-hint{opacity:1}
 /* text 正文：保留换行与缩进（text 与 markdown 的区别就在这里） */
