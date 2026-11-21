@@ -578,6 +578,30 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							onChange={changeFilter}
 							trailing={
 								<span className="tb3w-filters__tail">
+									<SearchBox
+										value={search}
+										onChange={(next) => {
+											setSearch(next);
+											props.onSearchChange?.(next);
+										}}
+										/*
+										 * 回车 / 点「前往」⇒ **打开完整编号对应的详情**。
+										 *
+										 * 用户 `2026-11-19`：「输入完整编号后回车 ⇒ 打开那张卡的详情」。
+										 * “空 / 纯空格算不算提交” 的判决在 `pure/search-box.ts`
+										 * （`canSubmitOf` / `submitQueryOf`），进来的一定是 trim 过的值。
+										 * 编号必须**完整**匹配（`findCardByQuery()`，大小写不敏感）；
+										 * 找不到就**什么都不做** —— 搜索词留着，列表的筛选结果照旧显示，
+										 * 不能把用户刚打的字吞掉（他会以为没生效）。
+										 *
+										 * ⚠ 列表是**实时**过滤的（上面 `visibleCards`），不靠回车；
+										 *   回车只多一件事：打开详情。
+										 */
+										onSubmit={(query) => {
+											const hit = findCardByQuery(props.cards, query);
+											if (hit !== null) select(hit.id);
+										}}
+									/>
 									{/*
 									 * 两个未读筛选按钮 —— 用户 2026-11-21：
 									 * 「UI上面要有两个筛选按钮，AI未读，用户未读。」
@@ -609,30 +633,6 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 									>
 										AI 未读 <b>{String(aiUnreadCount)}</b>
 									</button>
-									<SearchBox
-										value={search}
-										onChange={(next) => {
-											setSearch(next);
-											props.onSearchChange?.(next);
-										}}
-										/*
-										 * 回车 / 点「前往」⇒ **打开完整编号对应的详情**。
-										 *
-										 * 用户 `2026-11-19`：「输入完整编号后回车 ⇒ 打开那张卡的详情」。
-										 * “空 / 纯空格算不算提交” 的判决在 `pure/search-box.ts`
-										 * （`canSubmitOf` / `submitQueryOf`），进来的一定是 trim 过的值。
-										 * 编号必须**完整**匹配（`findCardByQuery()`，大小写不敏感）；
-										 * 找不到就**什么都不做** —— 搜索词留着，列表的筛选结果照旧显示，
-										 * 不能把用户刚打的字吞掉（他会以为没生效）。
-										 *
-										 * ⚠ 列表是**实时**过滤的（上面 `visibleCards`），不靠回车；
-										 *   回车只多一件事：打开详情。
-										 */
-										onSubmit={(query) => {
-											const hit = findCardByQuery(props.cards, query);
-											if (hit !== null) select(hit.id);
-										}}
-									/>
 								</span>
 							}
 						/>
