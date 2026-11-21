@@ -572,21 +572,6 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					 * 展开区在工具栏**下一行**、占满宽度、**推挤**筛选行。
 					 * 状态由本组件持有（展开区在工具栏外面，组件内部管不了）。
 					 */}
-					{compact && spaceOpen ? (
-						<SpaceFoldBody
-							workspaces={props.workspaces}
-							currentId={props.currentId}
-							viewingId={props.viewingId}
-							showArchived={props.showArchived}
-							cardCount={props.cards.length}
-							onView={props.onView}
-							onActivate={props.onActivate}
-							onToggleArchived={props.onToggleArchived}
-							onToggleShowArchived={props.onToggleShowArchived}
-							onCreate={props.onCreateWorkspace}
-						/>
-					) : null}
-
 					<div className="tb3w-filters">
 						<FilterRow
 							filters={filters}
@@ -653,6 +638,21 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						/>
 					</div>
 				</div>
+
+					{compact && spaceOpen ? (
+						<SpaceFoldBody
+							workspaces={props.workspaces}
+							currentId={props.currentId}
+							viewingId={props.viewingId}
+							showArchived={props.showArchived}
+							cardCount={props.cards.length}
+							onView={props.onView}
+							onActivate={props.onActivate}
+							onToggleArchived={props.onToggleArchived}
+							onToggleShowArchived={props.onToggleShowArchived}
+							onCreate={props.onCreateWorkspace}
+						/>
+					) : null}
 
 				<div className="tb3w-main" data-main>
 					<section className="tb3w-list" style={listStyle} data-list>
