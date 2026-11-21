@@ -4,7 +4,7 @@
  * 守的是架构边界：
  * · 依赖只有 core / protocol；
  * · `src/` 不出现宿主模块（dsh-tools / cordis / express / zod / node:）；
- * · 10 个工具的名字与顺序稳定；
+ * · 11 个工具的名字与顺序稳定；
  * · `hosts` 元数据表达「仅 DSH」；
  * · schema 是静态纯 JSON Schema 且冻结。
  */
@@ -38,6 +38,7 @@ const EXPECTED_NAMES = [
 	'taskboard_update_note',
 	'taskboard_transition',
 	'taskboard_tool_policy',
+	'taskboard_tool_policy_read',
 ] as const;
 
 describe('包边界', () => {
@@ -86,7 +87,7 @@ describe('包边界', () => {
 });
 
 describe('工具注册面', () => {
-	it('10 个工具，名字与顺序稳定', async () => {
+	it('11 个工具，名字与顺序稳定', async () => {
 		const fixture = await makeFixture();
 		assert.deepEqual(
 			fixture.tools.map((one) => one.name),
@@ -126,11 +127,10 @@ describe('工具注册面', () => {
 		assert.notEqual(policy, undefined);
 		assert.deepEqual(policy?.hosts, ['dsh']);
 		for (const tool of fixture.tools) {
-			if (tool.name === 'taskboard_tool_policy') continue;
+			if (tool.name === 'taskboard_tool_policy' || tool.name === 'taskboard_tool_policy_read') continue;
 			assert.equal(tool.hosts, undefined, `${tool.name} 不该标 hosts`);
 		}
 	});
-
 	it('关系类型与定义类型是封闭枚举（不随数据变）', async () => {
 		const fixture = await makeFixture();
 		const create = fixture.tools.find((one) => one.name === 'taskboard_create');
@@ -154,11 +154,11 @@ describe('工具注册面', () => {
 });
 
 describe('注册表 + 宿主过滤', () => {
-	it('DSH 10 个、MCP 9 个（#9 不出现）', async () => {
+	it('DSH 11 个、MCP 9 个（#9 不出现）', async () => {
 		const fixture = await makeFixture();
 		const dsh = createTaskboardToolRegistry(fixture.tools, { host: 'dsh' });
 		const mcp = createTaskboardToolRegistry(fixture.tools, { host: 'mcp' });
-		assert.equal(dsh.names.length, 10);
+		assert.equal(dsh.names.length, 11);
 		assert.equal(mcp.names.length, 9);
 		assert.equal(mcp.has('taskboard_tool_policy'), false);
 		assert.equal(dsh.has('taskboard_tool_policy'), true);

@@ -26,6 +26,7 @@ import { createCardsTool } from './tools/cards.ts';
 import { createCreateTool } from './tools/create.ts';
 import { createDefinitionsTool } from './tools/definitions.ts';
 import { createRawCardTool } from './tools/raw-card.ts';
+import { createToolPolicyReadTool } from './tools/tool-policy-read.ts';
 import { createToolPolicyTool } from './tools/tool-policy.ts';
 import { createTransitionTool } from './tools/transition.ts';
 import { createUpdateTool } from './tools/update.ts';
@@ -50,5 +51,6 @@ export function createTaskboardTools(taskboard: Taskboard): readonly TaskboardTo
 		createUpdateNoteTool(deps),
 		createTransitionTool(deps),
 		createToolPolicyTool(deps),
+		createToolPolicyReadTool(deps),
 	]);
 }

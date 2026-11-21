@@ -32,6 +32,7 @@ describe('失败契约', () => {
 		const gate = await run(
 			fixture,
 			'taskboard_tool_policy',
+	'taskboard_tool_policy_read',
 			{ tier: 'unclaimed', allow: [] },
 			context(fixture, { canManageToolPolicies: false }),
 		);

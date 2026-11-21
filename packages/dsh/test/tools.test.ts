@@ -169,7 +169,7 @@ async function submit(cardId: string): Promise<void> {
 /* ────────────────────────────── 注册面 ────────────────────────────── */
 
 describe('工具注册面（适配层 = 薄）', () => {
-	it('暴露 v2 的 10 个工具，名字与顺序稳定', () => {
+	it('暴露 v2 的 11 个工具，名字与顺序稳定', () => {
 		assert.deepEqual(
 			tools.map((one) => one.name),
 			[
@@ -183,6 +183,7 @@ describe('工具注册面（适配层 = 薄）', () => {
 				'taskboard_update_note',
 				'taskboard_transition',
 				'taskboard_tool_policy',
+				'taskboard_tool_policy_read',
 			],
 		);
 	});
