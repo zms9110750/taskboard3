@@ -45,6 +45,8 @@ interface StageProps {
 	readonly width: number;
 	/** 高（真实尺寸）。 */
 	readonly height: number;
+	/** 是否自动打开空间折叠栏（C 款要它当左侧栏）。 */
+	readonly seedOpen?: boolean;
 }
 
 /**
@@ -58,6 +60,18 @@ function Stage(props: StageProps): React.ReactNode {
 	const [viewingId, setViewingId] = useState('core');
 	const [showArchived, setShowArchived] = useState(true);
 	const [selectedId, setSelectedId] = useState<string | null>('C-03');
+
+	/* C 款：自动打开空间折叠栏（它要当左侧栏）。 */
+	useEffect(() => {
+		if (props.seedOpen !== true) return;
+		const timer = globalThis.setTimeout(() => {
+			const toggle = document.querySelector(`.dl-stage--${props.layout} [data-space-toggle]`);
+			if (toggle instanceof HTMLElement && toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+		}, 120);
+		return () => {
+			globalThis.clearTimeout(timer);
+		};
+	}, [props.layout, props.seedOpen]);
 
 	return (
 		<div
@@ -151,16 +165,6 @@ const TITLES: Readonly<Record<'A' | 'B' | 'C', string>> = {
 };
 
 function App(): React.ReactNode {
-	/* 预览 seed：打开空间折叠栏，让候选里能看到它（A 款已定）。 */
-	useEffect(() => {
-		const timer = globalThis.setTimeout(() => {
-			const toggle = document.querySelector('[data-space-toggle]');
-			if (toggle instanceof HTMLElement) toggle.click();
-		}, 100);
-		return () => {
-			globalThis.clearTimeout(timer);
-		};
-	}, []);
 
 	return (
 		<div className="dl">
@@ -182,7 +186,7 @@ function App(): React.ReactNode {
 							</div>
 						</header>
 						<div className="dl-cand__stage">
-							<Stage layout={id} width={1200} height={476} />
+							<Stage layout={id} width={1200} height={476} seedOpen={id === "C"} />
 						</div>
 					</section>
 				))}
@@ -225,8 +229,13 @@ function injectPageStyles(): void {
 		'.dl-stage--B .tb3w-list{flex:0 0 52%}',
 		'.dl-stage--B .tb3w-split{cursor:row-resize}',
 		'.dl-stage--B .tb3w-detail{flex:1 1 0;min-width:0;max-width:none}',
-		'.dl-stage--C .tb3w-chrome > .space-bar{flex-wrap:wrap;max-width:120px}',
-		'.dl-stage--C .tb3w-main{margin-left:0}',
+		/* C 款：真三栏 —— 空间折叠栏挪到左侧当竖栏，chrome 和 main 在右列 */
+		'.dl-stage--C .tb3w-page{display:grid;grid-template-columns:140px minmax(0,1fr);grid-template-rows:auto 1fr;column-gap:8px}',
+		'.dl-stage--C .tb3w-chrome{grid-column:2;grid-row:1;min-width:0}',
+		'.dl-stage--C .tb3w-space-fold{grid-column:1;grid-row:1 / 3;margin-top:0;overflow-y:auto;max-height:100%}',
+		'.dl-stage--C .tb3w-space-fold .space-bar{flex-direction:column;align-items:stretch;gap:4px}',
+		'.dl-stage--C .tb3w-space-fold .space-bar > *{width:100%;justify-content:center}',
+		'.dl-stage--C .tb3w-main{grid-column:2;grid-row:2;margin-top:0;min-width:0}',
 	].join('\n');
 	const style = document.createElement('style');
 	style.id = 'dl-style';
