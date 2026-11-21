@@ -151,10 +151,10 @@ function Spinner(): ReactNode {
 /* ────────────────────────── 子视图 ────────────────────────── */
 
 /** 加载中：两条轴的骨架（每条 1 行标题 + 3 行选项）。 */
-function LoadingView(): ReactNode {
+function LoadingView(props: { readonly axes: readonly AxisMeta[] }): ReactNode {
 	return (
 		<div className="tb3perm__loading" data-loading="1" aria-busy="true" aria-label="正在加载权限设置">
-			{AXES.map((meta) => (
+			{props.axes.map((meta) => (
 				<div className="tb3perm__skeleton" key={meta.key} data-skeleton={meta.key}>
 					<div className="tb3perm__sk-line tb3perm__sk-line--title" />
 					<div className="tb3perm__sk-line" data-skeleton-row="1" />
@@ -352,6 +352,16 @@ export interface PermissionPanelProps {
 	readonly onRetry: () => void;
 	/** 点保存失败横幅的 ×。省略时横幅不画关闭按钮。 */
 	readonly onDismissSaveError?: () => void;
+	/**
+	 * 要显示哪几条轴 —— **省略 = 两轴都显示**。
+	 *
+	 * 用户 2026-11-22：
+	 * > 「工具管控档位是做在 dsh 里面的，做在 agent 里面。因为这个权限的用途是拦截 agent 的工具。
+	 * >   他得在 agent 里面才能拦截和交互。所以 ui 不放这个。」
+	 *
+	 * ⇒ UI 面板传 `['card']`，agent 侧面板传 `['tool']`（或两轴都给）。
+	 */
+	readonly axes?: readonly AxisKey[];
 }
 
 /**
@@ -361,18 +371,21 @@ export interface PermissionPanelProps {
  */
 export function PermissionPanel(props: PermissionPanelProps): ReactNode {
 	const state = props.state;
+	/* 只画调用方要的那几条轴（省略 = 两轴都画）。 */
+	const visibleAxes = props.axes === undefined ? AXES : AXES.filter((meta) => props.axes?.includes(meta.key));
 
 	return (
 		<section className="tb3perm" data-panel="permission" data-phase={state.phase} aria-label="任务板权限">
 			<header className="tb3perm__head">
 				<h2 className="tb3perm__title">任务板权限</h2>
 				<p className="tb3perm__intro">
-					AI 能做什么、任务板管不管工具 —— 两条互相独立的轴，各选一档。
-					点哪一档就立刻保存，没有「保存」按钮。
+					{visibleAxes.length === 1
+						? '选一档，点哪一档就立刻保存，没有「保存」按钮。'
+						: '两条互相独立的轴，各选一档。点哪一档就立刻保存，没有「保存」按钮。'}
 				</p>
 			</header>
 
-			{state.phase === 'loading' ? <LoadingView /> : null}
+			{state.phase === 'loading' ? <LoadingView axes={visibleAxes} /> : null}
 
 			{state.phase === 'load-error' ? (
 				<LoadErrorView message={state.message} onRetry={props.onRetry} />
@@ -387,18 +400,24 @@ export function PermissionPanel(props: PermissionPanelProps): ReactNode {
 						/>
 					)}
 
-					{AXES.map((meta) => (
+					{visibleAxes.map((meta) => (
 						<AxisBlock key={meta.key} meta={meta} state={state} onSelect={props.onSelect} />
 					))}
 
 					<footer className="tb3perm__foot" data-foot="1">
-						<div>
-							两条轴互不覆盖：<b>卡片动作档位</b>管「AI 能不能领卡 / 采纳草稿」，
-							<b>工具管控档位</b>管「任务板要不要拦工具调用」。任意组合都有效（3 × 3 = 9 种结果）。
-						</div>
-						<div className="tb3perm__foot-sub">
-							宿主把工具管控关掉时，领卡仍然受卡片动作档位管 —— 两条轴分开判定，谁都不替代谁。
-						</div>
+						{visibleAxes.length === 1 ? (
+							<div>这一档管「AI 能不能领工作卡 / 能不能自己采纳草稿」。任何宿主都生效（MCP 也管它）。</div>
+						) : (
+							<>
+								<div>
+									两条轴互不覆盖：<b>卡片动作档位</b>管「AI 能不能领卡 / 采纳草稿」，
+									<b>工具管控档位</b>管「任务板要不要拦工具调用」。任意组合都有效（3 × 3 = 9 种结果）。
+								</div>
+								<div className="tb3perm__foot-sub">
+									宿主把工具管控关掉时，领卡仍然受卡片动作档位管 —— 两条轴分开判定，谁都不替代谁。
+								</div>
+							</>
+						)}
 					</footer>
 				</>
 			) : null}

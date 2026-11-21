@@ -65,15 +65,24 @@ export function PageA(): React.ReactNode {
 	const [state, setState] = useState<PanelState>(readyState('no-claim', 'write'));
 
 	return (
-		<div className="pp-page" data-cand="A">
+		<div className="pp-page pp-page--full" data-cand="A">
 			<header className="pp-page__head">
 				<h1 className="pp-page__title">任务板权限</h1>
 				<button type="button" className="pp-page__back">
 					← 返回任务板
 				</button>
 			</header>
+			{/*
+			 * 用户 2026-11-22 定稿：
+			 * 「工具管控档位是做在 dsh 里面的，做在 agent 里面……所以 ui 不放这个。」
+			 * 「按 A 做就行了。但是这个模态框小一点，让一个屏幕内就能显示全部内容。
+			 *  并且不要用模态框，让他占满整个视图。」
+			 *
+			 * ⇒ 只有一条轴（card）+ 占满视图（不是模态）+ 一屏放下。
+			 */}
 			<div className="pp-page__center">
 				<PermissionPanel
+					axes={['card']}
 					state={state}
 					onSelect={(axis, value) => {
 						setState(function patch(current) {
@@ -280,6 +289,8 @@ function injectPageStyles(): void {
 		'.pp-cand__head{padding:8px 12px;background:#f7f8fa;border-bottom:1px solid #eef0f3;font-weight:700;font-size:12px}',
 		/* 全屏页面骨架 */
 		'.pp-page{background:#fff;min-height:420px;display:flex;flex-direction:column}',
+		'.pp-page--full{min-height:100vh;max-width:860px;margin:0 auto}',
+		'.pp-page--full .pp-page__center{padding:28px 20px}',
 		'.pp-page__head{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid #eef0f3}',
 		'.pp-page__title{font-size:16px;margin:0}',
 		'.pp-page__back{margin-left:auto;padding:4px 12px;border:1px solid #d7dbe2;border-radius:6px;background:#fff;font:inherit;font-size:11.5px;color:#374151;cursor:pointer}',
