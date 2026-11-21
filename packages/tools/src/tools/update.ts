@@ -27,12 +27,12 @@
  * ⇒ 成功时 text 就是 `{ [sectionKey]: payload }` 的 JSON（可直接用于下一次拼路径）。
  */
 
-import { resolveWorkspace, rawOf } from '../context.ts';
+import { holderOf, resolveWorkspace, rawOf } from '../context.ts';
 import { failureResult, inputFailure } from '../failure.ts';
 import { jsonText } from '../render.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, type ToolDeps } from './shared.ts';
+import { defineTool, stateAndNextText, type ToolDeps } from './shared.ts';
 
 export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;
@@ -74,8 +74,9 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 			});
 		}
 
-		/* 用户裁决 #12：返回合并后的完整 JSON。 */
-		return okText(jsonText(updated.content));
+		/* 用户裁决 #12：返回合并后的完整 JSON；用户第二轮 ③：再补状态 + 接下来可以做什么。 */
+		const next = await stateAndNextText(deps, workspaceId, cardId, holderOf(ctx));
+		return okText(`${jsonText(updated.content)}\n\n${next}`);
 	};
 
 	return defineTool({
@@ -85,7 +86,8 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 			'卡的原始结构是 `{ [章节key]: action payload }`（只含模板内 JSON，不含标题/状态/关系/备注）。' +
 			'**先调 taskboard_raw_card 看当前 JSON 与 key，再拼路径**。' +
 			'path 用 JSON Pointer：空串=整个内容对象；`/章节/字段` 逐层；数组末尾 `-`=追加。首段可用章节 label 或 id。' +
-			'成功返回合并后的完整 JSON。空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+			'成功返回合并后的完整 JSON，并附「当前状态 + 这个状态下接下来可以做什么」。' +
+			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 		inputSchema: {
 			type: 'object',
 			properties: {

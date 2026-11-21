@@ -22,13 +22,15 @@
  */
 
 import type { TransitionAdvice } from '@taskboard/core';
-import { STATE_LABELS, TASK_STATES, isTaskState, labelOf } from '@taskboard/protocol';
+import { CARD_ACTION_OPTIONS } from '@taskboard/core';
+import { ErrorCode, STATE_LABELS, TASK_STATES, isTaskState, labelOf } from '@taskboard/protocol';
 
 import { holderOf, resolveWorkspace } from '../context.ts';
 import { failureResult, hostFailure, inputFailure, toolFailure } from '../failure.ts';
-import { stateText } from '../render.ts';
+import { renderAdvice, stateText } from '../render.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler, TaskboardToolResult } from '../types.ts';
+import type { CardActionDenied } from '@taskboard/core';
 import { defineTool, type ToolDeps } from './shared.ts';
 
 export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTool> {
@@ -93,6 +95,16 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 		}
 
 		/* ── 执行 ── */
+		/*
+		 * 领卡类动作必须再过一次 UI 轴（用户第二轮）：
+		 * 查询结果已经标了不可执行，这里是**防御性二次判定**（advice 是读快照，
+		 * 写之前的老实做法是问 core「现在允许吗」）。
+		 */
+		if (target.action === 'adopt' || target.action === 'claim' || target.action === 'release') {
+			const verdict = taskboard.judgeCardAction(target.action);
+			if (!verdict.ok) return actionLevelFailure(verdict, target.action);
+		}
+
 		switch (target.action) {
 			case 'adopt': {
 				const adopted = await taskboard.adopt(workspaceId, cardId, 'ai', { allowAiAdopt: true });
@@ -149,7 +161,8 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 			'采纳 = 未指定 → 提交（设计/记录会改为「需要授权」）；领取 = 提交 → 处理中（只能对工作卡）；' +
 			'释放 = 处理中 → 提交。' +
 			'**目标字符串省略/为空时只查询**：列出接下来可转移的目标、对应动作、AI 能不能做、' +
-			'不能做的具体原因与阻塞卡（依赖没结束 / 子任务等授权 / 手上已有处理中工作卡 / 只有用户能点）。' +
+			'不能做的具体原因与阻塞卡（依赖没结束 / 子任务等授权 / 手上已有处理中工作卡 / 只有用户能点 / UI 档位未开）。' +
+			'采纳与领取还需要用户先在任务板 UI 打开对应档位（默认关闭）；被拦时下一步会说清让用户开哪一档。' +
 			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 		inputSchema: {
 			type: 'object',
@@ -171,7 +184,7 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 	});
 }
 
-/** 条件不满足的失败（带阻塞卡）。 */
+/** 条件不满足的失败（带阻塞卡 / UI 权限指引）。 */
 function conditionFailure(
 	advice: TransitionAdvice,
 	conditions: TransitionAdvice['targets'][number]['conditions'],
@@ -184,8 +197,35 @@ function conditionFailure(
 			lines.push(`  阻塞卡：${blocker.id}「${blocker.title}」（状态：${blocker.status}）`);
 		}
 	}
-	lines.push('下一步：不传 to 调一次看全部目标与条件；能先解除的条件（比如依赖、配额）先处理另一个目标。');
+	const uiNext = uiNextOf(conditions);
+	lines.push(
+		'下一步：' +
+			(uiNext ??
+				'不传 to 调一次看全部目标与条件；能先解除的条件（比如依赖、配额）先处理另一个目标。'),
+	);
 	return { text: lines.join('\n'), isError: true };
+}
+
+/** 条件里如果有 UI 轴（用户授权）拦截，下一步要明确告诉 AI「找用户开哪一档」。 */
+function uiNextOf(conditions: TransitionAdvice['targets'][number]['conditions']): string | undefined {
+	const codes = new Set(conditions.map((one) => one.code));
+	if (codes.has('CARD_ACTION_LEVEL_ADOPT')) {
+		return '需要用户在任务板界面上把档位调到「允许采纳草稿」后重试（AI 自己打不开这一档）。';
+	}
+	if (codes.has('CARD_ACTION_LEVEL_CLAIM')) {
+		return '需要用户在任务板界面上把档位调到「允许领卡」或「允许采纳草稿」后重试（AI 自己打不开这一档）。';
+	}
+	return undefined;
+}
+
+/** 执行时二次确认 UI 轴（对 adopt / claim / release）。 */
+function actionLevelFailure(verdict: CardActionDenied, action: 'adopt' | 'claim' | 'release'): TaskboardToolResult {
+	const requiredLabel =
+		CARD_ACTION_OPTIONS.find((one) => one.value === verdict.requiredLevel)?.label ?? verdict.requiredLevel;
+	const currentLabel = CARD_ACTION_OPTIONS.find((one) => one.value === verdict.current)?.label ?? verdict.current;
+	return toolFailure(action === 'claim' ? ErrorCode.CLAIM_REJECTED : ErrorCode.TRANSITION_REJECTED, verdict.message, {
+		next: `需要用户在任务板界面上把档位调到「${requiredLabel}」（当前档位是「${currentLabel}」）后重试；AI 自己打不开这一档。`,
+	});
 }
 
 /** 转移失败的下一步。 */
@@ -202,44 +242,7 @@ function transitionNext(code: string): string {
 	}
 }
 
-/** 「接下来能去哪」的文本视图。 */
-function renderAdvice(advice: TransitionAdvice, holder: string | undefined): string {
-	const lines: string[] = [];
-	lines.push(`卡 ${advice.cardId}「${advice.title}」当前状态：${stateText(advice.status)}（分类 ${advice.kind}）`);
-	lines.push(
-		holder === undefined
-			? '调用者身份：宿主没有提供（领取 / 释放会失败）。'
-			: `调用者身份：${holder}`,
-	);
-
-	const available = advice.targets.filter((one) => one.available);
-	const blocked = advice.targets.filter((one) => !one.available);
-
-	lines.push('', '接下来可转移的目标：');
-	if (available.length === 0) lines.push('  （无）');
-	for (const target of available) {
-		lines.push(`  · ${stateText(target.to)} ——「${target.label}」（action=${target.action}）[可执行]`);
-	}
-
-	if (blocked.length > 0) {
-		lines.push('', '现在不可执行的目标（条件目标）：');
-		for (const target of blocked) {
-			lines.push(`  · ${stateText(target.to)} ——「${target.label}」（action=${target.action}）`);
-			for (const condition of target.conditions) {
-				lines.push(
-					`      原因：${condition.message}` +
-						`（code=${condition.code}；${condition.retryable ? '修正后可重试' : '不可重试'}）`,
-				);
-				for (const blocker of condition.blockers ?? []) {
-					lines.push(`      阻塞卡：${blocker.id}「${blocker.title}」（状态：${blocker.status}）`);
-				}
-			}
-		}
-	}
-
-	lines.push('', '执行方式：把目标状态 id 填进 to 再调一次（例如 to=TASK_STATE_WORKING）。');
-	return lines.join('\n');
-}
+/** 「接下来能去哪」的文本视图由 `render.renderAdvice` 统一渲染（#6/#7 也用它）。 */
 
 /** 把用户/模型给的目标字符串解析成状态 id（英文 id 或中文名）。 */
 export function resolveStateId(raw: string): (typeof TASK_STATES)[number] | undefined {

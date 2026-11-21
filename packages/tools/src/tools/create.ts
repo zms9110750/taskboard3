@@ -134,6 +134,15 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 		const relationText = describeRelations(card.relations.parent, card.relations.links);
 		if (relationText !== '') lines.push('', relationText);
 		lines.push('', '下一步：需要让用户确认时再采纳（taskboard_transition，目标=提交）；改内容前先 taskboard_raw_card。');
+
+		/*
+		 * 用户第二轮 ⑤ 的第三种情形：章节完整但 content 里有模板外的 key
+		 * ⇒ core 建卡成功（草稿）并给 warning。工具层用 `isError: false` 的
+		 * 警告块回给模型，不要说成失败。
+		 */
+		if (created.warnings !== undefined && created.warnings.length > 0) {
+			lines.push('', ...warningBlock(created.warnings));
+		}
 		return okText(lines.join('\n'));
 	};
 
@@ -143,6 +152,8 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 			'建一张新任务卡。**先调 taskboard_definitions 看模板定义**（章节 key / action / 默认 payload），再建卡。' +
 			'需要：title、templateRef，可选 relations（关系数组）、content（模板对 action 的 JSON：key=章节 id/label，value=action payload）；' +
 			'kind/domain 通常不要给（模板已声明分类/领域），只有**空模板**（模板没声明分类/领域）时才必需。' +
+			'content 可以只给部分章节（缺的用模板默认值）；但「部分章节 + 模板外 key」会被拒绝；' +
+			'「章节齐全 + 模板外 key」会建卡成功并返回警告（模板外 key 被忽略）。' +
 			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 		inputSchema: {
 			type: 'object',
@@ -261,4 +272,22 @@ function describeRelations(
 	if (parent !== null) lines.push(`  父卡：${parent}`);
 	for (const link of links) lines.push(`  ${link.label} → ${link.to}`);
 	return lines.join('\n');
+}
+
+/**
+ * 建卡成功的**警告块**（不是失败：`isError` 不置位）。
+ *
+ * 用户第二轮 ⑤：
+ * > 如果是有完整的章节，然后有额外的章节。提交为草稿然后进行警告。
+ *
+ * 与失败契约的区别只在「前缀 + isError」：原因一样要说清、下一步一样要可行动。
+ */
+function warningBlock(warnings: readonly string[]): readonly string[] {
+	const lines = ['⚠ 警告（卡已按草稿创建，但提交内容有需要注意的地方）：'];
+	for (const one of warnings) lines.push(`  · ${one}`);
+	lines.push(
+		'  · 这些非章节 key 不会存进卡里（卡只能装模板声明的章节）；要保留内容请把它们挪进已有章节，或先补模板定义。',
+		'  · 下一步：用 taskboard_raw_card 确认卡里实际存了什么；需要正式化就先 taskboard_definitions 看模板。',
+	);
+	return lines;
 }

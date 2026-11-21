@@ -95,7 +95,17 @@ export interface CreateDeps {
 }
 
 /** 建卡结果。 */
-export type CreateResult = { readonly ok: true; readonly card: Card } | Failure;
+export type CreateResult =
+	| {
+			readonly ok: true;
+			readonly card: Card;
+			/**
+			 * 建卡成功但有需要告知调用方的警告（不是失败）——tool contract v2 的第二轮规则：
+			 * 「章节完整，但有额外的 key ⇒ 提交为草稿 + 警告」。
+			 */
+			readonly warnings?: readonly string[];
+	  }
+	| Failure;
 
 /**
  * 建一张卡。
@@ -123,8 +133,23 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 	const classification = resolveClassification(template, input);
 	if (!classification.ok) return classification;
 
-	/* ── 3. content 校验（动态 schema） ── */
-	const validated = deps.schemas.validate(input.templateRef, input.content);
+	/*
+	 * ── 3. content 与模板章节的关系（tool contract v2 第二轮规则） ──
+	 *
+	 * 用户原话：
+	 * > 创建卡添加约束。可以缺少部分。但是如果缺少部分章节同时有非章节的 key，
+	 * > 拦截这次提交，报错。如果是有完整的章节，然后有额外的章节。提交为草稿然后进行警告。
+	 *
+	 * 三条规则（见 `inspectCreateContent`）：
+	 * ① 部分缺失、无未知 key ⇒ 允许（缺的用模板默认值）；
+	 * ② 部分缺失 + 有未知 key ⇒ 拒绝；
+	 * ③ 章节完整 + 有未知 key ⇒ 建卡成功（草稿）+ warning。
+	 */
+	const contentCheck = inspectCreateContent(template, input.content);
+	if (!contentCheck.ok) return contentCheck.failure;
+
+	/* 只把「模板认识的 key」交给 schema 校验（未知 key 已在上面分流）。 */
+	const validated = deps.schemas.validate(input.templateRef, contentCheck.content);
 	if (!validated.ok) return validated;
 
 	/* ── 4. 关系目标校验 ── */
@@ -201,7 +226,95 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 		unread: unreadAfter(UNREAD_NONE, createEntry),
 	};
 
-	return { ok: true, card };
+	return {
+		ok: true,
+		card,
+		...(contentCheck.warnings.length === 0 ? {} : { warnings: contentCheck.warnings }),
+	};
+}
+
+/**
+ * 建卡时 content 与模板章节的关系检查（v2 第二轮规则）。
+ *
+ * ## 为什么放在 core
+ *
+ * 「哪些 key 算章节」由模板定义决定（`sections[].id/label`）；判定完还要用
+ * **过滤后的 content** 去过模板 schema。工具层只做「把 core 的 warning/失败翻给模型」，
+ * 不重写这套规则。
+ *
+ * ## 三种情形
+ *
+ * | 缺失章节 | 有未知 key | 结果 |
+ * |---|---|---|
+ * | 有 | 无 | ✅ 允许（缺失章节用模板默认值） |
+ * | 有 | 有 | ❌ `CONTENT_INVALID`（两次错误一起报） |
+ * | 无 | 有 | ✅ 建卡（草稿）+ `warnings`（未知 key 被忽略） |
+ *
+ * ⚠ 未知 key 的 payload **不存进卡** —— `Card.sections` 只能装模板声明的章节。
+ *   所以 warning 必须说清「已忽略」，否则调用方会以为内容被保留了。
+ */
+function inspectCreateContent(
+	template: TemplateDef,
+	raw: unknown,
+): { readonly ok: true; readonly content: unknown; readonly warnings: readonly string[] } | { readonly ok: false; readonly failure: Failure } {
+	if (raw === undefined || raw === null) return { ok: true, content: raw, warnings: [] };
+	/* 非对象交给 schema 校验去报（那里有统一的人话错误）。 */
+	if (typeof raw !== 'object' || Array.isArray(raw)) return { ok: true, content: raw, warnings: [] };
+
+	const record = raw as Record<string, unknown>;
+	/** 章节 id / label → sectionId。 */
+	const byKey = new Map<string, string>();
+	for (const section of template.sections) {
+		byKey.set(section.id, section.id);
+		byKey.set(section.label, section.id);
+	}
+
+	const known: Record<string, unknown> = {};
+	const unknownKeys: string[] = [];
+	const supplied = new Set<string>();
+	for (const [key, value] of Object.entries(record)) {
+		const sectionId = byKey.get(key);
+		if (sectionId === undefined) {
+			unknownKeys.push(key);
+			continue;
+		}
+		known[key] = value;
+		supplied.add(sectionId);
+	}
+	const missing = template.sections.filter((section) => !supplied.has(section.id));
+
+	/* ② 部分缺失 + 未知 key ⇒ 拦截（两种问题一起报，让调用方一次改对）。 */
+	if (unknownKeys.length > 0 && missing.length > 0) {
+		const available = template.sections.map((one) => one.label);
+		return {
+			ok: false,
+			failure: failure(
+				ErrorCode.CONTENT_INVALID,
+				`content 既缺少章节（${missing.map((one) => one.label).join('、')}），` +
+					`又有模板里不存在的 key（${unknownKeys.join('、')}）。` +
+					`可用的章节：${available.join('、')}。` +
+					'要允许缺失章节，就不能同时带非章节 key：要么补全章节，要么删掉这些 key。',
+				{
+					issues: [
+						...missing.map((one) => ({ path: `/content/${one.label}`, message: '章节缺失' })),
+						...unknownKeys.map((key) => ({ path: `/content/${key}`, message: '模板里没有这个章节' })),
+					],
+				},
+			),
+		};
+	}
+
+	/* ③ 章节完整 + 未知 key ⇒ 成功 + 警告（未知 key 被忽略）。 */
+	if (unknownKeys.length > 0) {
+		return {
+			ok: true,
+			content: known,
+			warnings: [`content 里有模板未声明的 key，已忽略：${unknownKeys.join('、')}。`],
+		};
+	}
+
+	/* ① 正常 / 部分缺失（交给 schema 校验补默认值）。 */
+	return { ok: true, content: known, warnings: [] };
 }
 
 /**

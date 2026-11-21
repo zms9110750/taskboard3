@@ -1,17 +1,31 @@
 /**
- * #7 更新备注。
+ * #7 更新备注 / 更新标题。
  *
- * 用户要求：
+ * 用户第一轮：
  * > 参数为一个编号、一个空间、和一个字符串。空间为空时行为未定义。
  *
- * 语义：传空串 = 清空备注（与 core `update` 的 note patch 一致）。
+ * 用户第二轮 ②：
+ * > 改标题：并进「更新备注」那个工具；**但标题只有草稿期间可以改**。
+ * > - `taskboard_update_note` 加一个 `title?` 参数（和 `note` 并列）
+ * > - 非草稿改 title ⇒ 失败（原因 + 下一步）；只改 note 不受限制（任何状态都能改）
+ * > - 两个参数至少给一个；都不给 ⇒ 失败
+ *
+ * 用户第二轮 ③：
+ * > 改完以后输出「现在的状态」+「这个状态在这个分类下接下来可以做什么」。
+ *
+ * ## 为什么标题限制在草稿
+ *
+ * 标题是卡的对外标识（列表/关系/历史都靠它认卡）；采纳之后再改会让
+ * 「用户看到的标题」和「AI 当时汇报的标题」漂移。草稿期还没进入流程，随便改。
  */
 
-import { resolveWorkspace } from '../context.ts';
-import { failureResult, inputFailure } from '../failure.ts';
+import { ErrorCode, TaskState, labelOf } from '@taskboard/protocol';
+
+import { holderOf, resolveWorkspace } from '../context.ts';
+import { failureResult, inputFailure, toolFailure } from '../failure.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, type ToolDeps } from './shared.ts';
+import { defineTool, stateAndNextText, type ToolDeps } from './shared.ts';
 
 export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;
@@ -19,30 +33,64 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 	const handler: TaskboardToolHandler = async (args, ctx) => {
 		const resolved = await resolveWorkspace(args, ctx);
 		if (!resolved.ok) return resolved.result;
+		const workspaceId = resolved.workspaceId;
 
 		const cardId = readString(args, 'id');
 		if (cardId === undefined || cardId === '') {
 			return inputFailure('必须给卡编号（id）。', '先调 taskboard_cards 拿编号。');
 		}
+
+		const title = readString(args, 'title');
 		const note = readString(args, 'note');
-		if (note === undefined) {
-			return inputFailure('必须给 note 字符串（空串 = 清空备注）。', '补上 note 后重试。');
+		if (title === undefined && note === undefined) {
+			return inputFailure('至少给 title 或 note 之一。', '只改备注就传 note；只改标题就传 title（仅草稿期）。');
+		}
+		if (title !== undefined && title.trim() === '') {
+			return inputFailure('title 不能为空；要清空请只改 note。', '给一个非空标题，或去掉 title 参数。');
 		}
 
-		const updated = await taskboard.update(resolved.workspaceId, cardId, { note }, 'ai');
-		if (!updated.ok) return failureResult(updated, { action: '更新备注失败' });
+		/* ── 标题：只有草稿期可以改（先读卡拿状态，失败不写库） ── */
+		const found = taskboard.get(workspaceId, cardId);
+		if (!found.ok) return failureResult(found, { action: '更新失败' });
+		if (title !== undefined && found.card.status !== TaskState.UNSPECIFIED) {
+			const label = labelOf(found.card.status);
+			return toolFailure(
+				ErrorCode.TRANSITION_REJECTED,
+				`只有草稿期可以改标题；这张卡现在是「${label}」，标题已定稿。`,
+				{
+					next: '标题只能在草稿期改。要改内容请用 taskboard_update；改备注不受状态限制（本工具只传 note）。',
+					retryable: 'no',
+				},
+			);
+		}
 
-		return okText(
-			note === ''
-				? `已清空 ${updated.card.id} 的备注。`
-				: `已更新 ${updated.card.id} 的备注（${note.length} 字）。`,
+		const updated = await taskboard.update(
+			workspaceId,
+			cardId,
+			{
+				...(title === undefined ? {} : { title: title.trim() }),
+				...(note === undefined ? {} : { note }),
+			},
+			'ai',
 		);
+		if (!updated.ok) return failureResult(updated, { action: '更新失败' });
+
+		const lines: string[] = [];
+		if (title !== undefined) lines.push(`已把标题从「${found.card.title}」改为「${updated.card.title}」。`);
+		if (note !== undefined) {
+			lines.push(note === '' ? `已清空 ${updated.card.id} 的备注。` : `已更新 ${updated.card.id} 的备注（${note.length} 字）。`);
+		}
+		lines.push('', await stateAndNextText(deps, workspaceId, cardId, holderOf(ctx)));
+		return okText(lines.join('\n'));
 	};
 
 	return defineTool({
 		name: 'taskboard_update_note',
 		description:
-			'更新一张卡的备注（追加型文本，不随采纳清空）。给空串 = 清空备注。' +
+			'更新一张卡的备注和/或标题。**两个参数至少给一个**：' +
+			'`note`（追加型文本，任何状态都能改；空串 = 清空）；' +
+			'`title`（卡标题，**只有草稿状态可以改**，非草稿会失败并说明原因）。' +
+			'改完会返回当前状态，以及这个状态在这个分类下接下来可以做什么。' +
 			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 		inputSchema: {
 			type: 'object',
@@ -52,9 +100,10 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
-				note: { type: 'string', description: '新备注内容；空串 = 清空。' },
+				note: { type: 'string', description: '新备注内容；空串 = 清空。任何状态都能改。' },
+				title: { type: 'string', description: '新标题（非空）。只有草稿状态可以改。' },
 			},
-			required: ['id', 'note'],
+			required: ['id'],
 		},
 		handler,
 	});

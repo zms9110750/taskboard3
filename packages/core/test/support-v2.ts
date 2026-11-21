@@ -5,7 +5,7 @@
  * 这样才能造出「空模板」（`kind` / `domain` 为空）这种内置 YAML 里没有的形态。
  */
 
-import { createTaskboard, type Taskboard } from '../src/index.ts';
+import { createTaskboard, type CardActionLevel, type Taskboard } from '../src/index.ts';
 import type { SectionDef, TemplateDef } from '../src/template/types.ts';
 import { createMemoryStore } from './memory-store.ts';
 
@@ -43,11 +43,18 @@ export function makeTemplate(input: {
 /** 建一个内存任务板 + 一个工作空间，并注册给定模板。 */
 export async function makeBoard(
 	templates: readonly TemplateDef[],
+	options: { readonly cardLevel?: CardActionLevel } = {},
 ): Promise<{ readonly tb: Taskboard; readonly ws: string }> {
 	const tb = createTaskboard({ store: createMemoryStore() });
 	for (const template of templates) tb.templates().register(template);
 	const created = await tb.createWorkspace('测试空间');
 	if (!created.ok) throw new Error(`建空间失败：${created.message}`);
+	/*
+	 * 默认把它调到 `adopt`：v2 第二轮恢复了 UI 轴权限拦截，默认档位是 `no-claim`；
+	 * 测「普通流程能走通」的用例不该被权限默认值干扰。
+	 * 专门测权限的用例显式传 `cardLevel` 覆盖。
+	 */
+	await tb.setCardActionLevel(options.cardLevel ?? 'adopt');
 	return { tb, ws: created.workspace.id };
 }
 

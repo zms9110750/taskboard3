@@ -24,10 +24,10 @@ packages/tools  ──►  packages/core  ──►  packages/protocol
 | 3 | `taskboard_card` | 按编号查看卡（强制含草稿/墓碑；acton 视图；**查看即 AI 已读**） |
 | — | `taskboard_raw_card` | 看**原始 JSON** `{ [章节key]: actionPayload }`（改卡前先确认结构） |
 | 4 | `taskboard_definitions` | 查看定义：`name` 可空=列出；`type` 枚举（domain/state/template/kind）消歧 |
-| 5 | `taskboard_create` | 建卡：title + 模板 + 关系数组 + 模板对 action 的 JSON（空模板要 kind/domain） |
-| 6 | `taskboard_update` | JSON 路径替换（JSON Pointer；**替换语义**；返回合并后的完整 JSON） |
-| 7 | `taskboard_update_note` | 更新备注（空串 = 清空） |
-| 8 | `taskboard_transition` | 采纳 / 领取 / 释放 / 普通转移；目标为空 = 查「可转移 + 条件目标」 |
+| 5 | `taskboard_create` | 建卡：title + 模板 + 关系数组 + 模板对 action 的 JSON；content 三条约束（见下）；空模板要 kind/domain |
+| 6 | `taskboard_update` | JSON 路径替换（替换语义）；返回合并 JSON + 当前状态 + 接下来可以做什么 |
+| 7 | `taskboard_update_note` | 改备注（任何状态）+ 改标题（**仅草稿期**）；返回状态 + 接下来可以做什么 |
+| 8 | `taskboard_transition` | 采纳 / 领取 / 释放 / 普通转移；**采纳/领取须 UI 档位打开**；空目标 = 查「可转移 + 条件目标」 |
 | 9 | `taskboard_tool_policy` | **仅 DSH**：三 scope 工具权限；需 agent 侧权限开关 |
 
 ## 形状
@@ -69,6 +69,33 @@ const mcp = createTaskboardToolRegistry(tools, { host: 'mcp' });     // 9 个（
 `isError: true`。所有写操作都是「先校验 → 单次落库」，**没有部分成功**
 （建卡关系失败时卡不会建；更新校验失败时内容不变）。
 
+### 警告契约（不是失败）
+
+建卡时「章节完整 + 有模板外的 key」⇒ 成功（草稿）+ 警告块：
+
+```
+⚠ 警告（卡已按草稿创建，但提交内容有需要注意的地方）：
+  · content 里有模板未声明的 key，已忽略：xxx。
+  · 下一步：…（可行动）
+```
+
+`isError` **不置位** —— 模型据此知道「提交成功了，但内容有被丢弃的部分」。
+
+### 建卡 content 的三条规则（第二轮 ⑤）
+
+| 缺失章节 | 非章节 key | 结果 |
+|---|---|---|
+| 有 | 无 | ✅ 允许（缺的章节用模板默认值） |
+| 有 | 有 | ❌ `CONTENT_INVALID`（两种问题一次报全 + 可用章节） |
+| 无 | 有 | ✅ 建卡（草稿）+ ⚠ 警告（非章节 key 不存进卡） |
+
+### UI 轴权限拦截（第二轮 ④）
+
+`taskboard_transition` 的采纳/领取/释放都要过 core 的 `cardActionLevel`
+（默认 `no-claim` = AI 不能领卡/采纳，用户在 UI 打开后才行）。
+被拦时失败文本的「下一步」会写清：**需要用户在任务板界面上把档位调到「允许领卡」/「允许采纳草稿」**。
+释放永远允许（放手，否则 AI 会被卡锁死）。
+
 ## 返回契约
 
 | 工具 | 返回 |
@@ -78,10 +105,10 @@ const mcp = createTaskboardToolRegistry(tools, { host: 'mcp' });     // 9 个（
 | #3 | 文本：状态/历史/关系/备注 + 每章节的 action 视图 + 查看前后未读 |
 | raw | **纯 JSON**：`{ [章节key]: payload }` |
 | #4 | 文本：清单（可只列一类）或某条定义详情（模板含章节/action/默认 payload） |
-| #5 | 文本：已建卡 + 模板的「下一步」+ 分类描述 + 章节 + 关系（用户裁决 #11） |
-| #6 | **纯 JSON**：合并后的完整内容（用户裁决 #12） |
-| #7 | 文本：已更新/已清空 + 字数 |
-| #8 | 文本：执行结果（from→to、动作、持有者）；空目标时是目标/条件清单 |
+| #5 | 文本：已建卡 + 模板的「下一步」+ 分类描述 + 章节 + 关系；额外的非章节 key ⇒ 草稿 + ⚠ 警告（isError 不置位） |
+| #6 | **纯 JSON（合并后完整内容）** + `—— 当前状态与接下来可以做什么 ——` 段（状态/分类/可转移目标/条件） |
+| #7 | 文本：已改标题/备注 + `—— 当前状态与接下来可以做什么 ——` 段 |
+| #8 | 文本：执行结果（from→to、动作、持有者）；空目标时是目标/条件清单；UI 轴拦截时下一步写清让用户开哪一档 |
 | #9 | 文本：scope + 新配置 + 新增/移除/忽略/受保护明细 |
 
 ## 接到宿主上
@@ -145,7 +172,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 | `replaceContentAt(ws, id, pointer, value, actor)` | 要「整份内容重新过模板校验 + 走 `withHistory` 落库」，绕开就是第二套写路径 |
 | `transitionAdvice(ws, id, holder?)` | 领取准入（依赖/子任务/配额）在 core 的 `judgeClaim`，工具层重写就是第二份真值 |
 | `setToolPolicyScope({ tier \| templateRef, allow, remove })` | 权限持久化在 core 的 kv + 判定在 `judgeToolCall`，tools 层碰不到 |
+| `judgeCardAction('adopt'\|'claim'\|'release')` | 领卡类动作的 **UI 轴**判定在 core（`cardActionLevel`）；v2 合并工具后按动作判 |
 | `CreateInput.kind/domain`（空模板覆盖） | 发号字母与卡上 `template` 快照由 core 的 create 决定 |
+| `CreateResult.warnings` + content 章节三条规则 | 「哪些 key 算章节」由模板决定；判定完还要用过滤后的 content 过 schema，属 core 校验 |
 | `contentOfCard(card)` | 「模板内 JSON」的唯一投影（raw 工具与 update 路径共用） |
 
 ## 开发

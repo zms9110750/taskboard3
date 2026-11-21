@@ -456,6 +456,81 @@ export const TOOL_GUARD_OPTIONS = [
 	readonly description: string;
 }[];
 
+/* ────────────────────────── 领卡类动作的 UI 轴判定 ────────────────────────── */
+
+/** 领卡类动作（v2 合并进一个 `taskboard_transition` 工具后，判定改按“动作”而不是工具名）。 */
+export type CardActionName = 'adopt' | 'claim' | 'release';
+
+/** UI 轴放行。 */
+export interface CardActionAllowed {
+	readonly ok: true;
+}
+
+/** UI 轴拒绝。 */
+export interface CardActionDenied {
+	readonly ok: false;
+	readonly reason: 'CARD_ACTION_LEVEL';
+	/** 人话原因。 */
+	readonly message: string;
+	/** 需要在 UI 上打开到哪一档。 */
+	readonly requiredLevel: 'claim' | 'adopt';
+	/** 当前档位。 */
+	readonly current: CardActionLevel;
+}
+
+/** UI 轴判定结果。 */
+export type CardActionVerdict = CardActionAllowed | CardActionDenied;
+
+const CARD_ACTION_ALLOW: CardActionAllowed = Object.freeze({ ok: true });
+
+/**
+ * 判定一次**领卡类动作**是否被 UI 轴允许（用户 `2026-11-21` 第二轮要求）。
+ *
+ * 用户原话：
+ * > 这个有权限拦截。必须在 ui 侧用户手开这个权限才能让 ai 领取。
+ *
+ * ## 与 `judgeToolCall` 第一段的关系
+ *
+ * v1 按**工具名**判（`taskboard_claim` / `taskboard_adopt` / `taskboard_release`）；
+ * v2 把三个动作合并进 `taskboard_transition`，工具名不再携带动作信息
+ * ⇒ 判定改按**动作**（`adopt` / `claim` / `release`），规则与旧第一段逐条一致：
+ *
+ * | 动作 | no-claim | claim | adopt |
+ * |---|---|---|---|
+ * | `release` | ✅ 永远允许（放手；否则 AI 会被卡锁死） | ✅ | ✅ |
+ * | `claim` | ❌ | ✅ | ✅ |
+ * | `adopt` | ❌ | ❌ | ✅ |
+ *
+ * ⚠ 本函数**只看 UI 轴**（用户授权），不看宿主轴 —— 领卡类动作与
+ *   `ToolGuardLevel` 正交（旧的同一条规则）。
+ */
+export function judgeCardAction(input: {
+	readonly action: CardActionName;
+	readonly cardLevel: CardActionLevel;
+}): CardActionVerdict {
+	if (input.action === 'release') return CARD_ACTION_ALLOW;
+
+	if (input.action === 'claim') {
+		if (input.cardLevel !== 'no-claim') return CARD_ACTION_ALLOW;
+		return {
+			ok: false,
+			reason: 'CARD_ACTION_LEVEL',
+			message: '当前任务板档位不允许 AI 领取工作卡。',
+			requiredLevel: 'claim',
+			current: input.cardLevel,
+		};
+	}
+
+	if (input.cardLevel === 'adopt') return CARD_ACTION_ALLOW;
+	return {
+		ok: false,
+		reason: 'CARD_ACTION_LEVEL',
+		message: '当前任务板档位不允许 AI 采纳草稿。',
+		requiredLevel: 'adopt',
+		current: input.cardLevel,
+	};
+}
+
 /* ────────────────────────── 判定 ────────────────────────── */
 
 /**

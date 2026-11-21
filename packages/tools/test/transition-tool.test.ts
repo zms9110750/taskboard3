@@ -112,4 +112,55 @@ describe('taskboard_transition', () => {
 		assert.equal(claim.isError, true);
 		assert.ok(claim.text.includes('没有提供当前调用者身份'), claim.text);
 	});
+
+	/* ── 第二轮 ④：UI 轴权限拦截 ── */
+
+	it('默认档位 no-claim：采纳/领取被拦，下一步指向让用户开 UI 权限；释放仍允许', async () => {
+		const fixture = await makeFixture({ cardLevel: 'no-claim' });
+		const draft = await seedCard(fixture, 't-work', '默认档位草稿');
+
+		const adopt = await run(fixture, 'taskboard_transition', { id: draft, to: 'TASK_STATE_SUBMITTED' });
+		assert.equal(adopt.isError, true);
+		assert.ok(adopt.text.includes('不允许 AI 采纳草稿'), adopt.text);
+		assert.ok(adopt.text.includes('允许采纳草稿'), adopt.text);
+		assert.ok(adopt.text.includes('需要用户在任务板界面上'), adopt.text);
+
+		const submitted = await seedCard(fixture, 't-work', '默认档位提交');
+		await submitCard(fixture, submitted);
+		const claim = await run(fixture, 'taskboard_transition', { id: submitted, to: 'TASK_STATE_WORKING' });
+		assert.equal(claim.isError, true);
+		assert.ok(claim.text.includes('不允许 AI 领取工作卡'), claim.text);
+		assert.ok(claim.text.includes('允许领卡'), claim.text);
+
+		/* 释放永远允许（旧裁定）：直接让 core 把人放上去，再用工具释放。 */
+		const working = await seedCard(fixture, 't-work', '默认档位释放');
+		await submitCard(fixture, working);
+		const claimed = await fixture.tb.claim(fixture.ws, working, 'ai', 'lead');
+		assert.equal(claimed.ok, true, claimed.ok ? '' : claimed.message);
+		const release = await runOk(fixture, 'taskboard_transition', { id: working, to: '提交' });
+		assert.ok(release.includes('已释放'), release);
+	});
+
+	it('claim 档：可领取、不可采纳', async () => {
+		const fixture = await makeFixture({ cardLevel: 'claim' });
+		const submitted = await seedCard(fixture, 't-work', 'claim 档提交');
+		await submitCard(fixture, submitted);
+		const claim = await runOk(fixture, 'taskboard_transition', { id: submitted, to: 'TASK_STATE_WORKING' });
+		assert.ok(claim.includes('已领取'), claim);
+
+		const draft = await seedCard(fixture, 't-work', 'claim 档草稿');
+		const adopt = await run(fixture, 'taskboard_transition', { id: draft, to: 'TASK_STATE_SUBMITTED' });
+		assert.equal(adopt.isError, true);
+		assert.ok(adopt.text.includes('允许采纳草稿'), adopt.text);
+	});
+
+	it('查询结果也如实标出 UI 轴拦截（不写库）', async () => {
+		const fixture = await makeFixture({ cardLevel: 'no-claim' });
+		const draft = await seedCard(fixture, 't-work', '查询拦截');
+		const text = await runOk(fixture, 'taskboard_transition', { id: draft });
+		assert.ok(text.includes('CARD_ACTION_LEVEL_ADOPT'), text);
+		assert.ok(text.includes('现在不可执行的目标'), text);
+		const after = fixture.tb.get(fixture.ws, draft);
+		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_UNSPECIFIED');
+	});
 });

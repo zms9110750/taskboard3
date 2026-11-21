@@ -29,6 +29,7 @@ import { BUTTON_ACTIONS, judgeTransition, labelOf } from '@taskboard/protocol';
 
 import type { Card, CardId } from './card.ts';
 import { holderIdsOf, isHeldBy } from './card.ts';
+import type { CardActionLevel } from './permission.ts';
 import { judgeClaim, type ClaimContext } from './transition.ts';
 
 /** 这个目标背后要调哪个 core 门面方法。 */
@@ -84,6 +85,13 @@ export interface TransitionAdvice {
 export interface TransitionAdviceOptions extends ClaimContext {
 	/** 调用者身份（claim / release 判准入用）。省略 = `''`。 */
 	readonly holder?: string;
+	/**
+	 * UI 轴档位（用户授权 AI 能不能领卡 / 采纳草稿）。
+	 *
+	 * 用户在第二轮明确要求：权限拦截要让查询结果也如实反映，
+	 * 否则 AI 会看到一个「可执行」的目标、发出去才被拒。
+	 */
+	readonly cardLevel: CardActionLevel;
 }
 
 /**
@@ -128,16 +136,30 @@ function targetOf(
 		action: button.method,
 	};
 
-	/* 采纳：v2 明确由 AI 工具执行（core 侧 allowAiAdopt=true）。 */
+	/* 采纳：v2 明确由 AI 工具执行，但必须过 UI 轴（用户第二轮要求）。 */
 	if (button.method === 'adopt') {
+		if (options.cardLevel !== 'adopt') {
+			return cardLevelDenied(
+				base,
+				'CARD_ACTION_LEVEL_ADOPT',
+				'当前任务板档位不允许 AI 采纳草稿；需要用户在界面上把档位调到「允许采纳草稿」。',
+			);
+		}
 		return { ...base, aiAllowed: true, available: true, conditions: [] };
 	}
 
 	const aiAllowed = button.actors.includes('ai');
 
-	/* 领取：准入规则在 `judgeClaim`（依赖 / 子任务 / 配额）。 */
+	/* 领取：准入规则在 `judgeClaim`（依赖 / 子任务 / 配额），但先过 UI 轴。 */
 	if (button.method === 'claim') {
 		if (!aiAllowed) return userOnly(base);
+		if (options.cardLevel === 'no-claim') {
+			return cardLevelDenied(
+				base,
+				'CARD_ACTION_LEVEL_CLAIM',
+				'当前任务板档位不允许 AI 领取工作卡；需要用户在界面上把档位调到「允许领卡」（或「允许采纳草稿」）。',
+			);
+		}
 		if (holder === '') return needHolder(base, '领取');
 		const admission = judgeClaim(card, cards, holder, options);
 		if (admission.ok) return { ...base, aiAllowed, available: true, conditions: [] };
@@ -232,6 +254,20 @@ function needHolder(base: Pick<TransitionTargetAdvice, 'to' | 'label' | 'action'
 				retryable: false,
 			},
 		],
+	};
+}
+
+/** UI 轴（用户授权）没打开 ⇒ 目标不可执行，并告诉 AI 需要用户去 UI 开哪一档。 */
+function cardLevelDenied(
+	base: Pick<TransitionTargetAdvice, 'to' | 'label' | 'action'>,
+	code: string,
+	message: string,
+): TransitionTargetAdvice {
+	return {
+		...base,
+		aiAllowed: true,
+		available: false,
+		conditions: [{ code, message, retryable: true }],
 	};
 }
 

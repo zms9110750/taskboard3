@@ -17,7 +17,7 @@
  *   拼路径要先用 `taskboard_raw_card` 看原始 JSON（用户裁决 #5）。
  */
 
-import type { Card, CardUnread } from '@taskboard/core';
+import type { Card, CardUnread, TransitionAdvice } from '@taskboard/core';
 import { groupOf, labelOf, type TaskState } from '@taskboard/protocol';
 
 /** 单段视图的字符上限 —— 防止一张长卡把上下文打爆。 */
@@ -149,4 +149,50 @@ export function sectionHeading(label: string, sectionId: string, action: string)
 /** 卡的分组文案（给 #3 用）。 */
 export function groupText(state: TaskState): string {
 	return groupOf(state);
+}
+
+/**
+ * 「当前状态 + 接下来可以做什么」的文本视图（#8 查询 / #6 #7 改完的回执共用）。
+ *
+ * 用户第二轮原话：
+ * > 在这里改完了以后，输出现在的状态和这个状态在这个分类下，接下来可以做什么。
+ *
+ * ⇒ 同一份渲染给三个地方用，避免三处措辞 drift。
+ */
+export function renderAdvice(advice: TransitionAdvice, holder: string | undefined): string {
+	const lines: string[] = [];
+	lines.push(`卡 ${advice.cardId}「${advice.title}」当前状态：${stateText(advice.status)}（分类 ${advice.kind}）`);
+	lines.push(
+		holder === undefined
+			? '调用者身份：宿主没有提供（领取 / 释放会失败）。'
+			: `调用者身份：${holder}`,
+	);
+
+	const available = advice.targets.filter((one) => one.available);
+	const blocked = advice.targets.filter((one) => !one.available);
+
+	lines.push('', '接下来可转移的目标：');
+	if (available.length === 0) lines.push('  （无）');
+	for (const target of available) {
+		lines.push(`  · ${stateText(target.to)} ——「${target.label}」（action=${target.action}）[可执行]`);
+	}
+
+	if (blocked.length > 0) {
+		lines.push('', '现在不可执行的目标（条件目标）：');
+		for (const target of blocked) {
+			lines.push(`  · ${stateText(target.to)} ——「${target.label}」（action=${target.action}）`);
+			for (const condition of target.conditions) {
+				lines.push(
+					`      原因：${condition.message}` +
+						`（code=${condition.code}；${condition.retryable ? '修正后可重试' : '不可重试'}）`,
+				);
+				for (const blocker of condition.blockers ?? []) {
+					lines.push(`      阻塞卡：${blocker.id}「${blocker.title}」（状态：${blocker.status}）`);
+				}
+			}
+		}
+	}
+
+	lines.push('', '执行方式：把目标状态 id 填进 to 再调一次（例如 to=TASK_STATE_WORKING）。');
+	return lines.join('\n');
 }

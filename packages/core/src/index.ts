@@ -36,8 +36,11 @@ import {
 	TOOL_GUARD_OPTIONS,
 	effectiveToolsOf,
 	isBaseTool,
+	judgeCardAction as judgeCardActionPure,
 	judgeToolCall as judgeToolCallPure,
 	type CardActionLevel,
+	type CardActionName,
+	type CardActionVerdict,
 	type ToolCallVerdict,
 	type ToolGuardLevel,
 	type ToolPolicyDelta,
@@ -412,6 +415,15 @@ export interface Taskboard {
 	getCardActionLevel(): CardActionLevel;
 	/** 写 UI 轴档位（落 kv，下次启动仍在）。 */
 	setCardActionLevel(level: CardActionLevel): Promise<void>;
+	/**
+	 * 判定一次**领卡类动作**（v2 合并工具后按动作判，不按工具名）。
+	 *
+	 * `adopt` / `claim` / `release` 三个动作必须过 UI 轴（用户第二轮）：
+	 * UI 没打开对应档位 ⇒ 拒绝，并给出「需要用户在界面上开哪一档」。
+	 *
+	 * `release` 永远放行（放手，否则 AI 会被卡锁死）——旧裁定不变。
+	 */
+	judgeCardAction(action: CardActionName): CardActionVerdict;
 	/** 读宿主轴档位（任务板管不管工具调用）。 */
 	getToolGuardLevel(): ToolGuardLevel;
 	/** 写宿主轴档位（落 kv，下次启动仍在）。 */
@@ -1092,6 +1104,11 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			await store.kvSet(CARD_ACTION_LEVEL_KEY, level);
 		},
 
+		judgeCardAction(action) {
+			/* 档位从缓存读（与 `judgeToolCall` 同一取舍：调用方不该拼档位）。 */
+			return judgeCardActionPure({ action, cardLevel: cardActionLevel });
+		},
+
 		getToolGuardLevel() {
 			return toolGuardLevel;
 		},
@@ -1133,7 +1150,11 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			if (!built.ok) return built;
 
 			await persist(input.workspaceId, built.card);
-			return { ok: true, card: built.card };
+			return {
+				ok: true,
+				card: built.card,
+				...(built.warnings === undefined ? {} : { warnings: built.warnings }),
+			};
 		},
 
 		async update(workspaceId, cardId, patch, actor: Actor = 'user') {
@@ -1370,6 +1391,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return transitionAdviceOf(existing, cards, {
 				claimableKinds: needsClaimKinds(),
 				holder,
+				cardLevel: cardActionLevel,
 			});
 		},
 
@@ -1505,12 +1527,17 @@ export {
 	EMPTY_POLICY_STORE,
 	CARD_ACTION_OPTIONS,
 	TOOL_GUARD_OPTIONS,
+	judgeCardAction,
 	judgeToolCall,
 	isBaseTool,
 	isPolicyTool,
 	effectiveToolsOf,
 	extrasOf,
+	type CardActionAllowed,
+	type CardActionDenied,
 	type CardActionLevel,
+	type CardActionName,
+	type CardActionVerdict,
 	type PermissionFacts,
 	type ToolCallJudgement,
 	type ToolCallVerdict,

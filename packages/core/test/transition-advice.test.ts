@@ -172,6 +172,30 @@ describe('transitionAdvice', () => {
 		}
 	});
 
+	it('默认档位 no-claim：采纳/领取在查询结果里就标成不可执行（UI 轴）', async () => {
+		const { tb, ws } = await makeBoard(TEMPLATES, { cardLevel: 'no-claim' });
+		const draft = await makeCard(tb, ws, 't-work', '默认档位草稿');
+		const draftAdvice = tb.transitionAdvice(ws, draft, 'lead');
+		const adopt = 'targets' in draftAdvice ? draftAdvice.targets.find((one) => one.action === 'adopt') : undefined;
+		assert.notEqual(adopt, undefined);
+		if (adopt !== undefined) {
+			assert.equal(adopt.available, false);
+			assert.equal(adopt.conditions[0]?.code, 'CARD_ACTION_LEVEL_ADOPT');
+			assert.ok(adopt.conditions[0]?.message.includes('允许采纳草稿'), adopt.conditions[0]?.message);
+		}
+
+		const submitted = await makeCard(tb, ws, 't-work', '默认档位提交卡');
+		await submit(tb, ws, submitted);
+		const submittedAdvice = tb.transitionAdvice(ws, submitted, 'lead');
+		const claim =
+			'targets' in submittedAdvice ? submittedAdvice.targets.find((one) => one.action === 'claim') : undefined;
+		assert.notEqual(claim, undefined);
+		if (claim !== undefined) {
+			assert.equal(claim.available, false);
+			assert.equal(claim.conditions[0]?.code, 'CARD_ACTION_LEVEL_CLAIM');
+		}
+	});
+
 	it('卡不存在 / 已删除 ⇒ 失败', async () => {
 		const { tb, ws } = await makeBoard(TEMPLATES);
 		const missing = tb.transitionAdvice(ws, 'NOPE', 'lead');
