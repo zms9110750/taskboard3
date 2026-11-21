@@ -164,21 +164,21 @@ function renderText(_args: unknown, value: unknown): readonly unknown[] {
 }
 
 /* ────────────────────────── ② 宿主上下文 ────────────────────────── */
+/* ────────────────────────── ② 宿主上下文 ────────────────────────── */
 
-/** 一次执行的宿主事实（三个能力 + 激活空间）。 */
+/**
+ * 一次执行的宿主事实。
+ *
+ * ⚠ 用户 2026-11-22 取消了「激活空间」设定 ⇒ 这里**不再注入**
+ *   `resolveDefaultWorkspace` / `activeWorkspaceId`，所有工具调用必须显式给 workspaceId。
+ */
 function contextOf(deps: ToolDeps, exec: unknown): TaskboardToolContext {
-	const first = deps.taskboard.listWorkspaces(false)[0];
 	return {
 		holder: holderOf(deps.subagents, exec),
-		/* DSH 入口策略：显式 workspaceId 优先，否则「第一个空间；没有就建默认」。 */
-		resolveDefaultWorkspace: () => deps.defaultWorkspaceId(),
-		/* 激活空间 = 第一个未归档空间（见文件头：DSH 没有服务端 UI currentId）。 */
-		...(first === undefined ? {} : { activeWorkspaceId: first.id }),
 		/* 宿主轴「允许编辑档位权限」= core 的 manage-edit；不在 dsh 侧另存开关。 */
 		canManageToolPolicies: deps.taskboard.getToolGuardLevel() === 'manage-edit',
 	};
 }
-
 /* ────────────────────────── 公开面兼容（v1 导出） ────────────────────────── */
 
 /**

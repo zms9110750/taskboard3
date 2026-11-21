@@ -125,15 +125,31 @@ function tool(name: string): ToolLike {
 	return found as ToolLike;
 }
 
+/** 不需要 workspaceId 的工具。 */
+const NO_WORKSPACE_TOOLS: ReadonlySet<string> = new Set(['taskboard_workspaces', 'taskboard_definitions', 'taskboard_tool_policy_read']);
+
+/**
+ * 给参数补 workspaceId（用户 2026-11-22 取消了「激活空间」）。
+ *
+ * @param name 工具名
+ * @param args 原始参数
+ */
+function withWorkspace(name: string, args: unknown): unknown {
+	if (NO_WORKSPACE_TOOLS.has(name)) return args;
+	if (typeof args !== 'object' || args === null) return { workspaceId };
+	if ('workspaceId' in args) return args;
+	return { workspaceId, ...(args as Record<string, unknown>) };
+}
+
 /** 跑一个工具，取回文本。 */
 async function run(name: string, args: unknown, exec: unknown = { agent: { id: 'agent-uuid' } }): Promise<string> {
-	const value = (await tool(name).execute(args, exec)) as { text: string };
+	const value = (await tool(name).execute(withWorkspace(name, args), exec)) as { text: string };
 	return value.text;
 }
 
 /** 跑一个工具，取回完整结果对象（测 output 形状用）。 */
 async function runRaw(name: string, args: unknown, exec: unknown = { agent: { id: 'agent-uuid' } }): Promise<{ text: string }> {
-	return (await tool(name).execute(args, exec)) as { text: string };
+	return (await tool(name).execute(withWorkspace(name, args), exec)) as { text: string };
 }
 
 /** 建一张卡（走 core，不经过工具，用来布置状态）。 */
@@ -311,25 +327,6 @@ describe('ctx：默认空间与激活空间', () => {
 		assert.ok(text.includes('共 0 张卡'), text);
 	});
 
-	it('激活空间 = 第一个未归档空间（#1 会显示）', async () => {
-		const text = await run('taskboard_workspaces', {});
-		assert.ok(text.includes(`当前激活空间：${workspaceId}`), text);
-	});
-
-	it('默认空间解析器抛错 ⇒ 失败文案说清是宿主接线问题', async () => {
-		const broken = createTools({
-			taskboard,
-			defineTool: fakeDefineTool,
-			defaultWorkspaceId: async () => {
-				throw new Error('激活空间不存在');
-			},
-			subagents: stubSubagents('测试agent'),
-		});
-		const cards = broken.find((one) => one.name === 'taskboard_cards') as ToolLike;
-		const value = (await cards.execute({}, { agent: { id: 'x' } })) as { text: string };
-		assert.ok(value.text.includes('宿主解析激活空间失败'), value.text);
-		assert.ok(value.text.includes('workspaceId'), value.text);
-	});
 });
 
 /* ────────────────────────── ②② ctx：holder ────────────────────────── */
@@ -355,7 +352,7 @@ describe('ctx：holder（领取/释放的持有者）', () => {
 		const id = await seedCard(workRef(), 'UUID 持有');
 		await submit(id);
 		const transition = local.find((one) => one.name === 'taskboard_transition') as ToolLike;
-		await transition.execute({ id, to: TaskState.WORKING }, { agent: { id: 'uuid-1234' } });
+		await transition.execute({ workspaceId, id, to: TaskState.WORKING }, { agent: { id: 'uuid-1234' } });
 		const after = taskboard.get(workspaceId, id);
 		if (after.ok) assert.deepEqual(after.card.holders.map((one) => one.holder), ['uuid-1234']);
 	});
@@ -462,7 +459,7 @@ describe('taskboard_card', () => {
 describe('taskboard_raw_card', () => {
 	it('返回纯 JSON：sectionKey → payload', async () => {
 		const id = await seedCard(workRef(), '原始 JSON');
-		const value = (await tool('taskboard_raw_card').execute({ id }, { agent: { id: 'x' } })) as { text: string };
+		const value = (await tool('taskboard_raw_card').execute({ workspaceId, id }, { agent: { id: 'x' } })) as { text: string };
 		const json = JSON.parse(value.text) as Record<string, unknown>;
 		assert.equal(typeof json, 'object');
 		assert.ok(Object.keys(json).length > 0);
@@ -545,7 +542,7 @@ describe('taskboard_update', () => {
 	it('按 JSON 路径替换；返回 JSON + 当前状态与下一步', async () => {
 		const id = await seedCard(workRef(), '更新卡');
 		const raw = JSON.parse(
-			((await tool('taskboard_raw_card').execute({ id }, { agent: { id: 'x' } })) as { text: string }).text,
+			((await tool('taskboard_raw_card').execute({ workspaceId, id }, { agent: { id: 'x' } })) as { text: string }).text,
 		) as Record<string, unknown>;
 		const sectionKey = Object.keys(raw)[0] ?? 'body';
 		const payload = (raw[sectionKey] ?? {}) as Record<string, unknown>;

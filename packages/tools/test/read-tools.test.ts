@@ -17,20 +17,22 @@ import { run, runOk, seedCard, makeFixture, parseJson } from './support/fixtures
 /* ────────────────────────────── #1 空间 ────────────────────────────── */
 
 describe('taskboard_workspaces', () => {
-	it('列出空间、卡数、激活空间', async () => {
+	it('列出空间、卡数（不再有激活空间 —— 用户 2026-11-22 取消）', async () => {
 		const fixture = await makeFixture();
 		await seedCard(fixture, 't-work', '一张卡');
 		const text = await runOk(fixture, 'taskboard_workspaces', {});
 		assert.ok(text.includes('工作空间（1 个）'), text);
 		assert.ok(text.includes(fixture.ws), text);
 		assert.ok(text.includes('1 张卡'), text);
-		assert.ok(text.includes(`当前激活空间：${fixture.ws}`), text);
+		assert.ok(!text.includes('当前激活空间'), text);
 	});
 
-	it('宿主没给激活空间 ⇒ 明说（不编）', async () => {
+	it('空间必须显式给（激活空间设定已取消）', async () => {
 		const fixture = await makeFixture();
-		const text = await runOk(fixture, 'taskboard_workspaces', {}, { resolveDefaultWorkspace: async () => fixture.ws });
-		assert.ok(text.includes('当前宿主没有提供激活空间'), text);
+		const result = await fixture.registry.invoke('taskboard_cards', {}, { holder: 'lead' });
+		assert.equal(result.isError, true);
+		assert.ok(result.text.includes('激活空间'), result.text);
+		assert.ok(result.text.includes('taskboard_workspaces'), result.text);
 	});
 
 	it('includeArchived 控制归档空间是否出现', async () => {
@@ -125,14 +127,25 @@ describe('taskboard_cards', () => {
 		assert.ok(result.text.includes('TASK_STATE_SUBMITTED'), result.text);
 	});
 
-	it('空间为空且宿主没注册该行为 ⇒ 明确报错（MCP 场景）', async () => {
+	it('列出空间、卡数（不再有激活空间 —— 用户 2026-11-22 取消）', async () => {
 		const fixture = await makeFixture();
-		const result = await run(fixture, 'taskboard_cards', {}, { holder: 'lead' });
+		await seedCard(fixture, 't-work', '一张卡');
+		const text = await runOk(fixture, 'taskboard_workspaces', {});
+		assert.ok(text.includes('工作空间（1 个）'), text);
+		assert.ok(text.includes(fixture.ws), text);
+		assert.ok(text.includes('1 张卡'), text);
+		assert.ok(!text.includes('当前激活空间'), text);
+	});
+
+	it('空间必须显式给（激活空间设定已取消）', async () => {
+		const fixture = await makeFixture();
+		const result = await fixture.registry.invoke('taskboard_cards', {}, { holder: 'lead' });
 		assert.equal(result.isError, true);
-		assert.ok(result.text.includes('没有注册「空间为空 = 激活空间」'), result.text);
+		assert.ok(result.text.includes('激活空间'), result.text);
 		assert.ok(result.text.includes('taskboard_workspaces'), result.text);
 	});
 });
+
 
 /* ────────────────────────────── #3 查看卡 ────────────────────────────── */
 

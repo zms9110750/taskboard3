@@ -128,21 +128,40 @@ export async function makeFixture(
 export function context(fixture: Fixture, over: TaskboardToolContext = {}): TaskboardToolContext {
 	return {
 		holder: 'lead',
-		resolveDefaultWorkspace: async () => fixture.ws,
-		activeWorkspaceId: fixture.ws,
 		canManageToolPolicies: true,
 		...over,
 	};
 }
 
-/** 跑一个工具（默认带完整上下文）。 */
+/** 不需要 workspaceId 的工具（自己列空间 / 读定义）。 */
+const NO_WORKSPACE_TOOLS: ReadonlySet<string> = new Set([
+	'taskboard_workspaces',
+	'taskboard_definitions',
+	'taskboard_tool_policy_read',
+]);
+
+/**
+ * 跑一个工具（默认带完整上下文）。
+ *
+ * ⚠ 用户 2026-11-22 取消了「激活空间」⇒ 需要空间的工具必须显式给 `workspaceId`。
+ *   夹具在这里补上（测试参数里显式给了就不覆盖）。
+ */
 export async function run(
 	fixture: Fixture,
 	name: string,
 	args: unknown = {},
 	ctx: TaskboardToolContext | undefined = undefined,
 ): Promise<TaskboardToolResult> {
-	return fixture.registry.invoke(name, args, ctx ?? context(fixture));
+	let finalArgs: unknown = args;
+	if (
+		!NO_WORKSPACE_TOOLS.has(name) &&
+		typeof args === 'object' &&
+		args !== null &&
+		!('workspaceId' in args)
+	) {
+		finalArgs = { workspaceId: fixture.ws, ...(args as Record<string, unknown>) };
+	}
+	return fixture.registry.invoke(name, finalArgs, ctx ?? context(fixture));
 }
 
 /** 跑一个工具并断言成功，返回文本。 */

@@ -1,5 +1,5 @@
 /**
- * #1 列出空间（+ DSH 的激活空间可观测性）。
+ * #1 列出空间。
  *
  * 用户要求：
  * > 列出有多少个空间和他们有多少个卡。一个 bool 参数选择是否列出归档。
@@ -34,19 +34,7 @@ export function createWorkspacesTool(deps: ToolDeps): ReturnType<typeof defineTo
 			}
 			if (includeArchived === false) lines.push('（归档的空间已隐藏；要包含它们把 includeArchived 设为 true。）');
 		}
-
-		/* DSH：把「当前激活空间」标出来 —— 否则 AI 不知道「空间为空」会落到哪。 */
-		const active = ctx.activeWorkspaceId;
-		if (typeof active === 'string' && active !== '') {
-			const found = list.find((one) => one.id === active);
-			lines.push(
-				'',
-				`当前激活空间：${active}${found === undefined ? '（不在本次列表里）' : `（${found.displayName}）`}`,
-			);
-		} else {
-			lines.push('', '当前宿主没有提供激活空间信息；调用其它工具时请显式传 workspaceId。');
-		}
-
+		/* 用户 2026-11-22：取消「激活空间」设定 ⇒ 不再回显这一行。 */
 		/* 无归档空间时不必多一行；保持输出紧凑。 */
 		const archivedCount = taskboard.listWorkspaces(true).filter((one) => one.archived).length;
 		if (includeArchived === true && archivedCount > 0) lines.push(`其中已归档：${archivedCount} 个`);
@@ -58,7 +46,7 @@ export function createWorkspacesTool(deps: ToolDeps): ReturnType<typeof defineTo
 		name: 'taskboard_workspaces',
 		description:
 			'列任务板的工作空间（容器）以及每个空间有多少张卡。includeArchived=true 时包含已归档空间。' +
-			'返回里若出现「当前激活空间」，表示调用其它工具时省略 workspaceId 会落到它上面。',
+			'每个工具调用都必须显式给 workspaceId（没有「激活空间」默认值）。',
 		inputSchema: {
 			type: 'object',
 			properties: {

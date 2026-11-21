@@ -57,57 +57,46 @@ export type WorkspaceResolution =
 /**
  * 解析目标空间。
  *
- * ## 「空间为空」的唯一语义（用户前提）
+ * ## 用户 2026-11-22 裁决：**取消「激活空间」设定**
  *
- * - 显式给了 `workspaceId` ⇒ 用它；
- * - 没给，宿主注入了 `resolveDefaultWorkspace` ⇒ 用宿主解析（DSH：激活空间）；
- * - 没给，宿主没注册这个行为 ⇒ **报错**（MCP 等），并告诉 AI 怎么自救：
- *   显式传 workspaceId，或先调 `taskboard_workspaces` 拿 id。
+ * > 「那也可以。取消整个激活空间的设定。这个设定不要了。
+ * >   也不需要 ui 上面的『激活当前空间』的按钮了。」
+ *
+ * ⇒ `workspaceId` **必须显式给**，所有宿主一致：
+ * - 给了 ⇒ 用它；
+ * - 没给 ⇒ **报错**，并告诉 AI 怎么自救（先调 `taskboard_workspaces` 拿 id）。
  *
  * ⚠ 不猜「第一个空间」：那会让写操作静默落到一个 AI 没确认的空间。
  */
 export async function resolveWorkspace(
 	args: unknown,
-	ctx: TaskboardToolContext,
+	_ctx: TaskboardToolContext,
 ): Promise<WorkspaceResolution> {
 	const explicit = str(args, 'workspaceId');
-	if (explicit !== undefined) return { ok: true, workspaceId: explicit };
-
-	const resolver = ctx.resolveDefaultWorkspace;
-	if (typeof resolver === 'function') {
-		try {
-			const resolved = await resolver();
-			if (typeof resolved === 'string' && resolved !== '') return { ok: true, workspaceId: resolved };
-			return {
-				ok: false,
-				result: inputFailure('宿主的默认空间解析器返回了空值；这是宿主接线问题。', '显式传 workspaceId 后重试。'),
-			};
-		} catch (error) {
-			return {
-				ok: false,
-				result: inputFailure(
-					`宿主解析激活空间失败：${error instanceof Error ? error.message : String(error)}。`,
-					'显式传 workspaceId 后重试。',
-				),
-			};
-		}
-	}
+	if (explicit !== undefined && explicit !== '') return { ok: true, workspaceId: explicit };
 
 	return {
 		ok: false,
 		result: inputFailure(
-			'当前宿主没有注册「空间为空 = 激活空间」的行为（MCP 等），所以必须显式给 workspaceId。',
-			'显式传 workspaceId；不知道 id 就先调 taskboard_workspaces 列空间。',
+			'必须显式给 workspaceId —— 「激活空间」的设定已取消（用户 2026-11-22），不再有默认空间。',
+			'先调 taskboard_workspaces 列空间拿 id，再把它传给本次调用。',
 		),
 	};
 }
 
+/* ══════════════════════════════════════════════════════════
+   持有者
+   ══════════════════════════════════════════════════════════ */
+
 /**
- * 取调用者身份。
+ * 读持有者（agent 身份）。
  *
- * @returns 宿主给的名字；没给返回 `undefined`（由调用方决定是「失败」还是「可以继续」）
+ * 用户裁决：持有者来自宿主注入的 `ctx.holder`（DSH 里是 agent id）。
+ * 没有注入 ⇒ 返回 `undefined`（不是错误：MCP 等没有 agent 身份）。
+ *
+ * @param ctx 工具上下文
  */
 export function holderOf(ctx: TaskboardToolContext): string | undefined {
-	const holder = ctx.holder;
-	return typeof holder === 'string' && holder !== '' ? holder : undefined;
+	const value = ctx.holder;
+	return typeof value === 'string' && value !== '' ? value : undefined;
 }
