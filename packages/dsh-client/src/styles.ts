@@ -489,6 +489,14 @@ export const WORKSPACE_CSS = `
 /* 下拉面板：浮在内容上，不推挤布局（用户 2026-11-20）。40 个空间在面板内部滚动。 */
 .tb3w-space-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:min(560px,88vw);max-height:min(320px,60vh);overflow:auto;padding:8px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-card,#fff);box-shadow:0 12px 32px rgb(15 23 42 / 16%)}
 .tb3w-space-pop > .space-bar{flex-wrap:wrap;padding:0}
+/*
+ * 空间折叠栏（A 款）—— 用户 2026-11-22 选定：
+ * 「点开以后是打开折叠的隐藏栏，不是悬浮窗」。
+ * ⇒ 整行、推挤下面的筛选行（不是 absolute）。
+ */
+.tb3w-space-fold{padding:8px 10px;margin-top:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-soft,#f9fafb)}
+.tb3w-space-fold > .space-bar{padding:0}
+.tb3w-root .tb3w-space-toggle.is-open{border-color:var(--accent);color:var(--accent);background:#eff6ff}
 
 /* SpaceBar 自己带 6px 上下 padding ⇒ 这里只补左右对齐 */
 .tb3w-chrome > .space-bar{padding-left:2px;padding-right:2px}

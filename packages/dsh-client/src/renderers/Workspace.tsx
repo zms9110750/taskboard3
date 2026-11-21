@@ -99,7 +99,7 @@ import { ListEmpty } from './workspace/ListEmpty.tsx';
 import { ListHeader } from './workspace/ListHeader.tsx';
 import { SplitHandle } from './workspace/SplitHandle.tsx';
 import { WorkspaceToolbar } from './workspace/WorkspaceToolbar.tsx';
-import { SpacePicker } from './workspace/SpacePicker.tsx';
+import { SpaceFoldBody, SpaceFoldToggle } from './workspace/SpaceFold.tsx';
 
 /* ══════════════════════════════════════════════════════════
    状态筛选的分组顺序
@@ -229,6 +229,9 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 *   卡上的左右边框是另一件事（`unreadSides`），两者共存。
 	 */
 	const [unreadMode, setUnreadMode] = useState<'none' | 'ai' | 'user'>('none');
+
+	/* 空间折叠栏是否展开（A 款：展开区在工具栏下一行）。 */
+	const [spaceOpen, setSpaceOpen] = useState(false);
 	/*
 	 * `density === 'compact'` 时空间 chip 行默认折叠（用户 2026-11-20：
 	 * 「需要点但是用不上的东西要折叠」）。点「工作空间 ▾」展开成一行。
@@ -550,23 +553,39 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 										 *   那条是拆组件时的边界，现在是重排布局。
 										 */
 										space: (
-											<SpacePicker
-												workspaces={props.workspaces}
-												currentId={props.currentId}
-												viewingId={props.viewingId}
-												showArchived={props.showArchived}
-												cardCount={props.cards.length}
-												onView={props.onView}
-												onActivate={props.onActivate}
-												onToggleArchived={props.onToggleArchived}
-												onToggleShowArchived={props.onToggleShowArchived}
-												onCreate={props.onCreateWorkspace}
+											<SpaceFoldToggle
+												open={spaceOpen}
+												onToggle={() => {
+													setSpaceOpen((now) => !now);
+												}}
 											/>
 										),
 									}
 								: {})}
 						/>
 					</div>
+
+					{/*
+					 * 空间折叠栏 —— **用户 2026-11-22 选定的 A 款**：
+					 * 「点开以后是打开折叠的隐藏栏，不是悬浮窗」。
+					 *
+					 * 展开区在工具栏**下一行**、占满宽度、**推挤**筛选行。
+					 * 状态由本组件持有（展开区在工具栏外面，组件内部管不了）。
+					 */}
+					{compact && spaceOpen ? (
+						<SpaceFoldBody
+							workspaces={props.workspaces}
+							currentId={props.currentId}
+							viewingId={props.viewingId}
+							showArchived={props.showArchived}
+							cardCount={props.cards.length}
+							onView={props.onView}
+							onActivate={props.onActivate}
+							onToggleArchived={props.onToggleArchived}
+							onToggleShowArchived={props.onToggleShowArchived}
+							onCreate={props.onCreateWorkspace}
+						/>
+					) : null}
 
 					<div className="tb3w-filters">
 						<FilterRow
