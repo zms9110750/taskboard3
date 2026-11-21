@@ -77,3 +77,41 @@ describe('建卡 content 的三条规则', () => {
 		assert.deepEqual(Object.keys(created.card.sections).sort(), ['body', 'note2'], '额外 key 不存进卡');
 	});
 });
+
+/* ══════════════════════════════════════════════════════════
+   空模板：章节完全自定义（用户 2026-11-22）
+   ══════════════════════════════════════════════════════════ */
+
+describe('空模板建卡（章节完全自定义）', () => {
+	it('任意 key 都合法，原样存成章节（label = key）', async () => {
+		const { tb, ws } = await makeBoard([
+			makeTemplate({ ref: 't-empty', kind: 'work', domain: 'core', sections: [] }),
+		]);
+		const created = await tb.create({
+			workspaceId: ws,
+			templateRef: 't-empty',
+			title: '自定义章节',
+			content: {
+				随便写: { $type: 'text', value: '内容 A' },
+				'another key': { $type: 'markdown', value: '# 标题' },
+				数字也可以: { $type: 'ask', items: [] },
+			},
+		});
+		assert.equal(created.ok, true, created.ok ? '' : created.message);
+		if (!created.ok) return;
+		assert.deepEqual(Object.keys(created.card.sections).sort(), ['another key', '随便写', '数字也可以'].sort());
+		assert.equal(created.card.sections['随便写']?.label, '随便写', 'label 就是 key');
+		assert.deepEqual(created.card.sections['another key']?.payload, { $type: 'markdown', value: '# 标题' });
+		assert.equal(created.warnings, undefined, '空模板不该有「未知 key」警告');
+	});
+
+	it('不传 content ⇒ 空章节（合法）', async () => {
+		const { tb, ws } = await makeBoard([
+			makeTemplate({ ref: 't-empty2', kind: 'work', domain: 'core', sections: [] }),
+		]);
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-empty2', title: '空内容' });
+		assert.equal(created.ok, true, created.ok ? '' : created.message);
+		if (!created.ok) return;
+		assert.deepEqual(created.card.sections, {});
+	});
+});

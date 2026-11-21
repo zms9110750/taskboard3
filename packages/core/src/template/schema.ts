@@ -188,6 +188,22 @@ export class ContentSchemaCache {
 			});
 		}
 
+		/*
+		 * ── 空模板：章节完全自定义（用户 2026-11-22） ──
+		 *
+		 * > 「空模板允许建卡。他的章节是完全自定义的。key 怎么写都合法。」
+		 *
+		 * 模板没有声明任何 section ⇒ 调用方给的每个 key 都是合法章节，
+		 * 原样当 payload 收下（不做 schema 校验 —— 没有 schema 可对）。
+		 */
+		if (template.sections.length === 0) {
+			const payloads = new Map<string, unknown>();
+			for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+				payloads.set(key, value);
+			}
+			return { ok: true, payloads, keys: new Map() };
+		}
+
 		/* ── ① key 归一化（label 或 id → sectionId），未知 key 收集起来 ── */
 		const given = new Map<string, unknown>(); /* sectionId → 原始 payload */
 		const keyOf = new Map<string, string>(); /* sectionId → 调用方给的原始 key */

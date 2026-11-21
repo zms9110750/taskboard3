@@ -173,10 +173,21 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 
 	/* ── 6. 组装卡 ── */
 	const sections: Record<string, CardSection> = {};
-	for (const section of template.sections) {
-		const payload = validated.payloads.get(section.id);
-		if (payload === undefined) continue;
-		sections[section.id] = { label: section.label, payload };
+	/*
+	 * 空模板：key 就是章节 id，label 也用 key（用户 2026-11-22：
+	 * 「空模板允许建卡。他的章节是完全自定义的。key 怎么写都合法。」）
+	 */
+	if (template.sections.length === 0) {
+		for (const [key, payload] of validated.payloads) {
+			if (payload === undefined) continue;
+			sections[key] = { label: key, payload };
+		}
+	} else {
+		for (const section of template.sections) {
+			const payload = validated.payloads.get(section.id);
+			if (payload === undefined) continue;
+			sections[section.id] = { label: section.label, payload };
+		}
 	}
 
 	const templateRef: TemplateRef = {
@@ -262,6 +273,14 @@ function inspectCreateContent(
 	if (typeof raw !== 'object' || Array.isArray(raw)) return { ok: true, content: raw, warnings: [] };
 
 	const record = raw as Record<string, unknown>;
+
+	/*
+	 * 空模板：章节完全自定义（用户 2026-11-22）——
+	 * 每个 key 都是合法章节，原样交给下面的 schema 校验（它会原样收下）。
+	 */
+	if (template.sections.length === 0) {
+		return { ok: true, content: record, warnings: [] };
+	}
 	/** 章节 id / label → sectionId。 */
 	const byKey = new Map<string, string>();
 	for (const section of template.sections) {
