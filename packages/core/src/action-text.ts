@@ -32,7 +32,11 @@ export type ActionTextFn = (payload: Record<string, unknown>) => string;
 
 /** 注册表。 */
 export interface ActionTextRegistry {
-	/** 注册（同名覆盖）。 */
+	/**
+	 * 注册一个 action 的文字格式化函数。
+	 *
+	 * @throws type 为空白 / 重复注册
+	 */
 	register(type: string, format: ActionTextFn): void;
 	/** 有没有注册过。 */
 	has(type: string): boolean;
@@ -53,12 +57,44 @@ export interface ActionTextRegistry {
  */
 export function createActionTextRegistry(seed?: readonly (readonly [string, ActionTextFn])[]): ActionTextRegistry {
 	const table = new Map<string, ActionTextFn>();
-	for (const entry of seed ?? []) table.set(entry[0], entry[1]);
+
+	/**
+	 * 注册实现 —— **seed 和运行时注册共用同一套校验**。
+	 *
+	 * ## 两条校验（用户 2026-11-22）
+	 *
+	 * > 「两个组件抢同一个 type，应该抛错。组件的展示不应该由第三方提供。
+	 * >   理应有 action 自己的提供者提供唯一的。」
+	 *
+	 * | 校验 | 挡什么 |
+	 * |---|---|
+	 * | 空 type | 注册成 '' 会命中「payload 没有 $type」的兜底路径 |
+	 * | 重复注册 | 两个提供者抢同一 type ⇒ 谁生效取决于注册顺序 = 不可预测 |
+	 *
+	 * ⚠ **seed 也走这条路径** —— 直接 `table.set` 会让「启动时写了两个同 type」
+	 *   被静默覆盖，那和运行时抢占是同一个错误。
+	 */
+	const put = (type: string, format: ActionTextFn): void => {
+		if (type.trim() === '') {
+			throw new Error(
+				'action 文字渲染器的 type 不能是空白。' +
+					'空 type 会让「payload 没有 $type」的情况误命中一个渲染器。',
+			);
+		}
+		if (table.has(type)) {
+			throw new Error(
+				`action「${type}」的文字渲染器重复注册。` +
+					'同一个 type 只能有一个提供者 —— 两个提供者抢同一个 type 时，' +
+					'谁生效取决于注册顺序，那是不可预测的行为。',
+			);
+		}
+		table.set(type, format);
+	};
+
+	for (const entry of seed ?? []) put(entry[0], entry[1]);
 
 	return {
-		register(type, format) {
-			table.set(type, format);
-		},
+		register: put,
 		has(type) {
 			return table.has(type);
 		},

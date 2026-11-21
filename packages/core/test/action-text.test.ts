@@ -89,11 +89,27 @@ describe('第三方 action —— 运行时注册', () => {
 		assert.equal(registry.has('bar'), false);
 	});
 
-	it('同名注册覆盖旧的（不是抛错 —— 和 UI 注册表不同）', () => {
+	it('⚠ 重复注册 ⇒ 抛错（用户 2026-11-22：一个 type 只能有一个提供者）', () => {
 		const registry = createActionTextRegistry();
 		registry.register('x', () => '第一版');
-		registry.register('x', () => '第二版');
-		assert.equal(textOfAction({ $type: 'x' }, registry), '第二版');
+		assert.throws(
+			() => { registry.register('x', () => '第二版'); },
+			/重复注册/,
+		);
+		/* 抛错后原来的还在，没被覆盖。 */
+		assert.equal(textOfAction({ $type: 'x' }, registry), '第一版');
+	});
+
+	it('空白 type ⇒ 抛错', () => {
+		const registry = createActionTextRegistry();
+		assert.throws(() => { registry.register('   ', () => ''); }, /不能是空白/);
+	});
+
+	it('seed 里的重复 type 也抛错（启动时就不允许抢）', () => {
+		assert.throws(
+			() => createActionTextRegistry([['dup', () => 'a'], ['dup', () => 'b']]),
+			/重复注册/,
+		);
 	});
 });
 
