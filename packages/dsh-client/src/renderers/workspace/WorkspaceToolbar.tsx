@@ -70,6 +70,13 @@ export interface WorkspaceToolbarProps {
 	 * 「权限与约定」。**省略 = 不画这个按钮**（V2 还没做；compact 密度也折叠它）。
 	 */
 	readonly onOpenPermission?: () => void;
+	/**
+	 * 空间选择器（`SpacePicker`）。**放在视图切换左边** ——
+	 * 用户 2026-11-21：「工作空间放在科技树的左边」。
+	 *
+	 * ⚠ 这推翻 2026-11-20 的「工具栏不含空间选择器」—— 那时是拆组件，现在是重排布局。
+	 */
+	readonly space?: ReactNode;
 }
 
 /**
@@ -105,6 +112,7 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps): ReactNode {
 
 			<span className="tb3w-toolbar__actions">
 				{/* 紧凑：权限与约定收起来（低频、用不上 —— 用户 2026-11-20「要折叠」） */}
+				{props.space ?? null}
 				{props.onOpenPermission === undefined ? null : (
 					<button
 						type="button"
@@ -115,6 +123,7 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps): ReactNode {
 					</button>
 				)}
 				{/*
+
 				 * ⚠ 分段按钮**没有定稿组件**。这里是临时内联实现，
 				 *   候选在 `dev/components/buttons.tsx` 的 `SegmentedControl`
 				 *   —— 用户还没选，所以不接进产品（用户 2026-11-20：

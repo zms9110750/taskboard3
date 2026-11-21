@@ -539,7 +539,7 @@ export const WORKSPACE_CSS = `
  */
 .tb3w-filters{flex:1 0 100%;min-width:0;margin-top:8px}
 .tb3w-filters .filter-row__spacer{display:none}
-.tb3w-filters__tail{flex:1 0 100%;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;margin-top:8px}
+.tb3w-filters__tail{flex:0 1 auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
 .tb3w-ai-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
 .tb3w-ai-chip b{font-weight:600;color:var(--text)}
 /*
@@ -876,7 +876,7 @@ export const WORKSPACE_CSS = `
   .tb3w-btn-primary{padding:3px 10px;font-size:10.5px}
   .tb3w-filters{margin-top:6px}
   .tb3w-filters .filter-row__spacer{display:none}
-  .tb3w-filters__tail{flex:1 0 100%;flex-wrap:wrap;gap:6px}
+  .tb3w-filters__tail{flex:0 1 auto;flex-wrap:wrap;gap:6px}
   .tb3w-root .filter-row{gap:6px}
   .tb3w-root .filter-box{height:26px}
   .tb3w-root .filter-box__face{left:10px}
@@ -884,8 +884,8 @@ export const WORKSPACE_CSS = `
   .tb3w-root .filter-box__item{font-size:11px;padding:2px 3px}
   .tb3w-root .filter-box__csep,.tb3w-root .filter-box__sep{font-size:11px}
   .tb3w-root .filter-box__vline{margin:0 7px}
-  .tb3w-ai-chip{display:none}
-  .tb3w-filters__tail .search-box{flex:1 1 100%;width:100%}
+  .tb3w-ai-chip{display:inline-flex}
+  .tb3w-filters__tail .search-box{flex:0 0 auto;width:190px}
   .tb3w-list__head{padding:9px 12px 5px}
   .tb3w-list__title{font-size:12px}
   .tb3w-list__body{padding:6px 12px 10px}

@@ -505,10 +505,9 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					{/*
 					 * 行 1：工具栏 + 空间开关。
 					 *
-					 * ⚠ 「工作空间 ▾」**不在 `WorkspaceToolbar` 里** —— 用户 2026-11-20：
-					 *   「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮。」
-					 *   所以由本组件（拼装层）在外面拼。它只是**开关**；
-					 *   真正的选择（chip 列表）在展开后的折叠区里。
+					 * 空间选择器在 **compact** 密度下作为 `space` 传给工具栏（放在视图切换左边）——
+					 * 用户 2026-11-21：「工作空间放在科技树的左边」。
+					 * full 密度用常驻的 `SpaceBar` chips 行（见上）。
 					 */}
 					<div className="tb3w-chrome__bar">
 						<WorkspaceToolbar
@@ -521,21 +520,32 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							{...(compact || props.onOpenPermission === undefined
 								? {}
 								: { onOpenPermission: props.onOpenPermission })}
+							{...(compact
+								? {
+										/*
+										 * 空间选择器**在视图切换左边** ——
+										 * 用户 2026-11-21：「工作空间放在科技树的左边」。
+										 *
+										 * ⚠ 这推翻 2026-11-20 的「工具栏不含空间选择器」：
+										 *   那条是拆组件时的边界，现在是重排布局。
+										 */
+										space: (
+											<SpacePicker
+												workspaces={props.workspaces}
+												currentId={props.currentId}
+												viewingId={props.viewingId}
+												showArchived={props.showArchived}
+												cardCount={props.cards.length}
+												onView={props.onView}
+												onActivate={props.onActivate}
+												onToggleArchived={props.onToggleArchived}
+												onToggleShowArchived={props.onToggleShowArchived}
+												onCreate={props.onCreateWorkspace}
+											/>
+										),
+									}
+								: {})}
 						/>
-						{compact ? (
-							<SpacePicker
-								workspaces={props.workspaces}
-								currentId={props.currentId}
-								viewingId={props.viewingId}
-								showArchived={props.showArchived}
-								cardCount={props.cards.length}
-								onView={props.onView}
-								onActivate={props.onActivate}
-								onToggleArchived={props.onToggleArchived}
-								onToggleShowArchived={props.onToggleShowArchived}
-								onCreate={props.onCreateWorkspace}
-							/>
-						) : null}
 					</div>
 
 					<div className="tb3w-filters">
