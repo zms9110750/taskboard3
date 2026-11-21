@@ -33,6 +33,9 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+/* 注册表初始化 —— Section 的内容分发查的是运行时注册表（2026-11-22）。 */
+import { initRenderers } from '../../../src/init-renderers.ts';
+
 import { TaskState } from '@taskboard/protocol';
 import type { ButtonAction } from '@taskboard/protocol';
 
@@ -579,6 +582,7 @@ function App(): React.ReactNode {
 /* 产品样式和预览是同一份 —— 不在预览的 style.css 里抄一份。 */
 injectStyles();
 
+initRenderers();
 const root = document.getElementById('root');
 if (root !== null) {
 	createRoot(root).render(

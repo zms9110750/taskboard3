@@ -45,6 +45,7 @@ import type { CardSection } from '../types.ts';
 import { AskSection } from './AskSection.tsx';
 import type { AskAction } from '../pure/section.ts';
 import { Markdown } from './Markdown.tsx';
+import { rendererOf, type RendererProps } from '../render-registry.ts';
 
 /** 组件属性（任务描述给的那一份，一个不多一个不少）。 */
 export interface SectionProps {
@@ -142,6 +143,7 @@ const label = typeof section.label === 'string' ? section.label : '';
 			<div className="section-block__content">
 				<SectionContent
 					view={view}
+					section={section}
 					sectionId={props.sectionId}
 					phase={phase}
 					readonly={readonlyFlag}
@@ -155,92 +157,43 @@ const label = typeof section.label === 'string' ? section.label : '';
 }
 
 /** 按 pure 判出来的形态选渲染器。 */
-/** 渲染器的统一签名 —— 字典的值都得是它。 */
-type SectionRenderer = (props: SectionContentProps) => ReactNode;
 
-/** `SectionContent` 的属性 —— 所有渲染器共享同一份。 */
+/** 按 pure 判出来的形态**查表**选渲染器（不是 switch）。 */
+/**
+ * 内容分发 —— **查运行时注册表**，不是查本地字典。
+ *
+ * 用户 2026-11-22：
+ * > 「这种外来的东西按照特征或者头在运行时注册和分发。应该有标准做法吧。
+ * >   无论是 DI 还是责任链还是更简单的字典。这个问题很难吗？」
+ *
+ * ⇒ 唯一分发点：`rendererOf(kind)`。内置三件由 `initRenderers()` 注册，
+ *   第三方可以 `registerRenderer('foo', FooContent)` 追加。
+ *   没注册的 kind 走 `UnknownBlock`（展开原始 JSON，不白屏）。
+ */
+/** `SectionContent` 的属性 —— 内容组件共享同一份。 */
 interface SectionContentProps {
 	readonly view: SectionView;
+	readonly section: CardSection;
 	readonly sectionId: string;
 	readonly phase: SectionPhase;
 	readonly readonly: boolean;
 	readonly rawPayload: unknown;
 	readonly onChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
-	/** ask 作答动作。带 `groupIndex` —— 答案写在 `items[groupIndex]`。 */
 	readonly onAsk?: (sectionId: string, groupIndex: number, action: AskAction) => void;
 }
 
-/**
- * 渲染器表 —— **字典，不是 `switch`**。
- *
- * ## 为什么必须是字典（用户 2026-11-22）
- *
- * > 「这怎么能用 switch。至少也要用字典吧。这东西是允许动态注册和后期更改的。」
- *
- * `switch` 把「有哪些 action」编译进了组件；加第四种就得改这里。
- * 字典把「按 kind 查渲染器」变成一次查表 —— 键集由 `satisfies` 保证，
- * 接 `render-registry` 时把这张表换成 `Map` 即可，**组件本身不用改**。
- *
- * ⚠ `unknown` 也在这张表里 —— 降级块走的是同一套查表路径。
- */
-const SECTION_RENDERERS = {
-	text: (props: SectionContentProps) => {
-		const view = props.view as TextSectionView;
-		return (
-			<TextBlock
-				view={view}
-				phase={props.phase}
-				readonly={props.readonly}
-				{...(props.onChange === undefined
-					? {}
-					: {
-							onPatch: (fields: Readonly<Record<string, unknown>>) => {
-								props.onChange?.(props.sectionId, fields);
-							},
-						})}
-			/>
-		);
-	},
-	markdown: (props: SectionContentProps) => {
-		const view = props.view as MarkdownSectionView;
-		return (
-			<MarkdownBlock
-				view={view}
-				phase={props.phase}
-				readonly={props.readonly}
-				{...(props.onChange === undefined
-					? {}
-					: {
-							onPatch: (fields: Readonly<Record<string, unknown>>) => {
-								props.onChange?.(props.sectionId, fields);
-							},
-						})}
-			/>
-		);
-	},
-	ask: (props: SectionContentProps) => {
-		const view = props.view as unknown as {
-			readonly groups: readonly AskGroupView[];
-			readonly empty: boolean;
-		};
-		return (
-			<AskSection
-				sectionId={props.sectionId}
-				view={view}
-				readonly={props.readonly}
-				{...(props.onAsk === undefined ? {} : { onAsk: props.onAsk })}
-			/>
-		);
-	},
-	unknown: (props: SectionContentProps) => {
+function SectionContent(props: SectionContentProps): ReactNode {
+	const Content = rendererOf(props.view.kind);
+	if (Content === undefined) {
 		const view = props.view as unknown as { readonly title: string; readonly json: string };
 		return <UnknownBlock title={view.title} json={view.json} />;
-	},
-} satisfies Record<SectionView['kind'], SectionRenderer>;
-
-/** 按 pure 判出来的形态**查表**选渲染器（不是 switch）。 */
-function SectionContent(props: SectionContentProps): ReactNode {
-	return SECTION_RENDERERS[props.view.kind](props);
+	}
+	/*
+	 * `onAsk` 在 `RendererProps` 上是 `unknown`（第三方可注册任意 action），
+	 * 这里传的是 `AskAction`（比 `unknown` 窄）—— 逆变位置需要一次断言。
+	 * 断言在**类型层**，运行时是同一个对象，不改语义。
+	 */
+	return <Content {...(props as unknown as RendererProps)} />;
 }
 
 function UnknownBlock(props: { readonly title: string; readonly json: string }): ReactNode {
@@ -279,7 +232,7 @@ function UnknownBlock(props: { readonly title: string; readonly json: string }):
  *
  * @param props view / phase / readonly / onPatch
  */
-function TextBlock(props: {
+export function TextBlock(props: {
 	readonly view: TextSectionView;
 	readonly phase: SectionPhase;
 	readonly readonly: boolean;
@@ -358,7 +311,7 @@ function TextBlock(props: {
  *
  * @param props view / phase / readonly / onPatch
  */
-function MarkdownBlock(props: {
+export function MarkdownBlock(props: {
 	readonly view: MarkdownSectionView;
 	readonly phase: SectionPhase;
 	readonly readonly: boolean;

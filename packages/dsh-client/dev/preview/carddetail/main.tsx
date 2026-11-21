@@ -24,6 +24,9 @@
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+/* 注册表初始化 —— Section 的内容分发查的是运行时注册表（2026-11-22）。 */
+import { initRenderers } from '../../../src/init-renderers.ts';
+
 import { relationsOf, statusGroupOf } from '../../../src/pure/relations-block.ts';
 import { CardDetail } from '../../../src/renderers/CardDetail.tsx';
 import { injectStyles } from '../../../src/styles.ts';
@@ -382,6 +385,7 @@ function App(): React.ReactNode {
 /* 产品样式由 injectStyles() 在运行时注入 —— 不调用就是裸 HTML（这次的 bug）。 */
 injectStyles();
 
+initRenderers();
 const root = document.getElementById('root');
 if (root !== null) {
 	createRoot(root).render(

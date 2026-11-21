@@ -80,6 +80,21 @@ export interface RendererProps {
 	readonly onEdit?: (sectionId: string) => void;
 	/** `ask` 选项被点。`value` 是选项 label；`''`（`NO_ANSWER`）= 都不要。 */
 	readonly onAnswer?: (sectionId: string, value: string) => void;
+
+	/* ── 内容渲染需要的额外字段（2026-11-22 合并双层分发时加） ──
+	 *
+	 * 这些原本只在 Section.tsx 的 SectionContentProps 上。
+	 * 现在注册表的组件是「内容组件」（不带章节外壳），所以它们要跟着传。
+	 */
+
+	/** pure 判出来的视图（sectionViewOf(payload)）—— 内容组件不用自己再判。 */
+	readonly view?: unknown;
+	/** 生命周期相位。 */
+	readonly phase?: 'create' | 'active' | 'ended';
+	/** 内容改回（章节 id + 要合并的字段）。 */
+	readonly onChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
+	/** ask 作答（章节 id + 组下标 + 动作）。 */
+	readonly onAsk?: (sectionId: string, groupIndex: number, action: unknown) => void;
 }
 
 /** 一个 action 渲染组件。 */

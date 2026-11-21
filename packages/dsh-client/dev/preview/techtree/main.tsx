@@ -33,6 +33,9 @@
 import { StrictMode, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+/* 注册表初始化 —— Section 的内容分发查的是运行时注册表（2026-11-22）。 */
+import { initRenderers } from '../../../src/init-renderers.ts';
+
 import { TASK_STATES } from '@taskboard/protocol';
 
 import { KIND_ORDER, stateLabel } from '../../../src/pure/card-view.ts';
@@ -505,6 +508,7 @@ function App(): React.ReactNode {
 injectStyles();
 injectTechTreeStyles();
 
+initRenderers();
 const root = document.getElementById('root');
 if (root !== null) {
 	createRoot(root).render(
