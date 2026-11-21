@@ -36,6 +36,7 @@ import {
 	canEditOf,
 	emptyHintOf,
 	sectionViewOf,
+	type AskGroupView,
 	type MarkdownSectionView,
 	type SectionView,
 	type TextSectionView,
@@ -154,68 +155,94 @@ const label = typeof section.label === 'string' ? section.label : '';
 }
 
 /** 按 pure 判出来的形态选渲染器。 */
-function SectionContent(props: {
+/** 渲染器的统一签名 —— 字典的值都得是它。 */
+type SectionRenderer = (props: SectionContentProps) => ReactNode;
+
+/** `SectionContent` 的属性 —— 所有渲染器共享同一份。 */
+interface SectionContentProps {
 	readonly view: SectionView;
 	readonly sectionId: string;
 	readonly phase: SectionPhase;
 	readonly readonly: boolean;
 	readonly rawPayload: unknown;
 	readonly onChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
-	/**
-	 * ask 作答动作。带 `groupIndex` —— 答案写在 `items[groupIndex]`。
-	 */
+	/** ask 作答动作。带 `groupIndex` —— 答案写在 `items[groupIndex]`。 */
 	readonly onAsk?: (sectionId: string, groupIndex: number, action: AskAction) => void;
-}): ReactNode {
-	const view = props.view;
-	const readable = props.readonly;
-
-	/** 合并一个字段回 payload。 */
-	const patch = (fields: Readonly<Record<string, unknown>>): void => {
-		props.onChange?.(props.sectionId, fields);
-	};
-
-	switch (view.kind) {
-		case 'text':
-			return (
-				<TextBlock
-					view={view}
-					phase={props.phase}
-					readonly={readable}
-					{...(props.onChange === undefined ? {} : { onPatch: patch })}
-				/>
-			);
-
-		case 'markdown':
-			return (
-				<MarkdownBlock
-					view={view}
-					phase={props.phase}
-					readonly={readable}
-					{...(props.onChange === undefined ? {} : { onPatch: patch })}
-				/>
-			);
-
-		case 'ask':
-			return (
-				<AskSection
-					sectionId={props.sectionId}
-					view={view}
-					readonly={props.readonly}
-					{...(props.onAsk === undefined ? {} : { onAsk: props.onAsk })}
-				/>
-			);
-
-		case 'unknown':
-			return <UnknownBlock title={view.title} json={view.json} />;
-	}
 }
 
 /**
- * 未知 `$type` / 脏 payload —— **展开原始 JSON**，不白屏、不猜成文本。
+ * 渲染器表 —— **字典，不是 `switch`**。
  *
- * 旧版 `section-render.js` 对 `unregistered` / `raw` 就是这个形态
- * （按钮 + 点开看 JSON），这里照做，但用 React 状态而不是手动改 `style.display`。
+ * ## 为什么必须是字典（用户 2026-11-22）
+ *
+ * > 「这怎么能用 switch。至少也要用字典吧。这东西是允许动态注册和后期更改的。」
+ *
+ * `switch` 把「有哪些 action」编译进了组件；加第四种就得改这里。
+ * 字典把「按 kind 查渲染器」变成一次查表 —— 键集由 `satisfies` 保证，
+ * 接 `render-registry` 时把这张表换成 `Map` 即可，**组件本身不用改**。
+ *
+ * ⚠ `unknown` 也在这张表里 —— 降级块走的是同一套查表路径。
  */
+const SECTION_RENDERERS = {
+	text: (props: SectionContentProps) => {
+		const view = props.view as TextSectionView;
+		return (
+			<TextBlock
+				view={view}
+				phase={props.phase}
+				readonly={props.readonly}
+				{...(props.onChange === undefined
+					? {}
+					: {
+							onPatch: (fields: Readonly<Record<string, unknown>>) => {
+								props.onChange?.(props.sectionId, fields);
+							},
+						})}
+			/>
+		);
+	},
+	markdown: (props: SectionContentProps) => {
+		const view = props.view as MarkdownSectionView;
+		return (
+			<MarkdownBlock
+				view={view}
+				phase={props.phase}
+				readonly={props.readonly}
+				{...(props.onChange === undefined
+					? {}
+					: {
+							onPatch: (fields: Readonly<Record<string, unknown>>) => {
+								props.onChange?.(props.sectionId, fields);
+							},
+						})}
+			/>
+		);
+	},
+	ask: (props: SectionContentProps) => {
+		const view = props.view as unknown as {
+			readonly groups: readonly AskGroupView[];
+			readonly empty: boolean;
+		};
+		return (
+			<AskSection
+				sectionId={props.sectionId}
+				view={view}
+				readonly={props.readonly}
+				{...(props.onAsk === undefined ? {} : { onAsk: props.onAsk })}
+			/>
+		);
+	},
+	unknown: (props: SectionContentProps) => {
+		const view = props.view as unknown as { readonly title: string; readonly json: string };
+		return <UnknownBlock title={view.title} json={view.json} />;
+	},
+} satisfies Record<SectionView['kind'], SectionRenderer>;
+
+/** 按 pure 判出来的形态**查表**选渲染器（不是 switch）。 */
+function SectionContent(props: SectionContentProps): ReactNode {
+	return SECTION_RENDERERS[props.view.kind](props);
+}
+
 function UnknownBlock(props: { readonly title: string; readonly json: string }): ReactNode {
 	const [open, setOpen] = useState(false);
 	return (
