@@ -104,19 +104,18 @@ export function SpaceBar(props: SpaceBarProps): ReactNode {
 		props.cardCount,
 	);
 
-	/** 操作按钮被点了：`dispatchOf` 已经判完该不该做事、做哪件事。 */
+	/** 操作按钮被点了（只剩归档；「激活空间」已取消 —— 用户 2026-11-22）。 */
 	const runAction = (): void => {
+		if (action === undefined) return;
 		const hit = dispatchOf(action);
 		if (hit === undefined) return;
-		if (hit.kind === 'activate') {
-			props.onActivate(hit.id);
-			return;
-		}
 		props.onToggleArchived(hit.id);
 	};
 
-	const actionCls = ['ghost-btn', 'space-action', `is-emphasis-${action.emphasis}`];
-	if (action.checked) actionCls.push('is-on');
+	const actionCls = action === undefined
+		? ['ghost-btn', 'space-action', 'is-emphasis-plain']
+		: ['ghost-btn', 'space-action', `is-emphasis-${action.emphasis}`];
+	if (action?.checked === true) actionCls.push('is-on');
 
 	return (
 		/*
@@ -130,29 +129,30 @@ export function SpaceBar(props: SpaceBarProps): ReactNode {
 			data-viewing={props.viewingId}
 			data-show-archived={String(props.showArchived)}
 		>
-			{/*
-			 * ① 只有一个操作按钮（用户：「不是两个独立按钮，是一个独立按钮」）。
-			 *   它今天做激活、明天做归档 —— 由 `showArchived` 决定，组件不判。
-			 */}
-			<button
-				type="button"
-				className={actionCls.join(' ')}
-				data-space-action="1"
-				data-action-kind={action.kind}
-				data-checked={String(action.checked)}
-				data-emphasis={action.emphasis}
-				disabled={action.disabled}
-				title={action.title}
-				onClick={runAction}
-			>
-				{action.label}
-			</button>
+			{action !== undefined ? (
+				/*
+				 * ① 只有一个操作按钮（用户：「不是两个独立按钮，是一个独立按钮」）。
+				 *   ⚠ 用户 2026-11-22 取消了「激活空间」设定 ⇒ 这里只剩归档切换。
+				 */
+				<button
+					type="button"
+					className={actionCls.join(' ')}
+					data-space-action="1"
+					data-action-kind={action.kind}
+					data-checked={String(action.checked)}
+					data-emphasis={action.emphasis}
+					disabled={action.disabled}
+					title={action.title}
+					onClick={runAction}
+				>
+					{action.label}
+				</button>
+			) : null}
 
 			{/* ② 「显示已归档」开关 */}
 			<button
 				type="button"
 				className={`ghost-btn space-toggle${toggle.active ? ' is-active' : ''}`}
-				data-archived-toggle="1"
 				aria-pressed={toggle.active}
 				title={toggle.title}
 				onClick={props.onToggleShowArchived}

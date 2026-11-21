@@ -77,7 +77,7 @@ import type { Workspace } from '../types.ts';
  * ⚠ 只有两个成员，且 `actionButtonOf()` 每次只返回一个 ——
  *   这就是「不是两个独立按钮，是一个独立按钮」的结构性保证。
  */
-export type SpaceActionKind = 'activate' | 'toggle-archived';
+export type SpaceActionKind = 'toggle-archived';
 
 /** 左侧单个按钮的完整渲染决定。 */
 export interface SpaceAction {
@@ -208,35 +208,16 @@ export function actionButtonOf(
 	currentId: string,
 	viewingId: string,
 	showArchived: boolean,
-): SpaceAction {
+): SpaceAction | undefined {
 	const list = visibleWorkspaces(workspaces, showArchived);
 	const id = resolveViewingId(workspaces, currentId, viewingId, showArchived);
 	const selected = id === undefined ? undefined : list.find((one) => one.id === id);
 	const isCurrent = selected !== undefined && selected.id === currentId;
 
-	/* ── 「显示已归档」关：唯一的按钮做**激活** ── */
-	if (!showArchived) {
-		/*
-		 * ⚠ 文案**只有一套**（用户 2026-11-18：「那个 6 个字的占用文档流太宽了」）。
-		 *   原来这里是 `isCurrent ? '当前空间' : '激活此为当前空间'` —— 两个宽度不同的文案
-		 *   还会让按钮宽度在两个状态间跳，整行跟着抖。
-		 *   ⇒ 现在恒为 `当前空间`，靠 `emphasis` + `title` 区分。
-		 */
-		return {
-			kind: 'activate',
-			label: '当前空间',
-			disabled: selected === undefined || isCurrent,
-			checked: false,
-			emphasis: selected === undefined ? 'plain' : isCurrent ? 'current' : 'action',
-			title:
-				selected === undefined
-					? '还没有任务空间'
-					: isCurrent
-						? '这就是当前空间，写操作都作用在它上面'
-						: `点一下把「${selected.displayName}」设为当前空间（写操作才作用于它）`,
-			workspaceId: selected?.id,
-		};
-	}
+	/*
+	 * 「显示已归档」关 ⇒ **没有操作按钮**（用户 2026-11-22 取消「激活空间」设定）。
+	 */
+	if (!showArchived) return undefined;
 
 	/* ── 「显示已归档」开：同一个按钮做**归档状态切换** ── */
 	const isArchived = selected?.archived === true;
