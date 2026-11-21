@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <title>任务板 3 · 组件过目</title>
 <style>
+	.pending{display:flex;align-items:center;gap:12px;margin:14px 0 22px;padding:10px 14px;border:1px solid #fde68a;border-radius:9px;background:#fffbeb}
+	.pending__link{color:#b45309;font-weight:700;text-decoration:none}
+	.pending__link:hover{text-decoration:underline}
+	.pending__note{color:#92400e;font-size:12px}
   :root {
     --bg: #0f1115; --panel: #171a21; --line: #262b35;
     --text: #e6e8ec; --weak: #9aa1ad; --accent: #5b8cff; --warn: #f0a44a;
@@ -44,6 +48,10 @@
 
 <h1>任务板 3 · 组件过目</h1>
 <div class="sub">每个链接是一个可交互的真组件页面，双击打开即可点、悬停、输入。</div>
+  <div class="pending">
+    <a class="pending__link" href="../pending/index.html">⚠ 待你确认的 3 件事 →</a>
+    <span class="pending__note">三个视口的布局拼装 / AI tool 的 16 个工具定义 / action 字符串输出的形状</span>
+  </div>
 
 <div class="banner">
   <b>⚠ 这些是组件预览页，不是产品。</b><br>
