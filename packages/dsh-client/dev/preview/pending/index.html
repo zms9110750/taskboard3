@@ -48,7 +48,8 @@
 	<a href="#g1">① 视觉布局（3 项）</a>
 	<a href="#g2">② 交互语义（4 项）</a>
 	<a href="#g3">③ 架构方案（3 项）</a>
-	<a href="#g4">④ 发布与清理（2 项）</a>
+	<a href="#g3b">④ AI tool 规格 v2（12 点）</a>
+	<a href="#g4">⑤ 发布与清理（2 项）</a>
 </div>
 
 <!-- ══════════ ① 视觉布局 ══════════ -->
@@ -208,8 +209,36 @@
 	</div>
 </div>
 
-<!-- ══════════ ④ 发布与清理 ══════════ -->
-<h2 id="g4">④ 发布与清理</h2>
+<!-- ══════════ ④ AI tool 规格 v2 ══════════ -->
+<h2 id="g3b">④ AI tool 规格 v2 —— 12 个待拍板点</h2>
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">T</span>
+		<span class="item__title">你给的 9 条新定义 × 现状：2 条完全覆盖 / 5 条部分 / 1 条未覆盖</span>
+		<span class="item__tag tag--text">先答阻塞项</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">覆盖度：</span>#1 列空间 ✅ · #7 更新备注 ✅ · #2 列卡 🟡（bool 是作者命名且方向交叉、两 bool 同时 true 是并集）· #3 查看卡 🟡（没有 action 视图、查看不写已读）· #4 查看定义 🟡（只有 template/action，没有领域/状态/分类）· #5 创建卡 🟡（**没有关系数组、没有领域/目的、没有 title**）· #6 更新卡 ❌（现在只有「按章节合并」，没有 JSON 路径）· #8 转移 🟡（采纳/领取/释放是三个独立工具）· #9 策略 🟡（模型不同、且 tools 包没有宿主筛选机制）</p>
+		<p><span class="k">⚠ 5 个阻塞项（不答无法实现）：</span></p>
+		<p><b>B1 ·「目的」是什么？</b> 仓库里没有这个概念。最可能是 <b>分类（kind）</b>（模板自带 kind/domain，#5 说「空模板时这两个必要」正好对上）。<b>同时 #5 整个漏了 title</b> —— core 强制标题非空，不补就永远建不出卡。</p>
+		<p><b>B2 ·「采纳 = 未指定→提交」与协议冲突。</b> 协议按钮表里 <code>goal/work</code> 的采纳 → 提交，但 <code>design/record</code> 的采纳 → <b>需要授权</b>（这是既有裁定）。按字面实现会推翻它。</p>
+		<p><b>B3 · 释放（release）算不算 #8？</b> 你只说了采纳和领取。<b>没说释放</b> —— 而 HTTP 明确拒绝释放（409），core 的裁定是「放手永远允许」。不并进去，AI 领了卡就永久占配额 + 锁死。</p>
+		<p><b>B4 · #9 谁有权限调用？</b> 现在权限管理工具只有宿主轴 <code>manage-edit</code> 放行。新 #9 完全没提门槛 ⇒ 任意 AI 都能给自己的持有卡加 bash = <b>自我提权</b>。这是安全问题。</p>
+		<p><b>B5 · #9 的「未领取卡档可配 + 移除数组」推翻现有结构保证。</b> 现在 BASE 是常量、不可配、四档只加不减，注释写着「结构性保证：transition/release 永远在生效集里」。改成可移除会带来<b>死锁风险</b>（AI 卡在处理中，又移除了 transition/release）。</p>
+		<p><span class="k">其余 7 个歧义：</span></p>
+		<p><b>B6 · #9 算术顺序</b> —— 「允许取并集 / 移除取交集」是先加后减还是先减后加？顺序不同结果不同。<br>
+		<b>B7 · #2 两个 bool 同时 true</b> —— 现在实现是并集；你本意是「同时未读」（交集）吗？另外 title 模糊搜索要不要保留？<br>
+		<b>B8 · #6 路径语义</b> —— 语法（建议 JSON Pointer）、<b>可写范围白名单</b>（status/holders/history/unread 绝不能直接写，否则绕过状态机）、覆盖是 replace 还是 merge patch、追加怎么表达。<br>
+		<b>B9 · #3「action 视图」依赖 C5</b> —— C5 没定之前只能给原始 payload（ask 是截断 JSON）。<br>
+		<b>B10 · #3 自动已读的边界</b> —— 列表算不算查看？失败算不算？重复查看幂等吗？<br>
+		<b>B11 ·「激活空间」服务端不存在</b> —— 只有客户端 UI 的 <code>currentId</code>，AI 工具调用在 host 拿不到。<b>上游没定，不能先写胶水。</b><br>
+		<b>B12 · #4 的枚举/必填</b> —— 名字必填吗？空名字要不要恢复「列清单」模式（否则模型不知道模板/领域的名字）？参数名建议 <code>definitionType</code>（现有参数里已有 <code>kind</code>，而 kind 恰好又是枚举里的一个值，一词三义会误导模型）。</p>
+		<p><span class="k">还有 10 条「你没提但必须有」：</span>建卡的 title · 释放 · 空间自举（MCP 首次使用且没空间会永不落地）· 定义发现（列清单能力回退）· action 的可序列化形状 · 关系修正 · limit/分页 · 激活空间可观测性 · 已读的写放大 · 多空间 claim 的 guard 解析。</p>
+	</div>
+</div>
+
+<!-- ══════════ ⑤ 发布与清理 ══════════ -->
+<h2 id="g4">⑤ 发布与清理</h2>
 
 <div class="item">
 	<div class="item__head">
