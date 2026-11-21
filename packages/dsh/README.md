@@ -88,20 +88,27 @@ export const inject = ['webServer', 'connection', 'tools', 'commands'];
 
 ## AI 工具
 
-九个，schema **全部静态**（用户裁定：工具 schema 在 prompt 前缀里，一动就击穿 KV cache）。
+**10 个，定义全部在 `@taskboard/tools`（MCP / DSH 通用）**，本包只做薄适配层
+（`src/tools.ts`：schema 转换 + ctx 注入 + `hosts` 过滤）。schema **全部静态**
+（用户裁定：工具 schema 在 prompt 前缀里，一动就击穿 KV cache）。
 
 | 工具 | 说明 |
 |---|---|
-| `taskboard_workspaces` | 列工作空间 |
-| `taskboard_cards` | 列卡 / 搜索 |
-| `taskboard_card` | 看单卡详情（元数据 + 章节 + 历史） |
-| `taskboard_create` | 建卡 |
-| `taskboard_update_content` | 改章节内容 |
-| `taskboard_update_note` | 改备注 |
-| `taskboard_transition` | `to` 为空 ⇒ 查可转移目标；有值 ⇒ 执行 |
-| `taskboard_claim` | 领取工作卡（holder = 当前 agent 的名字） |
-| `taskboard_release` | 释放领取（把自己从持有者里移除） |
-| `taskboard_registry` | 看模板 / action 注册内容 |
+| `taskboard_workspaces` | 列工作空间（含激活空间） |
+| `taskboard_cards` | 列卡 / 搜索（标题 + 状态/领域/分类/模板 + 两个未读 + 分页） |
+| `taskboard_card` | 看单卡（元数据 + 章节 + 历史；查看即 AI 已读） |
+| `taskboard_raw_card` | 看模板内原始 JSON |
+| `taskboard_definitions` | 看领域 / 状态 / 模板 / 分类定义 |
+| `taskboard_create` | 建卡（title + 模板 + 关系 + action JSON） |
+| `taskboard_update` | JSON 路径替换（返回合并 JSON + 状态/下一步） |
+| `taskboard_update_note` | 改备注 / 改标题（标题仅草稿期） |
+| `taskboard_transition` | 采纳 / 领取 / 释放 / 转移（`to` 为空 ⇒ 查目标与条件） |
+| `taskboard_tool_policy` | 仅 DSH：改工具权限（需宿主轴 `manage-edit`） |
+
+⚠ v1 的 16 个工具名（`taskboard_adopt` / `claim` / `release` / `registry` /
+`mark_seen` / `update_content` / `tool_policies*`）已删除：采纳/领取/释放合并进
+`taskboard_transition`，`registry` → `taskboard_definitions`，
+`update_content` → `taskboard_update`，`mark_seen` 变成「看卡即已读」。
 
 ### 领取 / 释放的 holder 从哪来
 
@@ -146,8 +153,8 @@ HTTP 请求**没有 `exec.agent`** —— 浏览器不知道「是哪个 agent �
 | `任意 → WORKING` | `CLAIM_REQUIRES_AGENT` |
 | `WORKING → SUBMITTED` | `RELEASE_REQUIRES_AGENT` |
 
-两条都答 **409**。正确做法是让 AI 调 `taskboard_claim` / `taskboard_release` ——
-工具那边从 `exec.agent` 取真实身份。
+两条都答 **409**。正确做法是让 AI 调 `taskboard_transition`
+（`to=TASK_STATE_WORKING` 领取 / `to=提交` 释放）—— 工具那边从 `exec.agent` 取真实身份。
 
 **状态转移本身不受影响**：采纳、成功、失败、取消、重开仍可从界面点。
 
@@ -164,18 +171,19 @@ HTTP 请求**没有 `exec.agent`** —— 浏览器不知道「是哪个 agent �
 ```
 
 不按模板展开 —— 展开会随模板变而变，击穿缓存。模型通过
-`taskboard_registry({ id: '模板ref' })` 查章节清单。
+`taskboard_definitions({ name: '模板ref', type: 'template' })` 查章节清单。
 
 **② `taskboard_transition` 的 `to` 是 `string`，不是 `enum`**
 
-状态表若扩了，`enum` 会让 schema 变、缓存全废。合法性在 `execute` 里判
-（`resolveStateId` 认协议全名与中文名两种写法）。
+状态表若扩了，`enum` 会让 schema 变、缓存全废。合法性在工具层判
+（`@taskboard/tools` 的 `resolveStateId` 认协议全名与中文名两种写法）。
 
-**③ `taskboard_update_content` 在工具里做合并**
+**③ `taskboard_update` 是 JSON 路径替换，不是合并**
 
-`core.update()` 的 `content` 是**整体替换**，而本工具的语义是「只改这几章」。
-⇒ 工具先读出既有章节、与传入的合并，再整体提交。**这一步必须在工具里**——
-core 不该知道「增量 vs 全量」这种调用方语义。
+用户 v2 裁定：给一个 JSON 路径 + 一个 JSON 值，**该路径之后的内容整体被替换**
+（JSON Pointer，替换语义）。模型先调 `taskboard_raw_card` 看当前结构，再拼路径；
+成功返回合并后的完整 JSON + 当前状态/下一步。这里是**工具层语义**，core 只提供
+`replaceContentAt` 的路径写入。
 
 ## 斜杠命令
 

@@ -101,7 +101,7 @@ describe('默认档位', () => {
 				'taskboard_cards',
 				'taskboard_create',
 				'taskboard_transition',
-				'taskboard_tool_policy_set',
+				'taskboard_tool_policy',
 				'bash',
 				'write',
 				'read_file',
@@ -182,7 +182,7 @@ describe('写后读', () => {
 
 			/* 宿主轴 → manage-edit：权限管理工具放开。 */
 			await tb.setToolGuardLevel('manage-edit');
-			assert.ok(judge('taskboard_tool_policy_set'));
+			assert.ok(judge('taskboard_tool_policy'));
 
 			/* UI 轴 → claim：能领卡但还不能采纳。 */
 			await tb.setCardActionLevel('claim');
@@ -218,7 +218,7 @@ describe('持久化（落 kv）', () => {
 				/* 判定确实用了落盘的档位。 */
 				assert.ok(second.judgeToolCall({ toolName: 'taskboard_claim', heldCards: [] }).ok);
 				assert.ok(second.judgeToolCall({ toolName: 'taskboard_adopt', heldCards: [] }).ok);
-				assert.ok(second.judgeToolCall({ toolName: 'taskboard_tool_policy_set', heldCards: [] }).ok);
+				assert.ok(second.judgeToolCall({ toolName: 'taskboard_tool_policy', heldCards: [] }).ok);
 			} finally {
 				await second.close();
 			}
@@ -296,3 +296,4 @@ describe('脏值：回落默认 + 警告，不抛错', () => {
 		}
 	});
 });
+

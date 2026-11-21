@@ -1518,6 +1518,9 @@ export {
 	type TransitionTargetAdvice,
 } from './advice.ts';
 
+/** 按钮 `method` 判据（「这次转移是不是采纳」；HTTP 用户按钮用，v1 在 dsh/actions.ts）。 */
+export { adoptTargetOf, isAdoptTransition } from './actions.ts';
+
 /** 工具权限（BASE 常量 + 四档增量 + 两条正交轴 + 纯判定）。 */
 export {
 	BASE_TOOLS,

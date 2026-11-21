@@ -1,17 +1,17 @@
 /**
  * 按钮的 `method` 判定 —— 「这次转移是不是采纳」。
  *
- * ## 为什么单独一个文件
+ * ## 为什么在 core（原本在 `dsh/src/actions.ts`）
  *
- * 两个入口都要判它：
+ * `2026-11-22` 迁移 dsh 到 tool contract v2 时，v1 的 `dsh/src/actions.ts`
+ * 被删掉：它是 dsh 侧的重复判据文件。判据本身（`BUTTON_ACTIONS` 的 `method`）
+ * 属于领域词汇，HTTP（用户点按钮）和 AI 工具（v2 内部已由 core 的
+ * `transitionAdvice` 给出 `action`）都必须走同一条真值。
  *
- * | 入口 | 位置 |
- * |---|---|
- * | HTTP（用户点按钮） | `src/http.ts` 的 `POST /api/cards/:id/action` |
- * | AI 工具 | `src/tools.ts` 的 `taskboard_adopt` |
- *
- * 而它**必须走同一条判据** —— 否则「界面点采纳」和「AI 采纳」会走不同的
- * core 方法，其中一条会漏写 `adoptedAt`。
+ * ⚠ 任务书说「改用 `packages/tools` 的 adoptTargetOf / isAdoptTransition」——
+ *   实测 v2 的 `@taskboard/tools` **没有导出这两个函数**（导出面见
+ *   `packages/tools/src/index.ts`：只有 `resolveStateId` 等），所以放在 **core**：
+ *   core 是允许改的包，且按钮语义本来就属于 core/protocol 的领域。
  *
  * ## 为什么要判
  *
@@ -22,15 +22,14 @@
  * transition() → 只改状态
  * ```
  *
- * `Card.adoptedAt` 是 `search` 的排序键（`adoptedAt ?? createdAt`，
- * 见 `core/src/search.ts:158`）。如果采纳走了 `transition()`，
- * 状态对了但 `adoptedAt` 仍是 `null` ⇒ **排序错乱，且不报错**。
- * 这是静默错误，所以必须分开走。
+ * `Card.adoptedAt` 是 `search` 的排序键（`adoptedAt ?? createdAt`）。
+ * 如果采纳走了 `transition()`，状态对了但 `adoptedAt` 仍是 `null`
+ * ⇒ **排序错乱，且不报错**。这是静默错误，所以必须分开走。
  *
  * ## ⚠ 判据来自 `BUTTON_ACTIONS`，不在这里抄表
  *
  * 目标状态由类别决定（`goal`/`work` → `SUBMITTED`，`design`/`record` →
- * `AUTH_REQUIRED`）。在这里抄一份「哪些类别采纳去哪」就是**第二处真值**：
+ * `AUTH_REQUIRED`）。在这里抄一份「哪些类别采纳去哪」就是**第二处真值**；
  * 表改了这里不会报错，表现是「某个类别的采纳走了 transition、漏写 adoptedAt」。
  *
  * ⇒ 查 `BUTTON_ACTIONS` 的 `method` 字段。表是唯一真值。
@@ -42,8 +41,10 @@ import type { TaskState } from '@taskboard/protocol';
 /**
  * 某个类别、某个状态下的**采纳目标状态**。
  *
- * `taskboard_adopt` 工具（AI 侧）只需要「我在草稿态，采纳会去哪」，
- * 它不接收目标状态参数 —— 目标由类别定。
+ * v1 的 `taskboard_adopt` 工具（AI 侧）只需要「我在草稿态，采纳会去哪」；
+ * 它不接收目标状态参数 —— 目标由类别定。v2 的 `taskboard_transition` 不再
+ * 需要它（core 的 `transitionAdvice` 已把 `action: 'adopt'` 算好），但 HTTP 的
+ * 用户按钮路由仍要判「这次 `to` 是不是采纳」。
  *
  * ⚠ 这是「查采纳目标」的唯一实现：`isAdoptTransition` 也走它，
  *   不在这里再抄一遍 `BUTTON_ACTIONS` 的查询条件（第二份判据会漂）。

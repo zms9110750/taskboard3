@@ -108,14 +108,12 @@ const BASE_TOOL_NAMES = [
 	'taskboard_workspaces',
 	'taskboard_cards',
 	'taskboard_card',
+	'taskboard_raw_card',
+	'taskboard_definitions',
 	'taskboard_create',
-	'taskboard_update_content',
+	'taskboard_update',
 	'taskboard_update_note',
 	'taskboard_transition',
-	'taskboard_claim',
-	'taskboard_release',
-	'taskboard_registry',
-	'taskboard_mark_seen',
 ] as const;
 
 /**
@@ -126,7 +124,11 @@ const BASE_TOOL_NAMES = [
  * 它是**安全基线**。可配置就可能被配成「什么都不给」⇒ 任务板工具都用不了
  * ⇒ AI 无法工作（连建卡、改状态都做不了）。
  *
- * ## 恰好 11 个，全部是 `taskboard_*`
+ * ## 恰好 9 个，全部是 `taskboard_*`（tool contract v2 的工具名）
+ *
+ * `2026-11-22` dsh 迁移到 v2 后，任务板工具名从 16 个旧名收敛成 10 个：
+ * 这里列 9 个（除 #9 权限工具外的全部）—— 权限工具在 `POLICY_TOOLS`，
+ * 只能由宿主轴 `manage-edit` 放行，绝不能进 BASE。
  *
  * 判据（用户原话）：
  *
@@ -145,12 +147,7 @@ const BASE_TOOL_NAMES = [
 export const BASE_TOOLS: readonly string[] = Object.freeze(BASE_TOOL_NAMES);
 
 /** 权限管理工具的名字（裸字面量，供编译期断言使用）。 */
-const POLICY_TOOL_NAMES = [
-	'taskboard_tool_policies',
-	'taskboard_tool_policy_set',
-	'taskboard_tool_policy_members',
-	'taskboard_tool_policy_reset',
-] as const;
+const POLICY_TOOL_NAMES = ['taskboard_tool_policy'] as const;
 
 /**
  * **权限管理工具** —— 只有宿主轴 `toolLevel === 'manage-edit'` 时才可用，
@@ -167,15 +164,14 @@ const POLICY_TOOL_NAMES = [
  *    早于 BASE / 四档）⇒ 不可能通过领一张卡获得；
  * 3. **只由宿主轴 `manage-edit` 放行** —— 用户把宿主档位调到那一档才允许。
  *
- * ## 三个工具
+ * ## v2 只剩一个工具
  *
  * | 工具 | 作用 |
  * |---|---|
- * | `taskboard_tool_policies` | 读**完整四档策略**（AI 需要先看现状才能改） |
- * | `taskboard_tool_policy_set` | 改**某一档**（`granularity` 参数：common / group / template） |
- * | `taskboard_tool_policy_reset` | 清掉某一档（回到纯 BASE） |
+ * | `taskboard_tool_policy` | 改三 scope 的工具权限（`tier` / `templateRef` + allow/remove） |
  *
- * ⚠ **工具名需要与 dsh 侧对齐确认** —— core 只认字符串，dsh 负责注册。
+ * ⚠ **工具名必须与 dsh 注册的名字逐字一致** —— core 只认字符串；
+ *   v1 的四个 `taskboard_tool_policy*` 名字已随 v1 工具删除。
  */
 export const POLICY_TOOLS: readonly string[] = Object.freeze(POLICY_TOOL_NAMES);
 
@@ -725,8 +721,8 @@ type _PolicyNotExecution = [
 	? true
 	: false;
 
-/** ⑤ `BASE_TOOLS` 恰好 11 个（用户裁定的数量）。 */
-type _BaseIsEleven = (typeof BASE_TOOL_NAMES)['length'] extends 11 ? true : false;
+/** ⑤ `BASE_TOOLS` 恰好 9 个（tool contract v2：全部任务板工具除 #9 权限工具）。 */
+type _BaseIsNine = (typeof BASE_TOOL_NAMES)['length'] extends 9 ? true : false;
 
 /**
  * ⑥ UI 轴选项表**覆盖全部档位且恰好 3 条**（没有漏档、没有重复档）。
@@ -755,7 +751,7 @@ export type _PERMISSION_VOCABULARY_CONSISTENT = AssertTrue<
 		_NoExecutionInBase,
 		_NoReadonlyInBase,
 		_PolicyNotExecution,
-		_BaseIsEleven,
+		_BaseIsNine,
 		_CardOptionsCoverAll,
 		_GuardOptionsCoverAll,
 	] extends [true, true, true, true, true, true, true]

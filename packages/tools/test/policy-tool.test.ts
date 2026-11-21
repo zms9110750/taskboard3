@@ -98,12 +98,12 @@ describe('taskboard_tool_policy', () => {
 		const fixture = await makeFixture();
 		const text = await runOk(fixture, 'taskboard_tool_policy', {
 			tier: 'unclaimed',
-			remove: ['taskboard_release'],
+			remove: ['taskboard_transition'],
 		});
 		assert.ok(text.includes('受保护未移除'), text);
-		assert.ok(text.includes('taskboard_release'), text);
+		assert.ok(text.includes('taskboard_transition'), text);
 		/* 生效集里基础工具仍然在。 */
-		assert.ok(fixture.tb.effectiveToolsOf('t-work').includes('taskboard_release'));
+		assert.ok(fixture.tb.effectiveToolsOf('t-work').includes('taskboard_transition'));
 	});
 
 	it('未领取档真的影响判定：manage 档下没卡也能调', async () => {
@@ -114,3 +114,4 @@ describe('taskboard_tool_policy', () => {
 		assert.equal(fixture.tb.judgeToolCall({ toolName: 'bash', heldCards: [] }).ok, true);
 	});
 });
+
