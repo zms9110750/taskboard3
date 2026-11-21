@@ -25,15 +25,26 @@ import type { Workspace } from '../../../src/types.ts';
    夹具
    ══════════════════════════════════════════════════════════ */
 
-const WORKSPACES: readonly Workspace[] = [
-	{ id: 'W1', displayName: '开发任务板', archived: false } as Workspace,
-	{ id: 'W2', displayName: '设计稿', archived: false } as Workspace,
-	{ id: 'W3', displayName: '运维值班', archived: false } as Workspace,
-	{ id: 'W4', displayName: '旧项目归档', archived: true } as Workspace,
-];
+/**
+ * 造 N 个空间 —— 用户 2026-11-22：
+ * 「这个给我看工作空间多到溢出的时候是什么样子的」
+ *
+ * 前 6 个是真实名字（好看清选中态），后面按序号生成。
+ */
+function makeWorkspaces(count: number): readonly Workspace[] {
+	const REAL = ['开发任务板', '设计稿', '运维值班', '旧项目归档', '重构计划', '线上问题'];
+	return Array.from({ length: count }, function build(_, index) {
+		return {
+			id: `W${String(index + 1)}`,
+			displayName: REAL[index] ?? `空间 ${String(index + 1)}`,
+			createdAt: index + 1,
+			archived: index === 3,
+		} as Workspace;
+	});
+}
 
 /** 一份 state 喂三个候选 —— 点哪个都会同步。 */
-function useSpaceState(): {
+function useSpaceState(count: number): {
 	readonly workspaces: readonly Workspace[];
 	readonly currentId: string;
 	readonly viewingId: string;
@@ -50,7 +61,7 @@ function useSpaceState(): {
 	const [showArchived, setShowArchived] = useState(false);
 	const [created, setCreated] = useState<readonly Workspace[]>([]);
 
-	const workspaces = [...WORKSPACES, ...created];
+	const workspaces = [...makeWorkspaces(count), ...created];
 
 	return {
 		workspaces,
@@ -98,7 +109,8 @@ function Candidate(props: {
 }
 
 function App(): React.ReactNode {
-	const state = useSpaceState();
+	const [count, setCount] = useState(6);
+	const state = useSpaceState(count);
 
 	return (
 		<div className="sf tb3w-root">
@@ -106,6 +118,30 @@ function App(): React.ReactNode {
 			<div className="sf-sub">
 				现状是<b>悬浮窗</b>（<code>.tb3w-space-pop</code>，绝对定位、盖住内容）。
 				下面三个都是<b>展开、推挤下面内容</b>。点「工作空间 ▾」开关各栏，三个候选共享同一份空间 state。
+			</div>
+
+			{/*
+			 * 空间数量开关 —— 用户 2026-11-22：
+			 * 「给我看工作空间多到溢出的时候是什么样子的」
+			 */}
+			<div className="sf-counts">
+				<span className="sf-counts__label">空间数量：</span>
+				{[3, 6, 12, 24].map(function one(n) {
+					return (
+						<button
+							key={n}
+							type="button"
+							className={count === n ? 'sf-counts__btn is-on' : 'sf-counts__btn'}
+							data-count-btn={n}
+							onClick={() => {
+								setCount(n);
+							}}
+						>
+							{String(n)} 个
+						</button>
+					);
+				})}
+				<span className="sf-counts__note">（点「工作空间 ▾」开合；看溢出时三个候选各自怎么换行/滚动）</span>
 			</div>
 
 			<div className="sf-grid">
@@ -153,6 +189,11 @@ function injectPageStyles(): void {
 		'.sf{padding:20px 24px 60px;font:13px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:#16181d;background:#fff;min-height:100%}',
 		'.sf-title{font-size:19px;margin:0 0 4px}',
 		'.sf-sub{color:#5f6673;font-size:12.5px;margin-bottom:18px;max-width:900px}',
+		'.sf-counts{display:flex;align-items:center;gap:6px;margin:0 0 14px;flex-wrap:wrap}',
+		'.sf-counts__label{font-size:12px;color:#5f6673}',
+		'.sf-counts__btn{padding:4px 12px;border:1px solid #d7dbe2;border-radius:6px;background:#fff;font:inherit;font-size:11.5px;cursor:pointer;color:#374151}',
+		'.sf-counts__btn.is-on{border-color:#2563eb;background:#eff6ff;color:#2563eb;font-weight:600}',
+		'.sf-counts__note{font-size:11px;color:#9aa1ad}',
 		'.sf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}',
 		'.sfc{border:1px solid #e7e9ee;border-radius:10px;overflow:hidden;min-width:0;background:#fff}',
 		'.sfc__head{display:flex;gap:9px;padding:9px 12px;background:#f7f8fa;border-bottom:1px solid #eef0f3}',
