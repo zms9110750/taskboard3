@@ -6,177 +6,251 @@
 <title>待确认 · 任务板 3</title>
 <style>
 	:root {
-		--text: #16181d;
-		--text-secondary: #5f6673;
-		--text-weak: #9aa1ad;
-		--border: #e7e9ee;
-		--border-strong: #d7dbe2;
-		--accent: #2563eb;
-		--bg-soft: #f7f8fa;
+		--text: #16181d; --text-secondary: #5f6673; --text-weak: #9aa1ad;
+		--border: #e7e9ee; --border-strong: #d7dbe2; --accent: #2563eb; --bg-soft: #f7f8fa;
 	}
 	* { box-sizing: border-box; }
-	body {
-		margin: 0;
-		padding: 28px 32px 80px;
-		font: 14px/1.65 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
-		color: var(--text);
-		background: #fff;
-	}
-	h1 { margin: 0 0 6px; font-size: 22px; }
-	.lead { margin: 0 0 26px; color: var(--text-secondary); font-size: 13px; }
+	body { margin: 0; padding: 26px 30px 80px; font: 14px/1.65 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--text); background: #fff; }
+	h1 { margin: 0 0 4px; font-size: 22px; }
+	.lead { margin: 0 0 8px; color: var(--text-secondary); font-size: 13px; }
+	.toc { margin: 0 0 24px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-soft); font-size: 12.5px; }
+	.toc a { color: var(--accent); text-decoration: none; margin-right: 14px; white-space: nowrap; }
+	.toc a:hover { text-decoration: underline; }
 
-	.sec {
-		margin-bottom: 26px;
-		border: 1px solid var(--border);
-		border-radius: 10px;
-		overflow: hidden;
-	}
-	.sec__head {
-		display: flex;
-		align-items: baseline;
-		gap: 10px;
-		padding: 11px 14px;
-		background: var(--bg-soft);
-		border-bottom: 1px solid var(--border);
-	}
-	.sec__no {
-		flex: 0 0 auto;
-		font-weight: 700;
-		color: var(--accent);
-		font-variant-numeric: tabular-nums;
-	}
-	.sec__title { font-weight: 700; }
-	.sec__badge {
-		margin-left: auto;
-		padding: 1px 9px;
-		border-radius: 999px;
-		font-size: 11px;
-		font-weight: 600;
-	}
-	.sec__badge--wait { background: #fef3c7; color: #b45309; }
-	.sec__badge--todo { background: #e0e7ff; color: #3730a3; }
-	.sec__body { padding: 14px; }
-	.why { margin: 0 0 8px; color: var(--text-secondary); font-size: 12.5px; }
-	.what {
-		margin: 0 0 12px;
-		padding: 9px 12px;
-		border-left: 3px solid var(--accent);
-		background: #f8faff;
-		font-size: 12.5px;
-	}
-	.links { display: flex; flex-wrap: wrap; gap: 8px; }
-	.links a {
-		padding: 6px 14px;
-		border: 1px solid var(--border-strong);
-		border-radius: 7px;
-		color: var(--text);
-		text-decoration: none;
-		font-size: 12.5px;
-	}
+	h2 { margin: 26px 0 10px; font-size: 15px; }
+	h2:first-of-type { margin-top: 0; }
+
+	.item { margin-bottom: 14px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+	.item__head { display: flex; align-items: baseline; gap: 9px; padding: 9px 13px; background: var(--bg-soft); border-bottom: 1px solid var(--border); }
+	.item__no { flex: 0 0 auto; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+	.item__title { font-weight: 700; font-size: 13.5px; }
+	.item__tag { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+	.tag--see { background: #dbeafe; color: #1e40af; }
+	.tag--text { background: #fef3c7; color: #b45309; }
+	.item__body { padding: 11px 13px; }
+	.item__body p { margin: 0 0 7px; font-size: 12.5px; }
+	.k { color: var(--text-secondary); font-weight: 600; }
+	.links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+	.links a { padding: 5px 13px; border: 1px solid var(--border-strong); border-radius: 7px; color: var(--text); text-decoration: none; font-size: 12px; }
 	.links a:hover { border-color: var(--accent); color: var(--accent); }
-	.opt {
-		margin: 10px 0 0;
-		padding: 10px 13px;
-		border: 1px dashed var(--border-strong);
-		border-radius: 8px;
-		font-size: 12.5px;
-	}
+	code { padding: 1px 5px; border-radius: 4px; background: #f1f3f6; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+	.opt { margin: 7px 0 0; padding: 8px 11px; border: 1px dashed var(--border-strong); border-radius: 7px; font-size: 12px; }
 	.opt b { color: var(--accent); }
-	code {
-		padding: 1px 5px;
-		border-radius: 4px;
-		background: #f1f3f6;
-		font-family: ui-monospace, Consolas, monospace;
-		font-size: 12px;
-	}
-	.back { display: inline-block; margin-top: 8px; color: var(--text-secondary); font-size: 12px; }
+	.back { display: inline-block; margin-top: 10px; color: var(--text-secondary); font-size: 12px; }
 </style>
 </head>
 <body>
 
-<h1>待你确认</h1>
-<p class="lead">
-	下面这些是「已经做完、但还没经你拍板」的东西。每条都写明<b>为什么需要你定</b>和<b>看的时候要判断什么</b>。
-</p>
+<h1>待你确认 · 12 项</h1>
+<p class="lead">盘点报告结论：功能基本齐了，剩下的是<b>设计裁决</b>和<b>接线</b>。下面每项写明「为什么要你定」和「看什么 / 定什么」。</p>
 
-<!-- ① -->
-<div class="sec">
-	<div class="sec__head">
-		<span class="sec__no">①</span>
-		<span class="sec__title">三个视口下的布局拼装</span>
-		<span class="sec__badge sec__badge--wait">等你确认</span>
+<div class="toc">
+	<a href="#g1">① 视觉布局（3 项）</a>
+	<a href="#g2">② 交互语义（4 项）</a>
+	<a href="#g3">③ 架构方案（3 项）</a>
+	<a href="#g4">④ 发布与清理（2 项）</a>
+</div>
+
+<!-- ══════════ ① 视觉布局 ══════════ -->
+<h2 id="g1">① 视觉布局</h2>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C1</span>
+		<span class="item__title">三个视口下的布局拼装</span>
+		<span class="item__tag tag--see">有预览</span>
 	</div>
-	<div class="sec__body">
-		<p class="why">
-			组件都写完了（<code>Workspace</code> 629 行拼装：工具栏 / 空间 / 筛选行 + 图例 / 搜索 / 科技树 / 列表头 / 分隔条 / 详情）。
-			但「它们在不同尺寸下拼起来是什么样」你还没确认过。
-		</p>
-		<p class="what">
-			<b>看什么：</b>工具栏和筛选行的换行、列表与详情的比例、滚动行为（工作区不许滚、抽屉允许滚）、
-			密度切换（full / compact）、以及「图例占一行还是折两行」。
-		</p>
+	<div class="item__body">
+		<p><span class="k">为什么：</span>26 个组件都写完了（<code>Workspace</code> 629 行拼装：工具栏 / 空间 / 筛选行 + 图例 / 搜索 / 科技树 / 列表头 / 分隔条 / 详情），但「拼起来什么样」你没确认过。</p>
+		<p><span class="k">⚠ 关键发现：</span>三个 <code>vp-*</code> 页<b>不是产品布局</b>，是「真组件 + 预览级 CSS 覆盖」。<code>vp-drawer</code> 有 175 行覆盖：chrome 压成一行、<b>隐藏 SpaceBar</b>、详情改成 420px <b>浮层</b>、隐藏分隔条和列头 —— 这些产品里都<b>没有对应实现</b>。</p>
+		<p><span class="k">看什么：</span>工具栏/筛选换行、列表与详情比例、滚动（工作区不许滚 / 抽屉允许滚）、<code>density=compact</code> 的折叠方式、图例占一行还是折两行。<b>以及 vp-drawer 那些覆盖要不要落进产品。</b></p>
 		<div class="links">
-			<a href="../vp-workspace/index.html">工作区 · 570×920</a>
-			<a href="../vp-full/index.html">全屏 · 1600×1000</a>
-			<a href="../vp-drawer/index.html">抽屉 · 1200×476</a>
+			<a href="../vp-workspace/index.html">工作区 570×920</a>
+			<a href="../vp-full/index.html">全屏 1600×1000</a>
+			<a href="../vp-drawer/index.html">抽屉 1200×476</a>
+			<a href="../drawer/index.html">抽屉形态（V4）</a>
 		</div>
 	</div>
 </div>
 
-<!-- ② -->
-<div class="sec">
-	<div class="sec__head">
-		<span class="sec__no">②</span>
-		<span class="sec__title">AI tool 的 16 个工具定义</span>
-		<span class="sec__badge sec__badge--wait">等你确认</span>
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C8</span>
+		<span class="item__title">PermissionPanel 怎么接</span>
+		<span class="item__tag tag--see">有预览</span>
 	</div>
-	<div class="sec__body">
-		<p class="why">
-			<code>@taskboard/tools</code> 已经写完（16 个 <code>taskboard_*</code>，只调 core，MCP / DSH 通用）。
-			但你说过「我也没有审查行为」—— 名字、描述、参数、返回文案都没经你看过。
-		</p>
-		<p class="what">
-			<b>看什么：</b>① 名字对不对（模型靠它选工具）② 描述清不清楚（模型靠它判断该不该用）
-			③ 参数 schema 够不够 / 多不多 ④ 返回的文案人看不看得懂。
-		</p>
+	<div class="item__body">
+		<p><span class="k">为什么：</span>组件完整（376 行），但<b>产品里没有样式</b> —— CSS 全在 <code>dev/preview/permission/style.css</code>，<code>styles.ts</code> 的注入里没有它；也没有宿主容器。</p>
+		<p><span class="k">要你定：</span>在哪个容器展示（模态 / 侧栏 / 页签）、CSS 要不要并进产品。</p>
+		<div class="links"><a href="../permission/index.html">权限面板</a></div>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C9</span>
+		<span class="item__title">四个死代码组件：删掉还是接上</span>
+		<span class="item__tag tag--text">纯裁决</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">现状：</span><code>StatusPill</code>（产品零引用，CSS 只在预览）、<code>SectionFrame</code> / <code>JsonFallback</code> / <code>MissingRendererBlock</code>（渲染注册表 ③④ 路径零引用、<b>全仓无 CSS</b>）。</p>
+		<p><span class="k">要你定：</span>保留 / 删除 / 接进产品。</p>
+	</div>
+</div>
+
+<!-- ══════════ ② 交互语义 ══════════ -->
+<h2 id="g2">② 交互语义</h2>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C4</span>
+		<span class="item__title">章节编辑 / ask 作答的语义</span>
+		<span class="item__tag tag--text">纯裁决</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">现状：</span>组件都能编辑（<code>Section</code> 的 <code>onChange</code>、<code>AskSection</code> 的 <code>onAsk</code> 都实现了），<code>api.patchCard</code> 也在，<b>但没人接线</b> —— 产品里 create/active 相位永远只读。</p>
+		<p><span class="k">要你定：</span>谁能编辑、只读边界、patch 粒度（整章还是单字段）、保存时机（失焦 / 防抖 / 显式保存）、编辑后要不要标未读。</p>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C7</span>
+		<span class="item__title">AI 未读 / 更新筛选</span>
+		<span class="item__tag tag--text">纯裁决</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">现状：</span><code>pure/update-focus.ts</code> 已实现且有测试，<b>但没有任何组件 import 它</b>；<code>Workspace.tsx:552</code> 的 chip 写着「P4 的筛选还没接，这里只显示计数」。</p>
+		<p><span class="k">要你定：</span>chip 是筛选还是淡化？点开什么行为？</p>
+		<div class="links"><a href="../workspace/index.html">工作区（chip 在这）</a></div>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C12</span>
+		<span class="item__title">建卡面板的 ask 编辑器</span>
+		<span class="item__tag tag--see">有预览</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">现状：</span><code>create/SectionFormList.tsx:77-88</code> 还是占位（「ask 编辑器还没迁进来」）。但编辑器本体其实已经在 <code>AskSection.tsx</code> 的 create 相位里，<code>dev/preview/ask</code> 用的就是 <code>src</code> 组件。</p>
+		<p><span class="k">要你定：</span>迁 <code>AskSection</code> 的 create 编辑器，还是保留独立表单？跟 <code>Section</code> 的内联编辑重不重复？</p>
 		<div class="links">
-			<a href="../ai-tools/index.html">16 个工具定义（点开看 schema）</a>
+			<a href="../cardcreate/index.html">建卡面板</a>
+			<a href="../ask/index.html">ask 三相位（create 栏就是那个编辑器）</a>
 		</div>
 	</div>
 </div>
 
-<!-- ③ -->
-<div class="sec">
-	<div class="sec__head">
-		<span class="sec__no">③</span>
-		<span class="sec__title">action 的字符串输出 —— 形状还没定</span>
-		<span class="sec__badge sec__badge--todo">等你定形状</span>
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C2 / C3</span>
+		<span class="item__title">产品切新 UI + 抽屉数据源</span>
+		<span class="item__tag tag--text">纯裁决</span>
 	</div>
-	<div class="sec__body">
-		<p class="why">
-			你的要求：<b>「action 对应的字符串输出应该是在模板里面写一起的，就在模板包里面跟着 action 的定义描述这个 json 怎么对应的文字输出。而 ai tool 看 action 应该是接入这个接口的。」</b>
-			<br>
-			现状：<code>packages/tools/src/format.ts</code> 和 <code>packages/dsh/src/tools.ts:163</code> 各有一份「取 <code>value</code> 字段，取不到就压成 JSON」的胶水，<b>没有按 action 分派的正式输出</b>。
-		</p>
-		<p class="what">
-			<b>要你定：</b>这个「payload → 文字」用什么形状放进 <code>ActionDef</code>。三个候选（选一个，或说你自己的想法）：
-		</p>
-		<div class="opt">
-			<b>A · 函数式</b><br>
-			每个 action 一个 <code>toText(payload) =&gt; string</code>，写在 <code>ActionDef</code> 里。<br>
-			<code>{ $type:'text', toText: (p) =&gt; p.value ?? '' }</code><br>
-			<span style="color:var(--text-secondary)">优点：想怎么算都行；缺点：模板 YAML 里看不到文案。</span>
-		</div>
-		<div class="opt">
-			<b>B · 声明式</b><br>
-			模板里写字段映射，比如 <code>toText: "{{value}}"</code> 或 <code>{ "value": "正文", "placeholder": "灰字" }</code>。<br>
-			<span style="color:var(--text-secondary)">优点：文案在模板里可见、可改；缺点：表达力弱（ask 这种要拼多选项的就难写）。</span>
-		</div>
-		<div class="opt">
-			<b>C · 混合</b><br>
-			<code>ActionDef</code> 给函数兜底，模板可以覆盖。<br>
-			<span style="color:var(--text-secondary)">优点：通用 + 可定制；缺点：两处都能写，容易漂。</span>
-		</div>
+	<div class="item__body">
+		<p><span class="k">C2 现状：</span><code>client.tsx:27</code> 挂的还是旧 <code>BoardBody</code>；26 个新组件里 <code>Workspace</code> 全仓只有一个 type-only 引用。一次全换还是并存？</p>
+		<p><span class="k">C3 现状：</span><code>registerDrawerSlots</code> 的 <code>workspace: WorkspaceProps</code> 是<b>注册那一刻的静态快照</b>，抽屉反映不了实时数据。抽屉和右侧 tab 共享状态还是独立实例？接口改成 <code>() =&gt; WorkspaceProps</code> 还是组件自取 store？</p>
+		<p><span class="k">⚠ 连带发现：</span>没有 V3 数据容器 —— <code>useBoardState</code> 只有 4 个字段，<code>WorkspaceProps</code> 要 <code>currentId</code> + <code>viewingId</code> + <code>showArchived</code>。<b>数据层要扩。</b></p>
+	</div>
+</div>
+
+<!-- ══════════ ③ 架构方案 ══════════ -->
+<h2 id="g3">③ 架构方案</h2>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C5</span>
+		<span class="item__title">action 的字符串输出 —— 形状</span>
+		<span class="item__tag tag--text">选方案</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">你的要求：</span>写进模板包，跟 action 定义放一起，AI tool 接这个接口。</p>
+		<p><span class="k">现状：</span>「payload → 文字」散在 <b>7 处</b>（<code>tools/format.ts</code>、<code>dsh/tools.ts</code>、<code>dsh/commands.ts</code>、<code>dsh-client/pure.ts</code>、<code>pure/section.ts</code>、<code>card-detail.ts</code>…），其中 3 处是同一逻辑的副本，<b>且没有按 action 分派</b>。</p>
+		<p><span class="k">实测后果：</span><code>bodyOf(text)</code> ⇒ 正文 ✅；<code>bodyOf(markdown)</code> ⇒ 源码 ✅（形状巧合，都有 <code>value</code>）；<b><code>bodyOf(ask)</code> ⇒ 截断的 JSON ❌</b></p>
+		<p><span class="k">要你定（三件事）：</span>① 映射放哪 ② 形态（函数 / 声明式 / 模板 YAML） ③ 派发键 —— 卡上的 <code>CardSection</code> 只有 <code>{label, payload}</code>，<b>没有 action 字段</b>，运行时只能按 <code>payload.$type</code>。</p>
+		<div class="opt"><b>A · 函数式</b> <code>ActionDef.toText(payload) =&gt; string</code> —— 表达力最强，但不可序列化，第三方 action 必须写代码。</div>
+		<div class="opt"><b>B · 声明式</b> <code>ActionDef.textSpec</code>（如 <code>{mode:'value'}</code> / <code>{mode:'fields', fields:[…]}</code>）—— 纯数据可校验，但 ask 仍需内置分支。</div>
+		<div class="opt"><b>C · 模板 YAML 每章声明</b> <code>text: "{{value}}"</code> —— 最贴你原话的字面意思，但 action 定义现在不在 YAML，且 18 个模板会重复声明。</div>
+		<div class="opt"><b>D · core 独立 text 注册表</b>（key = <code>$type</code>，第三方可注册）—— 与 UI 渲染注册表同构，但不满足「跟 action 定义放一起」。</div>
+		<div class="opt"><b>E · 从 UI 渲染树派生</b> —— 单一真源，但把 AI 文案绑死在 UI 结构上。</div>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C6</span>
+		<span class="item__title">AI tool 的 16 个工具行为</span>
+		<span class="item__tag tag--see">有预览</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">现状：</span><code>@taskboard/tools</code> 已合并（16 工具 / 74 测试）。架构语义（9 状态 / claim / 未读 / 权限四档）都有你的原话背书，<b>但下面 6 条是工具层自己加的默认语义，你没审过</b>：</p>
+		<p>① 「采纳」拆成独立工具 <code>taskboard_adopt</code>，<code>transition</code> 拒绝采纳并指路<br>
+		② claim/release 只能 AI 工具发起，<b>HTTP 一律 409</b>（界面不能领）<br>
+		③ holder 缺席回落 <code>'unknown'</code><br>
+		④ 默认空间：第一个；没有就<b>自动建「默认」</b>（MCP 走 fallback 会真建）<br>
+		⑤ <code>taskboard_cards</code> 默认<b>不含草稿</b><br>
+		⑥ <code>tool_policy_*</code> 允许 AI 在 <code>manage-edit</code> 档<b>自改权限</b></p>
+		<p><span class="k">还要看：</span>16 个工具的<b>文字输出样例</b>（模型看到的话）。</p>
+		<div class="links"><a href="../ai-tools/index.html">16 个工具定义（点开看 schema）</a></div>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C10</span>
+		<span class="item__title">UI 刷新机制</span>
+		<span class="item__tag tag--text">选方案</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">现状：</span>手动刷新（切空间 / 刷新页面）。AI 改了卡 UI 不知道。<code>bus.ts</code> + <code>sse.ts</code> 是<b>明确的临时脚手架</b>（文件头写了 5 步拆解），客户端<b>完全没有订阅</b>。</p>
+		<p><span class="k">要你定：</span>SSE / 轮询 / 手动 + 提示条；<code>bus</code> + <code>sse</code> 拆不拆。<b>EventSource 在 DSH 页面能不能用 —— 未实测。</b></p>
+	</div>
+</div>
+
+<!-- ══════════ ④ 发布与清理 ══════════ -->
+<h2 id="g4">④ 发布与清理</h2>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C11</span>
+		<span class="item__title">发布</span>
+		<span class="item__tag tag--text">账号操作</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">已核对通过：</span>6 个包名统一 <code>@taskboard/*</code>、无 private、版本一致、<code>files</code> 字段与产物对得上。</p>
+		<p><span class="k">阻塞：</span>① <b><code>@taskboard</code> scope 归属查不到</b>（包名 404 = 没被占，但 org 端点 401/403，需你本机 <code>npm whoami</code> 确认）② <code>@taskboard/dsh</code> <b>静态 import <code>@deepseek-ai/dsh-tools</code> 但只在 devDependencies</b> —— 发布后单独安装可能解析不到。走 peer 还是 deps？③ <code>store/cordis.patch.yml</code> 有一行 <code>!!js dshHomePath()</code> 自认未验证 ④ <b>必须用 pnpm publish</b>（npm publish 会原样发 <code>workspace:*</code>）。</p>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C13</span>
+		<span class="item__title">文档与验收资产已经漂了</span>
+		<span class="item__tag tag--text">纯事实修正</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">盘点发现（会误导下一个人）：</span></p>
+		<p>· <code>docs/组件清单.md</code> 说 V1~V4 全「未开始」—— 实际全实现了<br>
+		· <code>docs/渲染注册表.md</code> 说「设计（未实现）」—— 实际已实现<br>
+		· <code>docs/设计.md:148</code> 说 dsh-client「只到 MVP / 5 个组件」—— 实际 50 个 <code>.tsx</code><br>
+		· <code>dev/preview/drawer/verify.mjs</code> 断言「默认形态 a」，实际已定稿 <code>b</code> ⇒ <b>静态看必红</b><br>
+		· 还引用了已删除的 <code>drawer-composer/</code> ⇒ <b>verify 必红</b><br>
+		· <code>register-drawer.tsx:31</code> 说「单测 register-drawer.test.ts 钉住」—— <b>该文件不存在</b></p>
+		<p><span class="k">要你定：</span>什么时候一次性修（建议在布局/语义定完之后，否则确认过程中文档还会变）。</p>
+	</div>
+</div>
+
+<div class="item">
+	<div class="item__head">
+		<span class="item__no">C14</span>
+		<span class="item__title">测试从来没被 tsc 检查过</span>
+		<span class="item__tag tag--text">纯事实修正</span>
+	</div>
+	<div class="item__body">
+		<p><span class="k">现状：</span>6 个包的 tsconfig <code>include</code> 全部只有 <code>src/**</code>，<b>产品 <code>test/</code> 没有任何工程包含</b>。</p>
+		<p><span class="k">证据：</span><code>dsh/test/tools.test.ts:24</code> 还在 import 已不存在的 <code>createSearch</code>、<code>:77</code> 还在传已删掉的 <code>search:</code> 选项 —— <code>node --test</code> 只剥类型不查类型，所以 1445 条全绿。</p>
+		<p><span class="k">要你定：</span>要不要加 <code>tsconfig.test.json</code>。一开就会红一片，需要排期。</p>
 	</div>
 </div>
 
