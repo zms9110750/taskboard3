@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./lib",
+    "declarationDir": "./lib/types",
+    "tsBuildInfoFile": "./lib/.tsbuildinfo",
+    /*
+     * 本包**不碰任何 `node:` 内置模块**（与 `protocol` 同样的理由：这一层只做
+     * 领域调用 + 纯 JSON Schema，能跑在 Node 里就不该顺手绑上运行时）。
+     * `types: []` 让「不小心 import 了 node 内置」在编译期就报错，而不是靠人记。
+     */
+    "types": []
+  },
+  "include": ["src/**/*.ts"],
+  "references": [{ "path": "../protocol" }, { "path": "../core" }]
+}

@@ -82,6 +82,15 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/tools:
+    dependencies:
+      '@taskboard/core':
+        specifier: workspace:*
+        version: link:../core
+      '@taskboard/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
 packages:
 
   '@deepseek-ai/cordis@4.1.0':

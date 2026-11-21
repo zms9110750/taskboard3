@@ -380,6 +380,7 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
 └─ packages/
    ├─ protocol/            九状态 / 六关系 / 错误码 / 转移判定
    ├─ core/                卡 / 模板 / 搜索 / 状态转移 / 存储端口 / bus(临时)
+   ├─ tools/               AI 工具定义层（MCP / DSH 通用，只调 core）
    ├─ store/               存储的默认实现（Cordis 插件行，可替换）
    ├─ dsh/                 Host 半边（HTTP + AI 工具 + 命令 + SSE(临时)）
    └─ dsh-client/          客户端 UI（右侧工作区标签页，MVP）
@@ -391,15 +392,16 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
 |---|---|---|
 | `protocol` | 词汇与判决：9 状态、4 组、6 关系、错误码 | 包级 |
 | `core` | 领域逻辑 + 唯一的 `CardStore` 端口 | ❌ |
+| `tools` | AI 工具定义层（16 个 `taskboard_*`，纯 JSON Schema，MCP / DSH 通用） | ❌ |
 | `store` | `provide('taskboard3Store', …)` 的薄插件 | ✅ **插件行** |
-| `dsh` | 12 条 HTTP 路由 + 11 个 AI 工具 + 3 个命令 | ❌ |
+| `dsh` | 12 条 HTTP 路由 + 16 个 AI 工具（待改成 `tools` 的薄适配层）+ 3 个命令 | ❌ |
 | `dsh-client` | 右侧工作区标签页（列表 / 详情 / 状态按钮 / 空间切换） | ✅ 插件行 |
 
 ### 构建与测试
 
 ```powershell
 # 构建（按依赖顺序）
-tsc -b packages/protocol packages/core packages/store packages/dsh packages/dsh-client
+tsc -b packages/protocol packages/core packages/tools packages/store packages/dsh packages/dsh-client
 
 # 测试（从任意 cwd 都可以；node 需支持 .ts 直接运行）
 node --test "packages/*/test/**/*.test.ts"

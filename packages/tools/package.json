@@ -1,0 +1,29 @@
+{
+  "name": "@taskboard/tools",
+  "version": "0.1.0-3.a.1",
+  "type": "module",
+  "description": "任务板的 AI 工具定义层：纯 JSON Schema + 只调 core 的 handler，MCP 与 DSH 共用。",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test \"test/*.test.ts\"",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@taskboard/core": "workspace:*",
+    "@taskboard/protocol": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
