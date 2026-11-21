@@ -99,24 +99,33 @@ describe('taskboard_cards', () => {
 		assert.ok(aiCard.length > 0 && userCard.length > 0);
 	});
 
-	it('分页：每页 20，page 越界报错并给范围', async () => {
+	it('分页：每页 100；≤100 不说页数，>100 说「当前第 x 页，共 x 页」', async () => {
 		const fixture = await makeFixture();
-		for (let i = 1; i <= 21; i += 1) {
+		/* 101 张 ⇒ 两页。 */
+		for (let i = 1; i <= 101; i += 1) {
 			await seedCard(fixture, 't-work', `卡${i}`, { actor: 'user' });
 		}
 		const page1 = await runOk(fixture, 'taskboard_cards', { page: 1, status: ['draft'] });
-		assert.ok(page1.includes('共 21 张卡'), page1);
-		assert.ok(page1.includes('第 1/2 页'), page1);
+		assert.ok(page1.includes('当前第 1 页，共 2 页'), page1);
 		assert.ok(page1.includes('page=2'), page1);
+		assert.ok(page1.includes('共 101 张'), page1);
 
 		const page2 = await runOk(fixture, 'taskboard_cards', { page: 2, status: ['draft'] });
-		assert.ok(page2.includes('第 2/2 页'), page2);
-		assert.ok(page2.includes('1 张卡') || page2.includes('已经是最后一页'), page2);
+		assert.ok(page2.includes('当前第 2 页，共 2 页'), page2);
+		assert.ok(page2.includes('已经是最后一页'), page2);
 
 		const tooFar = await run(fixture, 'taskboard_cards', { page: 3, status: ['draft'] });
 		assert.equal(tooFar.isError, true);
 		assert.ok(tooFar.text.includes('超出范围'), tooFar.text);
 		assert.ok(tooFar.text.includes('page 1~2'), tooFar.text);
+	});
+
+	it('≤100 张时不分页、不提页数', async () => {
+		const fixture = await makeFixture();
+		await seedCard(fixture, 't-work', '只有一张', { actor: 'user' });
+		const text = await runOk(fixture, 'taskboard_cards', { status: ['draft'] });
+		assert.ok(text.includes('（1 张）'), text);
+		assert.ok(!text.includes('页'), text);
 	});
 
 	it('非法状态筛选值 ⇒ 列出可用值（失败路径）', async () => {

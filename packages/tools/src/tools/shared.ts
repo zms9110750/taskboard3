@@ -14,7 +14,7 @@ export interface ToolDeps {
 }
 
 /** 列表分页大小（#2 `page` 参数）。 */
-export const CARDS_PAGE_SIZE = 20;
+export const CARDS_PAGE_SIZE = 100;
 
 /**
  * 「当前状态 + 在这个分类下接下来可以做什么」的回执段（#6 / #7 改完后共用）。

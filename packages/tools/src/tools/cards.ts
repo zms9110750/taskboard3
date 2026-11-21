@@ -103,13 +103,19 @@ export function createCardsTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 		let cards = taskboard.search(workspaceId, condition);
 		if (unreadIds !== undefined) cards = cards.filter((card) => unreadIds.has(card.id));
 
-		/* ── 分页 ── */
+		/* ── 分页 ──
+		 *
+		 * 用户 2026-11-22：
+		 * 「ai tool，一个 page 是 100 条。如果总共没有 100 条的就不说总数。
+		 *   超过 100 条真的需要翻页的，就说当前第 x 页，共 x 页。」
+		 */
 		const page = intOf(args, 'page') ?? 1;
 		if (page < 1) {
 			return inputFailure('page 必须是 >= 1 的整数。', 'page 从 1 开始。');
 		}
 		const total = cards.length;
 		const totalPages = Math.max(1, Math.ceil(total / CARDS_PAGE_SIZE));
+		const needsPaging = totalPages > 1;
 		if (page > totalPages) {
 			return inputFailure(
 				`page=${page} 超出范围：当前筛选下共 ${total} 张卡，按每页 ${CARDS_PAGE_SIZE} 张算只有 ${totalPages} 页。`,
@@ -121,11 +127,16 @@ export function createCardsTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 
 		/* ── 渲染 ── */
 		const filters = describeFilters(args, status, draftsIncluded, wantUserUnread, wantAiUnread);
+		const filterText = filters === '' ? '' : `（筛选：${filters}）`;
 		const lines: string[] = [];
+		/*
+		 * 只在一页装不下时（>100 条）才提页数 ——
+		 * 「总共没有 100 条」的情况下说「第 1/1 页」是噪音。
+		 */
 		lines.push(
-			`空间「${workspaceId}」共 ${total} 张卡` +
-				`${filters === '' ? '' : `（筛选：${filters}）`}` +
-				`；第 ${page}/${totalPages} 页（每页 ${CARDS_PAGE_SIZE} 张）。`,
+			needsPaging
+				? `空间「${workspaceId}」的卡${filterText} —— 当前第 ${page} 页，共 ${totalPages} 页（每页 ${CARDS_PAGE_SIZE} 张，共 ${total} 张）。`
+				: `空间「${workspaceId}」的卡${filterText}（${total} 张）。`,
 		);
 		if (draftsIncluded) lines.push('（状态筛选包含草稿 ⇒ 本次结果包含草稿。）');
 		if (pageCards.length === 0) {
@@ -134,10 +145,12 @@ export function createCardsTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 			lines.push('');
 			for (const card of pageCards) lines.push(cardLine(card));
 		}
-		if (page < totalPages) {
-			lines.push('', `还有下一页：page=${page + 1}。`);
-		} else if (total > 0) {
-			lines.push('', '已经是最后一页。');
+		if (needsPaging) {
+			if (page < totalPages) {
+				lines.push('', `还有下一页：page=${page + 1}。`);
+			} else {
+				lines.push('', '已经是最后一页。');
+			}
 		}
 
 		return okText(lines.join('\n'));

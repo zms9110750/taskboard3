@@ -1,0 +1,47 @@
+/**
+ * 测试文件的**类型检查**配置。
+ *
+ * ## 为什么需要它
+ *
+ * `tsconfig.json` 的 `include` 只有 `src/**` —— `test/` 不在里面。
+ * ⇒ **改了函数签名，测试里的旧调用不会被 `tsc -b` 发现**。
+ *
+ * 真实案例（`2026-11-22`）：删 `onActivate` prop 后，
+ * `tsc -b packages/dsh-client` 是 exit 0，但 `dev/` 和 `test/` 里
+ * 还传着已删的 prop —— 是跑 `tsconfig.dev.json` / 真跑测试才发现的。
+ *
+ * ## 用法
+ *
+ * ```powershell
+ * node node_modules/typescript/bin/tsc -p tsconfig.test.json
+ * ```
+ *
+ * ⚠ **和 `tsc -b` 一起跑**才算「测试也检查过了」。
+ *
+ * ## 为什么放在仓库根
+ *
+ * 测试跨包（`dsh/test` import `@taskboard/core` 的测试夹具），
+ * 按包各放一份会重复且要手工同步 include。根级一份覆盖全部。
+ */
+
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"types": ["node"],
+		"jsx": "react-jsx",
+
+		/* 只检查，不产出。 */
+		"noEmit": true,
+
+		/* 测试不是被 `tsc -b` 引用的子项目 ⇒ 不能 composite。 */
+		"composite": false,
+		"declaration": false,
+		"declarationMap": false,
+		"sourceMap": false
+	},
+	/*
+	 * 所有包的 test/** —— 只检查测试，产品代码由 `tsc -b` 负责。
+	 */
+	"include": ["packages/*/test/**/*.ts"]
+}

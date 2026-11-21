@@ -106,37 +106,41 @@ describe('② 显示已归档=关 ⇒ **没有操作按钮**（用户 2026-11-22
 	it('关态不可能产出 activate（类型层已收窄）', () => {
 		/* `SpaceActionKind` 现在只剩 toggle-archived —— 这条是防回退。 */
 		const open = actionButtonOf(LIST, 'A', 'B', true);
+		assert.ok(open !== undefined, 'open 不该是 undefined');
 		assert.notEqual(open, undefined);
-		if (open !== undefined) assert.equal(open.kind, 'toggle-archived');
+		if (open !== undefined) assert.equal(open!.kind, 'toggle-archived');
 	});
 });
 
 describe('② 表第二行：显示已归档=开 ⇒ 非当前空间切归档状态', () => {
 	it('⭐ 开 + 非当前、未归档 ⇒ 「已归档」+ 可用 + 未选中', () => {
 		const a = actionButtonOf(LIST, 'A', 'B', true);
-		assert.equal(a.label, '已归档');
-		assert.equal(a.disabled, false);
-		assert.equal(a.kind, 'toggle-archived');
-		assert.equal(a.checked, false);
-		assert.equal(a.workspaceId, 'B');
-		assert.match(a.title, /点一下归档/);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.equal(a!.label, '已归档');
+		assert.equal(a!.disabled, false);
+		assert.equal(a!.kind, 'toggle-archived');
+		assert.equal(a!.checked, false);
+		assert.equal(a!.workspaceId, 'B');
+		assert.match(a!.title, /点一下归档/);
 	});
 
 	it('⭐ 开 + 非当前、已归档 ⇒ 「已归档」+ 可用 + 选中', () => {
 		const a = actionButtonOf(LIST, 'A', 'C', true);
-		assert.equal(a.label, '已归档');
-		assert.equal(a.disabled, false);
-		assert.equal(a.kind, 'toggle-archived');
-		assert.equal(a.checked, true);
-		assert.equal(a.workspaceId, 'C');
-		assert.match(a.title, /取消归档/);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.equal(a!.label, '已归档');
+		assert.equal(a!.disabled, false);
+		assert.equal(a!.kind, 'toggle-archived');
+		assert.equal(a!.checked, true);
+		assert.equal(a!.workspaceId, 'C');
+		assert.match(a!.title, /取消归档/);
 	});
 
 	it('⭐ 开 + 非当前 ⇒ 按钮**永远**可用（归档和取消归档都是它）', () => {
 		for (const view of ['B', 'C']) {
 			const a = actionButtonOf(LIST, 'A', view, true);
-			assert.equal(a.disabled, false, `viewing=${view}`);
-			assert.equal(a.kind, 'toggle-archived', `viewing=${view}`);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+			assert.equal(a!.disabled, false, `viewing=${view}`);
+			assert.equal(a!.kind, 'toggle-archived', `viewing=${view}`);
 		}
 	});
 });
@@ -144,23 +148,27 @@ describe('② 表第二行：显示已归档=开 ⇒ 非当前空间切归档状
 describe('② 表第三行：显示已归档=开 + 当前空间（未归档）⇒ 「当前空间」禁用', () => {
 	it('⭐ 文案必须是「当前空间」，**不是**「已归档」（防误导）', () => {
 		const a = actionButtonOf(LIST, 'A', 'A', true);
-		assert.equal(a.label, '当前空间');
-		assert.notEqual(a.label, '已归档');
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.equal(a!.label, '当前空间');
+		assert.notEqual(a!.label, '已归档');
 	});
 
 	it('⭐ 必须禁用', () => {
 		const a = actionButtonOf(LIST, 'A', 'A', true);
-		assert.equal(a.disabled, true);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.equal(a!.disabled, true);
 	});
 
 	it('⚠ 未归档 ⇒ checked 必须是 false（不能画成选中态）', () => {
 		const a = actionButtonOf(LIST, 'A', 'A', true);
-		assert.equal(a.checked, false);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.equal(a!.checked, false);
 	});
 
 	it('title 说明「当前激活的任务空间不能归档」', () => {
 		const a = actionButtonOf(LIST, 'A', 'A', true);
-		assert.match(a.title, /不能归档/);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.match(a!.title, /不能归档/);
 	});
 
 	it('kind 仍是 toggle-archived（同一张表、同一个按钮，只是禁用）', () => {
@@ -171,29 +179,32 @@ describe('② 表第三行：显示已归档=开 + 当前空间（未归档）�
 describe('② 表第四行：显示已归档=开 + 当前空间（已归档，异常态）⇒ 「已归档」可点', () => {
 	it('⭐ 异常态必须**可点**（否则用户死锁，没法取消归档）', () => {
 		const a = actionButtonOf(WITH_ANOMALY, 'D', 'D', true);
-		assert.equal(a.disabled, false);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.equal(a!.disabled, false);
 	});
 
 	it('⭐ 文案是「已归档」+ 选中态', () => {
 		const a = actionButtonOf(WITH_ANOMALY, 'D', 'D', true);
-		assert.equal(a.label, '已归档');
-		assert.equal(a.checked, true);
-		assert.equal(a.kind, 'toggle-archived');
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.equal(a!.label, '已归档');
+		assert.equal(a!.checked, true);
+		assert.equal(a!.kind, 'toggle-archived');
 	});
 
 	it('⚠ 与第三行只差一个 archived 标记 —— 这是「允许点」的唯一判据', () => {
 		const normal = actionButtonOf(LIST, 'A', 'A', true); // 当前 + 未归档
 		const anomaly = actionButtonOf(WITH_ANOMALY, 'D', 'D', true); // 当前 + 已归档
-		assert.equal(normal.disabled, true);
-		assert.equal(anomaly.disabled, false);
-		assert.equal(normal.checked, false);
-		assert.equal(anomaly.checked, true);
+		assert.equal(normal!.disabled, true);
+		assert.equal(anomaly!.disabled, false);
+		assert.equal(normal!.checked, false);
+		assert.equal(anomaly!.checked, true);
 	});
 
 	it('title 是「取消归档」（不是「不能归档」）', () => {
 		const a = actionButtonOf(WITH_ANOMALY, 'D', 'D', true);
-		assert.match(a.title, /取消归档/);
-		assert.doesNotMatch(a.title, /不能归档/);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.match(a!.title, /取消归档/);
+		assert.doesNotMatch(a!.title, /不能归档/);
 	});
 });
 
@@ -204,16 +215,18 @@ describe('② 表第四行：显示已归档=开 + 当前空间（已归档，�
 describe('② 只有一个按钮（不是两个独立按钮）', () => {
 	it('开态返回的是单个对象，不是数组', () => {
 		const a = actionButtonOf(LIST, 'A', 'B', true);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
 		assert.equal(Array.isArray(a), false);
 		assert.notEqual(a, undefined);
-		if (a !== undefined) assert.equal(typeof a.label, 'string');
+		if (a !== undefined) assert.equal(typeof a!.label, 'string');
 	});
 
 	it('开态所有组合的 kind 只能是 toggle-archived', () => {
 		const kinds = new Set<string>();
 		for (const view of ['A', 'B', 'C']) {
 			const a = actionButtonOf(LIST, 'A', view, true);
-			if (a !== undefined) kinds.add(a.kind);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+			if (a !== undefined) kinds.add(a!.kind);
 		}
 		assert.deepEqual([...kinds].sort(), ['toggle-archived']);
 	});
@@ -267,6 +280,7 @@ describe('② 禁用时按钮什么都不做', () => {
 
 	it('派发目标是「正在查看」的空间，不是当前空间', () => {
 		const a = actionButtonOf(LIST, 'A', 'B', true);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
 		assert.equal(dispatchOf(a)?.id, 'B');
 		assert.notEqual(dispatchOf(a)?.id, 'A');
 	});

@@ -10,7 +10,9 @@
   "scripts": {
     "build": "tsc -b packages/protocol packages/core packages/tools packages/store packages/dsh packages/dsh-client",
     "clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['protocol','core','tools','store','dsh','dsh-client'])rmSync('packages/'+p+'/lib',{recursive:true,force:true})\"",
-    "test": "node --test \"packages/*/test/**/*.test.ts\""
+    "test": "node --test \"packages/*/test/**/*.test.ts\"",
+    "check:dev": "tsc -p packages/dsh-client/tsconfig.dev.json",
+    "check": "pnpm run build && pnpm run check:dev && pnpm run test"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
