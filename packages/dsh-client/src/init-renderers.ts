@@ -35,8 +35,9 @@
  * 「有人注册了却忘了封盘」变成一个可发生的状态。
  */
 
-import { isSealed, registerRenderer, sealRegistry } from './render-registry.ts';
+import { isSealed, registerRenderer, sealRegistry, setFallbackRenderer } from './render-registry.ts';
 import { builtinRendererEntries } from './renderers/builtin-renderers.tsx';
+import { MissingRendererBlock } from './renderers/MissingRendererBlock.tsx';
 
 /**
  * 注册内置渲染器并封盘。
@@ -45,6 +46,19 @@ import { builtinRendererEntries } from './renderers/builtin-renderers.tsx';
  */
 export function initRenderers(): void {
 	if (isSealed()) return;
+
+	/* 1. 三个内置 action 的渲染器。 */
 	for (const [type, Comp] of builtinRendererEntries()) registerRenderer(type, Comp);
+
+	/*
+	 * 2. 降级渲染器 —— 「查不到 type」时画什么。
+	 *
+	 * 用户 2026-11-22：「找不到注册的渲染器，降级的降级渲染器应该是组件。」
+	 *
+	 * ⚠ 必须在 `sealRegistry()` **之前**设：封盘后 `setFallbackRenderer` 会抛。
+	 *   顺序反过来 = 启动即崩，而且崩在面板打开那一刻（不是 import 那一刻）。
+	 */
+	setFallbackRenderer(MissingRendererBlock);
+
 	sealRegistry();
 }
