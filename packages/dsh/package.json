@@ -49,11 +49,5 @@
   },
   "engines": {
     "node": ">=22.13.0"
-  },
-  "dsh": {
-    "manifestVersion": 1,
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
   }
 }

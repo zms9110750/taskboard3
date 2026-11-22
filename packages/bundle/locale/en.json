@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Taskboard",
+    "description": "Task cards with a state machine and relations: nine states, six relation types, one workspace per container. Three independently switchable components: storage (the only replaceable point), Host half (HTTP + AI tools), browser UI (left sidebar / drawer / right workspace)."
+  }
+}
