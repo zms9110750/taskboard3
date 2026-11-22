@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { TaskState } from '@taskboard/protocol';
 
-import { context, makeFixture, run, runOk, seedCard, submitCard } from './support/fixtures.ts';
+import { makeFixture, run, runOk, seedCard, submitCard } from './support/fixtures.ts';
 
 describe('taskboard_transition', () => {
 	it('采纳：草稿 → 提交；设计/记录 → 需要授权', async () => {
@@ -104,7 +104,13 @@ describe('taskboard_transition', () => {
 		const id = await seedCard(fixture, 't-work', '没有身份');
 		await submitCard(fixture, id);
 
-		const noHolderCtx = context(fixture, { holder: undefined });
+		/*
+		 * ⚠ `exactOptionalPropertyTypes: true` 下**不能传 `holder: undefined`** ——
+		 *   那和「省略 holder」不是同一件事：前者是「显式给了个 undefined 值」。
+		 *   这里要测的是「宿主没提供身份」⇒ 必须**省略**这个字段。
+		 *   `context()` 默认填 `holder: 'lead'`，所以要显式构造一个不带它的 ctx。
+		 */
+		const noHolderCtx = { canManageToolPolicies: true } as const;
 		const query = await runOk(fixture, 'taskboard_transition', { id }, noHolderCtx);
 		assert.ok(query.includes('宿主没有提供'), query);
 

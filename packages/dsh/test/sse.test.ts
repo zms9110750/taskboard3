@@ -31,7 +31,13 @@ import type { IncomingLike } from '../src/types.ts';
 
 /** 一条假响应：记录写进来的东西，可手动触发 `close`。 */
 interface FakeResponse extends SseResponseLike {
-	readonly frames: readonly string[];
+	/*
+	 * ⚠ 这里是**可变**的 `string[]`，不是 `readonly string[]`：
+	 *   测试里要自己 `flaky.frames.push(...)` 记录写入（L351），
+	 *   用只读类型会让那个「第 2 次写入抛错」的用例没法布置。
+	 *   `readonly` 的防线在**产品代码**的 `SseResponseLike` 上，不在测试替身上。
+	 */
+	readonly frames: string[];
 	readonly headers: Readonly<Record<string, string>>;
 	readonly status: () => number;
 	readonly ended: () => boolean;
@@ -103,6 +109,8 @@ function fakeCard(id: string): Card {
 		history: [],
 		deleted: false,
 		holders: [],
+		/* 卡上的未读字段（`card.ts` 的 `CardUnread`）—— 夹具漏了，tsc 报 TS2741。 */
+		unread: { ai: false, user: false },
 	};
 }
 

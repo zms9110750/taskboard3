@@ -66,6 +66,11 @@ const NO_POLICIES: PermissionFacts = { policies: EMPTY_POLICY_STORE };
 /** 造一份策略（各档可选）。 */
 function makeStore(over: Partial<ToolPolicyStore> = {}): ToolPolicyStore {
 	return {
+		/*
+		 * `unclaimed` 是 tool contract v2 新增的档（`permission.ts:261`）——
+		 * 「没有持有工作卡时额外允许的工具」。旧夹具漏了它，tsc 才报 TS2741。
+		 */
+		unclaimed: over.unclaimed ?? [],
 		common: over.common ?? [],
 		groups: over.groups ?? {},
 		groupMembers: over.groupMembers ?? {},

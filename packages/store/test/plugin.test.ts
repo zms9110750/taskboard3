@@ -62,10 +62,16 @@ function makeCard(id: string, title: string, status: string): Card {
 		note: '',
 		history: [],
 		deleted: false,
-		claimedBy: null,
-		claimedAt: null,
+		/*
+		 * ⚠ `claimedBy` / `claimedAt` 是**旧版的字段**（一卡一人持有），
+		 *   已被 `holders: CardHolder[]` 取代 —— 用户 2026-11-13：
+		 *   「现在不限制一个卡只能被一个拿」。夹具还在用旧字段，tsc 报 TS2353。
+		 */
+		holders: [],
 		createdAt: 0,
 		adoptedAt: null,
+		/* 卡上的未读字段（`CardUnread`）。 */
+		unread: { ai: false, user: false },
 	};
 }
 

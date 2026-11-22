@@ -192,7 +192,9 @@ describe('未读字段：recompute 不算改过', () => {
 		});
 		tb.templates().register(makeTemplate('t-goal', 'goal'));
 		tb.templates().register(makeTemplate('t-work', 'work'));
-		const ws = (await tb.createWorkspace('重算未读')).workspace.id;
+		const createdWs = await tb.createWorkspace('重算未读');
+		assert.ok(createdWs.ok);
+		const ws = createdWs.workspace.id;
 
 		const parent = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '父', actor: 'user' });
 		assert.ok(parent.ok);
@@ -253,7 +255,9 @@ describe('★ 不变量：unread 必须等于「按 history 重算」', () => {
 		});
 		tb.templates().register(makeTemplate('t-goal', 'goal'));
 		tb.templates().register(makeTemplate('t-work', 'work'));
-		const ws = (await tb.createWorkspace('不变量')).workspace.id;
+		const createdWs = await tb.createWorkspace('不变量');
+		assert.ok(createdWs.ok);
+		const ws = createdWs.workspace.id;
 
 		/* 制造各种事件：user 建 / ai 建 / adopt / claim / release / update(ai) / update(user) / 重算 */
 		const a = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: 'A', actor: 'user' });
@@ -383,7 +387,9 @@ describe('search 的 updatedBy 走 Card.unread', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-upd-search-'));
 		const tb = createTaskboard({ dataDir: dir, now: () => 3_000 });
 		tb.templates().register(makeTemplate('t-work', 'work'));
-		const ws = (await tb.createWorkspace('搜未读')).workspace.id;
+		const createdWs = await tb.createWorkspace('搜未读');
+		assert.ok(createdWs.ok);
+		const ws = createdWs.workspace.id;
 
 		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '搜未读', actor: 'user' });
 		assert.ok(created.ok);
@@ -406,7 +412,9 @@ describe('search 的 updatedBy 走 Card.unread', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-upd-search2-'));
 		const tb = createTaskboard({ dataDir: dir, now: () => 4_000 });
 		tb.templates().register(makeTemplate('t-work', 'work'));
-		const ws = (await tb.createWorkspace('搜AND')).workspace.id;
+		const createdWs = await tb.createWorkspace('搜AND');
+		assert.ok(createdWs.ok);
+		const ws = createdWs.workspace.id;
 
 		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '搜AND', actor: 'user' });
 		assert.ok(created.ok);
@@ -431,7 +439,9 @@ describe('markSeen 触发 bus 广播', () => {
 		const bus = createBus();
 		const tb = createTaskboard({ dataDir: dir, now: () => 5_000, bus });
 		tb.templates().register(makeTemplate('t-work', 'work'));
-		const ws = (await tb.createWorkspace('广播')).workspace.id;
+		const createdWs = await tb.createWorkspace('广播');
+		assert.ok(createdWs.ok);
+		const ws = createdWs.workspace.id;
 
 		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '广播', actor: 'user' });
 		assert.ok(created.ok);
@@ -459,7 +469,9 @@ describe('markSeen 触发 bus 广播', () => {
 		const bus = createBus();
 		const tb = createTaskboard({ dataDir: dir, now: () => 6_000, bus });
 		tb.templates().register(makeTemplate('t-work', 'work'));
-		const ws = (await tb.createWorkspace('广播2')).workspace.id;
+		const createdWs = await tb.createWorkspace('广播2');
+		assert.ok(createdWs.ok);
+		const ws = createdWs.workspace.id;
 
 		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '广播2', actor: 'user' });
 		assert.ok(created.ok);

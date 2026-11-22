@@ -37,7 +37,12 @@ function card(
 		kind?: string;
 		domain?: string;
 		createdAt?: number;
-		adoptedAt?: number;
+		/*
+		 * `null` 是**有意义的取值**：`adoptedAt: null` = 「还没采纳」，
+		 * 不是「没传这个参数」。`Card.adoptedAt` 的类型就是 `number | null`
+		 * ⇒ 夹具的入参类型必须允许 null，否则调用方只能靠 `as` 绕过。
+		 */
+		adoptedAt?: number | null;
 	} = {},
 ): Card {
 	return {
@@ -58,6 +63,12 @@ function card(
 		history: [],
 		deleted: false,
 		holders: [],
+		/*
+		 * `unread` 是卡上的字段（`card.ts` 的 `CardUnread`）——
+		 * 夹具手搓 Card 时漏了它，tsc 报 TS2741。
+		 * 「两个都没读」= UNREAD_NONE（`{ ai: false, user: false }`）。
+		 */
+		unread: { ai: false, user: false },
 	};
 }
 

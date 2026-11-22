@@ -259,7 +259,8 @@ describe('taskboard_definitions', () => {
 		assert.ok(text.includes('工作模板'), text);
 		assert.ok(text.includes('「正文」（body）→ action=text'), text);
 		assert.ok(text.includes('默认 payload'), text);
-		assert.ok(text.includes('写完后开校验卡'), text, '应包含模板的「下一步」描述');
+		/* `assert.ok` 只收 (value, message) 两个参数 —— 第三个会被静默忽略，tsc 报 TS2554。 */
+		assert.ok(text.includes('写完后开校验卡'), `应包含模板的「下一步」描述：\n${text}`);
 	});
 
 	it('状态/分类/领域也能按 id 或中文名查', async () => {

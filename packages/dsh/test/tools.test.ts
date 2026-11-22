@@ -33,8 +33,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { createSearch, createTaskboard, type Taskboard } from '@taskboard/core';
-import { STATUS_GROUP_OF, TaskState, type TaskState as TaskStateType } from '@taskboard/protocol';
+import { createTaskboard, type Taskboard } from '@taskboard/core';
+import { TaskState } from '@taskboard/protocol';
 
 import {
 	createTools,
@@ -91,10 +91,7 @@ beforeEach(async () => {
 	await closeTaskboard();
 	const dataDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-tools-'));
 	createdDirs.push(dataDir);
-	taskboard = createTaskboard({
-		dataDir,
-		search: createSearch({ groupOf: (state) => STATUS_GROUP_OF[state as TaskStateType] }),
-	});
+	taskboard = createTaskboard({ dataDir });
 	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 
 	const created = await taskboard.createWorkspace(`适配层测试-${Date.now()}`);
@@ -160,7 +157,13 @@ async function seedCard(templateRef: string, title: string, options: { readonly 
 		title,
 		actor: options.actor ?? 'ai',
 	});
-	assert.equal(created.ok, true);
+	/*
+	 * ⚠ **不要**在这之前写 `assert.equal(created.ok, true)`：
+	 *   `@types/node` 的 `assert.equal` 带 `asserts actual is T` 签名
+	 *   ⇒ 它会把 `created` 收窄成成功分支，下面的 `if (!created.ok)` 就成了
+	 *   `never` 分支（tsc 报 `Property 'message' does not exist on type 'never'`）。
+	 *   `if (!created.ok) throw` 本身既做了运行时检查、又做了类型收窄 —— 一次就够。
+	 */
 	if (!created.ok) throw new Error(created.message);
 	return created.card.id;
 }
