@@ -781,6 +781,45 @@ describe('POST /api/cards/:id/action', () => {
 		assert.equal(out.status, 400);
 	});
 
+	/**
+	 * ⚠ **服务端只认顶层 `to`** —— 这条钉住线格式，防止客户端再包一层。
+	 *
+	 * 客户端曾经发 `{ workspaceId, action: { kind, to } }`，服务端
+	 * `const to = str(body, 'to') ?? ''` 读到空串 ⇒ 400「不是已知状态」
+	 * ⇒ **点任何状态按钮都失败**。
+	 *
+	 * ⇒ 正确的线格式是扁平 `{ workspaceId, to }`。这条测试断言「嵌套那种
+	 *   形状**不被接受**」，这样如果有人把客户端改回去，`dsh-client` 的
+	 *   `api.test.ts` 那条防回退断言和服务端这条会同时红。
+	 */
+	it('⭐ 只认顶层 to：包一层的 { action: { to } } 读不到 ⇒ 400', async () => {
+		const created = await taskboard.createWorkspace('线格式');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const wsId = created.workspace.id;
+		const template = adoptToSubmittedTemplate();
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳', actor: 'user' });
+		assert.equal(made.ok, true);
+		if (!made.ok) return;
+
+		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
+		const out = await call(deps, {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}/action`,
+			body: { workspaceId: wsId, action: { kind: 'transition', to: 'TASK_STATE_SUBMITTED' } },
+		});
+
+		assert.equal(out.status, 400, out.raw);
+		const payload = out.json as { code: string; message: string };
+		assert.equal(payload.code, 'TRANSITION_REJECTED');
+		assert.ok(payload.message.includes('不是已知状态'), payload.message);
+
+		/* 拒绝必须是真的没做事 —— 状态不该变。 */
+		const after = taskboard.get(wsId, made.card.id);
+		assert.equal(after.ok, true);
+		if (after.ok) assert.equal(after.card.status, 'TASK_STATE_UNSPECIFIED');
+	});
+
 	it('合法转移 ⇒ 200，且卡的状态真的变了', async () => {
 		const created = await taskboard.createWorkspace('动作2');
 		assert.equal(created.ok, true);
