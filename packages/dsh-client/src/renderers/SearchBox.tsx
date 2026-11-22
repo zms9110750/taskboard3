@@ -88,10 +88,28 @@ export function SearchBox(props: SearchBoxProps): ReactNode {
 		<div className="search-box" data-search-box="1" data-search-disabled={String(disabled)}>
 			<div className="search-box__field">
 				{/*
-				 * 框内图标（装饰性）⇒ `aria-hidden`，读屏不要念「放大镜」。
-				 * 形状 / 尺寸的视觉决定写在 `dev/preview/searchbox/style.css`。
+				 * ⚠ 图标不是装饰了 —— 它是**第二个提交入口**（用户 2026-11-22：
+				 *   「这个搜索框的内联图标没有点击事件吗？」）。
+				 *
+				 * 结构和位置不变（仍在 field 左内边距里），但语义从「装饰」变成
+				 * 「按钮」：可点、可 tab 到、有 title。回车仍然是主入口。
 				 */}
-				<span className="search-box__icon" data-search-icon="1" aria-hidden="true">
+				<button
+					type="button"
+					className="search-box__icon"
+					data-search-icon="1"
+					data-search-submit="1"
+					disabled={!canSubmit}
+					title={
+						disabled
+							? '搜索不可用'
+							: query === null
+								? '先输入搜索词'
+								: `搜索「${query}」`
+					}
+					onClick={submit}
+					aria-label="搜索"
+				>
 					<svg
 						width="14"
 						height="14"
@@ -101,11 +119,12 @@ export function SearchBox(props: SearchBoxProps): ReactNode {
 						strokeWidth={2}
 						strokeLinecap="round"
 						strokeLinejoin="round"
+						aria-hidden="true"
 					>
 						<circle cx="11" cy="11" r="8" />
 						<path d="M21 21l-4.35-4.35" />
 					</svg>
-				</span>
+				</button>
 
 				<input
 					className="search-box__input"

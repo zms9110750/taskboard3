@@ -366,7 +366,10 @@ export const SEARCHBOX_CSS = `
 .tb3w-root .search-box{display:flex;align-items:stretch;min-width:0}
 .tb3w-root .search-box__field{position:relative;display:flex;align-items:center;flex:1 1 auto;min-width:0;height:28px;border:1px solid var(--border,#e7e9ee);border-radius:8px;background:var(--bg-card,#fff);transition:border-color .12s,background .12s}
 .tb3w-root .search-box__field:focus-within{border-color:var(--accent,#2563eb)}
-.tb3w-root .search-box__icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;color:var(--text-weak,#9aa1ad);pointer-events:none}
+.tb3w-root .search-box__icon{position:absolute;left:7px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--text-weak,#9aa1ad);cursor:pointer}
+/* 图标是按钮：hover 变深，禁用时不可点（它和「前往」是同一个 submit()） */
+.tb3w-root .search-box__icon:hover:not(:disabled){color:var(--accent,#2563eb)}
+.tb3w-root .search-box__icon:disabled{cursor:default;opacity:.55}
 /* 左内边距 30px = 图标左 9px + 图标 14px + 间距 7px —— 文字不会压到图标 */
 .tb3w-root .search-box__input{width:100%;height:100%;padding:0 10px 0 30px;border:0;border-radius:8px;outline:none;background:transparent;font-family:inherit;font-size:12.5px;line-height:1.5;color:var(--text,#16181d)}
 .tb3w-root .search-box__input::placeholder{color:var(--text-weak,#9aa1ad)}
