@@ -55,21 +55,48 @@
    ══════════════════════════════════════════════════════════ */
 
 /**
- * 面板高度 = 屏幕高 × 这个比例（用户原话「高度 ≈ 屏幕一半」）。
+ * 面板高度 = 屏幕高 × 这个比例。
  *
- * ⚠ 这是**用户给的规格**，不是我们量出来的（CDP 不可用，量不了）。
- *   它的可信度来自「用户原话」这一层，不来自测量 —— 报告里会写明。
+ * ## 演进（两次用户原话）
+ *
+ * | 时间 | 用户原话 | 比例 |
+ * |---|---|---|
+ * | `2026-11-20` | 「宽度 = 输入框宽，**高度 ≈ 屏幕一半**」 | `0.5` |
+ * | `2026-11-23` | 「这个抽屉视图**只占这么点大小不对**」 | `0.75` |
+ *
+ * ⚠ 后面的原话否掉前面的数 ⇒ 现在是 `0.75`（屏高的四分之三）。
+ *   为什么留四分之一：抽屉是**浮层**（不挤走对话），全盖住会让人丢失上下文；
+ *   留 25% 视口，上方最近几条消息还看得见。
+ *
+ * ⚠ **这个数仍然是用户可调的单一常量** —— 改这一行，配方 / CSS / 单测全跟着变
+ *   （测试断言「CSS 里的百分比 === 这个常量」，防两份数值漂掉）。
+ *   它**不是**量出来的设计值，是「留多少上下文」的产品取舍。
+ *
+ * ## 实际高度 = min(比例 × 屏高, 输入框上方的真实可用空间)
+ *
+ * 后半段在组件里量（见 `Drawer.tsx` 的 `--tb3d-max-height`）：
+ * 输入框会随对话内容上下移动，写死任何像素上限都会在某个状态顶出窗口上沿。
  */
-export const DRAWER_HEIGHT_RATIO = 0.5;
+export const DRAWER_HEIGHT_RATIO = 0.75;
 
-/**
- * 面板高度上限（px）—— 候选维度里的 `min(50vh, 480px)`。
+/*
+ * ## ⚠ 这里**没有** 480px 上限（`2026-11-23` 删）
  *
- * 为什么是 480：任务书把 `min(50vh, 480px)` 列为候选值之一；
- * 它要解决的问题是「屏幕很高时别让面板吃掉整段对话」。
- * **480 本身没有测量依据**（沙箱里起不来浏览器），如实标注。
+ * 旧版有个 `DRAWER_HEIGHT_CAP_PX = 480` + `min(50vh, 480px)` 的候选维度。
+ * 两处证据都说明它不该存在：
+ *
+ * 1. **它没有测量依据** —— 旧注释自己写着「480 本身没有测量依据
+ *    （沙箱里起不来浏览器），如实标注」。AGENTS 3.8：阈值必须是量出来的。
+ * 2. **它违反用户规格** —— 规格是「高度 ≈ 屏幕一半」。实测（CDP，1920×1080）：
+ *    `min(540, 480) = 480` ⇒ 只占 **44%**；1440 高的窗口 ⇒ 只占 **33%**。
+ *
+ * 用户 `2026-11-23` 看了真机截图后的原话：
+ * > 「这个抽屉视图只占这么点大小不对。」
+ *
+ * ⇒ 高度恒为 `50vh`，屏越高面板越高。**唯一的约束是别顶出窗口上沿**，
+ *   那件事由 `Drawer.tsx` 的动态 `max-height` 夹（量的是面板底边到视口顶的真实距离，
+ *   不写死任何数值）。
  */
-export const DRAWER_HEIGHT_CAP_PX = 480;
 
 /** 入口正方形边长（px）。和 composer 工具行里 `+` 的 28px 同量级。 */
 export const DRAWER_ENTRY_SIZE_PX = 32;
@@ -109,9 +136,6 @@ export type DrawerVariantId = (typeof DRAWER_VARIANT_IDS)[number];
 /** 入口图标候选。 */
 export type DrawerIconId = 'square' | 'arrow-up' | 'dots';
 
-/** 高度候选：`capped-half` = `min(50vh, 480px)`；`half` = `50vh`。 */
-export type DrawerHeightMode = 'capped-half' | 'half';
-
 /** 面板阴影档。 */
 export type DrawerShadow = 'none' | 'soft' | 'strong';
 
@@ -129,8 +153,6 @@ export interface DrawerVariant {
 	readonly gapPx: number;
 	/** 面板圆角（px）。 */
 	readonly radiusPx: number;
-	/** 面板高度规则。 */
-	readonly heightMode: DrawerHeightMode;
 	/** 面板阴影档。 */
 	readonly shadow: DrawerShadow;
 	/** 是否画半透明遮罩（点击遮罩 = 点外部 = 关）。 */
@@ -144,9 +166,12 @@ export interface DrawerVariant {
  *
  * | 形态 | 图标 | 间距 | 圆角 | 高度 | 阴影 | 遮罩 | 动画 |
  * |---|---|---|---|---|---|---|---|
- * | A `a` | ▣ 方块 | 0（紧贴）| 0（贴边）| `min(50vh, 480px)` | 无 | 无 | 无 |
- * | B `b` | ▲ 上箭头 | 6px | 12px | `min(50vh, 480px)` | 轻 | 无 | 180ms 上滑 |
+ * | A `a` | ▣ 方块 | 0（紧贴）| 0（贴边）| `50vh` | 无 | 无 | 无 |
+ * | B `b` | ▲ 上箭头 | 6px | 12px | `50vh` | 轻 | 无 | 180ms 上滑 |
  * | C `c` | ⋯ 三点 | 12px | 16px | `50vh` | 强 | 半透明 | 180ms 上滑 |
+ *
+ * ⚠ 高度**不再是形态差异**：三个形态都 `50vh`（`2026-11-23`，理由见
+ *   `DRAWER_HEIGHT_RATIO` 那段注释 —— 480px 上限既无测量依据又违反用户规格）。
  *
  * ⚠ 用 `satisfies` 而不是类型标注：少一个形态 / 多一个形态都让 `tsc` 红
  *   （AGENTS 3.7；`Object.freeze` 当实参会关掉多余属性检查）。
@@ -156,11 +181,10 @@ export const DRAWER_VARIANTS = freezeVariants({
 	a: {
 		id: 'a',
 		label: 'A · 贴边',
-		summary: '▣ 方块 · 间距 0 · 无圆角 · min(50vh,480px) · 无遮罩 · 无动画',
+		summary: '▣ 方块 · 间距 0 · 无圆角 · 50vh · 无遮罩 · 无动画',
 		icon: 'square',
 		gapPx: 0,
 		radiusPx: 0,
-		heightMode: 'capped-half',
 		shadow: 'none',
 		mask: false,
 		animated: false,
@@ -168,11 +192,10 @@ export const DRAWER_VARIANTS = freezeVariants({
 	b: {
 		id: 'b',
 		label: 'B · 圆角',
-		summary: '▲ 上箭头 · 间距 6px · 圆角 12px · min(50vh,480px) · 轻阴影 · 180ms 上滑',
+		summary: '▲ 上箭头 · 间距 6px · 圆角 12px · 50vh · 轻阴影 · 180ms 上滑',
 		icon: 'arrow-up',
 		gapPx: 6,
 		radiusPx: 12,
-		heightMode: 'capped-half',
 		shadow: 'soft',
 		mask: false,
 		animated: true,
@@ -184,7 +207,6 @@ export const DRAWER_VARIANTS = freezeVariants({
 		icon: 'dots',
 		gapPx: 12,
 		radiusPx: 16,
-		heightMode: 'half',
 		shadow: 'strong',
 		mask: true,
 		animated: true,
@@ -236,26 +258,25 @@ function px(value: number): string {
  * 用户 `2026-11-20` 明确否掉了预览里那种「模拟屏高」的变量：
  * 「莫写着模拟屏高。然后用高而窄的放抽屉面板做什么」。
  * ⇒ 这里只允许 `vh` / `min(…, 480px)`，**不允许任何自定义变量去替代视口单位**。
+ *
+ * `2026-11-23`：恒为 `50vh`。480px 上限删掉的理由见 `DRAWER_HEIGHT_RATIO`。
+ * 「别顶出窗口上沿」由组件里的动态 `max-height` 夹（量真实位置，不写死数值），
+ * 那是**上限**不是**定高** —— 高度仍然由视口决定。
  */
-export function drawerHeightCssOf(variant: DrawerVariant): string {
-	const half = `${String(DRAWER_HEIGHT_RATIO * 100)}vh`;
-	return variant.heightMode === 'capped-half'
-		? `min(${half}, ${px(DRAWER_HEIGHT_CAP_PX)})`
-		: half;
+export function drawerHeightCssOf(): string {
+	return `${String(DRAWER_HEIGHT_RATIO * 100)}vh`;
 }
 
 /**
  * 面板高度（px 数值）—— 给「给定屏幕高 → 实际多高」的换算和单测用。
  *
- * ⚠ 浏览器里**最终高度还是 CSS 算的**（`50vh` + `min()`）；
+ * ⚠ 浏览器里**最终高度还是 CSS 算的**（`50vh`）；
  *   这个函数只是同一公式的数值版，用来断言公式没漂。
  *
- * @param variant 形态
  * @param viewportHeightPx 屏幕高（px）
  */
-export function drawerHeightPxOf(variant: DrawerVariant, viewportHeightPx: number): number {
-	const half = viewportHeightPx * DRAWER_HEIGHT_RATIO;
-	return Math.round(variant.heightMode === 'capped-half' ? Math.min(half, DRAWER_HEIGHT_CAP_PX) : half);
+export function drawerHeightPxOf(viewportHeightPx: number): number {
+	return Math.round(viewportHeightPx * DRAWER_HEIGHT_RATIO);
 }
 
 /** 阴影档 → CSS 值。 */
@@ -282,7 +303,7 @@ export function drawerPanelCssOf(variant: DrawerVariant): string {
 	const parts = [
 		`bottom:calc(100% + ${px(variant.gapPx)})`,
 		`border-radius:${px(variant.radiusPx)}`,
-		`height:${drawerHeightCssOf(variant)}`,
+		`height:${drawerHeightCssOf()}`,
 		`box-shadow:${drawerShadowCssOf(variant.shadow)}`,
 	];
 	if (variant.animated) parts.push('animation:tb3d-rise .18s ease-out');
