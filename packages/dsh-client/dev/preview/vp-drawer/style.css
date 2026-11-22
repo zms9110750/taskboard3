@@ -1,16 +1,24 @@
 /*
- * 抽屉视口（1200 × 476）—— **这个视口自己的布局**，不跟另外两个视口通用。
+ * 抽屉视口（1200 × 476）—— 预览外壳样式。
  *
- * 用户 2026-11-20 的三条：
- *   1. chrome 占比太大（三行 ≈130px / 476 ≈ 27%），科技树只剩 300px
- *   2. 详情应该是浮层，不挤占科技树宽度
- *   3. （组件独立化是下一步，不在这个文件）
+ * ## ⚠ 这个文件**不再覆盖任何产品类名**（用户 2026-11-22）
  *
- * 做法：只在 `.pv-stage` 作用域里覆盖产品 CSS，**不改 src/**。
- * 这样能先看效果，确认后再决定要不要落到组件里。
+ * > 「这个图例怎么又没了。然后工作空间什么的又去左边了。
+ * >   你到底写的什么垃圾代码？」
+ *
+ * 原来这里有 175 行 `.pv-stage .tb3w-*` 覆盖：隐藏图例、隐藏 SpaceBar、
+ * 把详情改成绝对定位浮层、隐藏分隔条、隐藏科技树列背景。
+ * 那些是 `2026-11-20` 按 taskboard2 截图**猜**的形态，后来被两条用户裁决推翻：
+ *
+ * - `2026-11-21`：「工作空间放在科技树的左边」⇒ SpaceBar 有位置，不该隐藏
+ * - `2026-11-22`：抽屉布局选 **A · 双栏并排**（列表 + 详情两栏，详情挤压列表）
+ *   ⇒ 详情是**栏**，不是浮层
+ *
+ * ⇒ 预览和产品必须同一份布局。这里只留外壳（舞台、滚动、背景），
+ *   产品长什么样就是什么样 —— 长得不对就改 `src/styles.ts`，**不要在这里盖**。
  */
 
-/* ── ⓪ 视口容器的基础布局（三个视口共用同一套骨架） ───── */
+/* ── 视口容器的基础布局 ─────────────────────────────────── */
 
 html,
 body {
@@ -23,8 +31,10 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
-/* ⚠ 必须有：`.pv { height: 100% }` 要一个高度确定的祖先，
-   只靠 `#root { min-height: 100% }` 会被解析成 auto ⇒ flex 链全塌 ⇒ 白屏。 */
+/*
+ * ⚠ 必须有：`.pv { height: 100% }` 要一个高度确定的祖先，
+ *   只靠 `#root { min-height: 100% }` 会被解析成 auto ⇒ flex 链全塌 ⇒ 白屏。
+ */
 #root {
   height: 100%;
 }
@@ -48,128 +58,4 @@ body {
 
 .pv-ws {
   height: 100%;
-}
-
-/* ── ① 压缩 chrome：三行 → 两行 ────────────────────────── */
-
-.pv-stage .tb3w-page {
-  padding: 6px 10px;
-}
-
-/* 图例 / 权限按钮 / AI chip：这个视口里不显示 */
-.pv-stage .tb3w-toolbar__legend,
-.pv-stage .tb3w-toolbar__perm {
-  display: none;
-}
-
-/* SpaceBar 和工具栏挤到同一行（chrome 是 wrap 容器） */
-.pv-stage .tb3w-chrome {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 10px;
-}
-.pv-stage .tb3w-chrome > .space-bar {
-  flex: 0 1 auto;
-  min-width: 0;
-  padding: 0;
-  gap: 4px;
-}
-.pv-stage .tb3w-chrome > .space-bar .space-chip {
-  padding: 1px 7px;
-  font-size: 11px;
-}
-.pv-stage .tb3w-toolbar {
-  flex: 1 1 auto;
-  justify-content: flex-end;
-  margin-top: 0;
-  gap: 4px 8px;
-}
-.pv-stage .tb3w-toolbar__title {
-  font-size: 11.5px;
-}
-.pv-stage .tb3w-toolbar__count {
-  font-size: 11px;
-}
-.pv-stage .tb3w-seg__btn {
-  padding: 2px 8px;
-  font-size: 10.5px;
-}
-.pv-stage .tb3w-btn-primary {
-  padding: 2px 9px;
-  font-size: 10.5px;
-}
-
-/* 筛选行压扁 */
-.pv-stage .tb3w-filters {
-  margin-top: 4px;
-  gap: 4px;
-}
-.pv-stage .filter-box {
-  padding: 2px 8px;
-  font-size: 11px;
-}
-.pv-stage .search-box {
-  height: 24px;
-}
-
-/* 主区上间距 */
-.pv-stage .tb3w-main {
-  margin-top: 4px;
-  position: relative;
-}
-
-/* ── ② 详情改成浮层，不再占一栏 ──────────────────────── */
-
-/* 分隔条没用了（没有两栏可拖） */
-.pv-stage .tb3w-split {
-  display: none;
-}
-
-/* 科技树 / 列表占满整个主区宽度 */
-.pv-stage .tb3w-list {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* 详情：绝对定位浮在主区右侧，覆盖在科技树上面 */
-.pv-stage .tb3w-detail {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 420px;
-  min-width: 0;
-  max-width: none;
-  border-left: 0;
-  border: 1px solid var(--dsw-alias-border-subtle, #e5e7eb);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-1, #fff);
-  box-shadow: 0 12px 32px rgb(15 23 42 / 18%);
-  z-index: 20;
-}
-
-/* ── ③ 科技树：原版没有列背景和列头 ────────────────────── */
-
-/*
- * `src/pure/techtree-css.ts` 的 `.tb3t-band` 是**整列浅灰圆角块 + 列头**
- * （`第 N 层 · 根卡`）。taskboard2 的真实截图（`.verify/shots/01-tree.png`）
- * 里**没有这一层**：白底，卡片直接浮着，层与层只靠横向间距区分。
- */
-.pv-stage .tb3t-band {
-  display: none;
-}
-/* ── ④ 菜单压成两行：原版没有 SpaceBar 那排 chip ────────── */
-
-/*
- * taskboard2 的真实界面（`http://127.0.0.1:7950/`，`.verify/shots/01-tree.png`）
- * 菜单**只有两行**：
- *   第 1 行：任务 共N条 + 关系图例 ……… 切换工作空间 / 权限与约定 / 科技树 / 列表 / 新建
- *   第 2 行：状态 类别 领域 ……… AI更新过 / AI未读N / 搜索框
- *
- * 没有「当前空间 / 隐藏已归档 / 核心12 / 代码 / 写作 …」那排 chip ——
- * 空间切换在原版是**一个按钮**（「切换工作空间」）。
- */
-.pv-stage .tb3w-chrome > .space-bar {
-  display: none;
 }
