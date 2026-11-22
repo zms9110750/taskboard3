@@ -70,18 +70,13 @@ export function jsonText(value: unknown): string {
 /**
  * 一个 action payload 的文本视图。
  *
- * @param payload 卡上的 raw payload
- */
-/**
- * 一个 action payload 的文本视图。
- *
  * ## 走 `ActionTextRegistry`，不是 if/else（用户 2026-11-22）
  *
  * > 「多出来的 action，翻译为 tool 的文字，这个也是渲染器。也要有分发器。」
  *
  * 内置三件（text / markdown / ask）由 `core/src/action-text.ts` 的
  * `DEFAULT_ACTION_TEXT` 注册；第三方可以 `DEFAULT_ACTION_TEXT.register(type, fn)`。
- * 没注册的 type ⇒ `textOfAction` 兜底成 `JSON.stringify`。
+ * 没注册的 type ⇒ 走注册表的**降级函数**（`registry.fallback()`，默认是 JSON，第三方可换）。
  *
  * @param payload 卡上的 raw payload
  */
@@ -91,56 +86,13 @@ export function renderPayload(payload: unknown): string {
 	return truncate(textOfAction(payload));
 }
 
-/** `ask` 的视图：问题、选项、已选、自填。 */
-function renderAsk(payload: object): string {
-	const items = arrayField(payload, 'items');
-	if (items.length === 0) return jsonText(payload);
-	const lines: string[] = [];
-	items.forEach((raw, index) => {
-		if (typeof raw !== 'object' || raw === null) {
-			lines.push(`（第 ${index + 1} 组不是对象）`);
-			return;
-		}
-		const question = stringField(raw, 'question') ?? stringField(raw, 'header') ?? `（第 ${index + 1} 个问题）`;
-		const multi = boolField(raw, 'multi_select');
-		lines.push(`问题 ${index + 1}${multi ? '（多选）' : '（单选）'}：${question}`);
-		const options = arrayField(raw, 'options');
-		const picked = arrayField(raw, 'picked').filter((one): one is string => typeof one === 'string');
-		for (const option of options) {
-			if (typeof option !== 'object' || option === null) continue;
-			const label = stringField(option, 'label') ?? '';
-			const description = stringField(option, 'description');
-			const mark = picked.includes(label) ? '[x]' : '[ ]';
-			lines.push(`  ${mark} ${label}${description === undefined ? '' : ` —— ${description}`}`);
-		}
-		if (options.length === 0) lines.push('  （没有选项）');
-		if (picked.length > 0) lines.push(`  已选：${picked.join('、')}`);
-		const custom = arrayField(raw, 'custom').filter((one): one is string => typeof one === 'string');
-		if (custom.length > 0) lines.push(`  自填：${custom.join('、')}`);
-		if (picked.length === 0 && custom.length === 0) lines.push('  状态：未选择');
-		const placeholder = stringField(raw, 'placeholder');
-		if (placeholder !== undefined && placeholder !== '') lines.push(`  提示：${placeholder}`);
-	});
-	return lines.join('\n');
-}
-
 /** 取一个字符串字段。 */
 function stringField(value: object, key: string): string | undefined {
 	const raw = (value as Record<string, unknown>)[key];
 	return typeof raw === 'string' ? raw : undefined;
 }
 
-/** 取一个数组字段（非数组 = 空）。 */
-function arrayField(value: object, key: string): readonly unknown[] {
-	const raw = (value as Record<string, unknown>)[key];
-	return Array.isArray(raw) ? raw : [];
-}
 
-/** 取一个布尔字段。 */
-function boolField(value: object, key: string): boolean {
-	const raw = (value as Record<string, unknown>)[key];
-	return raw === true;
-}
 
 /** 章节标题行：`【正文】（body，action=text）`。 */
 export function sectionHeading(label: string, sectionId: string, action: string): string {
