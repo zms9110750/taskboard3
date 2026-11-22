@@ -267,7 +267,20 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 		setSelectedId(cardId);
 	}, []);
 
-	if (state.loading) return <PageMessage text="正在加载任务板…" />;
+	/*
+	 * **首次加载**才整页提示 —— 那时 `workspaces` 还是空的，连 chips 行都没数据可画，
+	 * 只能整页等。
+	 *
+	 * 用户 `2026-11-23`：
+	 * 「切换工作空间的时候整个视口都跳变。给他加一点过度时间。或者跳变也不要全变了。
+	 *   显示"正在加载"不应该包含视口上面的菜单部分。应该只有里面的列表或者科技树的视口显示正在加载。」
+	 *
+	 * ⇒ 已经有数据时切空间**不再**走这里，而是把 `loading` 传给 `Workspace`，
+	 *   只让内容区（列表 / 科技树 / 详情）显示加载 —— chrome 保持不动。
+	 */
+	if (state.loading && state.workspaces.length === 0) {
+		return <PageMessage text="正在加载任务板…" />;
+	}
 
 	if (state.error !== undefined) {
 		return (
@@ -343,6 +356,11 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 			cards={cards}
 			templates={state.templates}
 			selectedId={selectedId}
+			/*
+			 * 数据在飞 ⇒ 只让**内容区**显示加载（用户 2026-11-23）。
+			 * ⚠ 不能在这里整页替换：chrome 是「视口上面的菜单部分」，它不该跟着变。
+			 */
+			loading={state.loading}
 			/*
 			 * ⚠ 不传 `kindLabelOf`：v3 的模板只有 `displayName`，**没有类别的中文名**
 			 *   （`pure/card-view.ts` 文件头写了为什么）。不传 ⇒ 显示英文 id，

@@ -162,6 +162,21 @@ export const WORKSPACE_CSS = `
 .tb3w-chrome{flex:0 0 auto;display:flex;flex-direction:column;min-width:0}
 .tb3w-main{flex:1 1 auto;display:flex;flex-direction:row;min-height:0;min-width:0;margin-top:12px}
 
+/*
+ * 切空间的加载态 —— 用户 2026-11-23：
+ * 「切换工作空间的时候整个视口都跳变。给他加一点过度时间。或者跳变也不要全变了。
+ *   显示"正在加载"不应该包含视口上面的菜单部分。应该只有里面的列表或者科技树的视口显示正在加载。」
+ *
+ * ⇒ 加载层只在 .tb3w-main 里面；chrome（chips / 工具栏 / 筛选行）不动。
+ *   兄弟节点用 CSS 隐藏而不是卸载 —— 旧内容保持挂载，加载前后没有重排。
+ *   fade-in 就是用户要的「一点过度时间」：内容不是硬切，是淡入。
+ *
+ * ⚠ 这个字符串是 JS 模板字面量 —— 注释里**不能出现反引号**，否则字面量提前结束。
+ */
+.tb3w-main__loading{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-height:0;min-width:0;color:var(--text-weak);font-size:12.5px;animation:tb3w-fade-in 160ms ease both}
+.tb3w-main[data-loading="1"] > :not(.tb3w-main__loading){display:none}
+@keyframes tb3w-fade-in{from{opacity:0}to{opacity:1}}
+
 /* ── 紧凑密度（data-density="compact"，用户 2026-11-20） ──
    常驻的：任务计数 / 关系图例（只读装饰）、视图切换 / 新建（高频）
    折叠的：空间 chip 行（点开才显示）、权限与约定、AI chip
