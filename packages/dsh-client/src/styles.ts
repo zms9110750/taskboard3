@@ -101,9 +101,24 @@ export const WORKSPACE_CSS = `
    * 黑色加粗字，看不出可点。黑色只用于**开关类**控件的激活态（黑底白字），
    * 见 .space-chip.is-current / .space-action.is-on / .ghost-btn.is-active。
    * 状态色（--state-*）不动，那是九状态语义色。
+   *
+   * ## ⚠ 为什么**不借** DSH 的变量（2026-11-23）
+   *
+   * 原来写的是 var(--dsw-alias-brand-primary, #2563eb)，看上去「跟随主题」，
+   * 实际是**借错了源**：DSH 当前主题把 --dsw-alias-brand-primary 定义成
+   * #0f1115（近黑，那是它的**文字/主色**，不是强调蓝）⇒ 蓝色 fallback
+   * **永远不生效**，--accent 一直是黑的。
+   *
+   * 症状（隔离 profile 实测）：.filter-box__title{color:var(--accent)} 渲染成
+   * rgb(15, 17, 21) 黑字，而它的 hover 规则用 --accent-strong
+   * （--dsw-alias-brand-hover **未定义** ⇒ 走 fallback #1d4ed8）反而是蓝的
+   * —— **静止黑、hover 蓝**。同一个控件两种颜色，就是变量借错源的指纹。
+   *
+   * ⇒ 强调色是我们自己的设计值，就写自己的值。要跟随主题的话，得先有一个
+   *   语义确实是「强调蓝」的宿主变量，而不是宿主的 brand-primary。
    */
-  --accent: var(--dsw-alias-brand-primary, #2563eb);
-  --accent-strong: var(--dsw-alias-brand-hover, #1d4ed8);
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
   --warn: #d97706;
   --font-mono: ui-monospace, Consolas, "Courier New", monospace;
   --fs-id: 11px;
