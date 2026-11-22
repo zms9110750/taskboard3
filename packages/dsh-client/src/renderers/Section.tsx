@@ -38,6 +38,7 @@ import {
 	sectionViewOf,
 	type AskGroupView,
 	type MarkdownSectionView,
+	type SectionKind,
 	type SectionView,
 	type TextSectionView,
 } from '../pure/section.ts';
@@ -83,6 +84,18 @@ export interface SectionProps {
 export type SectionPhase = 'create' | 'active' | 'ended';
 
 /**
+ * 内容类型的中文名 —— 已建卡/草稿里「控件不可改」，但要让用户看见现在是什么控件。
+ *
+ * `satisfies` 保证 key 覆盖 `SectionKind`（少一个会红，多一个也会红）。
+ */
+const KIND_LABEL = {
+	text: '文本',
+	markdown: '富文本',
+	ask: '选项',
+	unknown: '未知',
+} satisfies Record<SectionKind, string>;
+
+/**
  * 一个章节。
  *
  * @param props 见 `SectionProps`
@@ -93,14 +106,7 @@ export function Section(props: SectionProps): ReactNode {
 	const phase: SectionPhase = props.phase ?? (props.readonly === true ? 'ended' : 'active');
 	const readonlyFlag = phase === 'ended';
 	const view = sectionViewOf(section.payload);
-	/** 内容类型的中文名 —— 草稿后「控件不可改」，但要让用户看见现在是什么控件。 */
-const KIND_LABEL: Readonly<Record<string, string>> = {
-	text: '文本',
-	markdown: '富文本',
-	ask: '选项',
-};
-const label = typeof section.label === 'string' ? section.label : '';
-
+	const label = typeof section.label === 'string' ? section.label : '';
 	/*
 	 * 能不能点进编辑：**结构**（只读 / 有没有回调）翻出来就完了，
 	 * 判决在父层（`readonly` 就是它的结论）。ask 那一块自己管点击，

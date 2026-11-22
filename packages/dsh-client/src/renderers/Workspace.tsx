@@ -111,7 +111,7 @@ import { SpaceFoldBody, SpaceFoldToggle } from './workspace/SpaceFold.tsx';
  * ⚠ 顺序跟着 `GROUP_LABELS` 的定义顺序（原版 `relations-block.js` 的注释：
  *   「组顺序按用户原话，别按字典排」）。组名和归属都来自 protocol，UI 不造词。
  *
- * `satisfies` 保证每个值都是合法组；下面的长度断言保证没漏组。
+ * `satisfies` 保证每个值都是合法组（但**不**保证「protocol 里的组都在这里」—— 见下）。
  */
 const STATUS_GROUP_ORDER = [
 	'draft',
@@ -120,8 +120,23 @@ const STATUS_GROUP_ORDER = [
 	'ended',
 ] as const satisfies readonly StatusGroup[];
 
-/** 少一个组时这里编译失败（`StatusGroup` 正好 4 个）。 */
-const _GROUP_ORDER_COUNT: 4 = STATUS_GROUP_ORDER.length;
+/*
+ * ⚠ 这里**没有** `const _COUNT: 4 = STATUS_GROUP_ORDER.length` 那种断言。
+ *
+ * 它想抓的是「StatusGroup 加了第 5 个组但这里没加」，但 `satisfies`
+ * 已经抓不住了 —— `satisfies` 只保证「这里的每一项都合法」，
+ * **不保证「protocol 里的每一项都在这里」**。真要抓那个方向，得写：
+ *
+ * ```ts
+ * type _Missing = Exclude<StatusGroup, (typeof STATUS_GROUP_ORDER)[number]>;
+ * const _check: _Missing extends never ? true : false = true;
+ * ```
+ *
+ * 但那是个**编译期断言**，运行时没有意义 —— 而 `_GROUP_ORDER_COUNT` 那个
+ * `const _X: 4 = …length` 只检查「长度等于 4」，既不指向缺失的组名，
+ * 也不检查「是否漏了 protocol 新加的组」。**它看着像守护，实际什么都没挡。**
+ */
+
 
 /* ══════════════════════════════════════════════════════════
    组件属性
