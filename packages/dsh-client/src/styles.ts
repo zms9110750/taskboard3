@@ -190,8 +190,7 @@ export const WORKSPACE_CSS = `
 .tb3w-legend__line[data-rel="constrains"]{background:#b91c1c}
 .tb3w-legend__line[data-rel="related"]{height:0;border-top:2px dashed #15803d;background:none}
 .tb3w-legend__line[data-rel="references"]{height:0;border-top:2px dashed #6b7280;background:none}
-.tb3w-legend__hint{flex:0 0 auto;font-size:10px;color:#b6bec9;white-space:nowrap}
-.tb3w-legend__hint--short{display:none}
+
 .tb3w-toolbar__actions{display:flex;align-items:center;gap:8px;order:3;margin-left:auto;min-width:0}
 .tb3w-seg{display:inline-flex;align-items:center;padding:2px;border-radius:6px;background:var(--bg-hover)}
 .tb3w-seg__btn{padding:3px 10px;border:0;border-radius:5px;background:transparent;color:var(--text-secondary);font-family:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
@@ -550,8 +549,6 @@ export const WORKSPACE_CSS = `
   .tb3w-toolbar__legend{order:3;flex:1 0 100%;gap:2px 9px;font-size:9.5px}
   .tb3w-toolbar__actions{order:2}
   .tb3w-toolbar__perm{display:none}
-  .tb3w-legend__hint--long{display:none}
-  .tb3w-legend__hint--short{display:inline}
   .tb3w-seg__btn{padding:2px 9px;font-size:10.5px}
   .tb3w-btn-primary{padding:3px 10px;font-size:10.5px}
   .tb3w-filters{margin-top:6px}
