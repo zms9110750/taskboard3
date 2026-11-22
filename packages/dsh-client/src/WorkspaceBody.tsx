@@ -83,6 +83,34 @@ export interface WorkspaceBodyProps {
 	 *   验证这个 body 真的画得出来**（预览页是 `file://`，fetch 必失败）。
 	 */
 	readonly api?: TaskboardApi;
+
+	/**
+	 * 布局密度，原样转给 `<Workspace density>`。
+	 *
+	 * ## 为什么由入口决定、而不是本组件自己量
+	 *
+	 * `Workspace` 文件头写着：「这是**布局密度**，不是视口尺寸：调用方按自己那块
+	 * 视口的高度决定传哪个」。三处入口的视口差别很大：
+	 *
+	 * | 入口 | 真实视口 | 该传 |
+	 * |---|---|---|
+	 * | 抽屉（composer 旁） | 1200×476 / 952×482 —— **宽但很矮** | `compact` |
+	 * | 右侧工作区页签 | 570×920 —— **窄** | `compact` |
+	 * | 左侧栏主面板（全屏） | 1616×988 —— **宽且高** | `full` |
+	 *
+	 * ## ⚠ 省略 = `full`（`Workspace` 的旧默认）
+	 *
+	 * 但**产品三个入口都必须显式传**：本字段就是为「每个入口自己选」而存在的。
+	 * 曾经三处都没传（都落成 `full`）⇒ 用户 `2026-11-23` 看到抽屉里空间 chip 行
+	 * 一直占着两行、「工作空间 ▾」按钮和折叠栏**根本没出现**：
+	 *
+	 * > 「工作空间为什么是默认显示的。之前不是要按按钮才显示的吗。
+	 * >   这个样子和我之前选的组件不一样啊。」
+	 *
+	 * 用户选的是 A 款折叠栏（`SpaceFold`，`2026-11-22`），而它在 `compact`
+	 * 密度下才渲染 ⇒ 不传 `compact` 等于用户选的组件在产品里是死代码。
+	 */
+	readonly density?: 'full' | 'compact';
 }
 
 /**
@@ -335,6 +363,11 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 	return (
 		<>
 			<Workspace
+			/*
+			 * 布局密度由入口决定（见 `WorkspaceBodyProps.density` 的表格）。
+			 * 省略 ⇒ `full`，那是 `Workspace` 的默认，但产品三处都显式传。
+			 */
+			{...(props.density === undefined ? {} : { density: props.density })}
 			workspaces={state.workspaces}
 			/* 用户取消了「激活空间」⇒ 当前 = 正在查看，同一个值。 */
 			currentId={state.workspaceId}
