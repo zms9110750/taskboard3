@@ -40,6 +40,7 @@ import { test } from 'node:test';
 
 import { CREATE_CSS as CREATE_FROM_NEW } from '../src/renderers/create/create-css.ts';
 import { CREATE_SHELL_CSS as CREATE_SHELL_FROM_NEW } from '../src/renderers/create/create-shell-css.ts';
+import { DERIVE_MENU_CSS as DERIVE_MENU_FROM_NEW } from '../src/renderers/derive-menu-css.ts';
 import { DRAWER_CSS as DRAWER_FROM_NEW } from '../src/renderers/drawer-css.ts';
 import { FALLBACK_CSS as FALLBACK_FROM_NEW } from '../src/renderers/fallback-css.ts';
 import { SEARCHBOX_CSS as SEARCHBOX_FROM_NEW } from '../src/renderers/searchbox-css.ts';
@@ -47,6 +48,7 @@ import { SECTION_CSS as SECTION_FROM_NEW } from '../src/renderers/section-css.ts
 import {
 	CREATE_CSS as CREATE_FROM_STYLES,
 	CREATE_SHELL_CSS as CREATE_SHELL_FROM_STYLES,
+	DERIVE_MENU_CSS as DERIVE_MENU_FROM_STYLES,
 	DRAWER_CSS as DRAWER_FROM_STYLES,
 	FALLBACK_CSS as FALLBACK_FROM_STYLES,
 	SEARCHBOX_CSS as SEARCHBOX_FROM_STYLES,
@@ -81,6 +83,17 @@ void test('styles.ts 与组件目录里的是同一份（CREATE_SHELL_CSS）', (
 	assert.equal(CREATE_SHELL_FROM_STYLES, CREATE_SHELL_FROM_NEW);
 });
 
+void test('styles.ts 与组件目录里的是同一份（DERIVE_MENU_CSS）', () => {
+	assert.equal(DERIVE_MENU_FROM_STYLES, DERIVE_MENU_FROM_NEW);
+	assert.ok(
+		DERIVE_MENU_FROM_NEW.includes('[data-menu="derive"]'),
+		'派生子任务菜单的容器规则要在',
+	);
+	assert.ok(
+		DERIVE_MENU_FROM_NEW.includes('width:280px'),
+		'宽度必须 = placeMenu 的 MENU_WIDTH(280)，否则右侧会溢出',
+	);
+});
 
 /* ══════════════════════════════════════════════════════════
    ② 非空 + 关键规则在（不是空壳骗过相等）

@@ -64,8 +64,10 @@ import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { toCardAction } from './actions.ts';
-import type { TaskboardApi } from './api.ts';
-import { CreateFlow } from './CreateFlow.tsx';
+import { createApi, type TaskboardApi, type TemplateDerive } from './api.ts';
+import { CreateFlow, type CreateInitial } from './CreateFlow.tsx';
+import { deriveMenuItemsOf, derivePrefillOf, deriveSourceOf, type DeriveMenuItem } from './pure/derive-menu.ts';
+import { DeriveMenu } from './renderers/DeriveMenu.tsx';
 import { useBoardState } from './store.ts';
 import type { Card, CardAction } from './types.ts';
 import { Workspace } from './renderers/Workspace.tsx';
@@ -127,6 +129,94 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	/** 建卡页是否打开（打开时**整个替换** `Workspace`，不是浮层）。 */
 	const [creating, setCreating] = useState(false);
+	/**
+	 * 建卡页的预填值（「+ 派生子任务」那条路带，工具栏「新建」不带）。
+	 *
+	 * ⚠ 和 `creating` 分开存：`creating === true` 但 `prefill === undefined`
+	 *   就是「普通新建」。合并成一个联合状态也可以，但那样每次改都要解构。
+	 */
+	const [prefill, setPrefill] = useState<CreateInitial | undefined>(undefined);
+	/**
+	 * 派生菜单的状态。
+	 *
+	 * `anchor` 是「+ 派生子任务」那个按钮的 DOM（`Workspace` 查好传上来的）。
+	 * `cardId` 是**点菜单时那张卡** —— 菜单开着时用户可能切换选择，
+	 * 所以不能读 `selectedId`（那个会变），要冻住。
+	 */
+	const [deriveMenu, setDeriveMenu] = useState<
+		| {
+				readonly cardId: string;
+				readonly anchor: HTMLElement;
+				readonly items: readonly DeriveMenuItem[];
+		  }
+		| undefined
+	>(undefined);
+
+	/**
+	 * 点「+ 派生子任务」⇒ 取父卡模板的 `derives` ⇒ 弹浮窗。
+	 *
+	 * ## 为什么要发一次请求（`getTemplate`）
+	 *
+	 * `TemplateSummary`（`GET /api/state` 给的那份）**不带 `derives`** ——
+	 * 它是窄投影，只有 ref / displayName / kind / domain。
+	 * 只有 `GET /api/templates?ref=<ref>` 的展开视图带 `derives`（和 sections 一起）。
+	 *
+	 * ⇒ 为什么不在 `TemplateSummary` 加 `derives`：那样 `GET /api/state` 要为
+	 *   18 个模板各带一份派生清单，而它只在「用户点派生」时用得上一次。
+	 *   一次点击换一次请求，比每次加载全量多传 18 份数据便宜。
+	 *
+	 * ## 失败怎么办
+	 *
+	 * 取详情失败 ⇒ **照样弹菜单**，但只有兜底项（「派生空模板」）。
+	 * 不静默不响应 —— 用户点了按钮必须看得到东西。
+	 */
+	const onDerive = useCallback(
+		(cardId: string, anchor: HTMLElement): void => {
+			const parent = state.cards.find((one) => one.id === cardId);
+			if (parent === undefined) return;
+
+			const sourceRef = deriveSourceOf(parent);
+			const open = (derives: readonly TemplateDerive[]): void => {
+				setDeriveMenu({ cardId, anchor, items: deriveMenuItemsOf(derives) });
+			};
+
+			if (sourceRef === undefined) {
+				/* 卡上没有模板 ref（数据坏了 / 旧数据）⇒ 只能走兜底。 */
+				open([]);
+				return;
+			}
+
+			const api = props.api ?? createApi();
+			/*
+			 * 只取 `derives`。`getTemplate` 还会带回 sections（建卡页要），
+			 * 这里不用 —— 多取的那部分不花钱（同一个请求）。
+			 */
+			void api.getTemplate(sourceRef).then(
+				(detail) => {
+					open(detail.derives);
+				},
+				() => {
+					/* 取不到 ⇒ 兜底项。用户还是能派生出空卡。 */
+					open([]);
+				},
+			);
+		},
+		[props.api, state.cards],
+	);
+
+	/** 菜单里选了一项 ⇒ 打开建卡页，带三样预填（用户 2026-11-22）。 */
+	const onDerivePick = useCallback(
+		(item: DeriveMenuItem): void => {
+			const current = deriveMenu;
+			if (current === undefined) return;
+			const parent = state.cards.find((one) => one.id === current.cardId);
+			if (parent === undefined) return;
+
+			setPrefill(derivePrefillOf(parent, item));
+			setCreating(true);
+		},
+		[deriveMenu, state.cards],
+	);
 
 	/**
 	 * 点一个空间 chip ⇒ 切过去。
@@ -221,22 +311,30 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 				workspaceId={state.workspaceId}
 				templates={state.templates}
 				cards={cards}
+				/*
+				 * 预填（「+ 派生子任务」那条路带，工具栏「新建」不带）。
+				 * ⚠ 只在打开那一刻算一次 —— 用户进去后改的三样以他改的为准。
+				 */
+				{...(prefill === undefined ? {} : { initial: prefill })}
 				{...(props.api === undefined ? {} : { api: props.api })}
 				onCreated={(cardId) => {
 					setCreating(false);
+					setPrefill(undefined);
 					/* 数据同步：新卡要出现在列表里 ⇒ 重拉全量（服务端才是真值）。 */
 					actions.reload();
 					setSelectedId(cardId);
 				}}
 				onCancel={() => {
 					setCreating(false);
+					setPrefill(undefined);
 				}}
 			/>
 		);
 	}
 
 	return (
-		<Workspace
+		<>
+			<Workspace
 			workspaces={state.workspaces}
 			/* 用户取消了「激活空间」⇒ 当前 = 正在查看，同一个值。 */
 			currentId={state.workspaceId}
@@ -264,12 +362,28 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 			onAddRelation={() => {
 				notWired('添加关系');
 			}}
-			onDerive={() => {
-				notWired('派生子任务');
-			}}
+			onDerive={onDerive}
 			onNoteChange={() => {
 				notWired('改备注');
 			}}
-		/>
+			/>
+
+			{/*
+			 * 派生子任务浮窗：portal 到 body 的 fixed 浮层。
+			 *
+			 * 放在 `<Workspace>` 外、同一个 fragment 里 —— 它自己 portal 到
+			 * `document.body`，在这里只是为了拿到 `deriveMenu` 状态。
+			 */}
+			{deriveMenu === undefined ? null : (
+				<DeriveMenu
+					items={deriveMenu.items}
+					anchor={deriveMenu.anchor}
+					onPick={onDerivePick}
+					onClose={() => {
+						setDeriveMenu(undefined);
+					}}
+				/>
+			)}
+		</>
 	);
 }

@@ -151,6 +151,17 @@ function fakeApi(): TaskboardApi {
 					{ id: 'body', label: '正文', hint: '', action: 'text' },
 					{ id: 'extra', label: '补充', hint: '', action: 'markdown' },
 				],
+				/*
+				 * 派生菜单的数据（「+ 派生子任务」要读它）。
+				 *
+				 * ⚠ 预览里给**两条**：这样浮窗菜单能真的画出来给人看。
+				 *   产品里这份来自模板 YAML 的 `derive:`（15/18 个模板有，
+				 *   archive / delivery / demo 是 0 项 ⇒ 走兜底项）。
+				 */
+				derives: [
+					{ label: '写测试', description: '先补测试再改', template: 'writeTests' },
+					{ label: '调研', description: '查清再动手', template: 'research' },
+				],
 			};
 		},
 		async patchCard(input) {

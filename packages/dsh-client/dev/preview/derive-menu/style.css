@@ -1,0 +1,80 @@
+/*
+ * 派生子任务浮窗预览的**外壳**样式。
+ *
+ * ⚠ 产品 CSS（`injectStyles()` 注入的那份）已经在页面里了，
+ *   这里**只写预览外壳**：舞台、标签、卡片框、预填值展示区。
+ *
+ * 浮窗本身的样式在 `src/renderers/derive-menu-css.ts`（`DERIVE_MENU_CSS`）——
+ * 那是产品真值，本文件不重复定义。
+ */
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: #e9ebef;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.pv {
+  padding: 20px 24px 60px;
+}
+
+.pv-stage {
+  max-width: 720px;
+  padding: 20px 24px 28px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.pv-title {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+
+.pv-sub {
+  margin: 0 0 16px;
+  color: var(--text-weak, #6b7280);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.pv-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.pv-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, #e7e9ee);
+  border-radius: 8px;
+}
+
+.pv-card__title {
+  flex: 1 1 auto;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.pv-picked {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border, #e7e9ee);
+  border-radius: 8px;
+  background: #fbfcfd;
+  font-size: 12.5px;
+}
+
+.pv-picked pre {
+  margin: 8px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
