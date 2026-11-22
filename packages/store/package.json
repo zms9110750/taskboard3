@@ -25,7 +25,8 @@
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@taskboard/core": "workspace:*"
+    "@taskboard/core": "workspace:*",
+    "@taskboard/io": "workspace:*"
   },
   "engines": {
     "node": ">=22.13.0"

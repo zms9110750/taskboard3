@@ -19,6 +19,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createMemoryStore } from './memory-store.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -63,7 +64,7 @@ describe('状态转移执行', () => {
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-trans-'));
 		tb = createTaskboard({
-			dataDir: dir,
+			store: createMemoryStore(),
 			now: () => {
 				clock += 10;
 				return clock;
@@ -439,7 +440,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-recompute-'));
 		tb = createTaskboard({
-			dataDir: dir,
+			store: createMemoryStore(),
 			now: () => {
 				clock += 10;
 				return clock;

@@ -27,6 +27,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -91,7 +92,7 @@ beforeEach(async () => {
 	await closeTaskboard();
 	const dataDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-tools-'));
 	createdDirs.push(dataDir);
-	taskboard = createTaskboard({ dataDir });
+	taskboard = createTaskboard({ store: createSqliteStore(dataDir) });
 	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 
 	const created = await taskboard.createWorkspace(`适配层测试-${Date.now()}`);
@@ -405,7 +406,7 @@ describe('taskboard_workspaces', () => {
 
 	it('空任务板（无空间）时给出下一步，不是崩溃', async () => {
 		const emptyDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-empty-'));
-		const empty = createTaskboard({ dataDir: emptyDir });
+		const empty = createTaskboard({ store: createSqliteStore(emptyDir) });
 		try {
 			const emptyTools = createTools({ taskboard: empty, defineTool: fakeDefineTool, defaultWorkspaceId: async () => '' });
 			const workspaces = emptyTools.find((one) => one.name === 'taskboard_workspaces') as ToolLike;

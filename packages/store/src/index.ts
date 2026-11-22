@@ -52,8 +52,8 @@
  * **这是正确的失败方式。**
  */
 
-import { createSqliteStore } from '@taskboard/core';
 import type { CardStore } from '@taskboard/core';
+import { createSqliteStore } from '@taskboard/io';
 
 /** Cordis 插件名。 */
 export const name = 'taskboard3-store';

@@ -9,6 +9,18 @@
  *
  * ⇒ 用内存 store 直接摆好数据，再调被测方法。这也正是
  *   `CardStore` 是**端口**的价值：换一个实现不用动 core。
+ *
+ * ## ⚠ `close()` 不清数据（`2026-11-23`）
+ *
+ * 之前的实现里 `close()` 会 `tables.clear()` + `kv.clear()`。
+ * 那让「关掉实例再开一个新的」永远读不到数据 —— 与 **SQLite 的真实语义相反**
+ * （关库不会删文件）。
+ *
+ * 症状：`permission-levels.test.ts` 的「★ 写后新建实例，两个档位都还在」
+ * 用内存 store 时必然失败，而它在 SQLite 时代是绿的。
+ *
+ * ⇒ `close()` 现在只标记「不再服务」，数据留着 —— 等价于「关掉句柄，磁盘还在」。
+ *   一次性用完就丢的用例不受影响（对象被 GC，Map 跟着走）。
  */
 
 import type { Card } from '../src/card.ts';
@@ -44,10 +56,10 @@ export function createMemoryStore(): CardStore {
 			else kv.set(key, value);
 		},
 		async close(): Promise<void> {
-			tables.clear();
-			kv.clear();
+			/*
+			 * **故意不清 Map** —— 见文件头「`close()` 不清数据」。
+			 * 关了再开一个新实例（共用本对象）应当还能读到，这才是「持久化」的语义。
+			 */
 		},
 	};
 }
-
-

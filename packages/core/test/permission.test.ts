@@ -20,6 +20,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createMemoryStore } from './memory-store.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -560,12 +561,17 @@ describe('★ 卡死回归：transition / release 永远放行', () => {
 /* ────────────────────────── Taskboard 集成 ────────────────────────── */
 
 describe('Taskboard：四档持久化 + 判定接两条轴', () => {
-	let dir: string;
+	let shared: ReturnType<typeof createMemoryStore>;
 	let tb: Taskboard;
 
 	before(async () => {
-		dir = mkdtempSync(join(tmpdir(), 'tb3-perm-'));
-		tb = createTaskboard({ dataDir: dir });
+		/*
+		 * ⚠ 「重开实例」用例要和 tb **共用同一个 store** —— 内存 store 每次
+		 *   createMemoryStore() 都是空库，那样测不到「core 写进端口又读回」。
+		 *   SQLite 的真落盘归 @taskboard/io 的测试。
+		 */
+		shared = createMemoryStore();
+		tb = createTaskboard({ store: shared });
 		tb.templates().register(makeTemplate('writeCode', 'work'));
 		tb.templates().register(makeTemplate('research', 'work'));
 		tb.templates().register(makeTemplate('refactor', 'work'));
@@ -573,7 +579,6 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 
 	after(async () => {
 		await tb.close();
-		rmSync(dir, { recursive: true, force: true });
 	});
 
 	it('初始策略是空的四档', () => {
@@ -588,7 +593,7 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 		assert.ok((await tb.setTemplatePolicy('writeCode', ['bash', 'write'])).ok);
 		assert.deepEqual(tb.getToolPolicies().templates['writeCode'], ['bash', 'write']);
 
-		const reopened = createTaskboard({ dataDir: dir });
+		const reopened = createTaskboard({ store: shared });
 		assert.deepEqual(reopened.getToolPolicies().templates['writeCode'], ['bash', 'write']);
 		await reopened.close();
 	});
@@ -731,7 +736,7 @@ describe('adopt：AI 采纳草稿的域逻辑（与权限判定无关）', () =>
 
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-adopt-'));
-		tb = createTaskboard({ dataDir: dir });
+		tb = createTaskboard({ store: createMemoryStore() });
 		tb.templates().register(makeTemplate('t-goal', 'goal'));
 		tb.templates().register(makeTemplate('t-design', 'design'));
 		tb.templates().register(makeTemplate('t-work', 'work'));

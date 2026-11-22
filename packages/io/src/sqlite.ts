@@ -1,5 +1,34 @@
 /**
- * SQLite 存储实现 —— `CardStore` 的唯一实现（dsh 与 mcp 共用）。
+ * SQLite 持久化实现 —— `CardStore` 端口的一个实现。
+ *
+ * ## 这个包为什么存在（用户 `2026-11-23`）
+ *
+ * > 「1.内存内容同步到磁盘的持久化这一边要做接口。
+ * >   然后另一边由io包实现接口并用sqlite实现。」
+ *
+ * ### 之前是假的
+ *
+ * `createSqliteStore` 原来躺在 `core/src/storage/sqlite.ts` 里，
+ * 而 `@taskboard/store` 只是：
+ *
+ * ```ts
+ * const store = createSqliteStore(config.dataDir);  // ← 实现在 core
+ * ctx.provide('taskboard3Store', store);
+ * ```
+ *
+ * ⇒ 「`store` 可替换」这个设计**只隔离了「构造」一个动作**，
+ *   真正的 SQLite 实现（`node:sqlite` / `mkdirSync`）还在 core 里。
+ *   换实现的人仍然要把 core 连同它的 sqlite 拖进来。
+ *
+ * ### 现在
+ *
+ * ```
+ * core/src/ports.ts        CardStore 接口（纯声明，零 node: import）
+ *    ↑
+ *    └── @taskboard/io     本包：SQLite 实现（真 IO 都在这里）
+ * ```
+ *
+ * **依赖方向单向**：`io` → `core`。core 不认识 io。
  *
  * ## 为什么是 `node:sqlite`
  *
@@ -31,12 +60,11 @@
  *    而不是让整个库打不开。数据是用户资产，一张坏卡不该让所有人看不到卡。
  */
 
-import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
-import type { Card } from '../card.ts';
-import type { CardStore } from '../ports.ts';
+import type { Card, CardStore } from '@taskboard/core';
 
 /** 库文件名。 */
 const DB_FILE = 'taskboard3.db';
@@ -76,7 +104,6 @@ export function createSqliteStore(dataDir: string): CardStore {
 		'INSERT INTO cards (id, workspace_id, doc) VALUES (?, ?, ?) ' +
 			'ON CONFLICT(id) DO UPDATE SET workspace_id = excluded.workspace_id, doc = excluded.doc',
 	);
-	const deleteCard = db.prepare('DELETE FROM cards WHERE id = ?');
 	const selectKv = db.prepare('SELECT value FROM kv WHERE key = ?');
 	const upsertKv = db.prepare(
 		'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
@@ -106,6 +133,7 @@ export function createSqliteStore(dataDir: string): CardStore {
 			upsertCard.run(card.id, workspaceId, JSON.stringify(card));
 		},
 
+
 		kvGet(key: string): string | undefined {
 			const row = selectKv.get(key) as { value: string } | undefined;
 			return row?.value;
@@ -124,6 +152,3 @@ export function createSqliteStore(dataDir: string): CardStore {
 		},
 	};
 }
-
-
-

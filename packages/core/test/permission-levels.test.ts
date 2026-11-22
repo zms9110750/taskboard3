@@ -16,6 +16,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createMemoryStore } from './memory-store.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,7 +25,6 @@ import { describe, it } from 'node:test';
 import {
 	CARD_ACTION_OPTIONS,
 	TOOL_GUARD_OPTIONS,
-	createSqliteStore,
 	createTaskboard,
 	type Taskboard,
 } from '../src/index.ts';
@@ -33,10 +33,10 @@ import {
 const CARD_KEY = 'taskboard.permission.cardActionLevel';
 const GUARD_KEY = 'taskboard.permission.toolGuardLevel';
 
-/** 临时目录 + 一个实例。调用方负责 `tb.close()` 和 `rmSync(dir)`。 */
-function makeTaskboard(prefix = 'tb3-levels-'): { readonly dir: string; readonly tb: Taskboard } {
-	const dir = mkdtempSync(join(tmpdir(), prefix));
-	return { dir, tb: createTaskboard({ dataDir: dir }) };
+/** 造一个实例 + 它的 store（不碰磁盘：测试只用内存实现）。 */
+function makeTaskboard(): { readonly store: ReturnType<typeof createMemoryStore>; readonly tb: Taskboard } {
+	const store = createMemoryStore();
+	return { store, tb: createTaskboard({ store }) };
 }
 
 /** 跑一段代码，收集期间的 `console.warn` 文本（然后恢复原函数）。 */
@@ -89,18 +89,17 @@ describe('档位选项常量：给 UI / HTTP 路由用', () => {
 
 describe('默认档位', () => {
 	it('未配置时 cardActionLevel=no-claim、toolGuardLevel=off', async () => {
-		const { dir, tb } = makeTaskboard();
+		const { tb } = makeTaskboard();
 		try {
 			assert.equal(tb.getCardActionLevel(), 'no-claim');
 			assert.equal(tb.getToolGuardLevel(), 'off');
 		} finally {
 			await tb.close();
-			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
 	it('★ 默认档位下：claim 拒、adopt 拒、其它非领卡类工具放行', async () => {
-		const { dir, tb } = makeTaskboard();
+		const { tb } = makeTaskboard();
 		try {
 			/* 第二段：off ⇒ 非领卡类工具一律放行（包括 BASE / 权限管理 / 执行类）。 */
 			for (const toolName of [
@@ -137,7 +136,6 @@ describe('默认档位', () => {
 			assert.ok(tb.judgeToolCall({ toolName: 'taskboard_release', heldCards: [] }).ok);
 		} finally {
 			await tb.close();
-			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 });
@@ -146,7 +144,7 @@ describe('默认档位', () => {
 
 describe('写后读', () => {
 	it('setCardActionLevel 写后读：三档都能设', async () => {
-		const { dir, tb } = makeTaskboard();
+		const { tb } = makeTaskboard();
 		try {
 			for (const level of ['claim', 'adopt', 'no-claim'] as const) {
 				await tb.setCardActionLevel(level);
@@ -154,12 +152,11 @@ describe('写后读', () => {
 			}
 		} finally {
 			await tb.close();
-			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
 	it('setToolGuardLevel 写后读：三档都能设', async () => {
-		const { dir, tb } = makeTaskboard();
+		const { tb } = makeTaskboard();
 		try {
 			for (const level of ['manage', 'manage-edit', 'off'] as const) {
 				await tb.setToolGuardLevel(level);
@@ -167,12 +164,11 @@ describe('写后读', () => {
 			}
 		} finally {
 			await tb.close();
-			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
 	it('★ 档位改动立即反映到 judgeToolCall（不需要重建实例）', async () => {
-		const { dir, tb } = makeTaskboard();
+		const { tb } = makeTaskboard();
 		try {
 			const judge = (toolName: string): boolean => tb.judgeToolCall({ toolName, heldCards: [] }).ok;
 
@@ -200,7 +196,6 @@ describe('写后读', () => {
 			assert.ok(judge('taskboard_adopt'));
 		} finally {
 			await tb.close();
-			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 });
@@ -209,39 +204,42 @@ describe('写后读', () => {
 
 describe('持久化（落 kv）', () => {
 	it('★ 写后新建实例，两个档位都还在，且判定沿用', async () => {
-		const dir = mkdtempSync(join(tmpdir(), 'tb3-levels-persist-'));
+		/*
+		 * ⚠ **共用同一个 store 实例** —— 这条测的是「core 把档位写进端口、
+		 *   新实例从同一端口读回」。内存 store 每次 new 一个就是空库，
+		 *   那样测的就不是持久化，而是「新库」（当然读不到）。
+		 *
+		 *   SQLite 的**真落盘**（关库再开仍在）由 `@taskboard/io` 自己的
+		 *   测试负责 —— 那是实现的事，不是端口语义的事。
+		 */
+		const shared = createMemoryStore();
+		const first = createTaskboard({ store: shared });
+		await first.setCardActionLevel('adopt');
+		await first.setToolGuardLevel('manage-edit');
+		await first.close();
+
+		const second = createTaskboard({ store: shared });
 		try {
-			const first = createTaskboard({ dataDir: dir });
-			await first.setCardActionLevel('adopt');
-			await first.setToolGuardLevel('manage-edit');
-			await first.close();
+			assert.equal(second.getCardActionLevel(), 'adopt');
+			assert.equal(second.getToolGuardLevel(), 'manage-edit');
 
-			const second = createTaskboard({ dataDir: dir });
-			try {
-				assert.equal(second.getCardActionLevel(), 'adopt');
-				assert.equal(second.getToolGuardLevel(), 'manage-edit');
-
-				/* 判定确实用了落盘的档位。 */
-				assert.ok(second.judgeToolCall({ toolName: 'taskboard_claim', heldCards: [] }).ok);
-				assert.ok(second.judgeToolCall({ toolName: 'taskboard_adopt', heldCards: [] }).ok);
-				assert.ok(second.judgeToolCall({ toolName: 'taskboard_tool_policy', heldCards: [] }).ok);
-			} finally {
-				await second.close();
-			}
+			/* 判定确实用了从端口读回的档位。 */
+			assert.ok(second.judgeToolCall({ toolName: 'taskboard_claim', heldCards: [] }).ok);
+			assert.ok(second.judgeToolCall({ toolName: 'taskboard_adopt', heldCards: [] }).ok);
+			assert.ok(second.judgeToolCall({ toolName: 'taskboard_tool_policy', heldCards: [] }).ok);
 		} finally {
-			rmSync(dir, { recursive: true, force: true });
+			await second.close();
 		}
 	});
 
 	it('两个键互相独立：只改一个，另一个保持默认', async () => {
-		const { dir, tb } = makeTaskboard();
+		const { tb } = makeTaskboard();
 		try {
 			await tb.setToolGuardLevel('manage');
 			assert.equal(tb.getToolGuardLevel(), 'manage');
 			assert.equal(tb.getCardActionLevel(), 'no-claim', '改宿主轴不该动 UI 轴');
 		} finally {
 			await tb.close();
-			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 });
@@ -250,9 +248,12 @@ describe('持久化（落 kv）', () => {
 
 describe('脏值：回落默认 + 警告，不抛错', () => {
 	it('★ 两个键都是垃圾值 ⇒ 回落默认值，各警告一次', async () => {
-		const dir = mkdtempSync(join(tmpdir(), 'tb3-levels-dirty-'));
-		try {
-			const store = createSqliteStore(dir);
+		{
+			/*
+			 * 用内存 store：这条测的是「core 读到脏 kv 怎么反应」，
+			 * 不是「SQLite 怎么写」。写脏值只要有 kvSet 就行。
+			 */
+			const store = createMemoryStore();
 			await store.kvSet(CARD_KEY, 'garbage');
 			await store.kvSet(GUARD_KEY, 'PLAN');
 
@@ -277,15 +278,12 @@ describe('脏值：回落默认 + 警告，不抛错', () => {
 			} finally {
 				await tb.close();
 			}
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
 	it('只有一个键是脏值 ⇒ 另一个合法值照常生效', async () => {
-		const dir = mkdtempSync(join(tmpdir(), 'tb3-levels-dirty2-'));
-		try {
-			const store = createSqliteStore(dir);
+		{
+			const store = createMemoryStore();
 			await store.kvSet(CARD_KEY, '深入敌后'); // 脏
 			await store.kvSet(GUARD_KEY, 'manage'); // 合法
 
@@ -297,8 +295,6 @@ describe('脏值：回落默认 + 警告，不抛错', () => {
 			} finally {
 				await tb.close();
 			}
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 });

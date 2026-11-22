@@ -9,6 +9,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createMemoryStore } from './memory-store.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -56,7 +57,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-core-test-'));
-		tb = createTaskboard({ dataDir: dir, now: () => 1_000 });
+		tb = createTaskboard({ store: createMemoryStore(), now: () => 1_000 });
 		const created = await tb.createWorkspace('测试');
 		assert.ok('workspace' in created, '建空间应当成功');
 		wsId = created.workspace.id;
