@@ -136,26 +136,43 @@ export function toDshParameters(schema: JsonObjectSchema): Record<string, unknow
 /**
  * 把一个 schema 节点转成 DSH 参数 spec（`required` 内联）。
  *
- * ## ⚠ `type: 'object'` 必须显式带 `additionalProperties`
+ * ## 两个 DSH 特有的约束（不是 JSON Schema 标准）
  *
- * DSH 的 `defineTool` 编译 schema 时**强制**这条（不是 JSON Schema 标准）：
+ * DSH 的 `defineTool` 编译 schema 时强制：
  *
- * ```
- * JsonSchemaError: unsupported JSON schema:
- *   parameters.relations.items.additionalProperties must be explicitly true or false
- * ```
+ * 1. **`type: 'object'` 必须显式带 `additionalProperties: true | false`**
+ *    ```
+ *    JsonSchemaError: parameters.relations.items.additionalProperties
+ *                     must be explicitly true or false
+ *    ```
+ * 2. **`type` 必须是 `string/number/integer/boolean/null/array/object/json`**
+ *    ```
+ *    JsonSchemaError: parameters.value.type must be string/number/integer/
+ *                     boolean/null/array/object/json, or use oneOf
+ *    ```
+ *    裸 `{}`（= 任意 JSON）在 v2 里合法，在 DSH 里必须写成
+ *    `type: 'json'`（DSH 的专用类型）。`taskboard_update` 的 `value` 就是这种。
  *
- * `@taskboard/tools` 保持宿主无关（MCP 不吃这个字段）⇒ 在这里补，
+ * `@taskboard/tools` 保持宿主无关（MCP 不吃这两个字段）⇒ 在这里补，
  * 这是薄适配层唯一的职责：v2 的平面 schema → DSH 能编译的形状。
  *
- * **默认 `false`（收紧）**：v2 里出现的 object 全是 `properties` 明确的
- * 参数对象 / 关系项；放开 `true` 会让模型塞任意额外字段，而下游
- * `buildCard` / `update` 一律不读它们 ⇒ 静默丢弃。
- * 故意开放的对象（`content` / `value`）在 v2 里已显式写 `true`，这里不动。
+ * ## `additionalProperties` 默认 `false`（收紧）
+ *
+ * v2 里出现的 object 全是 `properties` 明确的参数对象 / 关系项；
+ * 放开 `true` 会让模型塞任意额外字段，而下游 `buildCard` / `update`
+ * 一律不读它们 ⇒ 静默丢弃。
+ * 故意开放的对象（`content`）在 v2 里已显式写 `true`，这里不动。
  */
 export function toDshSchema(node: JsonSchema): Record<string, unknown> {
 	const spec: Record<string, unknown> = {};
+
+	/*
+	 * 没有 `type` 的节点 = 「任意 JSON」（v2 用 `{}` 表达）。
+	 * DSH 必须显式 `type: 'json'`，否则报上面对应的错。
+	 */
 	if (node.type !== undefined) spec['type'] = node.type;
+	else if (node.properties === undefined) spec['type'] = 'json';
+
 	if (node.description !== undefined) spec['description'] = node.description;
 	if (node.enum !== undefined) spec['enum'] = node.enum;
 	if (node.additionalProperties !== undefined) spec['additionalProperties'] = node.additionalProperties;

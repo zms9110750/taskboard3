@@ -294,7 +294,13 @@ describe('schema 转换（JSON Schema → DSH parameters）', () => {
 		assert.equal(create['content']?.['type'], 'object');
 
 		const update = tool('taskboard_update').parameters as Record<string, Record<string, unknown>>;
-		assert.equal(update['value']?.['type'], undefined, 'v2 的 value 可以是任意 JSON（字符串/数组/对象）');
+		/*
+		 * ⚠ v2 的 value 是裸 `{}`（任意 JSON），但 **DSH 必须显式 `type: 'json'`** ——
+		 *   它自己的专用类型，等价于「任意 JSON」。不写会报
+		 *   `parameters.value.type must be string/number/.../json, or use oneOf`。
+		 *   ⇒ 适配层把它翻成 `json`，语义不变（仍然什么都能塞）。
+		 */
+		assert.equal(update['value']?.['type'], 'json', 'v2 的裸 {} 翻成 DSH 的 json 类型（仍任意 JSON）');
 		assert.equal(update['path']?.['required'], true);
 	});
 
