@@ -1,7 +1,7 @@
 /**
  * `apply()` 的**生命周期契约** —— 插件注册的东西，卸载时才该消失。
  *
- * ## 这个测试存在的理由（2026-11-22 实测踩到的真 bug）
+ * ## 这个测试存在的理由（2026-11-23 实测踩到的真 bug）
  *
  * 我们原来写的是：
  *
@@ -9,7 +9,7 @@
  * ctx.effect(disposeAll, 'taskboard3: routes / tools / commands');
  * ```
  *
- * 但 Cordis 的 `ctx.effect(execute)` 语义是：
+ * Cordis 的 `ctx.effect(execute)` 语义是：
  *
  * ```js
  * // cordis/lib/index.js:435
@@ -20,13 +20,27 @@
  * **`execute` 会被立即调用，它的返回值才被收作 disposer。**
  *
  * ⇒ 我们把「清理函数」当「要执行的工厂」传进去 ⇒ **`disposeAll` 被立即调用**
- * ⇒ 它里面 `disposeRoutes()` 把刚注册的路由删掉、`disposeTools` 把 11 个 AI 工具删掉。
+ * ⇒ 它里面 `disposeRoutes()` 把刚注册的路由删掉。
  *
- * **症状**：插件「看起来激活了」，但所有 HTTP 路由 404（body 为空），
- * 11 个 AI 工具也全部没注册。这个 bug 在 desktop profile 里可能被别的因素掩盖，
- * 直到在**隔离 profile**（只装 base + web-app）里才暴露出来。
+ * **症状**：插件「看起来激活了」，但所有 HTTP 路由 404（body 为空）。
  *
- * ⇒ 下面的断言钉住「apply 之后注册的东西还在」和「disposer 被收集起来了」。
+ * ## 拆分后的结构（`2026-11-23`）
+ *
+ * ```
+ * @taskboard/dsh-core   建实例，provide('taskboard3Core')      ← 不注册任何东西
+ * @taskboard/dsh        HTTP 路由 + 斜杠命令                    ← 本文件测这个
+ * @taskboard/dsh-tools  11 个 AI 工具 + 权限 guard              ← 见 dsh-tools/test/
+ * @taskboard/dsh-client 浏览器 UI
+ * ```
+ *
+ * ## ⚠ 为什么命令**没有**单独的 disposer
+ *
+ * `ctx.commands.register()` 是在 `apply` 里调的 —— **Cordis 按 fiber 所有权
+ * 自动清理**它，删除时机是插件卸载。所以本包只手工持有**路由**的 disposer
+ * （`webServer.register` 返回它，且路由挂着长连接，顺序有意义）。
+ *
+ * ⇒ 断言里「命令被 disposer 反注册」是**错的期望**，真实的清理路径是
+ *   Cordis 卸载插件。本文件用 `command+` 只断言「注册了 3 个」，不断言 disposer 删它。
  */
 
 import assert from 'node:assert/strict';
@@ -40,22 +54,25 @@ interface Event {
 	readonly detail: string;
 }
 
-/** 造一个最小的假 store —— 只要 `createTaskboard` 能跑起来即可。 */
-function fakeStore(): Record<string, unknown> {
-	const memory = new Map<string, string>();
+/**
+ * 造一个 **`@taskboard/dsh-core` 提供的实例替身**。
+ *
+ * ⚠ 不用真 `Taskboard`：本文件测的是「注册了几个东西、卸载时删没删」，
+ *   不是业务语义。用真实例要造 store + 18 个模板，和契约无关。
+ */
+function fakeTaskboard(): Record<string, unknown> {
 	return {
-		kvGet: (key: string) => memory.get(key),
-		kvSet: async (key: string, value: string) => {
-			memory.set(key, value);
-		},
-		kvDelete: async (key: string) => {
-			memory.delete(key);
-		},
-		loadWorkspaces: () => [],
-		saveWorkspaces: async () => undefined,
-		readCards: () => [],
-		writeCard: async () => undefined,
-		deleteCard: async () => undefined,
+		listWorkspaces: () => [],
+		ensureAnyWorkspace: async () => ({ id: 'ws1' }),
+		list: () => [],
+		listTemplates: () => [],
+		templateErrors: () => [],
+		templates: () => ({
+			register: () => () => {},
+			registerAll: () => () => {},
+			errors: () => [],
+		}),
+		close: async () => undefined,
 	};
 }
 
@@ -85,21 +102,11 @@ function fakeCtx(): {
 			},
 		},
 		connection: {},
-		tools: {
-			guard(): () => void {
-				events.push({ what: 'guard+', detail: '' });
-				return () => {
-					events.push({ what: 'guard-', detail: '' });
-				};
-			},
-			register(tool: { name: string }): () => void {
-				events.push({ what: 'tool+', detail: tool.name });
-				return () => {
-					events.push({ what: 'tool-', detail: tool.name });
-				};
-			},
-		},
 		commands: {
+			/*
+			 * ⚠ 返回 disposer，但**产品代码不持有它** —— 命令的清理归 Cordis
+			 *   的 fiber 所有权。这里返回 disposer 只是为了记录「注册了」。
+			 */
 			register(command: { name: string }): () => void {
 				events.push({ what: 'command+', detail: command.name });
 				return () => {
@@ -107,9 +114,15 @@ function fakeCtx(): {
 				};
 			},
 		},
-		taskboard3Store: fakeStore(),
-		/* subagents 缺席（隔离 profile 的真实情况）—— 代码必须能容忍。 */
-		get: () => undefined,
+		/* `@taskboard/dsh-core` 提供的实例（不是 store）。 */
+		taskboard3Core: fakeTaskboard(),
+		/* `@taskboard/dsh-core` 提供的总线（⚠ 原型期脚手架）。 */
+		taskboard3Bus: {
+			on: () => () => {},
+			emit: () => {},
+			size: () => 0,
+			close: () => {},
+		},
 		effect(execute: () => unknown): void {
 			const disposer = execute();
 			events.push({ what: 'effect', detail: typeof disposer });
@@ -120,7 +133,7 @@ function fakeCtx(): {
 	return { ctx, events, disposers };
 }
 
-describe('apply() 的生命周期契约', () => {
+describe('apply() 的生命周期契约（@taskboard/dsh = HTTP + 命令）', () => {
 	it('⭐ apply 之后 HTTP 路由**仍然注册着**（不是注册完就被自己删掉）', () => {
 		const { ctx, events } = fakeCtx();
 		apply(ctx as never, {});
@@ -133,15 +146,21 @@ describe('apply() 的生命周期契约', () => {
 		assert.equal(added[0]?.detail, 'prefix /taskboard3');
 	});
 
-	it('⭐ apply 之后 AI 工具**仍然注册着**', () => {
+	it('⭐ apply 之后斜杠命令**仍然注册着**', () => {
 		const { ctx, events } = fakeCtx();
 		apply(ctx as never, {});
 
-		const added = events.filter((one) => one.what === 'tool+').length;
-		const removed = events.filter((one) => one.what === 'tool-').length;
+		const names = events.filter((one) => one.what === 'command+').map((one) => one.detail);
+		assert.deepEqual(names, ['taskboard', 'task-card', 'task-create']);
+	});
 
-		assert.ok(added > 0, 'apply 应该注册至少一个 AI 工具');
-		assert.equal(removed, 0, `⚠ apply 期间不该反注册工具（实际反注册 ${String(removed)} 个）`);
+	it('⭐ 本包**不注册 AI 工具、不加 guard**（那些在 @taskboard/dsh-tools 里）', () => {
+		const { ctx, events } = fakeCtx();
+		apply(ctx as never, {});
+
+		/* 假 ctx 里根本没给 `tools` 服务 —— 如果本包还碰它就会抛。 */
+		assert.equal(events.filter((one) => one.what === 'tool+').length, 0, '本包不该注册工具');
+		assert.equal(events.filter((one) => one.what === 'guard+').length, 0, '本包不该加 guard');
 	});
 
 	it('⭐ `ctx.effect` 的 execute 被立即调用，返回值被收作 disposer', () => {
@@ -154,7 +173,7 @@ describe('apply() 的生命周期契约', () => {
 		assert.equal(disposers.length, 1, 'disposer 应该被收集起来');
 	});
 
-	it('⭐ 调 disposer 之后，路由和工具才被反注册（卸载语义）', () => {
+	it('⭐ 调 disposer 之后路由才被反注册（卸载语义）', () => {
 		const { ctx, events, disposers } = fakeCtx();
 		apply(ctx as never, {});
 
@@ -165,12 +184,15 @@ describe('apply() 的生命周期契约', () => {
 		for (const dispose of disposers) dispose();
 
 		assert.equal(events.filter((one) => one.what === 'route-').length, 1, 'disposer 应反注册路由');
-		assert.ok(events.filter((one) => one.what === 'tool-').length > 0, 'disposer 应反注册工具');
+		/*
+		 * ⚠ 命令**不在**这个 disposer 的职责里 —— 它们在 `apply` 里注册，
+		 *   由 Cordis 的 fiber 所有权在卸载时清理（见文件头）。
+		 */
 	});
 
-	it('⚠ subagents 缺席时也能跑（隔离 profile 的真实情况）', () => {
+	it('⚠ 没有 `subagents` 服务时也能跑（隔离 profile 的真实情况）', () => {
 		const { ctx } = fakeCtx();
-		/* fakeCtx 的 get() 恒返回 undefined ⇒ subagents 是 undefined。 */
+		/* 假 ctx 里没有 subagents ⇒ 本包也不再读它（工具面搬走了）。 */
 		assert.doesNotThrow(() => {
 			apply(ctx as never, {});
 		});
