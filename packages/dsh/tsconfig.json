@@ -20,7 +20,7 @@
       "path": "../core"
     },
     {
-      "path": "../tools"
+      "path": "../dsh-core"
     }
   ]
 }

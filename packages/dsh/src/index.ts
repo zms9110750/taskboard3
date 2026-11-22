@@ -49,13 +49,11 @@
  * ⚠ **没有全局默认值。** 用户明确否掉了「全局默认的垃圾堆」。
  */
 
-import { createBus, createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
+import type { Bus, Taskboard } from '@taskboard/core';
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
-import { createPermissionGuard } from './permission.ts';
 import { createSseHub } from './sse.ts';
-import { createTools } from './tools.ts';
 import type { CommandsLike, ConnectionLike, ToolsLike, WebServerLike } from './types.ts';
 
 /** Cordis 插件名。 */
@@ -67,7 +65,7 @@ export const name = 'taskboard3';
  * ⚠ **声明依赖，不替用户装配。** 五个服务缺任何一个 ⇒ 本插件不激活。
  *   用户会看到「任务板没出现」，然后去补那一行 —— 这是正确的失败方式。
  */
-export const inject = ['webServer', 'connection', 'tools', 'commands', 'taskboard3Store'];
+export const inject = ['webServer', 'connection', 'commands', 'taskboard3Core', 'taskboard3Bus'];
 
 /**
  * 本插件的配置。
@@ -99,25 +97,11 @@ export interface Config {}
 export type ApplyContext = {
 	readonly webServer: WebServerLike;
 	readonly connection: ConnectionLike;
-	readonly tools: ToolsLike;
 	readonly commands: CommandsLike;
-	/** 存储实现。由 `@taskboard/store` 或替换品提供。**唯一可替换的依赖。** */
-	readonly taskboard3Store: CardStore;
-	/**
-	 * `ctx.subagents`（可选）—— 用来把「当前 agent 的名字」当作 claim 的 holder。
-	 *
-	 * ⚠ **不是硬依赖**：没有 subagent 环境的 profile 也该能用任务板。
-	 *   缺席时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
-	 */
-	readonly subagents?: unknown;
-	/**
-	 * Cordis 的 `ctx.get(name)` —— **可选**访问服务，不触发 inject 检查。
-	 *
-	 * ⚠ 和 `readonly subagents` 的差别：读 `ctx.subagents` 会走 Cordis 的
-	 *   属性拦截器，服务不在 `inject` 里就抛
-	 *   `cannot get property "subagents" without inject`。
-	 */
-	get?(name: string): unknown;
+	/** 任务板实例。由 `@taskboard/dsh-core` 提供（**全仓唯一建实例的地方**）。 */
+	readonly taskboard3Core: Taskboard;
+	/** 广播总线（SSE 用）。同由 `@taskboard/dsh-core` 提供。⚠ 原型期脚手架。 */
+	readonly taskboard3Bus: Bus;
 	effect?(dispose: () => void, label?: string): void;
 };
 
@@ -128,20 +112,6 @@ export type ApplyContext = {
  * 一并消失。这是 DSH 的资源所有权约定。
  */
 export function apply(ctx: ApplyContext, config: Config = {}): void {
-	/*
-	 * `ctx.subagents` 是**可选**服务 —— 用可选访问读它，**不能**写进 `inject`。
-	 *
-	 * ⚠ 写进 `inject` 的后果（2026-11-22 在隔离 profile 里实测到的）：
-	 *   没有 subagents 服务的 profile（比如只装 base + web-app 的隔离环境）
-	 *   会让整个插件**不激活**：
-	 *
-	 *     taskboard3 (@taskboard/dsh): Error: cannot get property "subagents" without inject
-	 *
-	 *   而任务板本该在没有 subagent 的环境里也能用（holder 回落 `agent.id`）。
-	 *   ⇒ 用 `ctx.get?.()` 探测，拿不到就是 undefined。
-	 */
-	const subagents = typeof ctx.get === 'function' ? (ctx.get('subagents') as ApplyContext['subagents']) : ctx.subagents;
-
 	/*
 	 * ⚠ **原型期脚手架**：广播总线 + SSE。
 	 *
@@ -159,7 +129,7 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	 *
 	 * 依据：`core/src/bus.ts` 文件头的拆解步骤 **第 4 条**（「dsh：删 SSE 端点」）。
 	 */
-	const bus = createBus();
+	const bus = ctx.taskboard3Bus;
 	const hub = createSseHub(bus);
 
 	/*
@@ -169,7 +139,7 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	 * ⚠ **搜索不在这里** —— 它已并入 core 并强耦合（用户裁定）。
 	 *   `createTaskboard` 内部固定调 `createSearch()`，不接受外部注入。
 	 */
-	const taskboard: Taskboard = createTaskboard({ store: ctx.taskboard3Store, bus });
+	const taskboard: Taskboard = ctx.taskboard3Core;
 	/*
 	 * 模板**不在这里加载**（`2026-11-23` 搬家）。
 	 *
@@ -203,34 +173,10 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		events: hub,
 	});
 
-	/*
-	 * 权限 guard —— **加装**在 dsh 的工具管线上。
-	 *
-	 * ⚠ 档位不在 dsh 侧：两条正交轴（`CardActionLevel` / `ToolGuardLevel`）
-	 *   是任务板的全局状态，`taskboard.judgeToolCall` 自己从 core 缓存读。
-	 *   guard 只提供「这个 agent 持有哪些工作卡」这一个事实。
-	 *
-	 * ⚠ **不再往 DSH 的权限预设表注册任何东西**（`2026-11-19`）。
-	 *   上一版的三个任务板预设 + `permissionPresets` 读取整个删掉 ——
-	 *   用户：「因为细节问题没必要给 dsh 开一堆权限」。
-	 */
-	const permissionGuard = createPermissionGuard({ taskboard, subagents });
-	const disposeGuard = ctx.tools.guard(permissionGuard);
-
-	/* 工具：v2 工具定义在 `@taskboard/tools`，本文件只负责接线（见 `tools.ts` 文件头）。 */
-	const tools = createTools({
-		taskboard,
-		defaultWorkspaceId,
-		subagents,
-	});
-	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
-
 	registerCommands(ctx.commands, { taskboard, defaultWorkspaceId });
 
 	const disposeAll = (): void => {
 		disposeRoutes();
-		/* 先摘 guard，再清工具：卸载过程中不该再有机会按旧档位判定。 */
-		disposeGuard();
 		/*
 		 * ⚠ **先关 SSE 再清工具**：SSE 连接持有 bus 订阅，
 		 *   而 `taskboard.close()` 之后不该还有人能写帧。
@@ -240,9 +186,6 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		 *   连接还挂着但路由已经不接受新连接 —— 不是致命，但没必要。
 		 */
 		hub.closeAll();
-		for (const dispose of disposeTools) {
-			if (typeof dispose === 'function') (dispose as () => void)();
-		}
 		/*
 		 * ⚠ **不关 store**。它属于提供它的那一行（`@taskboard/store`）——
 		 *   本包只是使用者。关别人的资源是所有权越界。
@@ -256,15 +199,6 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 
 export { createHandler, mountRoutes, ROUTE_PREFIX } from './http.ts';
 export type { RouteDeps } from './http.ts';
-export { createTools, describeFailure, describeUnread } from './tools.ts';
-export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
-export { holderOf, type ExecLike, type SubagentsLike } from './holder.ts';
-export {
-	createPermissionGuard,
-	heldWorkCardsOf,
-	type GuardDeps,
-	type GuardVerdict,
-} from './permission.ts';
 export { adoptTargetOf, isAdoptTransition } from '@taskboard/core';
 /* ⚠ 原型期脚手架导出 —— 与 `core/src/bus.ts` 同生共死。 */
 export {

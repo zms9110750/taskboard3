@@ -1,0 +1,31 @@
+{
+  "name": "@taskboard/dsh-core",
+  "version": "0.1.0-3.a.1",
+  "type": "module",
+  "description": "任务板在 DSH 里的核心实例插件行：建 taskboard 并 provide('taskboard3Core')，其余插件行（Host HTTP / AI 工具 / 命令）都 inject 它。",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@taskboard/core": "workspace:*",
+    "@taskboard/protocol": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

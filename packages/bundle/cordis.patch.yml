@@ -1,33 +1,36 @@
-# 任务板 —— **一个 bundle，三个插件条目**。
+# 任务板 —— **一个 bundle，五个插件条目**。
 #
 # 设置页看到的是一张「任务板」卡片，点进去能看到全部组件，各自独立开关。
 #
 # ## 这个结构是用户 `2026-11-23` 要的
 #
 # > 「为什么这里有3个包？任务板1是只有一个入口，然后入口里面有各自的包。」
+# > 「怎么接入dsh的那几个包没了？ui也是一个包也可以关掉的啊。」
 #
-# 在这之前，`@taskboard/store` / `@taskboard/dsh` / `@taskboard/dsh-client`
-# **各自带一个 `cordis.patch.yml`** ⇒ 它们在 profile 的 `dsh.profile.bundles`
-# 里是**三个平级条目** ⇒ 设置页显示 **3 张卡片**。
+# ## 五个行各自负责什么
 #
-# 现在由本包（`@taskboard/bundle`）统一承载 patch，三个子包只作为
-# `node_modules` 里的实现存在，不再是独立 bundle。
+# | 行 | 包 | 关掉它会怎样 |
+# |---|---|---|
+# | ① 存储 | `@taskboard/store` | 任务板整个不激活（其余行都依赖它） |
+# | ② 核心实例 | `@taskboard/dsh-core` | 其余行全不激活（它们 inject `taskboard3Core`） |
+# | ③ Host HTTP + 命令 | `@taskboard/dsh` | 界面拉不到数据、斜杠命令没了；**AI 工具还在** |
+# | ④ AI 工具 + guard | `@taskboard/dsh-tools` | 数据和界面都还在，**agent 用不了任务板** |
+# | ⑤ 浏览器 UI | `@taskboard/dsh-client` | 数据还在、AI 还能用，**人看不到** |
 #
-# ## 参照
+# ## 为什么 ② 和 ③ 要分成两行
 #
-# 任务板1（`@local/taskboard`）：1 个 bundle 壳 + 8 行 insert。
-# 官方 `dsh-experimental-agent-team-profile`：1 壳 + 4 子包（协作 / 工具 / 面板）。
+# `Taskboard` 是**内存状态**（卡缓存 / 权限档位 / 模板注册表）。
+# 如果 HTTP 和工具各自 `createTaskboard()`，就会有 2 份互不可见的状态 ——
+# 工具改了卡，HTTP 读不到。**这是拆分最容易踩的坑。**
 #
-# ## ⚠ 子包各自的 `cordis.patch.yml` **不要删**
+# ⇒ ② 建一份实例并 `provide('taskboard3Core', …)`，③④ `inject` 它。
 #
-# 它们现在不再被 profile 装配，但保留着有价值：
-#   · 单测/预览可以直接应用
-#   · 将来如果要拆回独立 bundle（比如只想装 UI 不装 Host），直接可用
+# ## ⚠ 子包各自的 `cordis.patch.yml` 都保留着
 #
-# 删了也不会报错 —— 只是丢了那条路。
+# 它们不再被 profile 装配（本文件统一承载），但单测/预览/将来拆回独立 bundle 都用得上。
 
 - insert:
-    # ① 持久化和提供者：处理从内存到磁盘
+    # ① 持久化：内存内容 → 磁盘
     #
     #    **唯一可替换点**。关掉这一行、装一个同样 `provide('taskboard3Store', …)`
     #    的包，上层零改动就能换存储实现（用户原话：「可能使用者想要不同的实现，
@@ -35,14 +38,32 @@
     - id: taskboard3-store
       name: '@taskboard/store'
 
-    # ② Host 半边：HTTP 路由 + AI 工具 + 斜杠命令
+    # ② 核心实例：全仓唯一 `createTaskboard()` 的地方
     #
-    #    依赖 ①。关掉它 ⇒ 只剩数据层，UI 和 AI 都用不了。
-    - id: taskboard3
+    #    提供两个服务：
+    #      · `taskboard3Core`              ← ③④ inject 它
+    #      · `taskboard3DefaultWorkspaceId` ← 入口默认空间策略
+    #      · `taskboard3Bus`               ← ⚠ 原型期脚手架，SSE 用
+    - id: taskboard3-core
+      name: '@taskboard/dsh-core'
+
+    # ③ Host 半边：HTTP 路由 + 斜杠命令
+    #
+    #    给**人**用的通道：14 条 HTTP 端点（浏览器 UI 读写）+ 3 个斜杠命令。
+    #    关掉它 ⇒ 数据和 AI 工具都在，但界面拉不到东西、命令没了。
+    - id: taskboard3-host
       name: '@taskboard/dsh'
 
-    # ③ 浏览器 UI：左侧栏 / 抽屉 / 右侧工作区 三个入口
+    # ④ AI 工具面：11 个 taskboard_* + 权限 guard
     #
-    #    依赖 ② 的路由。关掉它 ⇒ 数据还在、AI 还能用，只是人看不到。
-    - id: taskboard3-dsh-client
+    #    给**模型**用的通道。定义在 `@taskboard/tools`（纯库，MCP 也吃同一份），
+    #    本行只做 DSH 侧的 schema 适配 + 注册。
+    #    关掉它 ⇒ 数据和界面都在，agent 调不到任务板。
+    - id: taskboard3-tools
+      name: '@taskboard/dsh-tools'
+
+    # ⑤ 浏览器界面：左侧栏 / 抽屉 / 右侧工作区 三个入口
+    #
+    #    关掉它 ⇒ 数据还在、AI 还能用，只是人看不到。
+    - id: taskboard3-client
       name: '@taskboard/dsh-client'

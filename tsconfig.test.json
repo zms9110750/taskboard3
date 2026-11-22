@@ -53,5 +53,5 @@
 	 *   报 4 条 TS2322（`parameters` / `output` / `execute` 都对不上）。
 	 *   `tsconfig.dev.json` 里 `src/host-types.d.ts` 单列是同一个理由。
 	 */
-	"include": ["packages/*/test/**/*.ts", "packages/dsh/src/dsh-tools.d.ts"]
+	"include": ["packages/*/test/**/*.ts", "packages/dsh-tools/src/dsh-tools.d.ts"]
 }
