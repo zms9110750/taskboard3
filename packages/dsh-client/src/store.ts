@@ -25,6 +25,7 @@ import {
 	mergeActionResult,
 	messageOf,
 } from './pure.ts';
+import { toOfAction } from './pure/card-action.ts';
 import type { ActionRequest, Card, StateData, TemplateSummary, Workspace } from './types.ts';
 
 /** `useBoardState` 的状态。 */
@@ -51,7 +52,16 @@ export interface BoardActions {
 	switchWorkspace(workspaceId: string): void;
 	/** 重新从服务端拉全量。 */
 	reload(workspaceId?: string): void;
-	/** 执行一个卡片动作，成功后就地合并。 */
+	/**
+	 * 执行一个卡片动作，成功后就地合并。
+	 *
+	 * ⚠ **`CardAction` → 服务端认的 `to` 在 `pure/card-action.ts` 里换算。**
+	 *   服务端（`dsh/src/http.ts` 的 `POST /cards/:id/action`）只读顶层 `to`，
+	 *   靠 `isAdoptTransition` 反推这次是不是采纳 —— 它**不读 `kind`**。
+	 *
+	 *   `adopt` 的 `to` 要 `template.kind` + `status` 才算得出来 ⇒ 必须在这里
+	 *   查卡（`api.act()` 只有 `cardId`，拿不到卡）。
+	 */
 	runAction(request: ActionRequest): Promise<boolean>;
 	/** 新建空间并切过去。 */
 	createWorkspace(name: string): Promise<boolean>;
@@ -105,6 +115,14 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 	 */
 	const loadSeq = useRef(0);
 
+	/**
+	 * 当前卡的镜像 —— `runAction` 要查被点的那张卡（换算 `to` 需要
+	 * `template.kind` + `status`），但 **不能把 `state` 塞进 `useCallback` 的依赖**：
+	 * 那会让 `runAction` 每次渲染都换引用，下游 `useCallback`/`memo` 全部失效。
+	 */
+	const cardsRef = useRef<readonly Card[]>([]);
+	cardsRef.current = state.cards;
+
 	const load = useCallback(async (workspaceId?: string): Promise<void> => {
 		const seq = ++loadSeq.current;
 		setState((prev) => ({ ...prev, loading: prev.cards.length === 0, error: undefined }));
@@ -150,9 +168,31 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 
 	const runAction = useCallback(async (request: ActionRequest): Promise<boolean> => {
 		const workspaceId = workspaceRef.current;
+
+		/*
+		 * 先查卡，再换算 `to` —— **算不出来就报错，不发空串**。
+		 *
+		 * `to = ''` 会让服务端回 400「不是已知状态」，而那正是修之前的症状：
+		 * 用户点按钮看到一句「不是已知状态」，不知道是自己点错了还是系统坏了。
+		 * ⇒ 在这里就拦住，给一句能懂的话（哪个卡、什么动作）。
+		 */
+		const card = cardsRef.current.find((one) => one.id === request.cardId);
+		if (card === undefined) {
+			setState((prev) => ({ ...prev, error: `点的那张卡（${request.cardId}）不在当前列表里 —— 可能刚被删或切了空间。` }));
+			return false;
+		}
+		const to = toOfAction(request.action, card);
+		if (to === undefined) {
+			setState((prev) => ({
+				...prev,
+				error: `这个动作算不出目标状态（${request.action.kind} / 类别 ${card.template.kind} / 状态 ${card.status}）—— 这是产品 bug，不是你的操作问题。`,
+			}));
+			return false;
+		}
+
 		setState((prev) => ({ ...prev, pending: prev.pending + 1, error: undefined }));
 		try {
-			const result = await apiRef.current.act({ workspaceId, request });
+			const result = await apiRef.current.act({ workspaceId, cardId: request.cardId, to });
 			setState((prev) => ({
 				...prev,
 				cards: mergeActionResult(prev.cards, result),

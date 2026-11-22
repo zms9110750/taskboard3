@@ -19,7 +19,6 @@
  */
 
 import type {
-	ActionRequest,
 	ActionResult,
 	Card,
 	Envelope,
@@ -209,9 +208,32 @@ export interface TaskboardApi {
 	archiveWorkspace(id: string): Promise<ArchiveResult>;
 	/** 取消归档（同样幂等）。 */
 	unarchiveWorkspace(id: string): Promise<ArchiveResult>;
+	/**
+	 * 点一个状态按钮。
+	 *
+	 * ## ⚠ 发的是**顶层 `to`**，不是 `action` 对象
+	 *
+	 * 服务端（`packages/dsh/src/http.ts` 的 `POST /cards/:id/action`）在顶层读：
+	 *
+	 * ```ts
+	 * const to = str(body, 'to') ?? '';
+	 * if (!isTaskState(to)) → 400「不是已知状态」
+	 * ```
+	 *
+	 * 它**不读 `kind`** —— 靠 `isAdoptTransition(kind, from, to)` 反推这次是不是采纳。
+	 *
+	 * ⇒ 曾经这里发 `{ workspaceId, action: { kind, to } }`，服务端读不到 `to`
+	 *   ⇒ `to` 空串 ⇒ **点任何状态按钮都 400**。和 `patchCard` 那个 bug 同一类。
+	 *
+	 * ⇒ `CardAction` → `to` 的换算在**调用方**（`store.ts` 的 `runAction`，
+	 *   那里能查到被点的卡：`adopt` 要 `template.kind` + `status`）。
+	 *
+	 * @param input `to` 已经算好；算不出来时调用方不该调到这
+	 */
 	act(input: {
 		readonly workspaceId: string;
-		readonly request: ActionRequest;
+		readonly cardId: string;
+		readonly to: string;
 	}): Promise<ActionResult>;
 	/**
 	 * ① 接通时的渲染器检查 —— 把「UI 能画哪些 `$type`」报给 Host，
@@ -354,9 +376,9 @@ export function createApi(fetchImpl?: FetchLike): TaskboardApi {
 			});
 		},
 		async act(input) {
-			return request<ActionResult>(`cards/${encodeURIComponent(input.request.cardId)}/action`, {
+			return request<ActionResult>(`cards/${encodeURIComponent(input.cardId)}/action`, {
 				method: 'POST',
-				body: { workspaceId: input.workspaceId, action: input.request.action },
+				body: { workspaceId: input.workspaceId, to: input.to },
 			});
 		},
 		async renderCheck(registered) {

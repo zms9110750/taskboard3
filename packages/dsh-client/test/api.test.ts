@@ -279,6 +279,39 @@ describe('⭐ 其余请求体与服务端读取的字段名对齐', () => {
 
 		assert.deepEqual(fetchImpl.calls[0]?.body, { name: '新' });
 	});
+
+	/**
+	 * `act` 和 `patchCard` 是**同一类** bug：
+	 * 客户端把东西包了一层，服务端在顶层读。
+	 *
+	 * 曾经 `body: { workspaceId, action: { kind, to } }`，服务端
+	 * `const to = str(body, 'to') ?? ''` ⇒ 空串 ⇒ 400「不是已知状态」
+	 * ⇒ **点任何状态按钮都失败**。
+	 */
+	it('⭐ act ⇒ body 是 { workspaceId, to }，没有 action 键', async () => {
+		const fetchImpl = fakeFetch({ ok: true, status: 200, text: CARD_OK });
+		const api = createApi(fetchImpl);
+		await api.act({ workspaceId: 'W1', cardId: 'X1', to: 'TASK_STATE_COMPLETED' });
+
+		const sent = fetchImpl.calls[0];
+		assert.ok(sent !== undefined, '应当发了一次请求');
+		assert.equal(sent.method, 'POST');
+		assert.ok(sent.url.includes('cards/X1/action'), `路径要带卡编号和 /action，实际：${sent.url}`);
+
+		const body = sent.body as Record<string, unknown>;
+		assert.deepEqual(body, { workspaceId: 'W1', to: 'TASK_STATE_COMPLETED' });
+
+		/* ⚠ 防回退：**不能**出现 action 这个键。 */
+		assert.equal('action' in body, false, `body 不能包 action 一层，实际：${JSON.stringify(body)}`);
+	});
+
+	it('act 的卡编号被 URL 编码', async () => {
+		const fetchImpl = fakeFetch({ ok: true, status: 200, text: CARD_OK });
+		const api = createApi(fetchImpl);
+		await api.act({ workspaceId: 'W1', cardId: 'a b/c', to: 'TASK_STATE_COMPLETED' });
+
+		assert.ok(fetchImpl.calls[0]?.url.includes('cards/a%20b%2Fc/action'), `实际：${fetchImpl.calls[0]?.url}`);
+	});
 });
 
 /* ══════════════════════════════════════════════════════════
