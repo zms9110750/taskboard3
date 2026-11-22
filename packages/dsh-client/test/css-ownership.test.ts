@@ -39,12 +39,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { CREATE_CSS as CREATE_FROM_NEW } from '../src/renderers/create/create-css.ts';
+import { CREATE_SHELL_CSS as CREATE_SHELL_FROM_NEW } from '../src/renderers/create/create-shell-css.ts';
 import { DRAWER_CSS as DRAWER_FROM_NEW } from '../src/renderers/drawer-css.ts';
 import { FALLBACK_CSS as FALLBACK_FROM_NEW } from '../src/renderers/fallback-css.ts';
 import { SEARCHBOX_CSS as SEARCHBOX_FROM_NEW } from '../src/renderers/searchbox-css.ts';
 import { SECTION_CSS as SECTION_FROM_NEW } from '../src/renderers/section-css.ts';
 import {
 	CREATE_CSS as CREATE_FROM_STYLES,
+	CREATE_SHELL_CSS as CREATE_SHELL_FROM_STYLES,
 	DRAWER_CSS as DRAWER_FROM_STYLES,
 	FALLBACK_CSS as FALLBACK_FROM_STYLES,
 	SEARCHBOX_CSS as SEARCHBOX_FROM_STYLES,
@@ -73,6 +75,10 @@ void test('styles.ts 与组件目录里的是同一份（CREATE_CSS）', () => {
 
 void test('styles.ts 与组件目录里的是同一份（DRAWER_CSS）', () => {
 	assert.equal(DRAWER_FROM_STYLES, DRAWER_FROM_NEW);
+});
+
+void test('styles.ts 与组件目录里的是同一份（CREATE_SHELL_CSS）', () => {
+	assert.equal(CREATE_SHELL_FROM_STYLES, CREATE_SHELL_FROM_NEW);
 });
 
 

@@ -115,8 +115,26 @@ export interface CreateFormHandle {
 		 * 本动作只把传进来的 `sections` 原样收下 —— **不猜、不静默重建**。
 		 */
 		applyDraft: (next: CreateDraft) => void;
-		/** 点提交：先校验，通过才调 `onSubmit`。 */
+		/**
+		 * 点提交：先校验，通过才调 `onSubmit`。
+		 */
 		submit: () => void;
+		/**
+		 * **外部塞入错误** —— 给「core 拒绝了」那条路用。
+		 *
+		 * ## 为什么需要它（用户 `2026-11-22`）
+		 *
+		 * > 「点了提交以后，这个建卡参数都要进 core，也要过架构校验。
+		 * >  而且是跟 ai tool 一样的校验入口。过了校验才能建卡。」
+		 *
+		 * core 是唯一权威，但它拒绝时返回的是 `Failure`（JSON Pointer 路径），
+		 * 而本 hook 的 `errors` 是本包的 `CreateError[]`。调用方用
+		 * `errorsFromFailure()` 翻完之后，必须能把结果**放回这里** ——
+		 * 否则 `CardCreate` 拿不到错误，界面上什么都不显示。
+		 *
+		 * @param next 已经翻成本包字段路径的错误清单
+		 */
+		setErrors: (next: readonly CreateError[]) => void;
 		/** 关掉「丢内容」提示。 */
 		dismissLostNotice: () => void;
 	};
@@ -267,6 +285,7 @@ export function useCreateForm(options: UseCreateFormOptions): CreateFormHandle {
 			setRelations,
 			applyDraft,
 			submit,
+			setErrors,
 			dismissLostNotice,
 		},
 	};

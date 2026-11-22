@@ -609,6 +609,10 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		const body = await readJson(req);
 		const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
 		const content = rawField(body, 'content');
+		const relations = rawField(body, 'relations');
+		const note = str(body, 'note');
+		const kind = str(body, 'kind');
+		const domain = str(body, 'domain');
 		const created = await taskboard.create({
 			workspaceId,
 			templateRef: str(body, 'templateRef') ?? '',
@@ -620,8 +624,24 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			 * 都不报错。显式传之后 `grep "actor"` 就能确认每个入口都表了态。
 			 */
 			actor: 'user',
+			/* 面板建的卡 ⇒ origin 固定 `'panel'`（派生/导入是别的入口）。 */
+			origin: 'panel',
 			...(content === undefined ? {} : { content }),
-		});
+			/*
+			 * 关系和备注**必须透传**：不过去的话，用户在建卡页填的关系和备注
+			 * 会被静默丢掉（界面上填了、卡上没有）。`taskboard.create()` 内部的
+			 * `checkRelations` 会校验关系目标存在性。
+			 */
+			...(relations === undefined ? {} : { relations }),
+			...(note === undefined ? {} : { note }),
+			/*
+			 * `kind` / `domain` 只对**空模板**有意义（模板没声明分类/领域时
+			 * 必须由入参补，否则发号拿不到字母）。模板已声明时传了会被 core 拒绝
+			 * （不一致 = 调用方选错模板），所以这里原样透传、由 core 裁决。
+			 */
+			...(kind === undefined ? {} : { kind }),
+			...(domain === undefined ? {} : { domain }),
+		} as Parameters<typeof taskboard.create>[0]);
 		if (!created.ok) return sendFailure(res, created);
 		sendOk(res, { card: created.card }, 201);
 		return;

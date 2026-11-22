@@ -131,6 +131,28 @@ function fakeApi(): TaskboardApi {
 			CALLS.push({ method: 'createCard', args: input });
 			throw new Error('预览没接建卡');
 		},
+		/*
+		 * 建卡页要取模板详情（章节清单）。
+		 *
+		 * ⚠ 这个预览**真的会走建卡流程**（点「新建」→ 表单 → 提交），
+		 *   所以这里必须给真章节，不能 throw —— 否则建卡页一选模板就报错。
+		 */
+		async getTemplate(ref: string) {
+			CALLS.push({ method: 'getTemplate', args: ref });
+			const summary = TEMPLATES.find((one) => one.ref === ref);
+			return {
+				ref,
+				displayName: summary?.displayName ?? ref,
+				kind: summary?.kind ?? '',
+				domain: summary?.domain ?? '',
+				usage: '预览假模板',
+				description: '',
+				sections: [
+					{ id: 'body', label: '正文', hint: '', action: 'text' },
+					{ id: 'extra', label: '补充', hint: '', action: 'markdown' },
+				],
+			};
+		},
 		async patchCard(input) {
 			CALLS.push({ method: 'patchCard', args: input });
 			throw new Error('预览没接 patch');
