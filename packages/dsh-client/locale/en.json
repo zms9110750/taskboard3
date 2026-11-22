@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Task board",
-    "description": "Task cards with a state machine and typed relations, shown as a right-sidebar tab."
+    "title": "Taskboard · UI",
+    "description": "Every taskboard entry point in the browser. The same panel opens in three places, independently:\n\n(1) A left sidebar icon — opens the panel across the main area.\n(2) A drawer beside the composer — rises from the composer edge without leaving the conversation.\n(3) A tab in the right workspace — sits beside files, terminals and the like.\n\nAll three read the same data through the same components but keep their own selection state: switching workspace in one does not disturb what another is showing.\n\nIt only draws and clicks: rendering sections, pressing status buttons, editing notes, creating cards, dragging splitters. It does not decide states, judge whether a transition is allowed, or touch the disk. A wrong rule is fixed in core, not here.\n\nSwitch it off and the plugin keeps running, agents keep their tools and the data stays — but no entry point is visible to a human. The three entry points have no individual switches yet; turning this package off removes all three."
   }
 }
