@@ -56,7 +56,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-core-test-'));
-		tb = createTaskboard({ dataDir: dir, now: () => 1_000 });
+		tb = createTaskboard({ dataDir: dir, now: () => 1_000, builtinTemplates: false });
 		const created = await tb.createWorkspace('测试');
 		assert.ok('workspace' in created, '建空间应当成功');
 		wsId = created.workspace.id;

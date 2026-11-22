@@ -19,15 +19,22 @@
  * 同名 ref 注册两次是**装配错误**，必须抛。静默覆盖会让"到底用哪份定义"
  * 变成不可判的事实。
  *
- * ## 解析归 `loader.ts`
+ * ## 解析归 `loader.ts`，读包内文件归 `builtin.ts`
  *
- * 本文件只管「放进表里 + 通知」。YAML → `TemplateDef` 是 `loader.fromRaw` 的事。
+ * 本文件只管「放进表里 + 通知」。**不碰磁盘。**
+ *
+ * ## ⚠ 没有 `loadDirectory(dir)`（`2026-11-23` 删）
+ *
+ * 用户裁决：
+ *
+ * > 「所谓的留接口是留注册接口。给别人以包的形式接入。不是以文本 yaml 的形式接入。」
+ * > 「外来的包原则上不该挤进去这个放配置的地方。」
+ *
+ * ⇒ 「给我一个目录」这条路**整个删掉**。模板从哪来只有两条：
+ *   1. `@taskboard/core` 包内自带的（`builtin.ts` 在启动时读一次）
+ *   2. 别人的**包**在 `apply` 里调 `registerAll()` / `register()`
  */
 
-import { readdirSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
-
-import { loadFile } from './loader.ts';
 import type { TemplateDef, TemplateMeta, TemplateSummary } from './types.ts';
 import { describe, summarize } from './types.ts';
 
@@ -37,14 +44,6 @@ export interface TemplateLoadError {
 	readonly file: string;
 	/** 人话原因。 */
 	readonly message: string;
-}
-
-/** 一次目录加载的结果。 */
-export interface LoadResult {
-	/** 成功加载的模板数。 */
-	readonly loaded: number;
-	/** 失败的文件与原因（正常为空）。 */
-	readonly errors: readonly TemplateLoadError[];
 }
 
 /**
@@ -105,7 +104,7 @@ export class TemplateRegistry {
 		return this.#templates.has(ref);
 	}
 
-	/** 上一次目录加载的错误（正常为空）。 */
+	/** 内置模板加载的错误（正常为空）。见 `setErrors`。 */
 	errors(): readonly TemplateLoadError[] {
 		return this.#errors;
 	}
@@ -126,59 +125,46 @@ export class TemplateRegistry {
 	}
 
 	/**
-	 * 从一个目录**递归**加载全部 `.yaml` / `.yml`。
+	 * 批量注册（**一次性通知**）。
 	 *
-	 * 逐文件容错：坏文件记进 `errors()`，不影响其它模板（用户：「如果他出错了，
-	 * core 可以继续开」）。
+	 * ## 为什么需要它
 	 *
-	 * 全部加载完之后**只通知一次** —— 目录里可能有几十个模板，
-	 * 逐条通知会让监听器白重建几十次。
+	 * 内置模板有 18 个。逐个 `register()` 会广播 18 次变更 ——
+	 * 订阅方（schema 缓存）会白重建 18 次。
+	 *
+	 * ## 这是「包形式接入」的入口
+	 *
+	 * 第三方包在它的 `apply` 里调这个（或对单个模板调 `register()`）。
+	 * **不是**「给我一个 YAML 目录」—— 那条路已删（见文件头）。
+	 *
+	 * @param templates 模板清单
+	 * @throws 有任何一个 ref 已注册（装配错误）
 	 */
-	loadDirectory(dir: string): LoadResult {
-		const errors: TemplateLoadError[] = [];
-		let loaded = 0;
-
-		const walk = (current: string): void => {
-			let entries: string[];
-			try {
-				entries = readdirSync(current);
-			} catch {
-				return;
+	registerAll(templates: readonly TemplateDef[]): void {
+		/* 先整体校验再写入 —— 半途抛错会让注册表停在「一半」的状态。 */
+		for (const template of templates) {
+			if (this.#templates.has(template.ref)) {
+				throw new TypeError(`taskboard3-core: 模板「${template.ref}」已注册`);
 			}
-			for (const name of entries) {
-				const file = join(current, name);
-				let isDir = false;
-				try {
-					isDir = statSync(file).isDirectory();
-				} catch {
-					continue;
-				}
-				if (isDir) {
-					walk(file);
-					continue;
-				}
-				const ext = extname(name).toLowerCase();
-				if (ext !== '.yaml' && ext !== '.yml') continue;
+		}
+		for (const template of templates) {
+			this.#templates.set(template.ref, Object.freeze(template));
+		}
+		if (templates.length > 0) this.#notify();
+	}
 
-				const ref = name.slice(0, -ext.length);
-				if (this.#templates.has(ref)) {
-					errors.push({ file, message: `模板「${ref}」已注册，跳过` });
-					continue;
-				}
-				const result = loadFile(file, ref);
-				if ('error' in result) {
-					errors.push({ file, message: result.error });
-					continue;
-				}
-				this.#templates.set(ref, Object.freeze(result.template));
-				loaded += 1;
-			}
-		};
-
-		walk(dir);
-		this.#errors = errors;
-		if (loaded > 0) this.#notify();
-		return { loaded, errors };
+	/**
+	 * 记下「内置模板加载时的失败」。
+	 *
+	 * ## 为什么不是 `registerAll` 的一部分
+	 *
+	 * 加载失败发生在「读包内 YAML」那一步（`builtin.ts`），注册表只关心
+	 * 「已注册成功的有哪些」。两件事分开：注册表**存储**失败原因，但不**产生**它。
+	 *
+	 * @param errors 失败清单（正常为空）
+	 */
+	setErrors(errors: readonly TemplateLoadError[]): void {
+		this.#errors = [...errors];
 	}
 
 	/** 触发全部监听器（同步；一个抛错不影响其它）。 */

@@ -36,7 +36,7 @@ const GUARD_KEY = 'taskboard.permission.toolGuardLevel';
 /** 临时目录 + 一个实例。调用方负责 `tb.close()` 和 `rmSync(dir)`。 */
 function makeTaskboard(prefix = 'tb3-levels-'): { readonly dir: string; readonly tb: Taskboard } {
 	const dir = mkdtempSync(join(tmpdir(), prefix));
-	return { dir, tb: createTaskboard({ dataDir: dir }) };
+	return { dir, tb: createTaskboard({ dataDir: dir, builtinTemplates: false }) };
 }
 
 /** 跑一段代码，收集期间的 `console.warn` 文本（然后恢复原函数）。 */
@@ -211,12 +211,12 @@ describe('持久化（落 kv）', () => {
 	it('★ 写后新建实例，两个档位都还在，且判定沿用', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-levels-persist-'));
 		try {
-			const first = createTaskboard({ dataDir: dir });
+			const first = createTaskboard({ dataDir: dir, builtinTemplates: false });
 			await first.setCardActionLevel('adopt');
 			await first.setToolGuardLevel('manage-edit');
 			await first.close();
 
-			const second = createTaskboard({ dataDir: dir });
+			const second = createTaskboard({ dataDir: dir, builtinTemplates: false });
 			try {
 				assert.equal(second.getCardActionLevel(), 'adopt');
 				assert.equal(second.getToolGuardLevel(), 'manage-edit');
@@ -256,7 +256,7 @@ describe('脏值：回落默认 + 警告，不抛错', () => {
 			await store.kvSet(CARD_KEY, 'garbage');
 			await store.kvSet(GUARD_KEY, 'PLAN');
 
-			const { result: tb, warnings } = captureWarnings(() => createTaskboard({ store }));
+			const { result: tb, warnings } = captureWarnings(() => createTaskboard({ store, builtinTemplates: false }));
 			try {
 				assert.equal(tb.getCardActionLevel(), 'no-claim', '脏值 ⇒ 回落默认');
 				assert.equal(tb.getToolGuardLevel(), 'off', '脏值 ⇒ 回落默认');
@@ -289,7 +289,7 @@ describe('脏值：回落默认 + 警告，不抛错', () => {
 			await store.kvSet(CARD_KEY, '深入敌后'); // 脏
 			await store.kvSet(GUARD_KEY, 'manage'); // 合法
 
-			const { result: tb, warnings } = captureWarnings(() => createTaskboard({ store }));
+			const { result: tb, warnings } = captureWarnings(() => createTaskboard({ store, builtinTemplates: false }));
 			try {
 				assert.equal(tb.getCardActionLevel(), 'no-claim');
 				assert.equal(tb.getToolGuardLevel(), 'manage');

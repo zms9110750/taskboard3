@@ -565,7 +565,7 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-perm-'));
-		tb = createTaskboard({ dataDir: dir });
+		tb = createTaskboard({ dataDir: dir, builtinTemplates: false });
 		tb.templates().register(makeTemplate('writeCode', 'work'));
 		tb.templates().register(makeTemplate('research', 'work'));
 		tb.templates().register(makeTemplate('refactor', 'work'));
@@ -588,7 +588,7 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 		assert.ok((await tb.setTemplatePolicy('writeCode', ['bash', 'write'])).ok);
 		assert.deepEqual(tb.getToolPolicies().templates['writeCode'], ['bash', 'write']);
 
-		const reopened = createTaskboard({ dataDir: dir });
+		const reopened = createTaskboard({ dataDir: dir, builtinTemplates: false });
 		assert.deepEqual(reopened.getToolPolicies().templates['writeCode'], ['bash', 'write']);
 		await reopened.close();
 	});
@@ -731,7 +731,7 @@ describe('adopt：AI 采纳草稿的域逻辑（与权限判定无关）', () =>
 
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-adopt-'));
-		tb = createTaskboard({ dataDir: dir });
+		tb = createTaskboard({ dataDir: dir, builtinTemplates: false });
 		tb.templates().register(makeTemplate('t-goal', 'goal'));
 		tb.templates().register(makeTemplate('t-design', 'design'));
 		tb.templates().register(makeTemplate('t-work', 'work'));

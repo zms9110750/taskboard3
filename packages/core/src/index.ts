@@ -65,6 +65,7 @@ import {
 } from './transition.ts';
 import type { CardStore } from './ports.ts';
 import { ActionRegistry, BUILTIN_ACTIONS } from './template/actions.ts';
+import { builtinTemplateErrors, builtinTemplates } from './template/builtin.ts';
 import { DomainRegistry, BUILTIN_DOMAINS } from './template/domains.ts';
 import { KindRegistry, BUILTIN_KINDS } from './template/kinds.ts';
 import { TemplateRegistry } from './template/registry.ts';
@@ -111,6 +112,19 @@ type CommonOptions = {
 	readonly builtinDomains?: boolean;
 	/** 是否自动注册三个内置 action（默认 `true`）。 */
 	readonly builtinActions?: boolean;
+	/**
+	 * 是否自动注册**包内自带的模板**（默认 `true`）。
+	 *
+	 * 用户 `2026-11-23`：
+	 * > 「模板的读取不是 io。而是配置。跟随包的。只在包里面。换句话说这些 yaml
+	 * >   字符串相当于启动时就要加载。」
+	 *
+	 * ⇒ 模板由 `@taskboard/core` 自己从包内相对路径常量加载（见 `template/builtin.ts`），
+	 *   **不接受外部传目录**（`loadDirectory` 已删）。
+	 *
+	 * 置 `false` 时一个模板都不注册 —— 测试要「空模板表」时用。
+	 */
+	readonly builtinTemplates?: boolean;
 	/**
 	 * 广播总线。**省略 = 不广播**（生产 / 测试默认）。
 	 *
@@ -655,6 +669,24 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	if (options.builtinKinds !== false) for (const kind of BUILTIN_KINDS) kinds.register(kind);
 	if (options.builtinDomains !== false) for (const domain of BUILTIN_DOMAINS) domains.register(domain);
 	if (options.builtinActions !== false) for (const action of BUILTIN_ACTIONS) actions.register(action);
+
+	/*
+	 * 内置模板：**随包自带的配置，在这里（= 启动时）注册一次**。
+	 *
+	 * 用户 `2026-11-23`：
+	 * > 「模板的读取不是 io。而是配置。跟随包的。只在包里面。换句话说这些 yaml
+	 * >   字符串相当于启动时就要加载。」
+	 * > 「外来的包原则上不该挤进去这个放配置的地方。」
+	 *
+	 * `builtin.ts` 在本模块被 import 的那一刻就读完了包内的 18 个 YAML
+	 * （用 core 自己的 `import.meta.url` 反推包根，**不靠外部传目录**）。
+	 *
+	 * ⚠ `registerAll` 而不是逐个 `register`：18 个逐个通知会让 schema 缓存白重建 18 次。
+	 */
+	if (options.builtinTemplates !== false) {
+		templates.registerAll(builtinTemplates());
+		templates.setErrors(builtinTemplateErrors());
+	}
 
 	/** 读一个空间全部卡。 */
 	const load = (workspaceId: WorkspaceId): readonly Card[] => store.loadAll(workspaceId);

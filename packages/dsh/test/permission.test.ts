@@ -46,8 +46,6 @@ import {
 
 /* ────────────────────────────── 夹具 ────────────────────────────── */
 
-const TEMPLATE_DIR = join(dirname(createRequire(import.meta.url).resolve('@taskboard/core/package.json')), 'templates');
-
 let dataDir = '';
 let taskboard: Taskboard;
 let workspaceId = '';
@@ -93,7 +91,6 @@ beforeEach(async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'tb3-perm-case-'));
 	createdDirs.push(dir);
 	taskboard = createTaskboard({ dataDir: dir });
-	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 	const created = await taskboard.createWorkspace('权限测试');
 	assert.equal(created.ok, true);
 	if (created.ok) workspaceId = created.workspace.id;

@@ -49,9 +49,6 @@
  * ⚠ **没有全局默认值。** 用户明确否掉了「全局默认的垃圾堆」。
  */
 
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-
 import { createBus, createTaskboard, type CardStore, type Taskboard } from '@taskboard/core';
 
 import { registerCommands } from './commands.ts';
@@ -72,33 +69,21 @@ export const name = 'taskboard3';
  */
 export const inject = ['webServer', 'connection', 'tools', 'commands', 'taskboard3Store'];
 
-/** 插件配置。 */
-export interface Config {
-	/**
-	 * 模板目录。
-	 *
-	 * 省略 = `@taskboard/core` 包内的 `templates/` —— 模板是 core 的资产，
-	 * 本包不自带副本（否则同一份 YAML 有两处，改了不会同步）。
-	 */
-	readonly templateDir?: string;
-}
-
 /**
- * 解析 core 包内 `templates/` 的绝对路径。
+ * 本插件的配置。
  *
- * ## 为什么从 core 的 `package.json` 反推
+ * ## ⚠ 没有 `templateDir`（`2026-11-23` 删）
  *
- * 模板 YAML 属于 `@taskboard/core`（它 `files` 里就带 `templates`）。
- * 本包**不复制一份** —— 否则模板改一处不同步另一处。
+ * 用户：
+ * > 「外来的包原则上不该挤进去这个放配置的地方。」
  *
- * `@taskboard/core` 的 `exports` 开放了 `./package.json` ⇒ 用它做锚点，
- * 这是 Node 里拿「某个包的安装目录」的标准做法（不依赖 cwd、不依赖软链形态）。
+ * 模板是 `@taskboard/core` 包**自带的配置**，由 core 用自己的包路径在启动时加载
+ * （见 `core/src/template/builtin.ts`）。**本包不知道也不该知道模板放在哪。**
+ *
+ * 别人的模板要接入 ⇒ 以**包**的形式在自己 `apply` 里 `register`，
+ * 不是往 core 的 templates 目录里塞文件。
  */
-function coreTemplateDir(): string {
-	const require = createRequire(import.meta.url);
-	const manifest = require.resolve('@taskboard/core/package.json');
-	return join(dirname(manifest), 'templates');
-}
+export interface Config {}
 
 /**
  * `apply` 用到的最小上下文。
@@ -185,9 +170,17 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	 *   `createTaskboard` 内部固定调 `createSearch()`，不接受外部注入。
 	 */
 	const taskboard: Taskboard = createTaskboard({ store: ctx.taskboard3Store, bus });
-
-	/* 模板：默认从 `@taskboard/core` 包内的 `templates/` 加载。失败不阻断 —— core 记进 `templateErrors()`。 */
-	taskboard.templates().loadDirectory(config.templateDir ?? coreTemplateDir());
+	/*
+	 * 模板**不在这里加载**（`2026-11-23` 搬家）。
+	 *
+	 * 用户：
+	 * > 「模板的读取不是 io。而是配置。跟随包的。只在包里面。」
+	 * > 「外来的包原则上不该挤进去这个放配置的地方。」
+	 *
+	 * ⇒ `createTaskboard()` 内部已经注册好包内自带的 18 个模板
+	 *   （见 `core/src/template/builtin.ts` + `TaskboardOptions.builtinTemplates`）。
+	 *   本包**不传目录、不扫文件、不认路径**。
+	 */
 
 	/**
 	 * 入口的默认空间策略。
