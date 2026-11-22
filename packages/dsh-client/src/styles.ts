@@ -630,6 +630,19 @@ export function injectStyles(): void {
 	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
 	element.textContent = `${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}`;
+	/*
+	 * ⚠ **必须挂上去**。`createElement` + 设 `textContent` 只是造了一个游离节点，
+	 *   不 `appendChild` 的话样式表根本不存在于文档里 ⇒ 面板渲染出来但**一点样式都没有**
+	 *   （结构全对、`querySelectorAll('[class*="tb3"]')` 有 39 个元素，但 `getComputedStyle`
+	 *   全是浏览器默认值，且 `document.getElementById(STYLE_ID)` 返回 null）。
+	 *
+	 *   2026-11-23 在隔离 profile 里实测到的：选中 taskboard tab 后
+	 *   `document.querySelectorAll('style')` = 162 个、`withTb3` = 0 —— 我们的样式表压根没进 DOM。
+	 *
+	 *   挂 `head` 而不是 `body`：样式不算内容，`head` 是它的规范位置；
+	 *   也避免被某些「清空 body」的逻辑带走。
+	 */
+	document.head.appendChild(element);
 }
 
 /* 转发给 `test/create-layout.test.ts` 等从 `styles.ts` 取建卡页 CSS 的调用方。 */
