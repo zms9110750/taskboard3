@@ -22,8 +22,11 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis';
+import { createElement } from 'react';
 
 import { createApi } from './api.ts';
+import { registerDrawerSlots } from './register-drawer.tsx';
+import { TaskboardIcon } from './renderers/TaskboardIcon.tsx';
 import { WorkspaceBody } from './WorkspaceBody.tsx';
 import { initRenderers } from './init-renderers.ts';
 import { registeredTypes } from './render-registry.ts';
@@ -31,6 +34,17 @@ import { injectStyles } from './styles.ts';
 
 /** 本实现的身份，也是 body 的 key。 */
 export const TAB_ID = '@taskboard/dsh-client';
+
+/**
+ * 左侧栏面板 id —— `sidebar.panellist` 的条目 id，也是 `main` 槽的 key。
+ *
+ * ⚠ 两处必须**同一个值**：点左侧栏图标 → 主区域按这个 key 找页面。
+ *   抄 `taskboard2` 的 `PANEL_ID = 'taskboard2'`（`packages/ui/client.js:16`）。
+ */
+export const PANEL_ID = 'taskboard3';
+
+/** 左侧栏图标在 panellist 里的排序（taskboard2 用 30）。 */
+export const PANEL_ORDER = 30;
 
 /** tab 类型判别符（`ctx.sidebarRight.openTab('taskboard')` 用它）。 */
 export const TAB_KIND = 'taskboard';
@@ -140,4 +154,64 @@ export function apply(ctx: Context): void {
 			),
 		'taskboard3: register right-sidebar tab body',
 	);
+
+	/*
+	 * ══════════════════════════════════════════════════════════
+	 * ② 左侧栏入口
+	 * ══════════════════════════════════════════════════════════
+	 *
+	 * 用户 `2026-11-23`：「只有工作区有入口。没有抽屉入口。也没有左边的入口。」
+	 *
+	 * ## 两个槽是一对（缺一不可）
+	 *
+	 * | 槽 | 条目形状 | 作用 |
+	 * |---|---|---|
+	 * | `sidebar.panellist` | `{ name, id, order, label }` | 左侧栏那颗图标按钮 |
+	 * | `main` | `{ name, key, label }` | 点图标后主区域显示的页面 |
+	 *
+	 * **`panellist` 的 `id` = `main` 的 `key` = `PANEL_ID`**，`label` 也必须是同一个
+	 * —— 这是两个槽之间的绑定方式。抄 `taskboard2`（`packages/ui/client.js:216-224`），
+	 * 那份代码在 desktop profile 里跑着，所以这两条槽名是**已验证的**，不是猜的。
+	 *
+	 * ## 为什么内容用 `WorkspaceBody` 而不是另写一份
+	 *
+	 * 它自己 `useBoardState()` ⇒ **不需要宿主喂数据**。
+	 * 左侧栏 / 抽屉 / 右栏页签三处各是独立实例 ⇒ 各自一份 loading / 选中卡状态，
+	 * 这是对的（用户在两处看不同空间不该互相干扰）。
+	 */
+	ctx.effect(
+		() =>
+			ctx.slots.inject('sidebar.panellist', () =>
+				ctx.slots.register(
+					{ name: 'sidebar.panellist', id: PANEL_ID, order: PANEL_ORDER, label: '任务板' },
+					TaskboardIcon,
+				),
+			),
+		'taskboard3: register sidebar panellist entry',
+	);
+
+	ctx.effect(
+		() =>
+			ctx.slots.inject('main', () =>
+				ctx.slots.register({ name: 'main', key: PANEL_ID, label: '任务板' }, WorkspaceBody),
+			),
+		'taskboard3: register main panel body',
+	);
+
+	/*
+	 * ══════════════════════════════════════════════════════════
+	 * ③ 抽屉入口（composer 输入框旁）
+	 * ══════════════════════════════════════════════════════════
+	 *
+	 * 入口按钮 + 面板是**两个槽条目**，各自渲染在不同位置，**只能靠共享 store 同步
+	 * `open`** —— `registerDrawerSlots()` 内部按 sessionId 造一份 `DrawerStore`
+	 * （见该文件头）。
+	 *
+	 * 内容传 `createElement(WorkspaceBody)`：它自己拉数据，Drawer 只管外壳。
+	 *
+	 * ⚠ **不要再包一层 `ctx.slots.inject`** —— `registerDrawerSlots` 内部已经对
+	 *   两个槽各做了一次 `inject`，disposer 由 Cordis 按 owner 管理。
+	 *   再包一层会让「注册函数的执行时机」和「owner 坍缩」错位。
+	 */
+	registerDrawerSlots(ctx, { content: createElement(WorkspaceBody) });
 }

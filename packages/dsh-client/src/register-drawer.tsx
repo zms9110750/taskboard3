@@ -1,57 +1,56 @@
 /**
- * 两个 composer 槽的**注册代码** —— 照 DSH 斜杠命令菜单 / 反馈弹窗的写法。
+ * 两个 composer 槽的**注册代码**。
  *
- * ## 槽（已查证，asar 原文见 `pure/drawer-view.ts` 文件头）
+ * ## 槽（已查证）
  *
- * | 部件 | 槽 | kind / scope |
+ * | 部件 | 槽 | 说明 |
  * |---|---|---|
- * | 正方形入口 | `conversation.input.left` | list / session |
- * | 抽屉面板 | `conversation.input.overlay` | list / session |
+ * | 入口按钮 | `conversation.input.left` | composer 工具行左侧 |
+ * | 抽屉面板 | `conversation.input.overlay` | composer 卡片内的浮层 |
  *
- * ## 为什么写成函数（而不是在 `client.tsx` 里直接注册）
+ * 依据：`pure/drawer-view.ts` 文件头记的 asar 原文 + `taskboard2`
+ * （`packages/ui/client.js:224-238`）在 desktop profile 里跑着同样的两个槽。
  *
- * 面板里要放一个**真的 `<Workspace />`**，而 Workspace 的数据 / 回调目前由宿主
- * （页签 body）持 —— 本包还没有「把同一份数据也给抽屉」的接线。
- * ⇒ 先把注册做成一个可复用的函数，参数里要 `WorkspaceProps`；
- *   产品接线的人在拿到数据后调一行即可：
+ * ## ⚠ 为什么不用 `inject(sessionId)` 共享 store（2026-11-23 实测崩了）
+ *
+ * 原来的写法：
  *
  * ```ts
- * registerDrawerSlots(ctx, { workspace: drawerWorkspaceProps })
+ * ctx.slots.register({
+ *   name: SLOT, id: X, order: N,
+ *   inject: (sessionId) => ({ hooks: { drawer: storeOf(sessionId) } }),
+ * }, DrawerEntrySlot);
  * ```
  *
- * **本任务没有在 `client.tsx` 里调用它**（数据源未定，见报告「没做到」）。
- *
- * ## 两个槽怎么共享一个 `open`
- *
- * 入口与面板是**两个独立的 slot 条目**，渲染位置不同，不能靠 props 共享状态。
- * 而用户要求「点入口开 / 再点关 / Esc 关」是**同一个状态**。
- *
- * ⇒ 本文件按 session 各造一个 `DrawerStore`（`pure/drawer-view.ts`），两个槽的
- *   `inject(sessionId)` 从**同一个 Map** 取 —— 于是它们拿到的是**同一个对象**，
- *   不可能出现「入口开了、面板不知道」。单测 `test/register-drawer.test.ts` 钉住这条。
- *
- * ## 与斜杠菜单写法的逐行对应
+ * 实测报错：
  *
  * ```
- * scope.slots.inject('conversation.input.overlay', () => scope.slots.register({
- *   name: 'conversation.input.overlay',
- *   id: 'command-popup',
- *   order: 1,
- *   locale: NS,
- *   inject: (sessionId) => { … },
- * }, PopupSelectView))
+ * TypeError: Cannot read properties of undefined (reading 'drawer')
+ * slot entry crashed in 'conversation.input.left'
  * ```
  *
- * 这里没有 `locale`（文案直接写中文，MVP 约定）；`inject` 返回 `{ hooks, … }`。
+ * ⇒ DSH 渲染我们的组件时 `props.hooks` 是 `undefined` —— 我们对 `inject`
+ *   的契约理解错了。
+ *
+ * **现在的做法**：模块级状态（`pure/drawer-state.ts`）+ 两个槽各自
+ * `useDrawerOpen()`。抄 `taskboard2` 的 `drawerOpen` + `drawerListeners`，
+ * 那份代码在同版本 DSH 里跑着 ⇒ 这条路是验证过的。
+ *
+ * ## 内容为什么是 `content: ReactNode`
+ *
+ * 原来收一整套 `WorkspaceProps`（数据 + 回调），**那正是接不上的原因**：
+ * 宿主拼不出 `WorkspaceProps`（`useBoardState()` 的结果在 `WorkspaceBody` 内部）。
+ * ⇒ 现在只传一段内容：产品传 `<WorkspaceBody />`（自己拉数据），
+ *   Drawer 只管外壳（遮罩 / Esc / 点外部 / 定位 / 顶栏）。
  */
 
 import type { Context } from '@deepseek-ai/cordis';
 import type { ReactNode } from 'react';
 
-import { createDrawerStore, DRAWER_DEFAULT_VARIANT_ID } from './pure/drawer-view.ts';
-import type { DrawerStore, DrawerVariantId } from './pure/drawer-view.ts';
-import { DRAWER_PANEL_ID, Drawer, DrawerEntry, useDrawerStore } from './renderers/Drawer.tsx';
-import type { WorkspaceProps } from './renderers/Workspace.tsx';
+import { closeDrawer, toggleDrawer, useDrawerOpen } from './pure/drawer-state.ts';
+import { DRAWER_DEFAULT_VARIANT_ID, DRAWER_VARIANTS } from './pure/drawer-view.ts';
+import type { DrawerVariantId } from './pure/drawer-view.ts';
+import { DRAWER_PANEL_ID, Drawer, DrawerEntry } from './renderers/Drawer.tsx';
 
 /** 入口按钮注册进哪个槽。 */
 export const DRAWER_ENTRY_SLOT = 'conversation.input.left';
@@ -59,119 +58,89 @@ export const DRAWER_ENTRY_SLOT = 'conversation.input.left';
 /** 抽屉面板注册进哪个槽。 */
 export const DRAWER_PANEL_SLOT = 'conversation.input.overlay';
 
-/** 入口条目 id（list 槽内唯一）。 */
+/** 入口条目 id（同槽内唯一）。 */
 export const DRAWER_ENTRY_REGISTRATION_ID = 'taskboard3-drawer-entry';
 
-/** 面板条目 id（list 槽内唯一）。 */
+/** 面板条目 id（同槽内唯一）。 */
 export const DRAWER_PANEL_REGISTRATION_ID = 'taskboard3-drawer-panel';
 
 /** 入口排序（同槽里越靠前越靠左）。 */
 export const DRAWER_ENTRY_ORDER = 100;
 
-/**
- * 面板排序 —— 和斜杠菜单（0）、命令弹窗（1）、反馈弹窗（2）同槽。
- * 我们排后面：任务板抽屉是「大面板」，让菜单优先命中。
- */
+/** 面板排序 —— 让斜杠菜单（0）、命令弹窗（1）、反馈弹窗（2）优先命中。 */
 export const DRAWER_PANEL_ORDER = 50;
 
 /** `registerDrawerSlots()` 的参数。 */
 export interface DrawerSlotOptions {
-	/** 面板里那个压缩版 `<Workspace />` 的数据 / 回调（宿主给）。 */
-	readonly workspace: WorkspaceProps;
-	/** 候选形态；不传 = `DRAWER_DEFAULT_VARIANT_ID`（占位，等用户裁定）。 */
+	/**
+	 * 面板内容 —— 产品传 `createElement(WorkspaceBody)`。
+	 *
+	 * 内容组件自己 `useBoardState()`，所以不需要宿主喂数据。
+	 */
+	readonly content: ReactNode;
+	/** 候选形态；不传 = `DRAWER_DEFAULT_VARIANT_ID`。 */
 	readonly variant?: DrawerVariantId;
 	/** 顶栏标题。 */
 	readonly title?: string;
-	/** 顶栏刷新回调（省略 = 不画刷新按钮）。 */
-	readonly onRefresh?: () => void;
 }
 
-/** 两个槽共同的注入形状：一份共享 store。 */
-export interface DrawerInjected {
-	readonly hooks: {
-		readonly drawer: DrawerStore;
-	};
+/**
+ * 入口槽的组件 —— 受控的 `<DrawerEntry>`，状态来自模块级 store。
+ *
+ * @returns 入口按钮
+ */
+export function DrawerEntrySlot(): ReactNode {
+	const open = useDrawerOpen();
+	const variant = DRAWER_VARIANT;
+	return <DrawerEntry open={open} onToggle={toggleDrawer} variant={variant} />;
 }
 
-/** 面板槽的注入形状：共享 store + Workspace 数据。 */
-export interface DrawerPanelInjected extends DrawerInjected {
-	readonly workspace: WorkspaceProps;
+/** 面板槽的组件工厂 —— 需要拿到 `content`（由 `registerDrawerSlots` 闭包给）。 */
+export interface DrawerPanelSlotProps {
+	readonly content: ReactNode;
+	readonly variant: DrawerVariantId;
 	readonly title?: string;
-	readonly onRefresh?: () => void;
 }
 
 /**
- * 入口槽的组件 —— 把 store 接到受控的 `<DrawerEntry>`。
+ * 面板槽的组件 —— 受控的 `<Drawer>`，状态来自模块级 store。
  *
- * @param props DSH 按 `inject(sessionId)` 的结果注入
+ * @param props 内容 + 形态
+ * @returns 抽屉面板
  */
-export function DrawerEntrySlot(props: DrawerInjected): ReactNode {
-	const drawer = useDrawerStore(props.hooks.drawer);
-	return <DrawerEntry open={drawer.open} onToggle={drawer.toggle} variant={drawer.variant} />;
-}
-
-/**
- * 面板槽的组件 —— 把 store 接到受控的 `<Drawer>`。
- *
- * @param props DSH 按 `inject(sessionId)` 的结果注入
- */
-export function DrawerPanelSlot(props: DrawerPanelInjected): ReactNode {
-	const drawer = useDrawerStore(props.hooks.drawer);
+export function DrawerPanelSlot(props: DrawerPanelSlotProps): ReactNode {
+	const open = useDrawerOpen();
 	return (
 		<Drawer
-			open={drawer.open}
-			onClose={drawer.close}
-			variant={drawer.variant}
-			workspace={props.workspace}
+			open={open}
+			onClose={closeDrawer}
+			variant={DRAWER_VARIANTS[props.variant]}
 			{...(props.title === undefined ? {} : { title: props.title })}
-			{...(props.onRefresh === undefined ? {} : { onRefresh: props.onRefresh })}
-		/>
+		>
+			{props.content}
+		</Drawer>
 	);
 }
+
+/** 默认形态。 */
+const DRAWER_VARIANT = DRAWER_VARIANTS[DRAWER_DEFAULT_VARIANT_ID];
 
 /**
  * 注册「入口 + 面板」两个槽。
  *
  * ⚠ 必须在 slots 服务可用之后调（`client.tsx` 的 `apply(ctx)` 里就可以）。
- *   注册本身跟随 owner 声明的坍缩 / 恢复（`slots.inject` 的语义，见边栏 tab 的写法）。
  *
  * @param ctx 客户端上下文
- * @param options Workspace 数据 + 形态
+ * @param options 内容 + 形态
  */
 export function registerDrawerSlots(ctx: Context, options: DrawerSlotOptions): void {
 	const variant = options.variant ?? DRAWER_DEFAULT_VARIANT_ID;
-
-	/*
-	 * sessionId → store。两个槽的 inject 都从这里取 ⇒ 同一 session 拿到**同一个对象**。
-	 * 用 Map 而不是 WeakMap：sessionId 是字符串；Map 在插件卸载时随闭包一起释放。
-	 */
-	const stores = new Map<string, DrawerStore>();
-
-	/**
-	 * 取这个 session 的 store（没有就造）。
-	 *
-	 * @param sessionId 会话 id
-	 */
-	const storeOf = (sessionId: string): DrawerStore => {
-		const existing = stores.get(sessionId);
-		if (existing !== undefined) return existing;
-		const created = createDrawerStore(variant);
-		stores.set(sessionId, created);
-		return created;
-	};
+	const title = options.title ?? '任务板';
 
 	/* ── ① 入口按钮：conversation.input.left ── */
 	ctx.slots.inject(DRAWER_ENTRY_SLOT, () =>
 		ctx.slots.register(
-			{
-				name: DRAWER_ENTRY_SLOT,
-				id: DRAWER_ENTRY_REGISTRATION_ID,
-				order: DRAWER_ENTRY_ORDER,
-				label: '任务板抽屉',
-				inject: (sessionId: string): DrawerInjected => ({
-					hooks: { drawer: storeOf(sessionId) },
-				}),
-			},
+			{ name: DRAWER_ENTRY_SLOT, id: DRAWER_ENTRY_REGISTRATION_ID, order: DRAWER_ENTRY_ORDER },
 			DrawerEntrySlot,
 		),
 	);
@@ -179,24 +148,13 @@ export function registerDrawerSlots(ctx: Context, options: DrawerSlotOptions): v
 	/* ── ② 面板：conversation.input.overlay ── */
 	ctx.slots.inject(DRAWER_PANEL_SLOT, () =>
 		ctx.slots.register(
-			{
-				name: DRAWER_PANEL_SLOT,
-				id: DRAWER_PANEL_REGISTRATION_ID,
-				order: DRAWER_PANEL_ORDER,
-				label: '任务板抽屉面板',
-				inject: (sessionId: string): DrawerPanelInjected => ({
-					hooks: { drawer: storeOf(sessionId) },
-					workspace: options.workspace,
-					...(options.title === undefined ? {} : { title: options.title }),
-					...(options.onRefresh === undefined ? {} : { onRefresh: options.onRefresh }),
-				}),
-			},
-			DrawerPanelSlot,
+			{ name: DRAWER_PANEL_SLOT, id: DRAWER_PANEL_REGISTRATION_ID, order: DRAWER_PANEL_ORDER },
+			() => <DrawerPanelSlot content={options.content} variant={variant} title={title} />,
 		),
 	);
 }
 
 /**
- * 面板 DOM id —— 入口的 `aria-controls` 指向它（从组件模块 re-export，方便调用方断言）。
+ * 面板 DOM id —— 入口的 `aria-controls` 指向它（从组件模块 re-export，方便断言）。
  */
 export { DRAWER_PANEL_ID };

@@ -140,11 +140,16 @@ export function renderDrawer(
 	} = {},
 ): string {
 	return renderToStaticMarkup(
+		/*
+		 * ⚠ `children` 必须放进 **props**，不能当 `createElement` 的第三参数 ——
+		 *   React 19 移除了 implicit children，`DrawerProps` 里 `children` 是必填
+		 *   ⇒ 三参写法会报 `Property 'children' is missing`。
+		 */
 		createElement(Drawer, {
 			open: options.open ?? true,
 			onClose: noop,
 			variant: DRAWER_VARIANTS[variantId],
-			workspace: options.workspace ?? sampleWorkspaceProps(),
+			children: createElement(Workspace, options.workspace ?? sampleWorkspaceProps()),
 			...(options.title === undefined ? {} : { title: options.title }),
 			...(options.onRefresh === true ? { onRefresh: noop } : {}),
 		}),
