@@ -12,7 +12,8 @@
     "clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['protocol','core','tools','store','dsh','dsh-client'])rmSync('packages/'+p+'/lib',{recursive:true,force:true})\"",
     "test": "node --test \"packages/*/test/**/*.test.ts\"",
     "check:dev": "tsc -p packages/dsh-client/tsconfig.dev.json",
-    "check": "pnpm run build && pnpm run check:dev && pnpm run test",
+    "check:test-types": "tsc -p tsconfig.test.json",
+    "check": "pnpm run build && pnpm run check:dev && pnpm run check:test-types && pnpm run test",
     "link-worktree": "node scripts/link-worktree.mjs"
   },
   "devDependencies": {
