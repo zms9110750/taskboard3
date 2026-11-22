@@ -215,7 +215,84 @@ if (tabEntry?.found === true) {
 	await shot('entries-3-right');
 }
 
-console.log(`\n${results.every((r) => r.ok) ? '✅ 三处入口全部可用' : '❌ 有失败'}`);
+/* ═══ ④ 抽屉面板几何：不得被视口顶边裁掉、不得压住输入框 ═══
+ *
+ * 用户 2026-11-23：「这个抽屉视图只占这么点大小不对。」
+ * 实测旧实现（`height:min(50vh,480px)`、无 max-height）在**所有**视口下都
+ * `panel.top < 0` —— 因为空对话时输入框垂直居中，`min(50vh,480px)` 的上沿
+ * 一定越过视口顶边（596 高：top=-15；900 高：top=-15；720 高：top=-15）。
+ *
+ * ⇒ 这里钉的是**行为**（AGENTS 3.9：断言行为，不要断言数字）：
+ *    1. 面板完整在视口内（top >= 0、bottom <= 视口高）
+ *    2. 面板底边不压输入框（bottom <= composerTop）
+ *    3. 面板宽高都 > 0（渲染出来了）
+ *    4. 面板内部主体不溢出（`scrollHeight <= clientHeight`）
+ * 三个视口都跑，特别是 **596 高**（用户截图那一档）。
+ */
+const DRAWER_VIEWPORTS = [
+	{ w: 1157, h: 596 },
+	{ w: 1280, h: 720 },
+	{ w: 1440, h: 900 },
+];
+
+for (const vp of DRAWER_VIEWPORTS) {
+	await send(ws, 'Emulation.setDeviceMetricsOverride', {
+		width: vp.w,
+		height: vp.h,
+		deviceScaleFactor: 1,
+		mobile: false,
+	});
+	await sleep(700);
+
+	/* 确保抽屉开着（开着就什么都不做；关着就点一次入口） */
+	await ev(`(function(){
+    if (document.getElementById('tb3d-drawer-panel')) return 'already-open';
+    const b=document.querySelector('.tb3d-entry');
+    if (b) b.click();
+    return b ? 'clicked' : 'no-entry';
+  })()`);
+	await sleep(900);
+
+	const geo = await ev(`(function(){
+    const panel=document.getElementById('tb3d-drawer-panel');
+    if (!panel) return { error:'no-panel' };
+    const b=panel.getBoundingClientRect();
+    const layer=document.querySelector('.tb3d-layer');
+    /* composer 卡片 = layer 最近的可定位祖先（position:relative） */
+    let card=layer;
+    while (card && getComputedStyle(card).position!=='relative') card=card.parentElement;
+    const cb=card?card.getBoundingClientRect():null;
+    const body=document.querySelector('.tb3d-body');
+    return {
+      top: Math.round(b.top), bottom: Math.round(b.bottom),
+      w: Math.round(b.width), h: Math.round(b.height),
+      composerTop: cb?Math.round(cb.top):null,
+      vh: innerHeight, vw: innerWidth,
+      bodyOverflow: body ? body.scrollHeight > body.clientHeight + 1 : null,
+    };
+  })()`);
+
+	const ok =
+		geo?.error === undefined &&
+		(geo?.w ?? 0) > 0 &&
+		(geo?.h ?? 0) > 0 &&
+		(geo?.top ?? -1) >= 0 &&
+		(geo?.bottom ?? 1e9) <= geo.vh &&
+		(geo?.composerTop === null || (geo?.bottom ?? 1e9) <= geo.composerTop) &&
+		geo?.bodyOverflow === false;
+
+	check(
+		`④ ${String(vp.w)}×${String(vp.h)} 抽屉面板完整在视口内、不压输入框、不内部溢出`,
+		ok === true,
+		`top=${String(geo?.top)} bottom=${String(geo?.bottom)} h=${String(geo?.h)} w=${String(geo?.w)} composerTop=${String(geo?.composerTop)} vh=${String(geo?.vh)} bodyOverflow=${String(geo?.bodyOverflow)}`,
+	);
+	await shot(`entries-4-drawer-geo-${String(vp.w)}x${String(vp.h)}`);
+}
+
+/* 还原视口，别把后面的东西留在小屏状态 */
+await send(ws, 'Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+
+console.log(`\n${results.every((r) => r.ok) ? '✅ 三处入口全部可用 + 抽屉几何三档全绿' : '❌ 有失败'}`);
 if (logs.length > 0) {
 	console.log('\n=== 页面异常 ===');
 	for (const one of logs.slice(0, 8)) console.log('  ' + one);
