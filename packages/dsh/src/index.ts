@@ -125,6 +125,14 @@ export type ApplyContext = {
 	 *   缺席时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
 	 */
 	readonly subagents?: unknown;
+	/**
+	 * Cordis 的 `ctx.get(name)` —— **可选**访问服务，不触发 inject 检查。
+	 *
+	 * ⚠ 和 `readonly subagents` 的差别：读 `ctx.subagents` 会走 Cordis 的
+	 *   属性拦截器，服务不在 `inject` 里就抛
+	 *   `cannot get property "subagents" without inject`。
+	 */
+	get?(name: string): unknown;
 	effect?(dispose: () => void, label?: string): void;
 };
 
@@ -135,6 +143,20 @@ export type ApplyContext = {
  * 一并消失。这是 DSH 的资源所有权约定。
  */
 export function apply(ctx: ApplyContext, config: Config = {}): void {
+	/*
+	 * `ctx.subagents` 是**可选**服务 —— 用可选访问读它，**不能**写进 `inject`。
+	 *
+	 * ⚠ 写进 `inject` 的后果（2026-11-22 在隔离 profile 里实测到的）：
+	 *   没有 subagents 服务的 profile（比如只装 base + web-app 的隔离环境）
+	 *   会让整个插件**不激活**：
+	 *
+	 *     taskboard3 (@taskboard/dsh): Error: cannot get property "subagents" without inject
+	 *
+	 *   而任务板本该在没有 subagent 的环境里也能用（holder 回落 `agent.id`）。
+	 *   ⇒ 用 `ctx.get?.()` 探测，拿不到就是 undefined。
+	 */
+	const subagents = typeof ctx.get === 'function' ? (ctx.get('subagents') as ApplyContext['subagents']) : ctx.subagents;
+
 	/*
 	 * ⚠ **原型期脚手架**：广播总线 + SSE。
 	 *
@@ -199,14 +221,14 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	 *   上一版的三个任务板预设 + `permissionPresets` 读取整个删掉 ——
 	 *   用户：「因为细节问题没必要给 dsh 开一堆权限」。
 	 */
-	const permissionGuard = createPermissionGuard({ taskboard, subagents: ctx.subagents });
+	const permissionGuard = createPermissionGuard({ taskboard, subagents });
 	const disposeGuard = ctx.tools.guard(permissionGuard);
 
 	/* 工具：v2 工具定义在 `@taskboard/tools`，本文件只负责接线（见 `tools.ts` 文件头）。 */
 	const tools = createTools({
 		taskboard,
 		defaultWorkspaceId,
-		subagents: ctx.subagents,
+		subagents,
 	});
 	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
 
