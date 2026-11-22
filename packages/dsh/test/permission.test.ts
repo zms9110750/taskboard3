@@ -197,7 +197,7 @@ describe('heldWorkCardsOf', () => {
 	it('未领取（草稿 / 提交）的卡不算持有', async () => {
 		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
 		if (template === undefined) return;
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '还是草稿' });
+		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '还是草稿', actor: 'user' });
 		assert.equal(created.ok, true);
 
 		const { cards } = heldWorkCardsOf(taskboard, 'lead');

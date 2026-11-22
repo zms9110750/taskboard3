@@ -388,7 +388,7 @@ describe('GET /api/search', () => {
 		const template = anyTemplate();
 		if (template === undefined) return;
 
-		const card = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '唯一一张' });
+		const card = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '唯一一张', actor: 'user' });
 		assert.equal(card.ok, true);
 
 		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
@@ -517,7 +517,7 @@ describe('PATCH /api/cards/:id', () => {
 		const wsId = created.workspace.id;
 		const template = anyTemplate();
 		if (template === undefined) return;
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '旧标题' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '旧标题', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 
@@ -567,7 +567,7 @@ describe('POST /api/cards/:id/action', () => {
 		const wsId = created.workspace.id;
 		/* 要 goal/work 模板：它们的草稿「采纳」→ SUBMITTED，这条路才是合法转移。 */
 		const template = adoptToSubmittedTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 		assert.equal(made.card.status, 'TASK_STATE_UNSPECIFIED');
@@ -606,7 +606,7 @@ describe('POST /api/cards/:id/action', () => {
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
 		const template = adoptToSubmittedTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 		assert.equal(made.card.adoptedAt, null, '草稿的 adoptedAt 应是 null');
@@ -644,7 +644,7 @@ describe('POST /api/cards/:id/action', () => {
 		 * 用 goal/work 反而不稳：那条转移是合法的。
 		 */
 		const template = adoptToAuthTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '草稿' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '草稿', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 
@@ -670,7 +670,7 @@ describe('POST /api/cards/:id/action', () => {
 		assert.notEqual(template, undefined);
 		if (template === undefined) return;
 
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '可领的卡' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '可领的卡', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 		/* 先采纳到提交（领取的前置状态）。 */
@@ -702,7 +702,7 @@ describe('POST /api/cards/:id/action', () => {
 		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
 		if (template === undefined) return;
 
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '处理中的卡' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '处理中的卡', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 		await taskboard.transition(wsId, made.card.id, 'TASK_STATE_SUBMITTED', 'button');
@@ -815,7 +815,7 @@ describe('actor 标记：HTTP 写 ⇒ updates.user', () => {
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
 		const template = anyTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '用户的卡' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '用户的卡', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 
@@ -834,7 +834,7 @@ describe('actor 标记：HTTP 写 ⇒ updates.user', () => {
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
 		const template = anyTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待已读' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待已读', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 

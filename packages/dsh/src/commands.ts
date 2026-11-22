@@ -185,6 +185,19 @@ export function registerCommands(registry: CommandRegistryLike, deps: CommandDep
 				workspaceId,
 				templateRef: template.ref,
 				title,
+				/*
+				 * 斜杠命令是**人**敲的 ⇒ `'user'`。
+				 *
+				 * 判据在本文件头（第 7 行）：
+				 * > 「与 AI 工具的分工：命令是**人**敲的，工具是**模型**调的，
+				 * >   底层是同一批 core 方法。」
+				 *
+				 * ⇒ 这条命令的触发者只有人。AI 工具走的是 `packages/tools/src/tools/create.ts`，
+				 *   那条显式传 `'ai'`，两条入口各自表态，谁也不靠默认值。
+				 *
+				 * ⚠ `actor` 现在是 **必填**（用户 `2026-11-22`）—— 漏传编译就红。
+				 */
+				actor: 'user',
 			});
 			if (!created.ok) return { kind: 'error', text: `建卡失败：${created.message}` };
 

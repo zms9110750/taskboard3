@@ -745,6 +745,7 @@ describe('adopt：AI 采纳草稿的域逻辑（与权限判定无关）', () =>
 			workspaceId: ws,
 			templateRef: kind,
 			title: `卡-${Math.random().toString(36).slice(2, 7)}`,
+			actor: 'user',
 		});
 		assert.ok(result.ok, JSON.stringify(result));
 		return result.card.id;
