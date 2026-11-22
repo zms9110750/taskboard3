@@ -28,6 +28,7 @@ import {
 	type FetchLike,
 } from '../src/api.ts';
 
+
 describe('buildPath —— 相对路径拼接', () => {
 	it('基础路径没有前导斜杠', () => {
 		assert.equal(API_BASE.startsWith('/'), false, 'API_BASE 不能有前导斜杠，否则子路径挂载时会跳出');
@@ -277,5 +278,94 @@ describe('⭐ 其余请求体与服务端读取的字段名对齐', () => {
 		await api.createWorkspace('新');
 
 		assert.deepEqual(fetchImpl.calls[0]?.body, { name: '新' });
+	});
+});
+
+/* ══════════════════════════════════════════════════════════
+   归档空间 —— 请求形状（用注入的假 fetch，不发真请求）
+   ══════════════════════════════════════════════════════════ */
+
+describe('archiveWorkspace / unarchiveWorkspace —— 请求形状', () => {
+	/**
+	 * 造一个假 fetch，记录每次请求，回一个成功信封。
+	 *
+	 * @param data 信封里的 data
+	 * @returns `{ fetch, calls }`
+	 */
+	function fakeFetch(data: unknown): {
+		readonly calls: { readonly url: string; readonly method: string | undefined; readonly body: string | undefined }[];
+		readonly fetch: (
+			url: string,
+			init?: { readonly method?: string; readonly body?: string },
+		) => Promise<{ readonly ok: boolean; readonly status: number; readonly text: () => Promise<string> }>;
+	} {
+		const calls: { url: string; method: string | undefined; body: string | undefined }[] = [];
+		return {
+			calls,
+			fetch: async (url, init) => {
+				calls.push({ url, method: init?.method, body: init?.body });
+				return {
+					ok: true,
+					status: 200,
+					text: async () => JSON.stringify({ ok: true, data }),
+				};
+			},
+		};
+	}
+
+	it('archiveWorkspace ⇒ POST workspaces/<id>/archive，不带 body', async () => {
+		const envelope = { changed: true, workspace: { id: 'W1', displayName: '核心', archived: true } };
+		const { fetch, calls } = fakeFetch(envelope);
+		const api = createApi(fetch);
+
+		const result = await api.archiveWorkspace('W1');
+		assert.deepEqual(result, envelope);
+
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0]?.method, 'POST');
+		assert.equal(calls[0]?.url, `${API_BASE}/workspaces/W1/archive`);
+		/* 归档不需要 body —— id 在路径里，多余 body 只会让路由困惑。 */
+		assert.equal(calls[0]?.body, undefined);
+	});
+
+	it('unarchiveWorkspace ⇒ POST workspaces/<id>/unarchive', async () => {
+		const { fetch, calls } = fakeFetch({ changed: true, workspace: undefined });
+		const api = createApi(fetch);
+
+		await api.unarchiveWorkspace('W1');
+		assert.equal(calls[0]?.url, `${API_BASE}/workspaces/W1/unarchive`);
+		assert.equal(calls[0]?.method, 'POST');
+	});
+
+	it('⚠ 空间 id 里有特殊字符 ⇒ 被 URL 编码（不能直接拼进路径）', async () => {
+		const { fetch, calls } = fakeFetch({ changed: false, workspace: undefined });
+		const api = createApi(fetch);
+
+		await api.archiveWorkspace('空间/带斜杠');
+		assert.equal(calls[0]?.url, `${API_BASE}/workspaces/${encodeURIComponent('空间/带斜杠')}/archive`);
+	});
+
+	it('changed: false 原样透出（幂等不是错误）', async () => {
+		const { fetch } = fakeFetch({ changed: false, workspace: undefined });
+		const api = createApi(fetch);
+
+		const result = await api.archiveWorkspace('W1');
+		assert.equal(result.changed, false);
+	});
+
+	it('失败信封 ⇒ 抛异常，带 code', async () => {
+		const api = createApi(async () => ({
+			ok: false,
+			status: 404,
+			text: async () => JSON.stringify({ ok: false, code: 'WORKSPACE_NOT_FOUND', message: '空间不存在' }),
+		}));
+
+		await assert.rejects(
+			() => api.archiveWorkspace('NOPE'),
+			(error: unknown) => {
+				assert.equal((error as { code?: string }).code, 'WORKSPACE_NOT_FOUND');
+				return true;
+			},
+		);
 	});
 });

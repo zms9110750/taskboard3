@@ -42,7 +42,7 @@
  *
  * | 回调 | 缺什么 |
  * |---|---|
- * | `onToggleArchived` | `api.ts` 没有归档空间的方法；`dsh` 没有对应 HTTP 路由（`core` 有 `archiveWorkspace`，但没暴露出来）|
+ * | `onToggleArchived` | ✅ 已接（`api.archiveWorkspace` + `POST /workspaces/:id/archive`）| `core` 有 `archiveWorkspace`，但没暴露出来）|
  * | `onCreateCard` | 建卡页（`renderers/create/`）存在，但整条「打开建卡页 → 提交」的流程没接 |
  * | `onNoteChange` | `api.patchCard` 存在，但**它和服务端的线格式不一致**（见 `api.ts:232` 发 `{patch}`，`dsh/src/http.ts:600` 读 `title`/`note`/`content`）⇒ 现在调用会 400 |
  * | `onAddRelation` / `onDerive` | 关系编辑、派生子任务都还没做 |
@@ -144,6 +144,23 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 		[actions],
 	);
 
+	/**
+	 * 点「已归档」按钮 ⇒ 归档 / 取消归档那个空间。
+	 *
+	 * ⚠ 按钮的语义是**翻转**（不是「设为已归档」）——
+	 *   `SpaceBar` 的 `actionButtonOf()` 只在「显示已归档」打开时给这个按钮，
+	 *   此时按钮显示的是目标空间的**当前归档状态**，点一下就是反过来。
+	 *   所以这里要按当前状态判断传 `archived` 还是 `!archived`。
+	 */
+	const onToggleArchived = useCallback(
+		(id: string): void => {
+			const target = state.workspaces.find((one) => one.id === id);
+			const next = target?.archived !== true;
+			void actions.setWorkspaceArchived(id, next);
+		},
+		[actions, state.workspaces],
+	);
+
 	const onSelect = useCallback((cardId: string | null): void => {
 		setSelectedId(cardId);
 	}, []);
@@ -195,9 +212,7 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 			 *   这是「不编词」的口径，不是漏了。
 			 */
 			onView={onView}
-			onToggleArchived={(id) => {
-				notWired(`归档空间「${id}」`);
-			}}
+			onToggleArchived={onToggleArchived}
 			onToggleShowArchived={() => {
 				setShowArchived((now) => !now);
 			}}

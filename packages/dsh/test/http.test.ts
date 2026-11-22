@@ -299,6 +299,113 @@ describe('POST /api/workspaces', () => {
 	});
 });
 
+describe('POST /api/workspaces/:id/archive', () => {
+	/**
+	 * 造一个空间并返回 id。
+	 *
+	 * ⚠ **名字必须唯一**：`dataDir` 在整个文件里共用（只在 `before` 建一次），
+	 *   所以空间是**跨用例持久**的 —— 同名会 `NAME_TAKEN`。
+	 *   用计数器保证唯一，别用固定名字。
+	 */
+	let spaceSeq = 0;
+	async function makeSpace(): Promise<string> {
+		spaceSeq += 1;
+		const created = await taskboard.createWorkspace(`待归档-${String(spaceSeq)}`);
+		assert.equal(created.ok, true);
+		if (!created.ok) throw new Error('建空间失败');
+		return created.workspace.id;
+	}
+
+	it('归档 ⇒ 200，changed: true，返回的空间 archived=true', async () => {
+		const id = await makeSpace();
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive`,
+		});
+		assert.equal(out.status, 200);
+		const payload = out.json as {
+			ok: boolean;
+			data: { changed: boolean; workspace: { id: string; archived: boolean } };
+		};
+		assert.equal(payload.ok, true);
+		assert.equal(payload.data.changed, true);
+		assert.equal(payload.data.workspace.archived, true);
+	});
+
+	it('⚠ 重复归档 ⇒ 200 + changed: false（幂等，不是错误）', async () => {
+		const id = await makeSpace();
+		await call(depsOf(), { method: 'POST', url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive` });
+		const again = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive`,
+		});
+		assert.equal(again.status, 200);
+		const payload = again.json as { ok: boolean; data: { changed: boolean } };
+		assert.equal(payload.ok, true);
+		assert.equal(payload.data.changed, false);
+	});
+
+	it('不存在的空间 ⇒ 404 + WORKSPACE_NOT_FOUND', async () => {
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/NOPE/archive`,
+		});
+		assert.equal(out.status, 404);
+		const payload = out.json as { ok: boolean; code: string };
+		assert.equal(payload.ok, false);
+		assert.equal(payload.code, 'WORKSPACE_NOT_FOUND');
+	});
+
+	it('unarchive 反向：归档后取消 ⇒ archived=false', async () => {
+		const id = await makeSpace();
+		await call(depsOf(), { method: 'POST', url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive` });
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/${id}/unarchive`,
+		});
+		assert.equal(out.status, 200);
+		const payload = out.json as {
+			ok: boolean;
+			data: { changed: boolean; workspace: { archived: boolean } };
+		};
+		assert.equal(payload.data.changed, true);
+		assert.equal(payload.data.workspace.archived, false);
+	});
+
+	it('方法不对 ⇒ 405（归档只接受 POST）', async () => {
+		const id = await makeSpace();
+		const out = await call(depsOf(), {
+			method: 'GET',
+			url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive`,
+		});
+		assert.equal(out.status, 405);
+	});
+
+	it('⚠ 空间 id 被 URL 编码时也能解析（中文 id）', async () => {
+		const created = await taskboard.createWorkspace('中文空间-' + String(spaceSeq));
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const id = created.workspace.id;
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/${encodeURIComponent(id)}/archive`,
+		});
+		assert.equal(out.status, 200);
+	});
+
+	it('归档后 listWorkspaces(false) 里不再有它', async () => {
+		const id = await makeSpace();
+		assert.ok(taskboard.listWorkspaces(false).some((one) => one.id === id));
+		await call(depsOf(), { method: 'POST', url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive` });
+		assert.equal(
+			taskboard.listWorkspaces(false).some((one) => one.id === id),
+			false,
+		);
+		/* 但 includeArchived=true 里还在 —— 否则「取消归档」就无从点起。 */
+		assert.ok(taskboard.listWorkspaces(true).some((one) => one.id === id));
+	});
+});
+
 describe('POST /api/cards', () => {
 	it('建卡成功 ⇒ 201，返回卡', async () => {
 		const created = await taskboard.createWorkspace('建卡测试');

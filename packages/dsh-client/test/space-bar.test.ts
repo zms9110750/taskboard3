@@ -145,36 +145,42 @@ describe('② 表第二行：显示已归档=开 ⇒ 非当前空间切归档状
 	});
 });
 
-describe('② 表第三行：显示已归档=开 + 当前空间（未归档）⇒ 「当前空间」禁用', () => {
-	it('⭐ 文案必须是「当前空间」，**不是**「已归档」（防误导）', () => {
+describe('② 开 + 当前空间（未归档）⇒ 「已归档」可点（旧规则「当前空间不能归档」已删）', () => {
+	/*
+	 * 用户 2026-11-22 取消了「激活空间」设定 ⇒ currentId 不再是 AI 默认空间。
+	 * 旧规则 currentCannotArchive = isCurrent && !isArchived 的理由已失效。
+	 *
+	 * ⚠ 而且产品里 currentId === viewingId（同一个 state.workspaceId），
+	 *   那条规则会让按钮**永远禁用** ⇒ 任何空间都归档不了。CDP 实测过。
+	 */
+	it('⭐ 当前空间未归档 ⇒ 可点 + 文案「已归档」+ 未选中', () => {
 		const a = actionButtonOf(LIST, 'A', 'A', true);
 		assert.ok(a !== undefined, 'a 不该是 undefined');
-		assert.equal(a!.label, '当前空间');
-		assert.notEqual(a!.label, '已归档');
+		assert.equal(a.label, '已归档');
+		assert.equal(a.disabled, false, '必须可点，否则归档功能死锁');
+		assert.equal(a.checked, false);
+		assert.equal(a.kind, 'toggle-archived');
+		assert.match(a.title, /点一下归档/);
 	});
 
-	it('⭐ 必须禁用', () => {
-		const a = actionButtonOf(LIST, 'A', 'A', true);
+	it('⭐ 当前空间已归档 ⇒ 可点 + checked', () => {
+		const a = actionButtonOf(WITH_ANOMALY, 'D', 'D', true);
 		assert.ok(a !== undefined, 'a 不该是 undefined');
-		assert.equal(a!.disabled, true);
+		assert.equal(a.disabled, false);
+		assert.equal(a.checked, true);
+		assert.match(a.title, /取消归档/);
 	});
 
-	it('⚠ 未归档 ⇒ checked 必须是 false（不能画成选中态）', () => {
-		const a = actionButtonOf(LIST, 'A', 'A', true);
-		assert.ok(a !== undefined, 'a 不该是 undefined');
-		assert.equal(a!.checked, false);
-	});
-
-	it('title 说明「当前激活的任务空间不能归档」', () => {
-		const a = actionButtonOf(LIST, 'A', 'A', true);
-		assert.ok(a !== undefined, 'a 不该是 undefined');
-		assert.match(a!.title, /不能归档/);
-	});
-
-	it('kind 仍是 toggle-archived（同一张表、同一个按钮，只是禁用）', () => {
-		assert.equal(actionButtonOf(LIST, 'A', 'A', true).kind, 'toggle-archived');
+	it('⭐ 当前与非当前只差 checked —— 都可点', () => {
+		const normal = actionButtonOf(LIST, 'A', 'A', true);
+		const anomaly = actionButtonOf(WITH_ANOMALY, 'D', 'D', true);
+		assert.equal(normal.disabled, false);
+		assert.equal(anomaly.disabled, false);
+		assert.equal(normal.checked, false);
+		assert.equal(anomaly.checked, true);
 	});
 });
+
 
 describe('② 表第四行：显示已归档=开 + 当前空间（已归档，异常态）⇒ 「已归档」可点', () => {
 	it('⭐ 异常态必须**可点**（否则用户死锁，没法取消归档）', () => {
@@ -191,10 +197,14 @@ describe('② 表第四行：显示已归档=开 + 当前空间（已归档，�
 		assert.equal(a!.kind, 'toggle-archived');
 	});
 
-	it('⚠ 与第三行只差一个 archived 标记 —— 这是「允许点」的唯一判据', () => {
+	it('⚠ 当前与非当前都**可点**，只差 checked（旧「当前空间禁用」规则已删）', () => {
 		const normal = actionButtonOf(LIST, 'A', 'A', true); // 当前 + 未归档
 		const anomaly = actionButtonOf(WITH_ANOMALY, 'D', 'D', true); // 当前 + 已归档
-		assert.equal(normal!.disabled, true);
+		/*
+		 * 旧断言是 `normal.disabled === true` —— 那个规则会死锁：
+		 * 产品里 `currentId === viewingId` ⇒ 永远「当前」⇒ 永远禁用。
+		 */
+		assert.equal(normal!.disabled, false);
 		assert.equal(anomaly!.disabled, false);
 		assert.equal(normal!.checked, false);
 		assert.equal(anomaly!.checked, true);
@@ -249,8 +259,15 @@ describe('② 禁用时按钮什么都不做', () => {
 		assert.equal(actionButtonOf(LIST, 'A', 'B', false), undefined);
 	});
 
-	it('⭐ 开 + 当前空间（未归档）⇒ dispatchOf 返回 undefined', () => {
-		assert.equal(dispatchOf(actionButtonOf(LIST, 'A', 'A', true)), undefined);
+	it('⭐ 开 + 当前空间（未归档）⇒ dispatchOf 派发 toggle-archived（旧规则已删）', () => {
+		/*
+		 * 用户 2026-11-22 取消了「激活空间」⇒ `currentId` 不再是 AI 默认空间
+		 * ⇒ 「当前空间不能归档」这条规则的理由已失效，而且它会让按钮永远禁用。
+		 */
+		const a = actionButtonOf(LIST, 'A', 'A', true);
+		assert.ok(a !== undefined, 'a 不该是 undefined');
+		assert.equal(a.disabled, false);
+		assert.deepEqual(dispatchOf(a), { kind: 'toggle-archived', id: 'A' });
 	});
 
 	it('⭐ 没有空间 ⇒ dispatchOf 返回 undefined', () => {
