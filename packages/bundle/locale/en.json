@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Taskboard",
-    "description": "Task cards with a state machine and relations: nine states, six relation types, one workspace per container. Three independently switchable components: storage (the only replaceable point), Host half (HTTP + AI tools), browser UI (left sidebar / drawer / right workspace)."
+    "description": "Installs the taskboard as one card. This package holds no business code: only a plugin list (three independently switchable components) plus the icon and name shown in settings.\n\nIts job is installation: the three components are grouped under one card, each with its own switch. Turning all three off and removing this card is the same as not installing the taskboard at all.\n\nIt handles no data, no UI and no AI tools — those live in the three components below. Deleting this package loses no capability; it only turns the three components into three sibling cards in settings."
   }
 }
