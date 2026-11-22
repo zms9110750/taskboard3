@@ -38,7 +38,7 @@
  * | 管 | 不管（在组件 / CSS 里）|
  * |---|---|
  * | 3 个候选形态的**数值表**（图标 / 间距 / 圆角 / 高度 / 遮罩 / 动画）| 怎么画 SVG、怎么排 DOM（`Drawer.tsx`）|
- * | 「高度 ≈ 屏幕一半」的**具体公式**（`min(50vh, 480px)` 或 `50vh`）| CSS 字符串（`styles.ts` 由本文件插值生成）|
+ * | 「高度 ≈ 屏幕一半」的**具体公式**（`min(50vh, 480px)` 或 `50vh`）| CSS 字符串（`renderers/drawer-css.ts` 由本文件插值生成）|
  * | 开合状态机 + 共享 store（两个槽必须看同一个 `open`）| `useSyncExternalStore` 怎么接（组件里一行）|
  * | Esc / 点外部的**判决** | DOM 事件监听怎么挂（组件的 effect）|
  * | 面板内容的压缩间距表（数值单一来源）| 具体覆盖哪些类（`DRAWER_CSS` 里插值）|
@@ -222,7 +222,7 @@ export function drawerVariantOf(id: DrawerVariantId): DrawerVariant {
 }
 
 /* ══════════════════════════════════════════════════════════
-   2. 尺寸 → CSS（`styles.ts` 的 `DRAWER_CSS` 由这些函数插值生成）
+   2. 尺寸 → CSS（`renderers/drawer-css.ts` 的 `DRAWER_CSS` 由这些函数插值生成）
    ══════════════════════════════════════════════════════════ */
 
 /** 数值 → `Npx`。 */
@@ -446,7 +446,7 @@ export function closesDrawerOn(hit: DrawerHitTarget): boolean {
    ══════════════════════════════════════════════════════════ */
 
 /**
- * 抽屉里的纵向间距表（px）—— **CSS 由这张表插值生成**（`styles.ts` 的 `DRAWER_CSS`）。
+ * 抽屉里的纵向间距表（px）—— **CSS 由这张表插值生成**（`renderers/drawer-css.ts` 的 `DRAWER_CSS`）。
  *
  * 数值沿用 V4 定稿表（那张表是照 400px 高量的：400 高里列表内容区只有 ~316px、
  * 一张卡 56px ⇒ 每收 1px 都多露一点）。现在面板高 ~430–480px，比 400 略高，

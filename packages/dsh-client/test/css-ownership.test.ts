@@ -17,7 +17,7 @@
  * src/renderers/fallback-css.ts           FALLBACK_CSS
  * src/renderers/create/create-css.ts      CREATE_CSS
  * src/pure/techtree-css.ts                TECHTREE_CSS
- * （drawer-css 等 split-c 合并后再列）
+ * src/renderers/drawer-css.ts              DRAWER_CSS
  * src/pure/techtree-css.ts                TECHTREE_CSS
  * ```
  *
@@ -39,11 +39,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { CREATE_CSS as CREATE_FROM_NEW } from '../src/renderers/create/create-css.ts';
+import { DRAWER_CSS as DRAWER_FROM_NEW } from '../src/renderers/drawer-css.ts';
 import { FALLBACK_CSS as FALLBACK_FROM_NEW } from '../src/renderers/fallback-css.ts';
 import { SEARCHBOX_CSS as SEARCHBOX_FROM_NEW } from '../src/renderers/searchbox-css.ts';
 import { SECTION_CSS as SECTION_FROM_NEW } from '../src/renderers/section-css.ts';
 import {
 	CREATE_CSS as CREATE_FROM_STYLES,
+	DRAWER_CSS as DRAWER_FROM_STYLES,
 	FALLBACK_CSS as FALLBACK_FROM_STYLES,
 	SEARCHBOX_CSS as SEARCHBOX_FROM_STYLES,
 	SECTION_CSS as SECTION_FROM_STYLES,
@@ -67,6 +69,10 @@ void test('styles.ts 与组件目录里的是同一份（FALLBACK_CSS）', () =>
 
 void test('styles.ts 与组件目录里的是同一份（CREATE_CSS）', () => {
 	assert.equal(CREATE_FROM_STYLES, CREATE_FROM_NEW);
+});
+
+void test('styles.ts 与组件目录里的是同一份（DRAWER_CSS）', () => {
+	assert.equal(DRAWER_FROM_STYLES, DRAWER_FROM_NEW);
 });
 
 
@@ -124,6 +130,7 @@ void test('CSS 里没有反引号（会把外层模板字符串截断 ⇒ TS1005
 		SECTION_CSS: SECTION_FROM_NEW,
 		FALLBACK_CSS: FALLBACK_FROM_NEW,
 		CREATE_CSS: CREATE_FROM_NEW,
+		DRAWER_CSS: DRAWER_FROM_NEW,
 	};
 	for (const [name, css] of Object.entries(all)) {
 		assert.ok(!css.includes('`'), `${name} 里出现了反引号`);
