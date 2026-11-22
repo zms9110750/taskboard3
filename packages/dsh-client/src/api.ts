@@ -264,6 +264,63 @@ export interface TaskboardApi {
 	 * @param registered 已注册的 `$type` 清单（来自 `registeredTypes()`）
 	 */
 	renderCheck(registered: readonly string[]): Promise<RenderCheckResult>;
+	/**
+	 * 读两条权限轴的当前档位 + 选项表。
+	 *
+	 * 契约（`packages/dsh/src/http.ts` 的 `GET /permission`）：
+	 *
+	 * ```
+	 * → { ok:true, data:{ cardActionLevel, toolGuardLevel,
+	 *                     cardActionOptions, toolGuardOptions } }
+	 * ```
+	 *
+	 * ⚠ **选项表跟数据一起返回**，不要在客户端硬编码档位文案 ——
+	 *   第二份文案漂移时不会报错，只会静默显示一个存不进去的档。
+	 */
+	getPermission(): Promise<PermissionData>;
+	/**
+	 * 写一条或两条轴的档位（**PATCH 语义**：只改传了的）。
+	 *
+	 * 契约（`POST /permission`，body `{ cardActionLevel?, toolGuardLevel? }`）：
+	 *
+	 * ```
+	 * → { ok:true, data:{ cardActionLevel, toolGuardLevel } }   // 回声不带选项表
+	 * ```
+	 *
+	 * ⚠ **只发被改的那一条轴。** 两条都发等于「用 UI 里的旧值覆盖另一条」，
+	 *   两个人同时改不同轴时会互相回滚 —— 正交模型在网络层的落点就是这里。
+	 *
+	 * @param input 至少给一条轴
+	 */
+	setPermission(input: {
+		readonly cardActionLevel?: string;
+		readonly toolGuardLevel?: string;
+	}): Promise<PermissionLevels>;
+}
+
+/**
+ * `GET /permission` 的响应。
+ *
+ * 字段名逐字对齐服务端的 `PermissionState`（`packages/dsh/src/http.ts:179`）。
+ */
+export interface PermissionData {
+	readonly cardActionLevel: string;
+	readonly toolGuardLevel: string;
+	readonly cardActionOptions: readonly PermissionAxisOption[];
+	readonly toolGuardOptions: readonly PermissionAxisOption[];
+}
+
+/** 一个档位的渲染素材（服务端 options 数组的元素）。 */
+export interface PermissionAxisOption {
+	readonly value: string;
+	readonly label: string;
+	readonly description: string;
+}
+
+/** `POST /permission` 的回声（只有两条轴的值，不含选项表）。 */
+export interface PermissionLevels {
+	readonly cardActionLevel: string;
+	readonly toolGuardLevel: string;
 }
 
 /** `POST /render-check` 的响应。 */
@@ -422,6 +479,24 @@ export function createApi(fetchImpl?: FetchLike): TaskboardApi {
 			return request<RenderCheckResult>('render-check', {
 				method: 'POST',
 				body: { registered: [...registered] },
+			});
+		},
+		async getPermission() {
+			return request<PermissionData>('permission');
+		},
+		async setPermission(input) {
+			/*
+			 * ⚠ **只带传了的字段**（PATCH 语义）。
+			 *
+			 * 两条都发 = 用 UI 里的值覆盖另一条轴 ⇒ 两个人同时改不同轴会互相回滚。
+			 * 服务端也要求「至少要给一个」：两个都不给会 400。
+			 */
+			return request<PermissionLevels>('permission', {
+				method: 'POST',
+				body: {
+					...(input.cardActionLevel === undefined ? {} : { cardActionLevel: input.cardActionLevel }),
+					...(input.toolGuardLevel === undefined ? {} : { toolGuardLevel: input.toolGuardLevel }),
+				},
 			});
 		},
 	};
