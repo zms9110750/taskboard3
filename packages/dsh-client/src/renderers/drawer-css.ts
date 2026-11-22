@@ -84,6 +84,8 @@ export const DRAWER_CSS = `
 /* ── 0. 令牌（没宿主主题时用兜底色） ── */
 .tb3d-layer{
   --tb3d-border:#d5dae1; --tb3d-border-weak:#eceff2; --tb3d-head-bg:#fbfcfd;
+  /* 入口按钮的边框比面板深一档 —— 它贴在输入框上，同色会「消失」（用户 2026-11-23）。 */
+  --tb3d-entry-border:#c6ced8;
   --tb3d-bg:#fff; --tb3d-text:#16181d; --tb3d-text-secondary:#6b7280;
 }
 
@@ -117,16 +119,35 @@ ${DRAWER_VARIANT_IDS.map(
 .tb3d-mask{${drawerMaskCssOf()};z-index:0}
 
 /* ── 4. 入口：正方形，右边缘贴输入框左边缘（相对 composer 卡片定位） ── */
+/*
+ * 用户 2026-11-23：「这个抽屉入口加一个阴影。边框。」
+ *
+ * ⇒ 原来只有 1px 的 --tb3d-border，而**入口按钮不在 .tb3d-layer 里**
+ *   （它在 conversation.input.left 槽、.tb3d-layer 在 overlay 槽）⇒ 自定义属性取不到
+ *   ⇒ var() 整条声明在计算值阶段失效 ⇒ 实测 border 算出 0px none、背景透明，
+ *   也就是说**之前根本没有边框和底色**。
+ *
+ * ⇒ 所以每个 var() 都带兜底值：入口是唯一活在层外的 tb3d- 元素。
+ *   阴影只在入口按钮上，面板和遮罩不动。
+ */
 .tb3d-entry{
   position:absolute;${drawerEntryCssOf()};
   display:inline-flex;align-items:center;justify-content:center;padding:0;
-  border:1px solid var(--tb3d-border);border-radius:8px;
-  background:var(--tb3d-bg);color:var(--tb3d-text-secondary);
+  border:1px solid var(--tb3d-entry-border, #c6ced8);
+  border-radius:8px;
+  background:var(--tb3d-bg, #fff);color:var(--tb3d-text-secondary, #6b7280);
   font-family:inherit;line-height:1;cursor:pointer;z-index:2;
-  transition:border-color .12s,background .12s,color .12s;
+  box-shadow:0 1px 2px rgb(15 23 42 / 10%), 0 2px 6px rgb(15 23 42 / 12%);
+  transition:border-color .12s,background .12s,color .12s,box-shadow .12s;
 }
-.tb3d-entry:hover{border-color:#cfd5dd;background:#f8fafc;color:#1f2328}
-.tb3d-entry[aria-expanded="true"]{border-color:#2563eb;background:#2563eb;color:#fff}
+.tb3d-entry:hover{
+  border-color:#b9c2ce;background:#f8fafc;color:#1f2328;
+  box-shadow:0 2px 4px rgb(15 23 42 / 12%), 0 4px 10px rgb(15 23 42 / 14%);
+}
+.tb3d-entry[aria-expanded="true"]{
+  border-color:#1d4ed8;background:#2563eb;color:#fff;
+  box-shadow:0 1px 2px rgb(37 99 235 / 24%), 0 3px 10px rgb(37 99 235 / 32%);
+}
 .tb3d-entry svg{display:block}
 
 /* ── 5. 顶栏：标题 / 刷新 / 关闭 ── */
