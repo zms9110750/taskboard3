@@ -1,7 +1,19 @@
 /**
- * 任务板标签页的 body —— 右侧工作区里的一个页面。
+ * 任务板标签页的 body —— **旧 MVP，已被 `WorkspaceBody` 取代**。
  *
- * ## 职责边界
+ * ⚠ 用户 `2026-11-22`：「产品在哪？有入口吗？我一直在改 UI。你写了入口吗？如果写了，那就接。」
+ *   ⇒ `client.tsx` 现在挂的是 `WorkspaceBody`（新 UI）。本文件**不再被产品使用**。
+ *
+ * 保留它的理由：
+ *
+ * 1. **旧 MVP 的连线范本** —— 它演示 `useBoardState` 怎么接 UI
+ *    （`switchWorkspace` / `runAction` / `createWorkspace` / `clearError` 的用法）。
+ * 2. **兜底** —— 新 UI 出问题时可以一行改回来对照。
+ *
+ * 它用的是 `views/` 下那批旧组件（`CardList` / `CardDetail` / `StatusMenu` / `WorkspaceBar`），
+ * 那批组件同样只剩本文件在用。**不要在新代码里引它们** —— 新 UI 用 `renderers/`。
+ *
+ * ## 职责边界（原文，保留）
  *
  * 这个组件**只组装**：顶部栏、列表 + 详情、状态菜单。
  * 它不判状态、不做转移规则、不碰 HTTP 细节 —— 那些在 `protocol` / `pure` / `store` / `api`。
