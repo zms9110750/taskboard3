@@ -6,6 +6,9 @@
 //   2. 建空间 201，空间条上出现
 //   3. 切空间真的换数据（count 变化 + 卡片编号变化）
 //   4. 建卡 201，卡片出现在列表里
+//
+// ⚠ **每次都用唯一名字**：数据目录复用 taskboard2 的地址后，库里会累积历史空间；
+//   写死名字第二次跑就撞 `WORKSPACE_EXISTS` ⇒ 探针会假红。
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,6 +20,9 @@ const EDGE = [
 ].find(existsSync);
 const PORT = 9501;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const stamp = String(Date.now()).slice(-6);
+const SPACE_NAME = `验收空间${stamp}`;
+const CARD_TITLE = `验收卡${stamp}`;
 
 const ud = mkdtempSync(nodePath.join(tmpdir(), 'verify-'));
 const proc = spawn(
@@ -95,16 +101,19 @@ const check = (name, ok, detail) => {
 	console.log(`${ok ? '✅' : '❌'} ${name}${detail === undefined ? '' : `  —  ${detail}`}`);
 };
 
+/** 关预览弹窗 + 开右栏 + 点任务板。 */
+const openPanel = async () => {
+	await ev(`(function(){const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='继续');if(b)b.click()})()`);
+	await sleep(1200);
+	await ev(`(function(){const b=[...document.querySelectorAll('button')].find(x=>(x.getAttribute('aria-label')||'')==='打开右侧边栏');if(b)b.click()})()`);
+	await sleep(2200);
+	await ev(`(function(){ const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim().startsWith('任务板')&&x.className&&x.className.includes('entry')); if(b) b.click() })()`);
+	await sleep(4000);
+};
+
 await send(ws, 'Page.navigate', { url: process.argv[2] });
 await sleep(12000);
-
-/* 关预览弹窗 + 开右栏 + 点任务板 */
-await ev(`(function(){const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='继续');if(b)b.click()})()`);
-await sleep(1200);
-await ev(`(function(){const b=[...document.querySelectorAll('button')].find(x=>(x.getAttribute('aria-label')||'')==='打开右侧边栏');if(b)b.click()})()`);
-await sleep(2200);
-await ev(`(function(){ const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim().startsWith('任务板')&&x.className&&x.className.includes('entry')); if(b) b.click() })()`);
-await sleep(4000);
+await openPanel();
 
 /* ① 面板 + 样式 */
 const panel = await ev(`(function(){
@@ -116,47 +125,40 @@ const panel = await ev(`(function(){
 })()`);
 check('面板渲染且有样式', (panel?.styleLen ?? 0) > 1000 && panel?.display === 'flex', `styleLen=${String(panel?.styleLen)} display=${String(panel?.display)}`);
 
-/* ② 建空间 */
+/* ② 建空间（唯一名字） */
 const space = await ev(`(async()=>{
-  const r=await fetch('taskboard3/api/workspaces',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'验收空间2'})});
+  const r=await fetch('taskboard3/api/workspaces',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'${SPACE_NAME}'})});
   const j=await r.json().catch(()=>null);
-  return { status:r.status, id:j?.data?.workspace?.id };
+  return { status:r.status, id:j?.data?.workspace?.id, code:j?.code, message:j?.message };
 })()`);
-check('建空间 201', space?.status === 201, `id=${String(space?.id)}`);
+check('建空间 201', space?.status === 201, `id=${String(space?.id)}${space?.code === undefined ? '' : ` code=${String(space.code)}`}`);
 
 /* ③ 建卡到那个空间 */
 const card = await ev(`(async()=>{
-  const r=await fetch('taskboard3/api/cards',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({workspaceId:'${String(space?.id)}',templateRef:'writeCode',title:'验收卡 X'})});
+  const r=await fetch('taskboard3/api/cards',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({workspaceId:'${String(space?.id)}',templateRef:'writeCode',title:'${CARD_TITLE}'})});
   const j=await r.json().catch(()=>null);
   return { status:r.status, id:j?.data?.card?.id, code:j?.code, message:j?.message };
 })()`);
-check('建卡 201', card?.status === 201, `id=${String(card?.id)}`);
+check('建卡 201', card?.status === 201, `id=${String(card?.id)}${card?.code === undefined ? '' : ` code=${String(card.code)}`}`);
 
 /* ④ 刷新 + 切空间，看卡片真出现 */
 await send(ws, 'Page.reload');
 await sleep(11000);
-await ev(`(function(){const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='继续');if(b)b.click()})()`);
-await sleep(1200);
-await ev(`(function(){const b=[...document.querySelectorAll('button')].find(x=>(x.getAttribute('aria-label')||'')==='打开右侧边栏');if(b)b.click()})()`);
-await sleep(2000);
-await ev(`(function(){ const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim().startsWith('任务板')&&x.className&&x.className.includes('entry')); if(b) b.click() })()`);
-await sleep(3500);
+await openPanel();
 
-/* 先记录当前（默认空间）的条数 */
 const before = await ev(`[...document.querySelectorAll('[class*="tb3w-toolbar__count"]')].map(e=>(e.textContent||'').trim())`);
 
-/* 点新空间 */
-const clicked = await ev(`(function(){ const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim().startsWith('验收空间2')); if(!b) return 'not found'; b.click(); return 'clicked' })()`);
+const clicked = await ev(`(function(){ const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim().startsWith('${SPACE_NAME}')); if(!b) return 'not found'; b.click(); return 'clicked' })()`);
 check('能点到新空间', clicked === 'clicked', String(clicked));
 await sleep(3500);
 
 const after = await ev(`(function(){
   const counts=[...document.querySelectorAll('[class*="tb3w-toolbar__count"]')].map(e=>(e.textContent||'').trim());
   const ids=[...document.querySelectorAll('[class*="card-id"]')].map(e=>(e.textContent||'').trim()).filter(Boolean);
-  return { counts, ids };
+  const titles=[...document.querySelectorAll('[class*="tb3w-card"],[class*="tb3t-card"]')].map(e=>(e.textContent||'').trim()).slice(0,4);
+  return { counts, ids, titles };
 })()`);
-const idHit = (after?.ids ?? []).includes(String(card?.id));
-check('切空间后卡片真的显示', idHit, `ids=${JSON.stringify(after?.ids)}`);
+check('切空间后卡片真的显示', (after?.ids ?? []).includes(String(card?.id)), `ids=${JSON.stringify(after?.ids)}`);
 check('切空间前后条数变了', JSON.stringify(before) !== JSON.stringify(after?.counts), `${JSON.stringify(before)} → ${JSON.stringify(after?.counts)}`);
 
 await shot('verify-live');
@@ -169,3 +171,4 @@ if (logs.length > 0) {
 
 ws.close();
 proc.kill();
+process.exit(results.every((r) => r.ok) ? 0 : 1);
