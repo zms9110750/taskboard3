@@ -42,6 +42,15 @@ import {
 	drawerPanelCssOf,
 } from './pure/drawer-view.ts';
 
+/*
+ * 降级块的样式（`.missing-renderer` / `.json-fallback`）。
+ *
+ * 用户 2026-11-22 的裁决：「降级的渲染器应该是组件」「CSS 要能抽出来改」。
+ * ⇒ 那段 CSS 放在组件目录下，本文件只 import + 拼进 injectStyles()。
+ *   同一个形态见 searchbox-css / section-css / create-css。
+ */
+import { FALLBACK_CSS } from './renderers/fallback-css.ts';
+
 /** 数值 → `Npx`（模板字符串里复用）。 */
 function px(value: number): string {
 	return `${String(value)}px`;
@@ -1241,10 +1250,9 @@ export const SECTION_CSS = `
 .tb3w-root .ask-group__custom{flex:1 1 200px;min-width:120px;padding:4px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12px}
 .tb3w-root .ask-group__custom:focus{outline:none;border-color:var(--accent)}
 
-/* ══════════════════════════════════════════════════════════
-   未知 $type / 脏数据（降级成可展开的原始 JSON）
-   ══════════════════════════════════════════════════════════ */
-.tb3w-root .section-block__unknown{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+/*
+  原始 JSON（降级块展开后的内容）
+  ══════════════════════════════════════════════════════════ */
 .tb3w-root .payload-box{width:100%;max-height:260px;margin:0;padding:9px 11px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:#f6f7f9;font-family:var(--font-mono);font-size:10.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;cursor:text}
 `;
 
@@ -1252,6 +1260,8 @@ export const SECTION_CSS = `
 import { TECHTREE_CSS } from './pure/techtree-css.ts';
 
 export { TECHTREE_CSS };
+
+export { FALLBACK_CSS };
 
 /**
  * 全部类名 —— **单一来源**。
@@ -1609,6 +1619,6 @@ export function injectStyles(): void {
 	 *   .tb3w-root .badge **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
 	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
-	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${TECHTREE_CSS}`;
+	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}`;
 	document.head.appendChild(element);
 }

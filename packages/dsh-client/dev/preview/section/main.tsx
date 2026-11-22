@@ -17,6 +17,7 @@ import { createRoot } from 'react-dom/client';
 
 /* 注册表初始化 —— Section 的内容分发查的是运行时注册表（2026-11-22）。 */
 import { initRenderers } from '../../../src/init-renderers.ts';
+import { injectStyles } from '../../../src/styles.ts';
 
 import { Section } from '../../../src/renderers/Section.tsx';
 import { applyAskAction, type AskAction } from '../../../src/pure/section.ts';
@@ -361,6 +362,9 @@ function App(): React.ReactNode {
 }
 
 initRenderers();
+
+/* 产品样式（降级块的 .missing-renderer / .json-fallback 在里面）。 */
+injectStyles();
 const root = document.getElementById('root');
 if (root !== null) {
 	createRoot(root).render(
