@@ -131,10 +131,31 @@ export interface TaskboardApi {
 		readonly title: string;
 		readonly content?: Readonly<Record<string, unknown>>;
 	}): Promise<Card>;
+	/**
+	 * 改一张卡的**标题 / 备注 / 章节**。
+	 *
+	 * ## ⚠ 字段是**扁平**的，不要再包一层 `patch`
+	 *
+	 * 服务端 `PATCH /cards/:id`（`packages/dsh/src/http.ts:600`）直接在**顶层**读
+	 * `title` / `note` / `content`，和 `POST /cards` 的格式一致。
+	 *
+	 * 曾经这里发的是 `{ workspaceId, patch: { … } }` —— 多包了一层。服务端读不到
+	 * 那三个字段 ⇒ 传给 `taskboard.update()` 的是空对象 ⇒ **什么都不改但返回成功**。
+	 * 用户以为改成功了，刷新才发现没改。**静默无效比报错更坏。**
+	 *
+	 * 用户 `2026-11-22`：「用服务端的扁平的」。
+	 *
+	 * @param input 空间 id + 卡编号 + 要改的字段（至少一个）
+	 */
 	patchCard(input: {
 		readonly workspaceId: string;
 		readonly cardId: string;
-		readonly patch: Readonly<Record<string, unknown>>;
+		/** 新标题（trim 后不能为空）。省略 = 不改。 */
+		readonly title?: string;
+		/** 新备注。省略 = 不改（空串是合法值 —— 那是「清空备注」）。 */
+		readonly note?: string;
+		/** 新章节内容（整体替换，服务端要过 `schemas.validate`）。省略 = 不改。 */
+		readonly content?: Readonly<Record<string, unknown>>;
 	}): Promise<Card>;
 	act(input: {
 		readonly workspaceId: string;
@@ -229,9 +250,20 @@ export function createApi(fetchImpl?: FetchLike): TaskboardApi {
 			return request<Card>('cards', { method: 'POST', body: input });
 		},
 		async patchCard(input) {
+			/*
+			 * ⚠ **扁平展开**，不包 `patch` 字段。
+			 *
+			 * 服务端在顶层读 `title` / `note` / `content`。包一层的话它全读到
+			 * `undefined` ⇒ 空对象 patch ⇒ 静默不改。见 `TaskboardApi.patchCard` 的注释。
+			 */
 			return request<Card>(`cards/${encodeURIComponent(input.cardId)}`, {
 				method: 'PATCH',
-				body: { workspaceId: input.workspaceId, patch: input.patch },
+				body: {
+					workspaceId: input.workspaceId,
+					...(input.title === undefined ? {} : { title: input.title }),
+					...(input.note === undefined ? {} : { note: input.note }),
+					...(input.content === undefined ? {} : { content: input.content }),
+				},
 			});
 		},
 		async act(input) {
