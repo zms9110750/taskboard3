@@ -215,6 +215,179 @@ if (tabEntry?.found === true) {
 	await shot('entries-3-right');
 }
 
+/* ═══ ④ 切空间：加载态只盖内容区 + 外壳几何不变 ═══
+ *
+ * 用户 2026-11-23：
+ * 「切换工作空间的时候整个视口都跳变。给他加一点过度时间。或者跳变也不要全变了。
+ *   显示"正在加载"不应该包含视口上面的菜单部分。应该只有里面的列表或者科技树的视口显示正在加载。」
+ *
+ * 断言的是**行为**（不是像素值）：
+ *   · 加载期间「顶部菜单」（.tb3w-chrome / 工具栏 / 筛选行）必须还在、且可交互
+ *   · 「正在加载」节点必须在 .tb3w-main 内部
+ *   · 切换前 / 加载中 / 落定后，外壳（.tb3w-chrome）的 rect 必须不变
+ *   · 加载层带一个有限的过渡（animation），不是硬切
+ */
+const stamp = Date.now();
+const madeSpaces = await ev(`(async function(){
+  const mk=async(n)=>{
+    const r=await fetch('taskboard3/api/workspaces',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:n})});
+    return r.ok;
+  };
+  const a=await mk('切空间探针${String(stamp)}A');
+  const b=await mk('切空间探针${String(stamp)}B');
+  return {a,b};
+})()`);
+
+await send(ws, 'Page.reload');
+await sleep(12000);
+await ev(`(function(){const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='继续');if(b)b.click()})()`);
+await sleep(1200);
+await ev(`(function(){
+  const cands=[...document.querySelectorAll('button,[role="button"],[role="tab"],a')].filter(e=>{
+    const r=e.getBoundingClientRect();
+    const label=(e.getAttribute('aria-label')||e.getAttribute('title')||(e.textContent||'').trim());
+    return r.width>0 && r.height>0 && r.x<120 && label.includes('任务板');
+  });
+  if(cands.length) cands[0].click();
+})()`);
+await sleep(4000);
+
+const probeChips = await ev(
+	`[...document.querySelectorAll('[data-chip-id]')].map((e)=>({id:e.dataset.chipId,txt:(e.textContent||'').trim()}))`,
+);
+const chipA = (probeChips ?? []).find((c) => c.txt.includes(`${String(stamp)}A`));
+const chipB = (probeChips ?? []).find((c) => c.txt.includes(`${String(stamp)}B`));
+
+if (madeSpaces?.a !== true || chipA === undefined || chipB === undefined) {
+	check('④ 切空间探针可用', false, `建空间=${JSON.stringify(madeSpaces)} chips=${String((probeChips ?? []).length)}`);
+} else {
+	/* 先切到 A（空空间）—— 此后 cards=[] ，再切 B 就会进 loading 分支 */
+	await ev(`(function(){document.querySelector('[data-chip-id="${String(chipA.id)}"]').click()})()`);
+	await sleep(1600);
+
+	/* 把 /api/state 拖慢，让加载态可观察（不靠运气）
+	 * ⚠ 必须先 Network.enable，否则 emulateNetworkConditions 被忽略（实测加载态只闪 1 帧）。 */
+	await send(ws, 'Network.enable');
+	await send(ws, 'Network.emulateNetworkConditions', {
+		offline: false,
+		latency: 600,
+		downloadThroughput: -1,
+		uploadThroughput: -1,
+	});
+
+	/*
+	 * 采样用 **Node 侧轮询**，不用页面里的 setInterval ——
+	 * headless 后台标签页会把定时器夹到 1s，抓不到瞬时加载态（实测 0/10 帧）。
+	 */
+	const readFrame = async () =>
+		ev(`(function(){
+    const q=(s)=>document.querySelector(s);
+    const load=q('.tb3w-main__loading');
+    return {
+      chrome:!!q('.tb3w-chrome'),
+      toolbar:!!q('.tb3w-toolbar'),
+      filters:!!q('.tb3w-filters'),
+      loading:!!load,
+      loadInMain: load ? !!load.closest('.tb3w-main') : false,
+      chips:document.querySelectorAll('[data-chip-id]').length
+    };
+  })()`);
+
+	const geoOf = async () =>
+		ev(`(function(){
+    const r=(s)=>{const e=document.querySelector(s); if(!e) return null; const b=e.getBoundingClientRect();
+      return {x:Math.round(b.x),y:Math.round(b.y),w:Math.round(b.width),h:Math.round(b.height)};};
+    return {chrome:r('.tb3w-chrome'), toolbar:r('.tb3w-toolbar'), filters:r('.tb3w-filters')};
+  })()`);
+
+	const geoBefore = await geoOf();
+	await ev(`(function(){document.querySelector('[data-chip-id="${String(chipB.id)}"]').click()})()`);
+
+	const rec = [];
+	let geoDuring = null;
+	let toolbarStyle = null;
+	let loadAnim = null;
+	let shotTaken = false;
+	const deadline = Date.now() + 2600;
+	while (Date.now() < deadline) {
+		const frame = await readFrame();
+		rec.push(frame);
+		if (frame.loading === true) {
+			if (geoDuring === null) {
+				geoDuring = await geoOf();
+				toolbarStyle = await ev(`(function(){
+          const e=document.querySelector('.tb3w-toolbar'); if(!e) return null;
+          const s=getComputedStyle(e); const b=e.getBoundingClientRect();
+          return {opacity:s.opacity, pointerEvents:s.pointerEvents, visibility:s.visibility,
+                  inViewport: b.width>0 && b.height>0 && b.top<window.innerHeight && b.bottom>0};
+        })()`);
+				loadAnim = await ev(`(function(){
+          const e=document.querySelector('.tb3w-main__loading'); if(!e) return null;
+          const s=getComputedStyle(e); return {name:s.animationName, duration:s.animationDuration};
+        })()`);
+			}
+			if (!shotTaken) {
+				shotTaken = true;
+				await shot('entries-4-loading');
+			}
+		}
+	}
+	if (geoDuring === null) geoDuring = await geoOf();
+	await sleep(500);
+	await send(ws, 'Network.emulateNetworkConditions', {
+		offline: false,
+		latency: 0,
+		downloadThroughput: -1,
+		uploadThroughput: -1,
+	});
+	await sleep(400);
+	const geoAfter = await geoOf();
+
+	const loadingFrames = rec.filter((r) => r.loading === true);
+	check(
+		'④ 抓到加载态（网络拖慢后）',
+		loadingFrames.length > 0,
+		`${String(loadingFrames.length)}/${String(rec.length)} 帧`,
+	);
+	check(
+		'④ 加载期间顶部菜单仍在（chrome/工具栏/筛选行）',
+		loadingFrames.length > 0 && loadingFrames.every((r) => r.chrome && r.toolbar && r.filters),
+		`${String(loadingFrames.filter((r) => r.chrome && r.toolbar && r.filters).length)}/${String(loadingFrames.length)} 帧齐全`,
+	);
+	check(
+		'④ 「正在加载」只在 .tb3w-main 内部',
+		loadingFrames.length > 0 && loadingFrames.every((r) => r.loadInMain),
+		`${String(loadingFrames.filter((r) => r.loadInMain).length)}/${String(loadingFrames.length)} 帧在内`,
+	);
+	check(
+		'④ 加载期间工具栏可交互（opacity=1、pointer-events 未禁用、在视口内）',
+		toolbarStyle !== null &&
+			toolbarStyle.opacity === '1' &&
+			toolbarStyle.pointerEvents !== 'none' &&
+			toolbarStyle.visibility !== 'hidden' &&
+			toolbarStyle.inViewport === true,
+		JSON.stringify(toolbarStyle),
+	);
+	const sameRect = (a, b) =>
+		a !== null &&
+		b !== null &&
+		a.x === b.x &&
+		a.y === b.y &&
+		a.w === b.w &&
+		a.h === b.h;
+	check(
+		'④ 切空间时外壳 rect 不变（chrome）',
+		sameRect(geoBefore?.chrome, geoDuring?.chrome) && sameRect(geoBefore?.chrome, geoAfter?.chrome),
+		`前=${JSON.stringify(geoBefore?.chrome)} 中=${JSON.stringify(geoDuring?.chrome)} 后=${JSON.stringify(geoAfter?.chrome)}`,
+	);
+	check(
+		'④ 加载层有过渡（animation 有限时长）',
+		loadAnim !== null && loadAnim.name !== 'none' && loadAnim.duration !== '0s',
+		JSON.stringify(loadAnim),
+	);
+	await shot('entries-4-after');
+}
+
 console.log(`\n${results.every((r) => r.ok) ? '✅ 三处入口全部可用' : '❌ 有失败'}`);
 if (logs.length > 0) {
 	console.log('\n=== 页面异常 ===');
@@ -224,3 +397,4 @@ if (logs.length > 0) {
 ws.close();
 proc.kill();
 process.exit(results.every((r) => r.ok) ? 0 : 1);
+
