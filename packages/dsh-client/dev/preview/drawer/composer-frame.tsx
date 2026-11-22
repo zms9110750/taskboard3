@@ -23,6 +23,7 @@ import type { ReactNode } from 'react';
 
 import type { DrawerVariant } from '../../../src/pure/drawer-view.ts';
 import { Drawer, DrawerEntry } from '../../../src/renderers/Drawer.tsx';
+import { Workspace } from '../../../src/renderers/Workspace.tsx';
 import type { WorkspaceProps } from '../../../src/renderers/Workspace.tsx';
 
 /** 视口尺寸 —— 和 `dev/preview/vp-drawer` 同一个数。 */
@@ -70,10 +71,11 @@ export function ComposerFrame(props: ComposerFrameProps): ReactNode {
 						open={props.open}
 						onClose={props.onClose}
 						variant={props.variant}
-						workspace={props.workspace}
 						{...(props.title === undefined ? {} : { title: props.title })}
 						{...(props.onRefresh === undefined ? {} : { onRefresh: props.onRefresh })}
-					/>
+					>
+						<Workspace {...props.workspace} />
+					</Drawer>
 				</div>
 
 				{/* 输入框（拟真：占位文字，不是组件） */}

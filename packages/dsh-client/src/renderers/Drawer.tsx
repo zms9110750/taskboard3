@@ -62,8 +62,7 @@ import type {
 	DrawerStore,
 	DrawerVariant,
 } from '../pure/drawer-view.ts';
-import { Workspace } from './Workspace.tsx';
-import type { WorkspaceProps } from './Workspace.tsx';
+
 
 /** 面板 DOM id —— 入口按钮的 `aria-controls` 指向它。 */
 export const DRAWER_PANEL_ID = 'tb3d-drawer-panel';
@@ -130,12 +129,21 @@ export interface DrawerProps {
 	/** 候选形态（决定图标以外的一切视觉）。 */
 	readonly variant: DrawerVariant;
 	/**
-	 * 面板里的**压缩版 Workspace** 的全部参数。
+	 * 面板内容。
 	 *
-	 * 和右栏页签是同一个组件、同一份 props 形状；数据 / 回调由宿主给，
-	 * 选中卡等 UI 状态由这个实例自己持（所以和页签那份互不影响）。
+	 * ## 为什么是 `children` 而不是 `workspace: WorkspaceProps`（2026-11-23 改）
+	 *
+	 * 原来收一整套 `WorkspaceProps`（数据 + 回调），由宿主拼好传进来。
+	 * **那正是抽屉接不上的原因**：宿主要拼 `WorkspaceProps` 就得先有一份
+	 * `useBoardState()` 的结果，而产品里那份在 `WorkspaceBody` **内部** ——
+	 * 抽屉槽拿不到。所以 `register-drawer.tsx` 文件头一直写着
+	 * 「本任务没有在 client.tsx 里调用它（数据源未定）」。
+	 *
+	 * ⇒ 现在 Drawer 只负责**外壳**（遮罩 / Esc / 点外部 / 定位 / 顶栏），
+	 *   内容由调用方给：产品传 `<WorkspaceBody />`（它自己拉数据），
+	 *   预览传 `<Workspace {...props} />`。两边都不需要知道对方的形状。
 	 */
-	readonly workspace: WorkspaceProps;
+	readonly children: ReactNode;
 	/** 顶栏标题（默认「任务板」）。 */
 	readonly title?: string;
 	/** 顶栏 ⟳；省略 = 不画这个按钮（不知道刷新什么的时候不假装有）。 */
@@ -252,12 +260,12 @@ export function Drawer(props: DrawerProps): ReactNode {
 				</header>
 
 				{/*
-				 * ⚠ 这里**只有**一个 Workspace —— 没有第二份列表/详情代码。
+				 * ⚠ 这里只画**一份**内容 —— props.children，没有第二份列表/详情代码。
 				 *   压缩全靠 `.tb3d-panel` 作用域下的 CSS（`renderers/drawer-css.ts` 的
 				 *   `DRAWER_CSS` —— 和组件放同一个目录：CSS 跟着组件走）。
 				 */}
 				<div className="tb3d-body" data-drawer-body="1">
-					<Workspace {...props.workspace} />
+					{props.children}
 				</div>
 			</section>
 		</div>

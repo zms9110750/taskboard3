@@ -52,6 +52,7 @@ import type { ReactNode } from 'react';
 
 import type { DrawerVariant } from '../../../src/pure/drawer-view.ts';
 import { Drawer, DrawerEntry } from '../../../src/renderers/Drawer.tsx';
+import { Workspace } from '../../../src/renderers/Workspace.tsx';
 import type { WorkspaceProps } from '../../../src/renderers/Workspace.tsx';
 
 /** 输入框卡片最大宽 —— 用户从截图量的真实值（≈1200px）。 */
@@ -139,10 +140,11 @@ export function MockComposer(props: MockComposerProps): ReactNode {
 							open={props.open}
 							onClose={props.onClose}
 							variant={props.variant}
-							workspace={props.workspace}
 							{...(props.title === undefined ? {} : { title: props.title })}
 							{...(props.onRefresh === undefined ? {} : { onRefresh: props.onRefresh })}
-						/>
+						>
+							<Workspace {...props.workspace} />
+						</Drawer>
 					</div>
 
 					<div className="pvm-editor" data-mock-editor="1">
