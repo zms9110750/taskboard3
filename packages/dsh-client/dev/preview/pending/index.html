@@ -53,12 +53,8 @@
 	<a href="#g4">⑤ 发布与清理（2 项）</a>
 </div>
 
-<!-- ══════════ ① 视觉布局 ══════════ -->
-<h2 id="g0">⓿ 候选组件（等你选）</h2>
-
-
 <!-- ══════════ ⓿ 候选组件（已全部选完） ══════════ -->
-<h2 id="g0">⓿ 候选组件</h2>
+<h2 id="g0">⓿ 候选组件（已全部选完）</h2>
 
 <div class="item item--done">
 	<div class="item__head">
@@ -73,6 +69,58 @@
 	</div>
 </div>
 
+
+<!-- ══════════ 本轮已完成（2026-11-22 下午） ══════════ -->
+
+<h2 id="g0b">✅ 本轮已完成（不需要你定，只作记录）</h2>
+
+<div class="item item--done">
+	<div class="item__head">
+		<span class="item__no">UI</span>
+		<span class="item__title">搜索框改小 + 删「前往」按钮</span>
+		<span class="item__tag tag--done">已完成</span>
+	</div>
+	<div class="item__body">
+		<p>用户 2026-11-22：「这个框长得有点太大了，弄小一点。右边也不需要一个按钮。做框内内联图标。」</p>
+		<p><b>CDP 实测：</b><code>160×28</code>（compact）/ <code>200×28</code>（宽屏）；<code>goButton: false</code>；整框 <code>8px</code> 圆角；框内放大镜 <code>14×14</code>。</p>
+		<div class="links"><a href="../searchbox/index.html">搜索框</a><a href="../vp-workspace/index.html">工作区（含搜索框）</a></div>
+	</div>
+</div>
+
+<div class="item item--done">
+	<div class="item__head">
+		<span class="item__no">UI</span>
+		<span class="item__title">筛选行顺序：用户未读 → AI 未读 → 搜索框</span>
+		<span class="item__tag tag--done">已完成</span>
+	</div>
+	<div class="item__body">
+		<p>用户 2026-11-22：「搜索框要在两个未读的右边。」</p>
+		<p><b>CDP 实测：</b>用户未读 <code>x=216</code> · AI 未读 <code>x=292</code> · 搜索框 <code>x=360</code>（右边缘贴住行右边界 <code>550</code>）。</p>
+	</div>
+</div>
+
+<div class="item item--done">
+	<div class="item__head">
+		<span class="item__no">架构</span>
+		<span class="item__title">渲染注册表成为唯一分发点</span>
+		<span class="item__tag tag--done">已完成</span>
+	</div>
+	<div class="item__body">
+		<p>用户 2026-11-22：「这怎么能用 switch。至少也要用字典吧。这东西是允许动态注册和后期更改的。」/「一次做完」</p>
+		<p><code>SectionContent</code> 直接查 <code>rendererOf(kind)</code>；内置三件（<code>TextContent</code> / <code>MarkdownContent</code> / <code>AskContent</code>）由 <code>initRenderers()</code> 注册；删掉 <code>SECTION_RENDERERS</code> 字典和 <code>KindMismatch</code> 守卫。</p>
+	</div>
+</div>
+
+<div class="item item--done">
+	<div class="item__head">
+		<span class="item__no">工具</span>
+		<span class="item__title">预览 watch 模式</span>
+		<span class="item__tag tag--done">已完成</span>
+	</div>
+	<div class="item__body">
+		<p><code>node dev/preview/build.mjs &lt;name&gt; --watch</code> —— 改 <code>src/</code> 或 <code>dev/preview/</code> 自动重建，浏览器按<b>普通 F5</b> 即可（不需要强制刷新/清缓存）。</p>
+	</div>
+</div>
 
 
 <h2 id="g1">① 视觉布局</h2>
@@ -96,15 +144,17 @@
 	</div>
 </div>
 
-<div class="item">
+<div class="item item--done">
 	<div class="item__head">
 		<span class="item__no">C9</span>
-		<span class="item__title">四个死代码组件：删掉还是接上</span>
-		<span class="item__tag tag--text">纯裁决</span>
+		<span class="item__title">四个死代码组件 —— 三个已处置，一个等你定</span>
+		<span class="item__tag tag--done">大部分已定</span>
 	</div>
 	<div class="item__body">
-		<p><span class="k">现状：</span><code>StatusPill</code>（产品零引用，CSS 只在预览）、<code>SectionFrame</code> / <code>JsonFallback</code> / <code>MissingRendererBlock</code>（渲染注册表 ③④ 路径零引用、<b>全仓无 CSS</b>）。</p>
-		<p><span class="k">要你定：</span>保留 / 删除 / 接进产品。</p>
+		<p><span class="k">✅ 已删：</span><code>StatusPill</code>（产品零引用）—— 预览里改成内联的 <code>FakePill</code>。</p>
+		<p><span class="k">✅ 已接上（2026-11-22）：</span>渲染注册表合并后，<code>Section.tsx</code> 的 <code>SectionContent</code> 直接查 <code>rendererOf(kind)</code>，<code>TextContent</code> / <code>MarkdownContent</code> / <code>AskContent</code> 由 <code>initRenderers()</code> 注册。</p>
+		<p><span class="k">⏳ 还等你定：</span><code>SectionFrame.tsx</code> / <code>JsonFallback.tsx</code> / <code>MissingRendererBlock.tsx</code> 三个文件<b>仍存在</b>，但产品渲染链<b>没走它们</b>（<code>SectionContent</code> 自己查表 + 自己画降级块）。</p>
+		<p><span class="k">两条路：</span>① 删掉这三个文件（承认产品不需要独立降级链）；② 把 <code>SectionContent</code> 改成调 <code>SectionFrame</code>（复用它的 <code>payloadTypeOf</code> + 降级逻辑）。</p>
 	</div>
 </div>
 
@@ -131,22 +181,17 @@
 <!-- ══════════ ③ 架构方案 ══════════ -->
 <h2 id="g3">③ 架构方案</h2>
 
-<div class="item">
+<div class="item item--done">
 	<div class="item__head">
 		<span class="item__no">C5</span>
-		<span class="item__title">action 的字符串输出 —— 形状</span>
-		<span class="item__tag tag--text">选方案</span>
+		<span class="item__title">action 的字符串输出 —— 已实现（用户选 D+：注册表）</span>
+		<span class="item__tag tag--done">已定</span>
 	</div>
 	<div class="item__body">
-		<p><span class="k">你的要求：</span>写进模板包，跟 action 定义放一起，AI tool 接这个接口。</p>
-		<p><span class="k">现状：</span>「payload → 文字」散在 <b>7 处</b>（<code>tools/format.ts</code>、<code>dsh/tools.ts</code>、<code>dsh/commands.ts</code>、<code>dsh-client/pure.ts</code>、<code>pure/section.ts</code>、<code>card-detail.ts</code>…），其中 3 处是同一逻辑的副本，<b>且没有按 action 分派</b>。</p>
-		<p><span class="k">实测后果：</span><code>bodyOf(text)</code> ⇒ 正文 ✅；<code>bodyOf(markdown)</code> ⇒ 源码 ✅（形状巧合，都有 <code>value</code>）；<b><code>bodyOf(ask)</code> ⇒ 截断的 JSON ❌</b></p>
-		<p><span class="k">要你定（三件事）：</span>① 映射放哪 ② 形态（函数 / 声明式 / 模板 YAML） ③ 派发键 —— 卡上的 <code>CardSection</code> 只有 <code>{label, payload}</code>，<b>没有 action 字段</b>，运行时只能按 <code>payload.$type</code>。</p>
-		<div class="opt"><b>A · 函数式</b> <code>ActionDef.toText(payload) =&gt; string</code> —— 表达力最强，但不可序列化，第三方 action 必须写代码。</div>
-		<div class="opt"><b>B · 声明式</b> <code>ActionDef.textSpec</code>（如 <code>{mode:'value'}</code> / <code>{mode:'fields', fields:[…]}</code>）—— 纯数据可校验，但 ask 仍需内置分支。</div>
-		<div class="opt"><b>C · 模板 YAML 每章声明</b> <code>text: "{{value}}"</code> —— 最贴你原话的字面意思，但 action 定义现在不在 YAML，且 18 个模板会重复声明。</div>
-		<div class="opt"><b>D · core 独立 text 注册表</b>（key = <code>$type</code>，第三方可注册）—— 与 UI 渲染注册表同构，但不满足「跟 action 定义放一起」。</div>
-		<div class="opt"><b>E · 从 UI 渲染树派生</b> —— 单一真源，但把 AI 文案绑死在 UI 结构上。</div>
+		<p><span class="k">✅ 实现（2026-11-22）：</span><code>core/src/action-text.ts</code> 的 <code>ActionTextRegistry</code> —— 和 UI 渲染注册表同构：<code>register(type, fn)</code> / <code>has</code> / <code>get</code> / <code>types</code>，内置 <code>text</code> / <code>markdown</code> / <code>ask</code>。</p>
+		<p><span class="k">✅ 已接上：</span><code>tools/src/render.ts</code> 的 <code>renderPayload</code> 从 if/else 改成 <code>textOfAction(payload)</code> —— 原来散在多处的「payload → 文字」收敛到一个分发点。</p>
+		<p><span class="k">✅ 重复注册抛错：</span>用户 2026-11-22「两个组件抢同一个 type 应该抛错；组件的展示不应该由第三方提供，理应有 action 自己的提供者提供唯一的」。<code>seed</code> 也走同一套校验。</p>
+		<p><span class="k">✅ 测试：</span><code>core/test/action-text.test.ts</code> 13 条，含「换注册表条目 ⇒ 输出跟着换」的证明题。</p>
 	</div>
 </div>
 
@@ -164,96 +209,23 @@
 </div>
 
 <!-- ══════════ ④ AI tool 规格 v2 ══════════ -->
-<h2 id="g3b">④ AI tool 规格 v2 —— 这套要求能覆盖 AI 的使用吗</h2>
+<h2 id="g3b">④ AI tool 规格 v2 —— 5 条决策已全部实现</h2>
 
-
-<div class="item">
+<div class="item item--done">
 	<div class="item__head">
-		<span class="item__no">结论</span>
-		<span class="item__title">不能自包含使用 —— 大量关键信息默认由外部提示词提供</span>
-		<span class="item__tag tag--text">7 项必补</span>
+		<span class="item__no">5 条</span>
+		<span class="item__title">AI tool v2 的五个裁决 —— 已落进代码</span>
+		<span class="item__tag tag--done">已定</span>
 	</div>
 	<div class="item__body">
-		<p><span class="k">能走通的只有：</span>在「外部系统提示词已经塞好词表、塞好卡结构」的前提下，<code>#1 列空间 → #2 列卡 → #3 看卡 → #8 按空目标列表推进</code> 这条主干。</p>
-		<p><span class="k">走不通的：</span>阶段 0/1（自举与词表发现）、阶段 4（改卡）、阶段 6（权限）；阶段 3（建卡）缺关键参数；阶段 5 缺释放闭环。</p>
-		<p><span class="k">⚠ 本质：</span>这更像「一套操作面」而不是「一套可自举的 AI API」。工具定义与系统提示词会变成<b>两份会漂的真值</b>。</p>
+		<p><span class="k">① 释放 = 状态转移</span> —— <code>transition</code> 传 <code>to=提交</code>；「释放永远允许」在 BASE 工具层不可移除。</p>
+		<p><span class="k">② 新增只读工具</span> <code>taskboard_tool_policy_read</code> —— 读 <code>getToolPolicies()</code> 的增量 + <code>effectiveToolsOf(ref)</code> 的生效集；无 <code>canManageToolPolicies</code> 门槛（写才需要）。</p>
+		<p><span class="k">③ update 的 path 只到模板 JSON</span> —— <code>replaceContentAt</code> 本来就符合：path 从 <code>contentOfCard()</code> 起、替换后整份过 <code>schemas.validate</code>、过了才 persist。标题/状态/备注是卡元数据，不在这条 path 上。</p>
+		<p><span class="k">④ 取消「激活空间」设定</span> —— <code>resolveWorkspace</code> 要求显式 <code>workspaceId</code>；<code>dsh</code> 不再注入 <code>resolveDefaultWorkspace</code> / <code>activeWorkspaceId</code>；UI 的「激活当前空间」按钮与 <code>onActivate</code> 链路已删。</p>
+		<p><span class="k">⑤ 空模板允许建卡</span> —— <code>schemas.validate</code> / <code>inspectCreateContent</code> / <code>buildCard</code> 三处加空模板分支：任意 key 合法，<code>sections[key] = { label: key, payload }</code>。</p>
+		<p><span class="k">分页（补充）：</span>每页 100 条；≤100 不提页数，&gt;100 说「当前第 x 页，共 x 页」；空间总数在 <code>taskboard_workspaces</code> 返回。</p>
 	</div>
 </div>
-
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">旅程</span>
-		<span class="item__title">AI 使用旅程逐阶段</span>
-		<span class="item__tag tag--text">6 阶段</span>
-	</div>
-	<div class="item__body">
-		<p><b>阶段 0 · 初次接入</b> ❌ 失败 —— 无法初始化世界：不知道模板/领域/分类/状态名，而查定义（#4）又必须先知道名字。<b>这是死循环。</b></p>
-		<p><b>阶段 1 · 了解环境</b> 🟡 半 —— 空间能列（#1）✅；词表不能列（#4 死循环）❌；<b>不知道「当前激活空间是哪个」</b>，而「空间为空=激活空间」的前提就是得知道激活的是谁。</p>
-		<p><b>阶段 2 · 找卡/看卡</b> 🟡 半 —— 列卡可用，但<b>没有标题搜索、没有分页/排序</b>（500 张卡直接爆上下文）；看卡够理解内容，但<b>缺模板/领域/分类/标题/持有者/未读标记</b>，也看不到原始 payload。</p>
-		<p><b>阶段 3 · 建卡</b> ❌ 走不通 —— <b>没有 title</b>；模板/领域/目的/action json/关系数组的形状与枚举全不可知。</p>
-		<p><b>阶段 4 · 改卡</b> ❌ 不可安全使用 —— 不知道卡 JSON 结构，却要求 AI 生成 JSON 路径；覆盖 vs 追加矛盾。</p>
-		<p><b>阶段 5 · 推进状态</b> 🟡 半 —— 空目标查目标 ✅；但<b>没有释放</b>，领卡后可能锁死；条件目标不可操作。</p>
-		<p><b>阶段 6 · 权限（仅 DSH）</b> ❌ 不可用 —— 只能盲改：<b>无读取、无可授予工具名清单、无调用者门槛</b>。</p>
-	</div>
-</div>
-
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">必补</span>
-		<span class="item__title">七项不补，AI 只能在「人工把产品知识全塞进提示词」下工作</span>
-		<span class="item__tag tag--wait">等你定</span>
-	</div>
-	<div class="item__body">
-		<p><b>① ✅ 已解决（名字可空=列出）</b> —— #4 的清单/词表入口<br>
-		<b>② ✅ 已解决（新增「看原始卡」工具）</b> —— 卡结构披露<br>
-		<b>③ #6 的路径语法 + 可写白名单 + 覆盖语义 + 回执</b> —— 现在是「不可用且危险」：路径指到父节点会整体替换，AI 以为只改了一个字段。<br>
-		<b>④ 释放转移</b> —— 领了卡不能放手，可能永久占配额。<br>
-		<b>⑤ 🟡 部分解决</b> —— 「不需要列工具名」已解决；<b>但「读取当前设置」和「谁有权限调」还没答</b>。<br>
-		<b>⑥ 所有工具的返回 / 错误契约</b> —— 9 条全部只定义了参数，<b>没有一条定义返回字段</b>。AI 的全部判断都建立在返回上。<br>
-		<b>⑦ ✅ 已解决（#5 加 title + 先看定义）</b> —— 建卡的 title</p>
-	</div>
-</div>
-
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">矛盾</span>
-		<span class="item__title">8 处自相矛盾 / 按当前文本无法实现</span>
-		<span class="item__tag tag--wait">等你裁决</span>
-	</div>
-	<div class="item__body">
-		<p><b>1.</b> #4 循环依赖：按名查定义 vs 名字只能从定义来 —— 没有清单入口时无解。<br>
-		<b>2.</b> #6「覆盖」与「追加」互斥：整体覆盖无法表达数组追加，除非另定 append 语法。<br>
-		<b>3.</b> #3 只给视图 vs #6 要求 JSON 结构 —— 同一套 API 里一个工具拿不到另一个工具操作所需的表示。<br>
-		<b>4.</b> #5「领域/目的可空」与「空模板时必要」—— 空模板没有定义、没有识别入口；「目的」也没有定义。<br>
-		<b>5.</b> #8「采纳=未指定→提交」与「分类是一级概念」并存 —— 只要分类不止一种，这条规则只对一部分卡成立。<br>
-		<b>6.</b> #9「并集/交集（增量语义）」与「没有读取」冲突 —— AI 不知道原集，无法预测或验证；<b>「只保留这 3 个工具」无法表达</b>（必须先知道「全部」是什么）。<br>
-		<b>7.</b> 「空间为空行为未定义」与「AI 要可靠操作」冲突 —— 行为由不可见的宿主决定，AI 没有观测手段（宿主类型、激活空间、实际作用空间都没有回显）。<br>
-		<b>8.</b> <b>9 条全部缺返回/错误契约</b> —— 参数定义完了，但 AI 判断所需的「可观测行为」一条都没定义。</p>
-	</div>
-</div>
-
-<div class="item">
-	<div class="item__head">
-		<span class="item__no">两坑</span>
-		<span class="item__title">两个「看起来合理但 AI 会踩」的设计</span>
-		<span class="item__tag tag--text">建议保留但补观测</span>
-	</div>
-	<div class="item__body">
-		<p><b>A · 「空间为空 = 宿主决定行为」</b> —— 可以保留，但对 AI 是坑：<br>
-		· 同一个调用在 DSH 静默作用到激活空间、在 MCP 直接失败，<b>AI 看不到自己在哪种宿主、也看不到激活空间是哪个</b> ⇒ 无法预知写到了哪。对读可以接受，对写是风险。<br>
-		· 「未定义」这个词对 AI 是<b>反信息</b> —— 工具描述是 AI 唯一能看到的契约。<br>
-		· 建议补：每个工具返回都回显「实际作用的空间」；#1 标出激活空间；写操作描述里明说「会写入激活空间」；MCP 错误文案要教 AI 下一步。<br>
-		· 另外「空」有三种写法（省略 / null / 空串），需求只说了 null，要统一。</p>
-		<p><b>B · #6 的 JSON 路径</b> —— 9 条里最危险的一条：<br>
-		· 没有卡结构披露时，LLM 生成路径基本靠猜（中文 section label、嵌套 payload、数组下标、转义都是幻觉来源）。<br>
-		· 写错的最坏结果不是报错，而是<b>把父节点整体替换</b> —— object 里没写的兄弟项全部消失，<b>不可逆</b>，而 AI 以为自己只改了一个字段。<br>
-		· 「追加」在覆盖语义下不可实现（要读原始数组，而 #3 只给视图）。<br>
-		· 路径能命中状态/历史/未读/编号/模板，就绕过 #7/#8 的业务规则，还能破坏审计。</p>
-	</div>
-</div>
-
-<!-- ══════════ ⑤ 发布与清理 ══════════ -->
-<!-- ══════════ ⑤ 发布与清理 ══════════ -->
 <h2 id="g4">⑤ 发布与清理</h2>
 
 <div class="item">
