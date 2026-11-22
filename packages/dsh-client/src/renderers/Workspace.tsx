@@ -228,6 +228,20 @@ export interface WorkspaceProps {
 	 *   1200×476 的抽屉视口和 570×920 的页签视口都可以各自选。
 	 */
 	readonly density?: 'full' | 'compact';
+	/**
+	 * 数据在飞（切空间时会短暂为真）。
+	 *
+	 * 用户 `2026-11-23`：
+	 * 「切换工作空间的时候整个视口都跳变。给他加一点过度时间。或者跳变也不要全变了。
+	 *   显示"正在加载"不应该包含视口上面的菜单部分。应该只有里面的列表或者科技树的视口显示正在加载。」
+	 *
+	 * ⇒ **加载态只盖 `.tb3w-main`（列表 / 科技树 / 详情那一块）**，
+	 *   chrome（空间 chips + 工具栏 + 筛选行）照常画 —— 否则整块视口会跳变。
+	 *
+	 * ⚠ 和 `WorkspaceBody` 的整页加载区分：那是**首次加载**（还没有任何空间可画），
+	 *   连 chips 都没有数据，只能整页提示。这里是**已有数据时换空间**。
+	 */
+	readonly loading?: boolean;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -688,7 +702,19 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						/>
 					) : null}
 
-				<div className="tb3w-main" data-main>
+				<div className="tb3w-main" data-main data-loading={props.loading === true ? '1' : '0'}>
+					{/*
+					 * 加载态**只盖内容区**（用户 2026-11-23：见 `loading` prop 的注释）。
+					 *
+					 * 做法是「盖一层 + 把兄弟节点 CSS 隐藏」，不是条件替换：
+					 *   旧内容保持挂载 ⇒ 加载前后**没有重排**，chrome 完全不动 ⇒ 视口不跳。
+					 */}
+					{props.loading === true ? (
+						<div className="tb3w-main__loading" data-main-loading>
+							<span>正在加载…</span>
+						</div>
+					) : null}
+
 					<section className="tb3w-list" style={listStyle} data-list>
 						{view === 'tree' ? (
 							/*
@@ -750,8 +776,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 			</div>
 
 			{/*
-			 * 状态菜单：portal 到 body 的 fixed 浮层。
-			 * 只在「打开时那张卡还是当前选中的卡」时才画 —— 否则锚点已经不在屏幕上了。
+			 * 状态菜单：portal 到 body 的 fixed 浮层。			 * 只在「打开时那张卡还是当前选中的卡」时才画 —— 否则锚点已经不在屏幕上了。
 			 */}
 			{menuCardId === null || menu === null ? null : (
 				<StatusMenu
