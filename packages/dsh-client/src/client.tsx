@@ -204,8 +204,9 @@ export function apply(ctx: Context): void {
 	 * ══════════════════════════════════════════════════════════
 	 *
 	 * 入口按钮 + 面板是**两个槽条目**，各自渲染在不同位置，**只能靠共享 store 同步
-	 * `open`** —— `registerDrawerSlots()` 内部按 sessionId 造一份 `DrawerStore`
-	 * （见该文件头）。
+	 * `open`** —— 那个 store 是**模块级单例**（`pure/drawer-state.ts`），
+	 * 两个槽各自 `useSyncExternalStore` 它。见 `register-drawer.tsx` 文件头的
+	 * 「为什么不用 `inject(sessionId)`」（实测会崩）。
 	 *
 	 * 内容传 `createElement(WorkspaceBody)`：它自己拉数据，Drawer 只管外壳。
 	 *
