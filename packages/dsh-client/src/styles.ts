@@ -36,6 +36,8 @@ export const STYLE_ID = 'taskboard3-styles';
 import { FALLBACK_CSS } from './renderers/fallback-css.ts';
 /* 建卡页的 CSS 真值放在 renderers/create/create-css.ts —— 用户要求「CSS 跟着组件走」。 */
 import { CREATE_CSS } from './renderers/create/create-css.ts';
+/* 建卡流程的外壳（tb3w-create，作用域是工作区而不是建卡页）—— 同一个形态。 */
+import { CREATE_SHELL_CSS } from './renderers/create/create-shell-css.ts';
 
 /*
  * 建卡页的样式（`tb3cc-*`）搬到 ./renderers/create/create-css.ts —— 用户 2026-11-22
@@ -595,7 +597,7 @@ import { SECTION_CSS } from './renderers/section-css.ts';
 export { TECHTREE_CSS };
 export { SEARCHBOX_CSS, SECTION_CSS };
 
-export { DRAWER_CSS, FALLBACK_CSS };
+export { CREATE_SHELL_CSS, DRAWER_CSS, FALLBACK_CSS };
 
 /**
  * 全部类名 —— **单一来源**。
@@ -953,7 +955,7 @@ export function injectStyles(): void {
 	 *   .tb3w-root .badge **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
 	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
-	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}`;
+	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}`;
 	document.head.appendChild(element);
 }
 
