@@ -20,6 +20,12 @@ import { initRenderers } from '../../../src/init-renderers.ts';
 
 import { Section } from '../../../src/renderers/Section.tsx';
 import { applyAskAction, type AskAction } from '../../../src/pure/section.ts';
+/*
+ * 产品样式由 `injectStyles()` 在运行时注入 —— **预览和产品是同一份 CSS**
+ * （`SECTION_CSS` + 降级块的 `FALLBACK_CSS`）。不调用它就是裸 HTML；
+ * 调用之后 `style.css` 只留预览外壳。
+ */
+import { injectStyles } from '../../../src/styles.ts';
 import type { CardSection } from '../../../src/types.ts';
 
 /* ── 夹具：payload 逐字抄自 packages/core/templates/*.yaml ── */
@@ -283,7 +289,12 @@ function App(): React.ReactNode {
 	const push = (what: string): void => setEvents((one) => [...one, what]);
 
 	return (
-		<div className="preview">
+		/*
+		 * 最外层带 `.tb3w-root` —— 产品 CSS 全部挂在这个作用域下
+		 * （`SECTION_CSS` 的每条规则都是 `.tb3w-root .section-block…`）。
+		 * `.pv-shell` 把产品的「撑满 + 裁切」放开成「按内容撑开」。
+		 */
+		<div className="preview tb3w-root pv-shell">
 			<header className="pv-head">
 				<h1>Section / 卡片正文的一章</h1>
 				<p>
@@ -361,6 +372,8 @@ function App(): React.ReactNode {
 }
 
 initRenderers();
+/* 产品样式（含降级块的 .missing-renderer / .json-fallback）。 */
+injectStyles();
 const root = document.getElementById('root');
 if (root !== null) {
 	createRoot(root).render(

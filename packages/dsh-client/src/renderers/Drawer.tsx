@@ -253,7 +253,8 @@ export function Drawer(props: DrawerProps): ReactNode {
 
 				{/*
 				 * ⚠ 这里**只有**一个 Workspace —— 没有第二份列表/详情代码。
-				 *   压缩全靠 `.tb3d-panel` 作用域下的 CSS（`DRAWER_CSS`）。
+				 *   压缩全靠 `.tb3d-panel` 作用域下的 CSS（`renderers/drawer-css.ts` 的
+				 *   `DRAWER_CSS` —— 和组件放同一个目录：CSS 跟着组件走）。
 				 */}
 				<div className="tb3d-body" data-drawer-body="1">
 					<Workspace {...props.workspace} />

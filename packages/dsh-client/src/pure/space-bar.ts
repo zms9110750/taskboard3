@@ -221,33 +221,55 @@ export function actionButtonOf(
 
 	/* ── 「显示已归档」开：同一个按钮做**归档状态切换** ── */
 	const isArchived = selected?.archived === true;
+
 	/*
-	 * 当前 + 未归档 ⇒ 禁止归档（它是 AI 默认空间）；
-	 * 当前 + 已归档 ⇒ 异常态 ⇒ **允许点**（点了取消归档）。
+	 * ## ⚠ 曾经有一条「当前空间不能归档」的规则，已删除（用户 2026-11-22）
+	 *
+	 * 旧规则：
+	 *
+	 * ```
+	 * const currentCannotArchive = isCurrent && !isArchived;
+	 * ```
+	 *
+	 * 理由是「`currentId` 是 AI 工具的默认空间，归档它会让默认值指向不该存在的东西」。
+	 *
+	 * **这个理由已经不成立了** —— 用户 2026-11-22 取消了「激活空间」设定：
+	 * 工具层的 `workspaceId` 必须显式给，**没有默认空间**（见 `tools/src/context.ts`
+	 * 的 `resolveWorkspace`）。既然没有默认值，就没有「指向不该存在的东西」。
+	 *
+	 * ## 为什么必须删（不是可选的清理）
+	 *
+	 * 产品里 `currentId` 和 `viewingId` 是**同一个值**（`WorkspaceBody.tsx`：
+	 * 两个 prop 都传 `state.workspaceId`）。而操作按钮只作用于「正在查看的空间」
+	 * ⇒ `isCurrent` **恒为 true** ⇒ `currentCannotArchive` **恒为 true**
+	 * ⇒ 按钮永远禁用 ⇒ **任何空间都归档不了**，功能形同虚设。
+	 *
+	 * （CDP 实测：打开「显示已归档」后按钮 `disabled: true`、
+	 *   `label: '当前空间'`、`emphasis: 'current'`，点不动。）
 	 */
-	const currentCannotArchive = isCurrent && !isArchived;
+	const currentCannotArchive = false;
 
 	return {
 		kind: 'toggle-archived',
-		label: currentCannotArchive ? '当前空间' : '已归档',
-		disabled: selected === undefined || currentCannotArchive,
+		/*
+		 * 文案保持「已归档」不变 —— 它读起来像**一个勾选框的标签**，
+		 * 勾没勾由 `checked` 表达。不要改成「已归档 / 未归档」两个词：
+		 * 那样 `checked` 就没意义了，而且按钮宽度会在两个状态间跳。
+		 */
+		label: '已归档',
+		disabled: selected === undefined,
 		checked: isArchived,
 		/*
-		 * ⚠ 判据是**「能不能点」**，不是「是不是当前」。
-		 *
-		 * 第 4 行（当前 + 已归档，异常态）虽然 `isCurrent`，但它**可点**（点了取消归档）
-		 * ⇒ `action`。若按 `isCurrent` 给 `current`，视觉会画成「实心、不可点」，
-		 * 而它其实能点 —— 比不区分更误导。
+		 * 判据是**「能不能点」**：只要有一个选中的空间就能点
+		 * （点了翻面：未归档 ⇒ 归档，已归档 ⇒ 取消归档）。
 		 */
-		emphasis: selected === undefined ? 'plain' : currentCannotArchive ? 'current' : 'action',
+		emphasis: selected === undefined ? 'plain' : 'action',
 		title:
 			selected === undefined
 				? '还没有任务空间'
-				: currentCannotArchive
-					? '当前激活的任务空间不能归档'
-					: isArchived
-						? '点一下取消归档'
-						: '点一下归档',
+				: isArchived
+					? '点一下取消归档'
+					: '点一下归档',
 		workspaceId: selected?.id,
 	};
 }

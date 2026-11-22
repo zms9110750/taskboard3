@@ -82,6 +82,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 				要做什么: { $type: 'text', value: '做点事' },
 				怎么做: { $type: 'markdown', value: '# 方案' },
 			},
+			actor: 'user',
 		});
 		assert.ok(result.ok, `建卡应当成功，实际：${JSON.stringify(result)}`);
 		assert.equal(result.card.id, 'WD01', 'work 的字母 W + codePrefix D + 01');
@@ -95,6 +96,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 			templateRef: 'demo',
 			title: '第二张',
 			content: { 不存在的章节: { $type: 'text', value: 'x' } },
+			actor: 'user',
 		});
 		assert.equal(result.ok, false, '未知章节名必须被拒');
 		assert.equal(result.code, 'CONTENT_INVALID');
@@ -108,6 +110,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 			templateRef: 'demo',
 			title: '第三张',
 			content: { 要做什么: { $type: 'text', value: 123 } },
+			actor: 'user',
 		});
 		assert.equal(result.ok, false);
 		assert.equal(result.code, 'CONTENT_INVALID');
@@ -118,6 +121,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 			workspaceId: wsId,
 			templateRef: 'demo',
 			title: '第四张',
+			actor: 'user',
 		});
 		assert.ok(result.ok);
 		assert.equal(result.card.sections['what']?.payload !== undefined, true, '默认值应被填入');
@@ -134,6 +138,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 			workspaceId: wsId,
 			templateRef: 'demo',
 			title: '第五张',
+			actor: 'user',
 		});
 		assert.equal(result.ok, false);
 		assert.equal(result.code, 'TEMPLATE_NOT_FOUND');
@@ -147,6 +152,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 			templateRef: 'demo',
 			title: '第六张',
 			content: { 要做什么: { $type: 'text', value: '再来一次' } },
+			actor: 'user',
 		});
 		assert.ok(result.ok);
 	});
@@ -180,6 +186,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 			templateRef: 'usesCustom',
 			title: '自定义',
 			content: { 自定义章: { $type: 'custom' } },
+			actor: 'user',
 		});
 		assert.ok(okResult.ok, '注册齐了应当能建卡');
 
@@ -190,6 +197,7 @@ describe('core：模板注册 / 校验 / 注销', () => {
 			templateRef: 'usesCustom',
 			title: '自定义2',
 			content: { 自定义章: { $type: 'custom' } },
+			actor: 'user',
 		});
 		assert.equal(badResult.ok, false);
 		assert.equal(badResult.code, 'ACTION_NOT_FOUND');

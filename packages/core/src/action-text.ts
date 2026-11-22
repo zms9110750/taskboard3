@@ -16,10 +16,17 @@
  *
  * 如果每处各写一遍格式化，就会出现**三套不一致的文案**。
  *
- * ## 兜底为什么要 `JSON.stringify`
+ * ## 降级函数**也在注册表里**（用户 2026-11-22）
  *
- * 不认识的 `type`（第三方注册的 action）没有格式化函数 ⇒ 至少把原始 JSON
- * 吐出来，用户能看到内容，而不是空字符串。
+ * > 「分发器写了逻辑。但是找不到注册的渲染器，降级的降级渲染器应该是组件。
+ * >   **UI 和 tool 的两边都应该如此。**」
+ *
+ * ⇒ 「找不到注册的渲染器时怎么办」不是两行 `if`，而是注册表上的
+ *   **一个可替换的一等公民**（`setFallback` / `fallback`）。
+ *   UI 侧（`dsh-client/src/render-registry.ts`）结构对称。
+ *
+ * 默认降级 = 把原始 JSON 格式化成人读文字（旧行为），但它**只是默认值**，
+ * 第三方可以整体换掉 —— 换掉之后本文件里不再有任何关于「降级长什么样」的知识。
  */
 
 
@@ -44,6 +51,14 @@ export interface ActionTextRegistry {
 	get(type: string): ActionTextFn | null;
 	/** 列出已注册的 type（**按注册顺序**）。 */
 	types(): readonly string[];
+	/**
+	 * 设置**降级函数** —— 没注册的 `$type`（或 payload 根本没有 `$type`）时用它。
+	 *
+	 * @throws 已经设置过
+	 */
+	setFallback(fn: ActionTextFn): void;
+	/** 取当前降级函数（**永远有值** —— 注册表自带一个默认的）。 */
+	fallback(): ActionTextFn;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -51,12 +66,38 @@ export interface ActionTextRegistry {
    ══════════════════════════════════════════════════════════ */
 
 /**
+ * 默认的降级函数 —— 把 payload 格式化成原始 JSON。
+ *
+ * ⚠ **它不是「降级逻辑」本身，只是默认值。** 注册表里 `fallback()` 拿到的
+ *   永远是这个或第三方换掉的那个；`textOfAction` 只调 `fallback()`，
+ *   不知道降级长什么样。
+ *
+ * @param payload 未注册的 payload（**任意形状**，不是 `$type` 已知的对象）
+ */
+function jsonFallbackOf(payload: Record<string, unknown>): string {
+	return JSON.stringify(payload);
+}
+
+/**
  * 造一个注册表。
  *
  * @param seed 初始注册项（可选）
+ * @param fallback 降级函数（可选，省略 = 内置的 JSON 格式化）
  */
-export function createActionTextRegistry(seed?: readonly (readonly [string, ActionTextFn])[]): ActionTextRegistry {
+export function createActionTextRegistry(
+	seed?: readonly (readonly [string, ActionTextFn])[],
+	fallback?: ActionTextFn,
+): ActionTextRegistry {
 	const table = new Map<string, ActionTextFn>();
+
+	/**
+	 * 当前降级函数 + 「是否已被设置」。
+	 *
+	 * 构造参数显式给了也算「已设置」—— 否则 `setFallback` 能把它覆盖掉，
+	 * 那就变成「构造时说了一个、运行时又说了一个」，仍然不可预测。
+	 */
+	let fallbackFn: ActionTextFn = fallback ?? jsonFallbackOf;
+	let fallbackSet = fallback !== undefined;
 
 	/**
 	 * 注册实现 —— **seed 和运行时注册共用同一套校验**。
@@ -103,6 +144,25 @@ export function createActionTextRegistry(seed?: readonly (readonly [string, Acti
 		},
 		types() {
 			return [...table.keys()];
+		},
+		setFallback(fn) {
+			/*
+			 * 和 `register` 同一条规则的反面：一个 type 只能有一个提供者，
+			 * **降级函数也只能有一个**。后设的覆盖先设的会让「到底哪个在生效」
+			 * 取决于调用顺序 —— 那是不可预测的行为。
+			 */
+			if (fallbackSet) {
+				throw new Error(
+					'降级函数已经设置过，不能重复设置。' +
+						'降级函数只有一个提供者 —— 两个提供者抢同一个槽位时，' +
+						'谁生效取决于调用顺序，那是不可预测的行为。',
+				);
+			}
+			fallbackFn = fn;
+			fallbackSet = true;
+		},
+		fallback() {
+			return fallbackFn;
 		},
 	};
 }
@@ -207,21 +267,30 @@ export const DEFAULT_ACTION_TEXT: ActionTextRegistry = createActionTextRegistry(
 /**
  * 把一个 payload 转成字符串。
  *
+ * ## 两条路径，第二段**永远是 `fallback()`**（不是硬编码）
+ *
+ * ```
+ * payload.$type 是字符串 → registry.get(type)
+ *                              ├── 命中  → format(payload)
+ *                              └── 未命中 → registry.fallback()(payload)
+ * payload.$type 缺失/非字符串 ──────→ registry.fallback()(payload)
+ * ```
+ *
  * @param payload action payload（`{ $type, ... }`）
  * @param registry 注册表（省略用默认）
- * @returns 人读字符串；**没注册的 type** 兜底成 `JSON.stringify`
+ * @returns 人读字符串；**没注册的 type** 走注册表的降级函数
  */
 export function textOfAction(payload: unknown, registry: ActionTextRegistry = DEFAULT_ACTION_TEXT): string {
 	if (typeof payload !== 'object' || payload === null) return '';
 
 	const record = payload as Record<string, unknown>;
 	const type = typeof record['$type'] === 'string' ? record['$type'] : '';
-	if (type === '') return JSON.stringify(payload);
+	if (type === '') return registry.fallback()(record);
 
 	const format = registry.get(type);
 	if (format === null) {
-		/* 不认识的 type ⇒ 至少让用户看到原始内容。 */
-		return JSON.stringify(payload);
+		/* 不认识的 type ⇒ 交给降级函数（默认是 JSON，第三方可整体换掉）。 */
+		return registry.fallback()(record);
 	}
 	return format(record);
 }

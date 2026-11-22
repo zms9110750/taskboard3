@@ -59,6 +59,42 @@ function cardsOf(_workspaceId: string): readonly Card[] {
 }
 
 /**
+ * 预览里的空间表 —— **可变副本**。
+ *
+ * `WORKSPACES` 是 `vp-drawer` 导出的夹具（只读）。归档要能改状态，
+ * 所以这里复制一份；`fakeApi` 的 `getState` / `listWorkspaces` 都读它。
+ */
+const SPACES: SpaceEntity[] = WORKSPACES.map((one) => ({ ...one }));
+
+/**
+ * 预览里归档 / 取消归档 —— **真的改 `SPACES`**。
+ *
+ * 这样才验得出来「chip 变样式 / 从列表消失」；
+ * 如果只是返回一个值，UI 行为验不到。
+ *
+ * @param id 空间 id
+ * @param archived 目标状态
+ */
+function setArchivedInPreview(id: string, archived: boolean): {
+	readonly changed: boolean;
+	readonly workspace: SpaceEntity | undefined;
+} {
+	const index = SPACES.findIndex((one) => one.id === id);
+	if (index === -1) return { changed: false, workspace: undefined };
+
+	const current = SPACES[index];
+	if (current === undefined) return { changed: false, workspace: undefined };
+	if ((current.archived === true) === archived) {
+		/* 幂等：已是目标状态 ⇒ changed: false，不改任何东西。 */
+		return { changed: false, workspace: current };
+	}
+
+	const next: SpaceEntity = { ...current, archived };
+	SPACES[index] = next;
+	return { changed: true, workspace: next };
+}
+
+/**
  * 造一个假 API。
  *
  * @returns 满足 `TaskboardApi` 的对象，所有调用都记进 `CALLS`
@@ -74,9 +110,9 @@ function fakeApi(): TaskboardApi {
 		async getState(workspaceId?: string) {
 			CALLS.push({ method: 'getState', args: workspaceId });
 			await delay(80);
-			const target = workspaceId ?? WORKSPACES[0]?.id ?? '';
+			const target = workspaceId ?? SPACES[0]?.id ?? '';
 			const data: StateData = {
-				workspaces: WORKSPACES,
+				workspaces: SPACES,
 				workspaceId: target,
 				cards: cardsOf(target),
 				templates: TEMPLATES,
@@ -85,11 +121,24 @@ function fakeApi(): TaskboardApi {
 		},
 		async listWorkspaces(): Promise<readonly SpaceEntity[]> {
 			CALLS.push({ method: 'listWorkspaces', args: undefined });
-			return WORKSPACES;
+			return SPACES;
 		},
+		async createWorkspace(name: string): Promise<SpaceEntity> {
+			CALLS.push({ method: 'createWorkspace', args: name });
+			return { id: `W${String(SPACES.length + 1)}`, displayName: name, archived: false, createdAt: Date.now() };
+		},
+		async createCard(input) {
+			CALLS.push({ method: 'createCard', args: input });
+			throw new Error('预览没接建卡');
+		},
+		/*
+		 * 建卡页要取模板详情（章节清单）。
+		 *
+		 * ⚠ 这个预览**真的会走建卡流程**（点「新建」→ 表单 → 提交），
+		 *   所以这里必须给真章节，不能 throw —— 否则建卡页一选模板就报错。
+		 */
 		async getTemplate(ref: string) {
 			CALLS.push({ method: 'getTemplate', args: ref });
-			/* 假数据：摘要里没有章节，这里造两章够测「提交能带上 content」。 */
 			const summary = TEMPLATES.find((one) => one.ref === ref);
 			return {
 				ref,
@@ -104,17 +153,24 @@ function fakeApi(): TaskboardApi {
 				],
 			};
 		},
-		async createWorkspace(name: string): Promise<SpaceEntity> {
-			CALLS.push({ method: 'createWorkspace', args: name });
-			return { id: `W${String(WORKSPACES.length + 1)}`, displayName: name, archived: false, createdAt: Date.now() };
-		},
-		async createCard(input) {
-			CALLS.push({ method: 'createCard', args: input });
-			throw new Error('预览没接建卡');
-		},
 		async patchCard(input) {
 			CALLS.push({ method: 'patchCard', args: input });
 			throw new Error('预览没接 patch');
+		},
+		/*
+		 * 归档 / 取消归档 —— 预览里**真的改**这份假数据，
+		 * 否则「点一下 chip 变样式 / 从列表消失」验不出来。
+		 *
+		 * ⚠ `WORKSPACES` 是 `const` 数组，这里不是改它，是改 `fakeApi` 闭包里
+		 *   持有的 `SPACES`（可变副本）。
+		 */
+		async archiveWorkspace(id: string) {
+			CALLS.push({ method: 'archiveWorkspace', args: id });
+			return setArchivedInPreview(id, true);
+		},
+		async unarchiveWorkspace(id: string) {
+			CALLS.push({ method: 'unarchiveWorkspace', args: id });
+			return setArchivedInPreview(id, false);
 		},
 		async act(input) {
 			CALLS.push({ method: 'act', args: input });

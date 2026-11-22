@@ -172,11 +172,43 @@ export interface TaskboardApi {
 		readonly kind?: string;
 		readonly domain?: string;
 	}): Promise<Card>;
+	/**
+	 * 改一张卡的**标题 / 备注 / 章节**。
+	 *
+	 * ## ⚠ 字段是**扁平**的，不要再包一层 `patch`
+	 *
+	 * 服务端 `PATCH /cards/:id`（`packages/dsh/src/http.ts:600`）直接在**顶层**读
+	 * `title` / `note` / `content`，和 `POST /cards` 的格式一致。
+	 *
+	 * 曾经这里发的是 `{ workspaceId, patch: { … } }` —— 多包了一层。服务端读不到
+	 * 那三个字段 ⇒ 传给 `taskboard.update()` 的是空对象 ⇒ **什么都不改但返回成功**。
+	 * 用户以为改成功了，刷新才发现没改。**静默无效比报错更坏。**
+	 *
+	 * 用户 `2026-11-22`：「用服务端的扁平的」。
+	 *
+	 * @param input 空间 id + 卡编号 + 要改的字段（至少一个）
+	 */
 	patchCard(input: {
 		readonly workspaceId: string;
 		readonly cardId: string;
-		readonly patch: Readonly<Record<string, unknown>>;
+		/** 新标题（trim 后不能为空）。省略 = 不改。 */
+		readonly title?: string;
+		/** 新备注。省略 = 不改（空串是合法值 —— 那是「清空备注」）。 */
+		readonly note?: string;
+		/** 新章节内容（整体替换，服务端要过 `schemas.validate`）。省略 = 不改。 */
+		readonly content?: Readonly<Record<string, unknown>>;
 	}): Promise<Card>;
+	/**
+	 * 归档一个空间。
+	 *
+	 * ⚠ **幂等**：已经归档的再归档不算错误，回 `changed: false`。
+	 *   调用方据此决定要不要重拉列表。
+	 *
+	 * @param id 空间 id
+	 */
+	archiveWorkspace(id: string): Promise<ArchiveResult>;
+	/** 取消归档（同样幂等）。 */
+	unarchiveWorkspace(id: string): Promise<ArchiveResult>;
 	act(input: {
 		readonly workspaceId: string;
 		readonly request: ActionRequest;
@@ -198,6 +230,25 @@ export interface RenderCheckResult {
 	readonly required: readonly string[];
 	/** 需要但 UI 没注册的 `$type`（去重、字母序）。空数组 = 全都有。 */
 	readonly missing: readonly string[];
+}
+
+/**
+ * `POST /workspaces/:id/archive` / `/unarchive` 的响应。
+ *
+ * ## 为什么带 `workspace` 而不只给 `changed`
+ *
+ * 客户端归档后要立刻用新的 `archived` 标记重画 chip。只给 `changed: true`
+ * 它还得再发一次 `GET /state` 才能知道新状态 —— 而服务端手上就有这张空间。
+ */
+export interface ArchiveResult {
+	/**
+	 * 这次调用**真的改了状态**吗。
+	 *
+	 * `false` = 本来就已是目标状态（幂等，**不是错误**）。
+	 */
+	readonly changed: boolean;
+	/** 归档 / 取消归档之后的空间（`archived` 已是新值）。 */
+	readonly workspace: Workspace | undefined;
 }
 
 /**
@@ -275,10 +326,31 @@ export function createApi(fetchImpl?: FetchLike): TaskboardApi {
 			});
 			return data.template;
 		},
+		async archiveWorkspace(id) {
+			return request<ArchiveResult>(`workspaces/${encodeURIComponent(id)}/archive`, {
+				method: 'POST',
+			});
+		},
+		async unarchiveWorkspace(id) {
+			return request<ArchiveResult>(`workspaces/${encodeURIComponent(id)}/unarchive`, {
+				method: 'POST',
+			});
+		},
 		async patchCard(input) {
+			/*
+			 * ⚠ **扁平展开**，不包 `patch` 字段。
+			 *
+			 * 服务端在顶层读 `title` / `note` / `content`。包一层的话它全读到
+			 * `undefined` ⇒ 空对象 patch ⇒ 静默不改。见 `TaskboardApi.patchCard` 的注释。
+			 */
 			return request<Card>(`cards/${encodeURIComponent(input.cardId)}`, {
 				method: 'PATCH',
-				body: { workspaceId: input.workspaceId, patch: input.patch },
+				body: {
+					workspaceId: input.workspaceId,
+					...(input.title === undefined ? {} : { title: input.title }),
+					...(input.note === undefined ? {} : { note: input.note }),
+					...(input.content === undefined ? {} : { content: input.content }),
+				},
 			});
 		},
 		async act(input) {

@@ -112,6 +112,22 @@ const RENDERERS = new Map<string, RendererComponent>();
 let sealed = false;
 
 /**
+ * 降级渲染器 —— 「查不到 type」时画什么。
+ *
+ * ## 为什么它也是一个「渲染器」（用户 2026-11-22）
+ *
+ * > 「找不到注册的渲染器，降级的渲染器应该是组件。
+ * >   UI 和 tool 的两边都应该如此。」
+ *
+ * ⇒ 降级不是分发器里的一个内联 if，而是**可替换的渲染器**，
+ *   和普通渲染器同等待遇：能在运行时设一次、能被测试替换、封盘后不能再改。
+ *
+ * ⚠ `null` = 还没设。`SectionContent` 在没设时只能画个空占位，
+ *   所以 `initRenderers()` 必须设它 —— 见 `init-renderers.ts`。
+ */
+let fallback: RendererComponent | null = null;
+
+/**
  * 注册一个 action 渲染器。
  *
  * ## 三条校验都不是"防御性编程"，各挡一个真 bug
@@ -146,6 +162,46 @@ export function registerRenderer(type: string, Comp: RendererComponent): void {
 		);
 	}
 	RENDERERS.set(type, Comp);
+}
+
+/**
+ * 设置降级渲染器 —— 「查不到 type」时画什么。
+ *
+ * ## 三条校验（和 registerRenderer 同一套理由）
+ *
+ * | 校验 | 挡什么 |
+ * |---|---|
+ * | 已封盘 | 运行时偷偷换降级块 ⇒ 用户看到的和测试断言的不是同一个 |
+ * | 重复设置 | 两个模块都想当降级块 ⇒ 谁生效取决于 import 顺序 = 不可预测 |
+ *
+ * ⚠ **允许在封盘前设置一次**。`initRenderers()` 就是这么设的。
+ *
+ * @param Comp 降级组件
+ * @throws 已封盘 / 已经设过
+ */
+export function setFallbackRenderer(Comp: RendererComponent): void {
+	if (sealed) {
+		throw new Error(
+			'渲染器注册表已封盘，不能再换降级渲染器。' +
+				'封盘后换它会让用户看到的降级块与测试断言的不是同一个。',
+		);
+	}
+	if (fallback !== null) {
+		throw new Error(
+			'降级渲染器已经设过了，不能重复设置。' +
+				'两个模块抢同一个槽位时，谁生效取决于 import 顺序 —— 那是不可预测的行为。',
+		);
+	}
+	fallback = Comp;
+}
+
+/**
+ * 取降级渲染器。
+ *
+ * @returns 降级组件；**还没设时返回 `undefined`**（调用方必须处理，否则白屏）
+ */
+export function fallbackRenderer(): RendererComponent | undefined {
+	return fallback ?? undefined;
 }
 
 /**
@@ -207,5 +263,6 @@ export function isSealed(): boolean {
  */
 export function __resetRegistryForTest(): void {
 	RENDERERS.clear();
+	fallback = null;
 	sealed = false;
 }

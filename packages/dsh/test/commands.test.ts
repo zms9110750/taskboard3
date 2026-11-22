@@ -125,8 +125,8 @@ describe('/taskboard', () => {
 
 		const template = taskboard.listTemplates()[0];
 		if (template === undefined) return;
-		await taskboard.create({ workspaceId: current, templateRef: template.ref, title: '一' });
-		await taskboard.create({ workspaceId: current, templateRef: template.ref, title: '二' });
+		await taskboard.create({ workspaceId: current, templateRef: template.ref, title: '一', actor: 'user' });
+		await taskboard.create({ workspaceId: current, templateRef: template.ref, title: '二', actor: 'user' });
 
 		const result = (await setup().handler({})) as { kind: string; text: string };
 		assert.ok(result.text.includes('共 2 张卡'), result.text);
@@ -164,7 +164,7 @@ function setupAll(): Map<string, Registered> {
 /** 造一张卡，返回编号。 */
 async function makeCard(title: string): Promise<string> {
 	const ref = taskboard.listTemplates()[0]?.ref ?? '';
-	const created = await taskboard.create({ workspaceId: current, templateRef: ref, title });
+	const created = await taskboard.create({ workspaceId: current, templateRef: ref, title, actor: 'user' });
 	assert.equal(created.ok, true);
 	return created.ok ? created.card.id : '';
 }

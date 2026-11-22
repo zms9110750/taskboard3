@@ -87,6 +87,7 @@ describe('状态转移执行', () => {
 			workspaceId: ws,
 			templateRef: `t-${kind}`,
 			title: `${kind}-${Math.random().toString(36).slice(2, 7)}`,
+			actor: 'user',
 		});
 		assert.ok(result.ok, `建卡失败：${JSON.stringify(result)}`);
 		return result.card.id;
@@ -242,6 +243,7 @@ describe('状态转移执行', () => {
 			templateRef: 't-work',
 			title: '带依赖的工作',
 			relations: { links: [{ label: 'dependsOn', to: depId }] },
+			actor: 'user',
 		});
 		assert.ok(created.ok);
 		const adopted = await tb.adopt(ws, created.card.id, 'user');
@@ -266,7 +268,7 @@ describe('状态转移执行', () => {
 		local.templates().register(makeTemplate('t-work', 'work'));
 		local.templates().register(makeTemplate('t-design', 'design'));
 
-		const parent = await local.create({ workspaceId: 'w', templateRef: 't-work', title: '父' });
+		const parent = await local.create({ workspaceId: 'w', templateRef: 't-work', title: '父', actor: 'user' });
 		assert.ok(parent.ok);
 		await local.adopt('w', parent.card.id, 'user');
 
@@ -275,6 +277,7 @@ describe('状态转移执行', () => {
 			templateRef: 't-design',
 			title: '子设计',
 			relations: { parent: parent.card.id },
+			actor: 'user',
 		});
 		assert.ok(child.ok);
 		await local.adopt('w', child.card.id, 'user');
@@ -461,6 +464,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 			workspaceId: ws,
 			templateRef: 't-goal',
 			title: '父目标',
+			actor: 'user',
 		});
 		assert.ok(parentResult.ok);
 		const parent = parentResult.card.id;
@@ -474,6 +478,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 				templateRef: 't-work',
 				title: `子任务 ${i}`,
 				relations: { parent },
+				actor: 'user',
 			});
 			assert.ok(childResult.ok, JSON.stringify(childResult));
 			const childAdopted = await tb.adopt(ws, childResult.card.id, 'user');
@@ -498,7 +503,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 	it('子任务全「需要授权」⇒ 父卡「需要授权」', async () => {
 		/* 用 design 子卡：采纳后停在需要授权。 */
 		tb.templates().register(makeTemplate('t-design', 'design'));
-		const parentResult = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '父2' });
+		const parentResult = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '父2', actor: 'user' });
 		assert.ok(parentResult.ok);
 		const parent = parentResult.card.id;
 		await tb.adopt(ws, parent, 'user');
@@ -508,6 +513,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 			templateRef: 't-design',
 			title: '设计子任务',
 			relations: { parent },
+			actor: 'user',
 		});
 		assert.ok(childResult.ok);
 		const adopted = await tb.adopt(ws, childResult.card.id, 'user');
@@ -574,7 +580,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 		local.templates().register(makeTemplate('t-work', 'work'));
 
 		/* 父 goal → 子 goal → 孙 work */
-		const grandParent = await local.create({ workspaceId: 'w', templateRef: 't-goal', title: '祖父' });
+		const grandParent = await local.create({ workspaceId: 'w', templateRef: 't-goal', title: '祖父', actor: 'user' });
 		assert.ok(grandParent.ok);
 		await local.adopt('w', grandParent.card.id, 'user');
 
@@ -583,6 +589,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 			templateRef: 't-goal',
 			title: '中间',
 			relations: { parent: grandParent.card.id },
+			actor: 'user',
 		});
 		assert.ok(middle.ok);
 		await local.adopt('w', middle.card.id, 'user');
@@ -592,6 +599,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 			templateRef: 't-work',
 			title: '叶子',
 			relations: { parent: middle.card.id },
+			actor: 'user',
 		});
 		assert.ok(leaf.ok);
 		await local.adopt('w', leaf.card.id, 'user');
@@ -615,7 +623,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 		 * 正常路径建不出一张指回自己的卡（受关系校验）。这里直接改存储里的数据，
 		 * 模拟「库被手工改坏 / 迁移出错」。
 		 */
-		const parent = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '环-父' });
+		const parent = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '环-父', actor: 'user' });
 		assert.ok(parent.ok);
 		await tb.adopt(ws, parent.card.id, 'user');
 
@@ -624,6 +632,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 			templateRef: 't-goal',
 			title: '环-子',
 			relations: { parent: parent.card.id },
+			actor: 'user',
 		});
 		assert.ok(child.ok);
 		await tb.adopt(ws, child.card.id, 'user');

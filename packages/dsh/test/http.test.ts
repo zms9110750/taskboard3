@@ -299,6 +299,113 @@ describe('POST /api/workspaces', () => {
 	});
 });
 
+describe('POST /api/workspaces/:id/archive', () => {
+	/**
+	 * 造一个空间并返回 id。
+	 *
+	 * ⚠ **名字必须唯一**：`dataDir` 在整个文件里共用（只在 `before` 建一次），
+	 *   所以空间是**跨用例持久**的 —— 同名会 `NAME_TAKEN`。
+	 *   用计数器保证唯一，别用固定名字。
+	 */
+	let spaceSeq = 0;
+	async function makeSpace(): Promise<string> {
+		spaceSeq += 1;
+		const created = await taskboard.createWorkspace(`待归档-${String(spaceSeq)}`);
+		assert.equal(created.ok, true);
+		if (!created.ok) throw new Error('建空间失败');
+		return created.workspace.id;
+	}
+
+	it('归档 ⇒ 200，changed: true，返回的空间 archived=true', async () => {
+		const id = await makeSpace();
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive`,
+		});
+		assert.equal(out.status, 200);
+		const payload = out.json as {
+			ok: boolean;
+			data: { changed: boolean; workspace: { id: string; archived: boolean } };
+		};
+		assert.equal(payload.ok, true);
+		assert.equal(payload.data.changed, true);
+		assert.equal(payload.data.workspace.archived, true);
+	});
+
+	it('⚠ 重复归档 ⇒ 200 + changed: false（幂等，不是错误）', async () => {
+		const id = await makeSpace();
+		await call(depsOf(), { method: 'POST', url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive` });
+		const again = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive`,
+		});
+		assert.equal(again.status, 200);
+		const payload = again.json as { ok: boolean; data: { changed: boolean } };
+		assert.equal(payload.ok, true);
+		assert.equal(payload.data.changed, false);
+	});
+
+	it('不存在的空间 ⇒ 404 + WORKSPACE_NOT_FOUND', async () => {
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/NOPE/archive`,
+		});
+		assert.equal(out.status, 404);
+		const payload = out.json as { ok: boolean; code: string };
+		assert.equal(payload.ok, false);
+		assert.equal(payload.code, 'WORKSPACE_NOT_FOUND');
+	});
+
+	it('unarchive 反向：归档后取消 ⇒ archived=false', async () => {
+		const id = await makeSpace();
+		await call(depsOf(), { method: 'POST', url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive` });
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/${id}/unarchive`,
+		});
+		assert.equal(out.status, 200);
+		const payload = out.json as {
+			ok: boolean;
+			data: { changed: boolean; workspace: { archived: boolean } };
+		};
+		assert.equal(payload.data.changed, true);
+		assert.equal(payload.data.workspace.archived, false);
+	});
+
+	it('方法不对 ⇒ 405（归档只接受 POST）', async () => {
+		const id = await makeSpace();
+		const out = await call(depsOf(), {
+			method: 'GET',
+			url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive`,
+		});
+		assert.equal(out.status, 405);
+	});
+
+	it('⚠ 空间 id 被 URL 编码时也能解析（中文 id）', async () => {
+		const created = await taskboard.createWorkspace('中文空间-' + String(spaceSeq));
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const id = created.workspace.id;
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/workspaces/${encodeURIComponent(id)}/archive`,
+		});
+		assert.equal(out.status, 200);
+	});
+
+	it('归档后 listWorkspaces(false) 里不再有它', async () => {
+		const id = await makeSpace();
+		assert.ok(taskboard.listWorkspaces(false).some((one) => one.id === id));
+		await call(depsOf(), { method: 'POST', url: `${ROUTE_PREFIX}/api/workspaces/${id}/archive` });
+		assert.equal(
+			taskboard.listWorkspaces(false).some((one) => one.id === id),
+			false,
+		);
+		/* 但 includeArchived=true 里还在 —— 否则「取消归档」就无从点起。 */
+		assert.ok(taskboard.listWorkspaces(true).some((one) => one.id === id));
+	});
+});
+
 describe('POST /api/cards', () => {
 	it('建卡成功 ⇒ 201，返回卡', async () => {
 		const created = await taskboard.createWorkspace('建卡测试');
@@ -388,7 +495,7 @@ describe('GET /api/search', () => {
 		const template = anyTemplate();
 		if (template === undefined) return;
 
-		const card = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '唯一一张' });
+		const card = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '唯一一张', actor: 'user' });
 		assert.equal(card.ok, true);
 
 		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
@@ -517,7 +624,7 @@ describe('PATCH /api/cards/:id', () => {
 		const wsId = created.workspace.id;
 		const template = anyTemplate();
 		if (template === undefined) return;
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '旧标题' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '旧标题', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 
@@ -544,6 +651,120 @@ describe('PATCH /api/cards/:id', () => {
 		});
 		assert.equal(out.status, 404);
 	});
+
+	/*
+	 * ── 字段名对齐（用户 2026-11-22：「用服务端的扁平的」） ──
+	 *
+	 * 这几条钉住**服务端读的是顶层** `title` / `note` / `content`。
+	 * 客户端曾经发 `{ workspaceId, patch: {…} }`（多包一层）⇒ 服务端全读到
+	 * `undefined` ⇒ 空 patch ⇒ **什么都不改但返回成功**。
+	 *
+	 * ⚠ 服务端这一半本来就是对的，这几条是**防止有人把它改成读 `patch`**。
+	 */
+	it('只传 note ⇒ 只有 note 变，title 不动', async () => {
+		const created = await taskboard.createWorkspace('改备注');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const wsId = created.workspace.id;
+		const template = anyTemplate();
+		if (template === undefined) return;
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '原标题', actor: 'user' });
+		assert.equal(made.ok, true);
+		if (!made.ok) return;
+
+		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
+		const out = await call(deps, {
+			method: 'PATCH',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}`,
+			body: { note: '新备注' },
+		});
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { data: { card: { title: string; note: string } } };
+		assert.equal(payload.data.card.note, '新备注');
+		assert.equal(payload.data.card.title, '原标题', '没传 title 就不该动它');
+	});
+
+	it('只传 content ⇒ 章节变了，且过了 schemas.validate', async () => {
+		const created = await taskboard.createWorkspace('改章节');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const wsId = created.workspace.id;
+		const template = anyTemplate();
+		if (template === undefined) return;
+		const meta = taskboard.templateMeta(template.ref);
+		assert.ok(meta !== undefined);
+		if (meta === undefined) return;
+		const section = meta.sections[0];
+		assert.ok(section !== undefined, '模板至少要有一个章节');
+		if (section === undefined) return;
+
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待改正文', actor: 'user' });
+		assert.equal(made.ok, true);
+		if (!made.ok) return;
+
+		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
+
+		/* ① 合法的 content ⇒ 200 且章节真的变了。 */
+		const good = await call(deps, {
+			method: 'PATCH',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}`,
+			body: { content: { [section.id]: { $type: 'text', value: '新正文' } } },
+		});
+		assert.equal(good.status, 200, good.raw);
+		const payload = good.json as { data: { card: { sections: Record<string, { payload: unknown }> } } };
+		assert.deepEqual(payload.data.card.sections[section.id]?.payload, { $type: 'text', value: '新正文' });
+
+		/* ② 不合法的 content ⇒ 4xx，且**带 issues**（不能只报一句「失败了」）。 */
+		const bad = await call(deps, {
+			method: 'PATCH',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}`,
+			body: { content: { [section.id]: { $type: '不存在的类型' } } },
+		});
+		assert.ok(bad.status >= 400, `非法 content 应当失败，实际 ${String(bad.status)}：${bad.raw}`);
+		const fail = bad.json as { ok: boolean; code: string; issues?: readonly unknown[] };
+		assert.equal(fail.ok, false);
+		assert.ok(fail.issues !== undefined && fail.issues.length > 0, `应当带 issues：${bad.raw}`);
+
+		/* ③ 失败的那次**不能**把卡改坏 —— 章节还是上一次成功时的值。 */
+		const after = taskboard.get(wsId, made.card.id);
+		assert.equal(after.ok, true);
+		if (!after.ok) return;
+		assert.deepEqual(after.card.sections[section.id]?.payload, { $type: 'text', value: '新正文' });
+	});
+
+	it('⚠ 空 patch {} ⇒ 200 但**会写一条 history**（现状，不是「完全无副作用」）', async () => {
+		const created = await taskboard.createWorkspace('空改');
+		assert.equal(created.ok, true);
+		if (!created.ok) return;
+		const wsId = created.workspace.id;
+		const template = anyTemplate();
+		if (template === undefined) return;
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '空改卡', actor: 'user' });
+		assert.equal(made.ok, true);
+		if (!made.ok) return;
+		const before = made.card.history.length;
+
+		const deps = depsOf({ defaultWorkspaceId: async () => wsId });
+		const out = await call(deps, {
+			method: 'PATCH',
+			url: `${ROUTE_PREFIX}/api/cards/${made.card.id}`,
+			body: {},
+		});
+		assert.equal(out.status, 200, out.raw);
+
+		const after = taskboard.get(wsId, made.card.id);
+		assert.equal(after.ok, true);
+		if (!after.ok) return;
+		/* 内容一点没变。 */
+		assert.equal(after.card.title, '空改卡');
+		assert.deepEqual(after.card.sections, made.card.sections);
+		/*
+		 * ⚠ 但 history 会多一条 —— `update()` 无条件 `withHistory(..., action:'update')`。
+		 *   这是**现状**，不是理想行为：空 patch 不该产生「有人改过」的历史。
+		 *   钉住它，是为了让「以后决定改成 400 / 或不写 history」时有个明确的对比基线。
+		 */
+		assert.equal(after.card.history.length, before + 1, '现状：空 patch 也会写一条 update 历史');
+	});
 });
 
 describe('POST /api/cards/:id/action', () => {
@@ -567,7 +788,7 @@ describe('POST /api/cards/:id/action', () => {
 		const wsId = created.workspace.id;
 		/* 要 goal/work 模板：它们的草稿「采纳」→ SUBMITTED，这条路才是合法转移。 */
 		const template = adoptToSubmittedTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 		assert.equal(made.card.status, 'TASK_STATE_UNSPECIFIED');
@@ -606,7 +827,7 @@ describe('POST /api/cards/:id/action', () => {
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
 		const template = adoptToSubmittedTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待采纳', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 		assert.equal(made.card.adoptedAt, null, '草稿的 adoptedAt 应是 null');
@@ -644,7 +865,7 @@ describe('POST /api/cards/:id/action', () => {
 		 * 用 goal/work 反而不稳：那条转移是合法的。
 		 */
 		const template = adoptToAuthTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '草稿' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '草稿', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 
@@ -670,7 +891,7 @@ describe('POST /api/cards/:id/action', () => {
 		assert.notEqual(template, undefined);
 		if (template === undefined) return;
 
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '可领的卡' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '可领的卡', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 		/* 先采纳到提交（领取的前置状态）。 */
@@ -702,7 +923,7 @@ describe('POST /api/cards/:id/action', () => {
 		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
 		if (template === undefined) return;
 
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '处理中的卡' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '处理中的卡', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 		await taskboard.transition(wsId, made.card.id, 'TASK_STATE_SUBMITTED', 'button');
@@ -815,7 +1036,7 @@ describe('actor 标记：HTTP 写 ⇒ updates.user', () => {
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
 		const template = anyTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '用户的卡' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '用户的卡', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 
@@ -834,7 +1055,7 @@ describe('actor 标记：HTTP 写 ⇒ updates.user', () => {
 		if (!created.ok) return;
 		const wsId = created.workspace.id;
 		const template = anyTemplate();
-		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待已读' });
+		const made = await taskboard.create({ workspaceId: wsId, templateRef: template.ref, title: '待已读', actor: 'user' });
 		assert.equal(made.ok, true);
 		if (!made.ok) return;
 

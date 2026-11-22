@@ -35,27 +35,28 @@
  * ⚠ 筛选 / 搜索**不在这里** —— `Workspace` 自己按 `pure/card-filter.ts` 就地过滤，
  *   只通过 `onFilterChange` / `onSearchChange` 上报。产品里没人监听，所以不传。
  *
- * ## ⚠ 缺口
+ * ## ⚠ 缺口（`BoardActions` 里没有对应动作）
  *
  * 这些回调**没有服务端接口**，所以只能显式告诉用户「这个入口还没接」，
  * 不能静默失败（用户会以为是 bug）：
  *
- * | 回调 | 缺什么 |
+ * | 回调 | 状态 |
  * |---|---|
- * | `onToggleArchived` | `api.ts` 没有归档空间的方法；`dsh` 没有对应 HTTP 路由（`core` 有 `archiveWorkspace`，但没暴露出来）|
- * | `onNoteChange` | `api.patchCard` 存在，但**它和服务端的线格式不一致**（见 `api.ts:232` 发 `{patch}`，`dsh/src/http.ts:600` 读 `title`/`note`/`content`）⇒ 现在调用会 400 |
+ * | `onToggleArchived` | ✅ 已接（`api.archiveWorkspace` + `POST /workspaces/:id/archive`）|
+ * | `onCreateCard` | ✅ 已接（本文件挂 `CreateFlow`，全屏建卡页 + 提交走 core）|
+ * | `onNoteChange` | `api.patchCard` 线格式已修（`fix/patch-wire`），但入口还没接 |
  * | `onAddRelation` / `onDerive` | 关系编辑、派生子任务都还没做 |
  *
- * ⇒ 一律走 `notWired()`：**alert 一句人话**。这是 MVP 的诚实做法 ——
+ * ⇒ 没接的一律走 `notWired()`：**alert 一句人话**。这是 MVP 的诚实做法 ——
  *   等接口补齐再把对应那一行换掉。
  *
- * ## ✅ `onCreateCard` 已接（用户 `2026-11-22`）
+ * ## ✅ `onCreateCard`（用户 `2026-11-22`）
  *
  * > 「我记得，新建是做了 ui，有组件的吧。那应该接进去啊。」
  * > 「点击新建以后不是模态框，而是**新建要占满视口**。」
+ * > 「他是内存操作……都要进 core，也要过架构校验。而且是跟 ai tool 一样的校验入口。」
  *
- * ⇒ 点「新建」时本组件**整个替换成 `CreateFlow`**（不是浮层、不是模态框）。
- *   建卡页 `CardCreate` 是 `height:100%` 的整页，所以它铺满这个 body 的视口。
+ * ⇒ 点「新建」时**整个替换成 `CreateFlow`**（不是浮层、不是模态框）。
  *   提交成功 ⇒ 关闭建卡页 + `reload()` 让新卡进列表。
  */
 
@@ -155,6 +156,23 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 		[actions],
 	);
 
+	/**
+	 * 点「已归档」按钮 ⇒ 归档 / 取消归档那个空间。
+	 *
+	 * ⚠ 按钮的语义是**翻转**（不是「设为已归档」）——
+	 *   `SpaceBar` 的 `actionButtonOf()` 只在「显示已归档」打开时给这个按钮，
+	 *   此时按钮显示的是目标空间的**当前归档状态**，点一下就是反过来。
+	 *   所以这里要按当前状态判断传 `archived` 还是 `!archived`。
+	 */
+	const onToggleArchived = useCallback(
+		(id: string): void => {
+			const target = state.workspaces.find((one) => one.id === id);
+			const next = target?.archived !== true;
+			void actions.setWorkspaceArchived(id, next);
+		},
+		[actions, state.workspaces],
+	);
+
 	const onSelect = useCallback((cardId: string | null): void => {
 		setSelectedId(cardId);
 	}, []);
@@ -195,7 +213,7 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 	 * 「点击新建以后不是模态框，而是新建要占满视口」）。
 	 *
 	 * ⚠ 放在这里而不是包一层浮层：`CardCreate` 是 `height:100%` 的整页，
-	 *   它的父容器（这里就是 DSH 的 tab body）给多高就多高。
+	 *   它的父容器（DSH 的 tab body）给多高就多高。
 	 */
 	if (creating) {
 		return (
@@ -233,9 +251,7 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 			 *   这是「不编词」的口径，不是漏了。
 			 */
 			onView={onView}
-			onToggleArchived={(id) => {
-				notWired(`归档空间「${id}」`);
-			}}
+			onToggleArchived={onToggleArchived}
 			onToggleShowArchived={() => {
 				setShowArchived((now) => !now);
 			}}

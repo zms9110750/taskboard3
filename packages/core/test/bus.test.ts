@@ -138,6 +138,7 @@ describe('接线：只在 persist 一处 emit', () => {
 			workspaceId: plainWs.workspace.id,
 			templateRef: 't-work',
 			title: '没有 bus',
+			actor: 'user',
 		});
 		assert.ok(created.ok);
 		await plain.close();
@@ -146,7 +147,7 @@ describe('接线：只在 persist 一处 emit', () => {
 
 	it('create 后收到 1 条 card:written，cards[0].id 正确', async () => {
 		const seen = collector(bus);
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '一张' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '一张', actor: 'user' });
 		assert.ok(created.ok);
 		seen.off();
 
@@ -159,7 +160,7 @@ describe('接线：只在 persist 一处 emit', () => {
 	});
 
 	it('update 后收到消息，且带的是改后的卡', async () => {
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '待改' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '待改', actor: 'user' });
 		assert.ok(created.ok);
 
 		const seen = collector(bus);
@@ -174,7 +175,7 @@ describe('接线：只在 persist 一处 emit', () => {
 
 	it('★ 一次改写带重算 ⇒ 实测发几条（写进断言，别让它悄悄变）', async () => {
 		/* 父 goal + 子 work；claim 子卡会让父卡被重算。 */
-		const parent = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '父' });
+		const parent = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '父', actor: 'user' });
 		assert.ok(parent.ok);
 		await tb.adopt(ws, parent.card.id, 'user');
 
@@ -183,6 +184,7 @@ describe('接线：只在 persist 一处 emit', () => {
 			templateRef: 't-work',
 			title: '子',
 			relations: { parent: parent.card.id },
+			actor: 'user',
 		});
 		assert.ok(child.ok);
 		await tb.adopt(ws, child.card.id, 'user');
@@ -210,7 +212,7 @@ describe('接线：只在 persist 一处 emit', () => {
 
 	it('recomputeUpward 触发的父卡也在消息里', async () => {
 		/* 父 goal 停在「提交」；子 work 被 claim 到「处理中」后会把父推成「处理中」。 */
-		const parent = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '父2' });
+		const parent = await tb.create({ workspaceId: ws, templateRef: 't-goal', title: '父2', actor: 'user' });
 		assert.ok(parent.ok);
 		await tb.adopt(ws, parent.card.id, 'user');
 
@@ -219,6 +221,7 @@ describe('接线：只在 persist 一处 emit', () => {
 			templateRef: 't-work',
 			title: '子2',
 			relations: { parent: parent.card.id },
+			actor: 'user',
 		});
 		assert.ok(child.ok);
 		await tb.adopt(ws, child.card.id, 'user');
@@ -264,7 +267,7 @@ describe('接线：只在 persist 一处 emit', () => {
 			throw new Error('订阅者炸了');
 		});
 
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '炸不掉' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '炸不掉', actor: 'user' });
 		thrower();
 
 		assert.ok(created.ok, '写操作必须成功 —— 广播失败不能回滚已落库的写');
@@ -281,7 +284,7 @@ describe('接线：只在 persist 一处 emit', () => {
 		const offA = bus.on((m) => a.push(m));
 		const offB = bus.on((m) => b.push(m));
 
-		await tb.create({ workspaceId: ws, templateRef: 't-work', title: '两个订阅者' });
+		await tb.create({ workspaceId: ws, templateRef: 't-work', title: '两个订阅者', actor: 'user' });
 
 		offA();
 		offB();
@@ -292,7 +295,7 @@ describe('接线：只在 persist 一处 emit', () => {
 
 	it('消息里的卡是「写后的」快照（消费方可直接读，但应当重拉）', async () => {
 		const seen = collector(bus);
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '快照' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '快照', actor: 'user' });
 		seen.off();
 		assert.ok(created.ok);
 

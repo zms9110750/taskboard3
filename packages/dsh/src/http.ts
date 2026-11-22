@@ -307,6 +307,47 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		return sendMethodNotAllowed(res, 'GET, POST');
 	}
 
+	/* ── POST /api/workspaces/:id/archive | /unarchive ──
+	 *
+	 * ## 为什么用路径参数，不用 body 传 id
+	 *
+	 * 本文件对「某个资源的子动作」已经有一个**既定形态**：
+	 *
+	 * ```
+	 * POST /cards/:id/action      → /^\/cards\/([^/]+)\/action$/
+	 * ```
+	 *
+	 * 归档是同一类东西（对已有资源的动作），照抄这个形态比另发明一套
+	 * 「body 里放 id」更好 —— 后者会让本文件出现两种 id 传法，
+	 * 读的人得先判断「这次是哪种」。
+	 *
+	 * ⚠ 归档是**幂等**的：对一个已经归档的空间再归档，
+	 *   `core.archiveWorkspace()` 返回 `{ ok: true, changed: false }`，
+	 *   **不是错误**。HTTP 也回 200，把 `changed` 透给客户端 ——
+	 *   客户端据此决定要不要重拉列表（没变就不用拉）。
+	 */
+	const archiveMatch = /^\/workspaces\/([^/]+)\/(archive|unarchive)$/.exec(tail);
+	if (archiveMatch !== null) {
+		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
+		const workspaceId = decodeURIComponent(archiveMatch[1] ?? '');
+		const action = archiveMatch[2];
+
+		const result =
+			action === 'archive'
+				? await taskboard.archiveWorkspace(workspaceId)
+				: await taskboard.unarchiveWorkspace(workspaceId);
+		if (!result.ok) return sendFailure(res, result);
+
+		/*
+		 * 回整张空间（不是只回 changed）——
+		 * 客户端归档后常常要立刻用新的 `archived` 标记重画 chip，
+		 * 只给 `changed: true` 它还得再拉一次才算得出新状态。
+		 */
+		const workspace = taskboard.getWorkspace(workspaceId);
+		sendOk(res, { changed: result.changed, workspace });
+		return;
+	}
+
 	/* ── GET /api/templates[?ref=<ref>] ── */
 	if (tail === '/templates') {
 		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
