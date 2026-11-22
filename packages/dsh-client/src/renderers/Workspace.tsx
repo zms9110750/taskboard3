@@ -197,7 +197,15 @@ export interface WorkspaceProps {
 	/** 菜单里选了某个转移按钮。 */
 	readonly onAction?: (cardId: string, action: ButtonAction) => void;
 	readonly onAddRelation?: (cardId: string) => void;
-	readonly onDerive?: (cardId: string) => void;
+	/**
+	 * 点「+ 派生子任务」。
+	 *
+	 * ⚠ 第二个参数是**那个按钮的 DOM 元素** —— 浮窗要贴着它出现。
+	 *   回调链中间那几层（`CardDetail → DetailHead → RelationPanel → DeriveButton`）
+	 *   只上报「被点了」、不带事件对象，所以这里按 `[data-action-kind="derive"]`
+	 *   查一次（详情区一次只画一张卡 ⇒ 全屏唯一）。
+	 */
+	readonly onDerive?: (cardId: string, anchor: HTMLElement) => void;
 	readonly onNoteChange?: (cardId: string, text: string) => void;
 	/** 工具栏「权限与约定」。不传 = 不显示这个按钮（V2 还没做）。 */
 	readonly onOpenPermission?: () => void;
@@ -488,7 +496,21 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					props.onAddRelation?.(card.id);
 				}}
 				onDerive={() => {
-					props.onDerive?.(card.id);
+					/*
+					 * 「+ 派生子任务」的锚点（浮窗要贴着它出现）。
+					 *
+					 * 回调链是 `DeriveButton → RelationPanel → DetailHead →
+					 * CardDetail → 这里`，中间全不带事件对象（那些组件只上报
+					 * 「被点了」）。
+					 *
+					 * ⇒ 照 `onDetailClick` 查 `[data-meta="status"]` 的同一套路：
+					 *   详情区一次只画一张卡 ⇒ `[data-action-kind="derive"]`
+					 *   全屏唯一 ⇒ 查它拿锚点。
+					 */
+					const anchor = document.querySelector<HTMLElement>(
+						'[data-action-kind="derive"]',
+					);
+					if (anchor !== null) props.onDerive?.(card.id, anchor);
 				}}
 				/*
 				 * 关系面板：入边（谁把我当 parent / 谁指向我）要扫全量卡

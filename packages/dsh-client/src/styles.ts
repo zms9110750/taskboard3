@@ -593,11 +593,13 @@ import { TECHTREE_CSS } from './pure/techtree-css.ts';
  * 这里 import 同一份再拼进 injectStyles()，并转发 export 给现有 import 方。 */
 import { SEARCHBOX_CSS } from './renderers/searchbox-css.ts';
 import { SECTION_CSS } from './renderers/section-css.ts';
+/* 派生子任务浮窗的 CSS —— 用户 2026-11-22「CSS 必须跟着组件走」，同一形态。 */
+import { DERIVE_MENU_CSS } from './renderers/derive-menu-css.ts';
 
 export { TECHTREE_CSS };
 export { SEARCHBOX_CSS, SECTION_CSS };
 
-export { CREATE_SHELL_CSS, DRAWER_CSS, FALLBACK_CSS };
+export { CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS };
 
 /**
  * 全部类名 —— **单一来源**。
@@ -955,7 +957,7 @@ export function injectStyles(): void {
 	 *   .tb3w-root .badge **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
 	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
-	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}`;
+	element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${DERIVE_MENU_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}`;
 	document.head.appendChild(element);
 }
 

@@ -141,6 +141,26 @@ export interface TemplateDetail {
 		readonly hint: string;
 		readonly action: string;
 	}[];
+	/**
+	 * 派生声明（**顺序 = 菜单顺序**）。
+	 *
+	 * ⚠ **只有展开视图有它**（`TemplateSummary` 没有）—— 摘要不带章节也不带派生。
+	 *   所以「+ 派生子任务」必须先 `getTemplate(卡片模板的 ref)` 才能拿到菜单项。
+	 *
+	 * ⚠ **可以为空**：模板没写 `derive` 时是 `[]`（core 的 `parseDerives` 兜底）。
+	 *   UI 要为这个情况留一个「派生空模板」的保留项 —— 见 `DeriveMenu.tsx`。
+	 */
+	readonly derives: readonly TemplateDerive[];
+}
+
+/** 一条派生声明（`TemplateDetail.derives` 的元素）。 */
+export interface TemplateDerive {
+	/** 按钮文字。 */
+	readonly label: string;
+	/** 悬浮说明。 */
+	readonly description?: string;
+	/** 目标模板 ref。 */
+	readonly template: string;
 }
 
 /** 一个任务板 API 客户端。 */

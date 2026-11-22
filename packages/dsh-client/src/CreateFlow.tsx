@@ -61,6 +61,16 @@ import {
 } from './renderers/create/useCreateForm.ts';
 import type { Card, TemplateSummary } from './types.ts';
 
+/** 建卡页的**预填值**（`派生` 那条路用；`onCreateCard` 那条路不传）。 */
+export interface CreateInitial {
+	/** 父卡 id。空串 / 省略 = 顶层。 */
+	readonly parentId?: string;
+	/** 预填标题。 */
+	readonly title?: string;
+	/** 预填模板 ref。空串 / 省略 = 让用户选。 */
+	readonly templateRef?: string;
+}
+
 /** 组件属性。 */
 export interface CreateFlowProps {
 	/** 当前空间（提交时必带）。 */
@@ -69,6 +79,19 @@ export interface CreateFlowProps {
 	readonly templates: readonly TemplateSummary[];
 	/** 候选卡（父任务 / 关系目标）。 */
 	readonly cards: readonly Card[];
+	/**
+	 * 预填值（**可选**）。
+	 *
+	 * ## 谁用（用户 `2026-11-22`）
+	 *
+	 * > 「派生的模板定义是为 ui 服务的快捷入口。从这里点击的派生就是走新建。
+	 * >   自动设置父任务和标题和模板。只有这个效果。」
+	 * > 「点进去了以后模板可以换标题可以换父任务也可以换。」
+	 *
+	 * ⇒ 「+ 派生子任务」点菜单项后打开建卡页时传它；工具栏「新建」**不传**。
+	 *   传了也只是**初值** —— 页面上三样都能改（不是只读，不是隐藏）。
+	 */
+	readonly initial?: CreateInitial;
 	/** 类别 id → 中文名（省略 = 显示英文 id）。 */
 	readonly kindLabelOf?: (kind: string) => string;
 	/** 类别 id → 字母（省略 = 首字母大写兜底）。 */
@@ -168,6 +191,8 @@ export function CreateFlow(props: CreateFlowProps): ReactNode {
 	/** 最新的草稿（给异步回调读，避免闭包过期）。 */
 	const draftRef = useRef<CreateDraft>(form.draft);
 	draftRef.current = form.draft;
+
+	/* 预填只跑一次（定义在 `onChange` 之后 —— 那个函数是本文件的依赖链末端）。 */
 
 	/**
 	 * 提交 —— **真正进 core 的那一步**。
@@ -286,6 +311,45 @@ export function CreateFlow(props: CreateFlowProps): ReactNode {
 		// 只在 template 变时重建 —— 依赖 form 会死循环（applyDraft 改 draft）。
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [template]);
+
+	/*
+	 * ── 预填（`派生` 那条路，用户 2026-11-22） ──
+	 *
+	 * 只在**挂载后跑一次**：它是「初值」不是「受控值」——
+	 * 用户随后改了什么，不能被这个 effect 再盖回去。
+	 *
+	 * 三样分别处理：
+	 *   · 父任务 / 标题 ⇒ 直接写进草稿（不需要异步）
+	 *   · 模板         ⇒ 必须走 `onChange`：它会 `pickedRef.current = ref` 再取详情，
+	 *                    详情回来后上面那个 effect 才按新模板重建章节。
+	 *                    直接 `applyDraft({ templateRef })` 会留下
+	 *                    「ref 有了、template 还是 undefined」——
+	 *                    界面上模板显示已选但章节清单空着，提交会被 core 拒。
+	 *
+	 * ⚠ 用 `applyDraft` 一次写两个字段：分两次 setter 会让中间那一帧草稿不一致。
+	 */
+	const prefilled = useRef(false);
+	useEffect(() => {
+		if (prefilled.current) return;
+		prefilled.current = true;
+
+		const initial = props.initial;
+		if (initial === undefined) return;
+
+		const next: CreateDraft = {
+			...draftRef.current,
+			title: initial.title ?? draftRef.current.title,
+			parentId: initial.parentId ?? draftRef.current.parentId,
+		};
+
+		if (initial.templateRef === undefined || initial.templateRef === '') {
+			form.actions.applyDraft(next);
+			return;
+		}
+		onChange({ ...next, templateRef: initial.templateRef });
+		// 只跑一次：props 变了也不重跑（预填是初值）。
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	/** 说明块的数据（只有当前选中的模板有）。 */
 	const hint = (ref: string): TemplateHintData | undefined =>
