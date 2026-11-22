@@ -47,3 +47,15 @@ sections:
     default:
       $type: text
       placeholder: 需要用户确认的点，以及确认后怎么处理
+
+# 演示跑完之后要留一份交付记录（用户 `2026-11-22`：
+# 「演示卡要有交付。」）
+#
+# 和 research / verify / writeCode 一样 —— 那些卡也是「做完要说结果」，
+# 都 derive 到 delivery。演示的产物不进项目，更需要记清「看了什么、结论是什么」，
+# 否则这张演示卡关掉之后什么都没留下。
+derive:
+  - label: 开交付
+    description: 演示跑完了，把看到了什么、结论是什么记成交付子任务
+    template: delivery
+
