@@ -257,7 +257,7 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	};
 
 	if (typeof ctx.effect === 'function') {
-		ctx.effect(disposeAll, 'taskboard3: routes / tools / commands');
+		ctx.effect(() => disposeAll, 'taskboard3: routes / tools / commands');
 	}
 }
 
