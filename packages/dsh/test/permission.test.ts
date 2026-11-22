@@ -375,11 +375,20 @@ describe('createPermissionGuard', () => {
 		assert.equal(ref.ok, true);
 		if (!ref.ok) return;
 
-		/** 记录 core 被判定的入参。 */
-		const seen: unknown[] = [];
+		/**
+		 * 记录 core 被判定的入参。
+		 *
+		 * ⚠ `input` 必须**显式标注类型**：`spy` 是用对象字面量 + `as unknown as Taskboard`
+		 *   造的，字面量里的箭头函数参数**推不出** `Taskboard.judgeToolCall` 的形状
+		 *   ⇒ tsc 报 TS7006（implicitly has an 'any' type）。照着 `core/src/index.ts:377` 写。
+		 */
+		const seen: { readonly toolName: string; readonly heldCards: readonly { readonly templateRef: string }[] }[] = [];
 		const spy: Taskboard = {
 			...taskboard,
-			judgeToolCall: (input) => {
+			judgeToolCall: (input: {
+				readonly toolName: string;
+				readonly heldCards: readonly { readonly templateRef: string }[];
+			}) => {
 				seen.push(input);
 				return { ok: true };
 			},

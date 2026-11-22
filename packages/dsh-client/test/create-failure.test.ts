@@ -86,9 +86,16 @@ describe('sectionKeysOf —— 章节名/id 映射', () => {
 
 	it('label 为空时只登记 id（不登记空串）', () => {
 		const one = draft();
+		/*
+		 * `noUncheckedIndexedAccess` 让 `one.sections[0]` 是 `SectionDraft | undefined`
+		 * —— 展开它会把「可能没有第一节」这个事实带进对象字面量（tsc 报 TS2322）。
+		 * 夹具里第一节一定在，所以显式取出并断言，比 `!` 诚实。
+		 */
+		const first = one.sections[0];
+		assert.ok(first !== undefined, '夹具至少该有一节');
 		const keys = sectionKeysOf({
 			...one,
-			sections: [{ ...one.sections[0], sectionId: 'x', label: '' }],
+			sections: [{ ...first, sectionId: 'x', label: '' }],
 		});
 		assert.equal(keys.get('x'), 'x');
 		assert.equal(keys.has(''), false);

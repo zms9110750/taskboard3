@@ -12,8 +12,6 @@ import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createTaskboard, type Taskboard } from '@taskboard/core';
-import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
-import { createSearch } from '@taskboard/core';
 
 import { registerCommands, type CommandRegistryLike } from '../src/commands.ts';
 
@@ -70,10 +68,7 @@ async function closeTaskboard(): Promise<void> {
 
 beforeEach(async () => {
 	await closeTaskboard();
-	taskboard = createTaskboard({
-		dataDir,
-		search: createSearch({ groupOf: (s) => STATUS_GROUP_OF[s as TaskState] }),
-	});
+	taskboard = createTaskboard({ dataDir });
 	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 	current = '';
 });

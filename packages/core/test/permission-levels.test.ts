@@ -62,8 +62,14 @@ describe('档位选项常量：给 UI / HTTP 路由用', () => {
 			['no-claim', 'claim', 'adopt'],
 		);
 		for (const option of CARD_ACTION_OPTIONS) {
-			assert.ok(option.label !== '', `${option.value} 缺 label`);
-			assert.ok(option.description !== '', `${option.value} 缺 description`);
+			/*
+			 * `!== ''` 在这里是**类型层无意义**的比较：`option.label` 的类型是
+			 * 三个文案的字面量联合，和 `''` 没有重叠 ⇒ tsc 报 TS2367。
+			 * 语义上要的是「非空」，用 `.length > 0` 表达 —— 运行时等价，
+			 * 类型层也成立（不靠缩小类型让编译器闭嘴）。
+			 */
+			assert.ok(option.label.length > 0, `${option.value} 缺 label`);
+			assert.ok(option.description.length > 0, `${option.value} 缺 description`);
 		}
 	});
 
@@ -73,8 +79,8 @@ describe('档位选项常量：给 UI / HTTP 路由用', () => {
 			['off', 'manage', 'manage-edit'],
 		);
 		for (const option of TOOL_GUARD_OPTIONS) {
-			assert.ok(option.label !== '', `${option.value} 缺 label`);
-			assert.ok(option.description !== '', `${option.value} 缺 description`);
+			assert.ok(option.label.length > 0, `${option.value} 缺 label`);
+			assert.ok(option.description.length > 0, `${option.value} 缺 description`);
 		}
 	});
 });

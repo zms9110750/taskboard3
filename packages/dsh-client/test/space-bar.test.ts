@@ -174,6 +174,13 @@ describe('② 开 + 当前空间（未归档）⇒ 「已归档」可点（旧�
 	it('⭐ 当前与非当前只差 checked —— 都可点', () => {
 		const normal = actionButtonOf(LIST, 'A', 'A', true);
 		const anomaly = actionButtonOf(WITH_ANOMALY, 'D', 'D', true);
+		/*
+		 * 「显示已归档」开着 ⇒ `actionButtonOf` 一定给按钮。
+		 * 但它的返回类型是 `SpaceAction | undefined`（关着时没有按钮）——
+		 * 这里断言出来，后面的属性访问才是类型安全的，而不是靠 `!` 让编译器闭嘴。
+		 */
+		assert.ok(normal !== undefined, '开态该有按钮');
+		assert.ok(anomaly !== undefined, '开态该有按钮');
 		assert.equal(normal.disabled, false);
 		assert.equal(anomaly.disabled, false);
 		assert.equal(normal.checked, false);

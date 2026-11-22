@@ -19,8 +19,6 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createTaskboard, type Taskboard } from '@taskboard/core';
 import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS } from '@taskboard/core';
-import { STATUS_GROUP_OF, type TaskState } from '@taskboard/protocol';
-import { createSearch } from '@taskboard/core';
 
 import { createHandler, ROUTE_PREFIX, type RouteDeps } from '../src/http.ts';
 import type { SseHub } from '../src/sse.ts';
@@ -127,10 +125,7 @@ async function closeTaskboard(): Promise<void> {
 beforeEach(async () => {
 	/* 每个用例一个全新实例（内存里；dataDir 共用，用例间用不同空间隔离）。 */
 	await closeTaskboard();
-	taskboard = createTaskboard({
-		dataDir,
-		search: createSearch({ groupOf: (s) => STATUS_GROUP_OF[s as TaskState] }),
-	});
+	taskboard = createTaskboard({ dataDir });
 	/* 模板必须加载，否则 `listTemplates()` 为空 —— 建卡路径全部无从测起。 */
 	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 });

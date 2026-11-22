@@ -176,7 +176,7 @@ describe('状态转移执行', () => {
 		for (const kind of ['goal', 'design', 'record'] as const) {
 			const id = await makeCard(kind);
 			await tb.adopt(ws, id, 'user');
-			const result = await tb.claim(ws, id, `loop-${kind}`);
+			const result = await tb.claim(ws, id, 'user', `loop-${kind}`);
 			assert.equal(result.ok, false, `类别 ${kind} 不该能领取`);
 			const detail = (result as { detail?: { reason?: string } }).detail;
 			assert.equal(detail?.reason, 'KIND_NEEDS_NO_CLAIM', `类别 ${kind} 应报 KIND_NEEDS_NO_CLAIM`);
@@ -287,7 +287,7 @@ describe('状态转移执行', () => {
 		assert.ok(parentNow.ok);
 		await memory.save('w', { ...parentNow.card, status: TaskState.SUBMITTED });
 
-		const result = await local.claim('w', parent.card.id, 'user');
+		const result = await local.claim('w', parent.card.id, 'user', 'w');
 		assert.equal(result.ok, false);
 		const detail = (result as { detail?: { reason?: string; blockers?: string[] } }).detail;
 		assert.equal(detail?.reason, 'CHILD_NEEDS_AUTH');
@@ -604,7 +604,7 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 		assert.ok(leaf.ok);
 		await local.adopt('w', leaf.card.id, 'user');
 
-		const claimed = await local.claim('w', leaf.card.id, 'user');
+		const claimed = await local.claim('w', leaf.card.id, 'user', 'w');
 		assert.ok(claimed.ok, JSON.stringify(claimed));
 
 		const byId = new Map(claimed.recomputed.map((one) => [one.id, one]));

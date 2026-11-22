@@ -269,7 +269,14 @@ describe('CREATE_CSS —— 满屏布局的不变量', () => {
 		 *
 		 * 行首匹配同时能跳过注释行（注释行以 ` *` 开头，`.` 不在行首）。
 		 */
-		const selectors = [...CREATE_CSS.matchAll(/^\s*\.([a-zA-Z][\w-]*)/gm)].map((one) => one[1]);
+		/*
+		 * `noUncheckedIndexedAccess` 让 `one[1]` 的类型是 `string | undefined`
+		 * —— 正则**一定**有一个捕获组，所以这里用**显式判断**收窄（不是 `!`）：
+		 * 真出现没有捕获组的情况（正则写错），下面那条断言会直接报出来。
+		 */
+		const selectors = [...CREATE_CSS.matchAll(/^\s*\.([a-zA-Z][\w-]*)/gm)]
+			.map((one) => one[1])
+			.filter((one): one is string => one !== undefined);
 		assert.ok(selectors.length > 10, `只找到 ${selectors.length} 个选择器，提取可能有问题`);
 		for (const name of selectors) {
 			/*

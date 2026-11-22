@@ -280,12 +280,22 @@ export function actionButtonOf(
  * 组件拿到的就是这个 —— 它不再自己判「禁用了吗 / 是哪个 kind」，
  * 只把 `kind` 映射到对应的回调（机械映射，没有第二个判据）。
  *
- * @param action `actionButtonOf()` 的返回值
- * @returns 要调的回调；`undefined` = 什么都不做（禁用 / 没有空间）
+ * ## 为什么参数允许 `undefined`
+ *
+ * `actionButtonOf()` 在「显示已归档」关着时**根本不给按钮**（返回 `undefined`）。
+ * 调用方的写法是「先问该画什么按钮、再问点了做什么」，两步之间那个 `undefined`
+ * 是**正常状态**，不是调用方忘了判。
+ *
+ * ⇒ 本函数接住它并返回 `undefined`（= 什么都不做），比让每个调用方
+ *   各写一遍 `if (a === undefined) return;` 更贴近「派发」这件事的语义。
+ *
+ * @param action `actionButtonOf()` 的返回值（可能没有按钮）
+ * @returns 要调的回调；`undefined` = 什么都不做（禁用 / 没有空间 / 没有按钮）
  */
 export function dispatchOf(
-	action: SpaceAction,
+	action: SpaceAction | undefined,
 ): { readonly kind: SpaceActionKind; readonly id: string } | undefined {
+	if (action === undefined) return undefined;
 	if (action.disabled || action.workspaceId === undefined) return undefined;
 	return { kind: action.kind, id: action.workspaceId };
 }

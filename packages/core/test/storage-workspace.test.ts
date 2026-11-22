@@ -30,6 +30,8 @@ function makeCard(id: string): Card {
 		history: [],
 		deleted: false,
 		holders: [],
+		/* 卡上的未读字段（`card.ts` 的 `CardUnread`）—— 夹具漏了，tsc 报 TS2741。 */
+		unread: { ai: false, user: false },
 	};
 }
 

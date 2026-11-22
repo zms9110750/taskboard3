@@ -29,10 +29,16 @@ describe('失败契约', () => {
 		const param = await run(fixture, 'taskboard_card', {});
 		assert.ok(param.text.includes('修正参数后可重试'), param.text);
 
+		/*
+		 * ⚠ 原来这里是 5 个实参 —— 中间夹了一个字符串
+		 *   `'taskboard_tool_policy_read'`（某次批量替换的残留：把工具名替换时
+		 *   把 `taskboard_tool_policy` 也换成了新名字，于是两个名字都在）。
+		 *   `run()` 只收 4 个 ⇒ tsc 报 TS2554。真实意图是：
+		 *   用**没有改档位权限**的 ctx 调 `taskboard_tool_policy`，断言「不可重试」。
+		 */
 		const gate = await run(
 			fixture,
 			'taskboard_tool_policy',
-	'taskboard_tool_policy_read',
 			{ tier: 'unclaimed', allow: [] },
 			context(fixture, { canManageToolPolicies: false }),
 		);

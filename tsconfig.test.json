@@ -42,6 +42,16 @@
 	},
 	/*
 	 * 所有包的 test/** —— 只检查测试，产品代码由 `tsc -b` 负责。
+	 *
+	 * ⚠ **ambient 声明必须单列**：`packages/dsh/src/dsh-tools.d.ts` 是
+	 *   `@deepseek-ai/dsh-tools` 的类型垫片（AGENTS.md §3.1 允许的外部依赖豁免：
+	 *   真实 DSH 是 0.2.2-rc.2，npm 上是 0.2.1-rc.5，参数 schema 类型更窄）。
+	 *
+	 *   它没有 import 路径可以「顺藤摸瓜」—— 只有被列进 include 才会进 program。
+	 *   不列它的后果：`dsh/test/*.test.ts` import 了 `../src/tools.ts`，
+	 *   于是用**真实的** dsh-tools 类型去检查那份代码，
+	 *   报 4 条 TS2322（`parameters` / `output` / `execute` 都对不上）。
+	 *   `tsconfig.dev.json` 里 `src/host-types.d.ts` 单列是同一个理由。
 	 */
-	"include": ["packages/*/test/**/*.ts"]
+	"include": ["packages/*/test/**/*.ts", "packages/dsh/src/dsh-tools.d.ts"]
 }

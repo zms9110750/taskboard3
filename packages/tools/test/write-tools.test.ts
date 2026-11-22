@@ -22,8 +22,9 @@ describe('taskboard_create', () => {
 			relations: [{ type: 'dependsOn', to: dep }],
 		});
 		assert.ok(text.includes('已建卡'), text);
-		assert.ok(text.includes('下一步：写完后开校验卡'), text, '用户裁决 #11：返回模板描述里的下一步');
-		assert.ok(text.includes('分类（工作）'), text, '并返回分类描述');
+		/* `assert.ok` 只收 (value, message) —— 第三参被静默忽略，tsc 报 TS2554。 */
+		assert.ok(text.includes('下一步：写完后开校验卡'), `用户裁决 #11：返回模板描述里的下一步\n${text}`);
+		assert.ok(text.includes('分类（工作）'), `并返回分类描述\n${text}`);
 		assert.ok(text.includes(`dependsOn → ${dep}`), text);
 
 		const cards = fixture.tb.list(fixture.ws);
