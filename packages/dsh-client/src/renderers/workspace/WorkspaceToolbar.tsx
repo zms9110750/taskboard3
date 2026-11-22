@@ -96,6 +96,12 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps): ReactNode {
 				</span>
 			</span>
 
+			{/*
+			 * 图例不写「只在科技树视图显示」这类说明（`2026-11-23` 删了两个 hint）。
+			 * 用户：「图例上面不需要"（仅科技树）"这几个字。在列表模式下这个图例和字都有。
+			 * 就不要说什么仅科技树了。这字还占文档流。」
+			 * ⇒ 图例在两种视图下都显示，所以「仅科技树」本身就是假的；那行字还挤占工具栏宽度。
+			 */}
 			<span className="tb3w-toolbar__legend" data-legend>
 				<span className="tb3w-toolbar__legend-label">关系图例</span>
 				{LEGEND.map((item) => (
@@ -104,10 +110,6 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps): ReactNode {
 						<span>{item.label}</span>
 					</span>
 				))}
-				<span className="tb3w-legend__hint tb3w-legend__hint--long">
-					（只在科技树视图显示）
-				</span>
-				<span className="tb3w-legend__hint tb3w-legend__hint--short">（仅科技树）</span>
 			</span>
 
 			<span className="tb3w-toolbar__actions">
