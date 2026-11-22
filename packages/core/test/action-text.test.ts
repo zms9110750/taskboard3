@@ -136,3 +136,76 @@ describe('兜底', () => {
 		assert.equal(textOfAction({ $type: '__test__' }), '自定义');
 	});
 });
+
+/* ══════════════════════════════════════════════════════════
+   降级函数进注册表（用户 2026-11-22）
+
+   > 「分发器写了逻辑。但是找不到注册的渲染器，降级的降级渲染器应该是组件。
+   >   UI 和 tool 的两边都应该如此。」
+   ══════════════════════════════════════════════════════════ */
+
+describe('降级函数是注册表的一等公民（不是硬编码）', () => {
+	it('默认降级函数存在，且行为 = JSON 格式化', () => {
+		const registry = createActionTextRegistry();
+		assert.equal(registry.fallback()({ $type: 'x', a: 1 }), '{"$type":"x","a":1}');
+	});
+
+	it('⭐ 证明题：setFallback 后，未注册 $type 的输出跟着换', () => {
+		const registry = createActionTextRegistry();
+		registry.register('text', () => '正文');
+
+		/* 换之前：走默认降级 = JSON */
+		assert.equal(
+			textOfAction({ $type: 'rating', stars: 4 }, registry),
+			JSON.stringify({ $type: 'rating', stars: 4 }),
+		);
+
+		registry.setFallback((payload) => `＜未注册的动作：${String(payload['$type'])}＞`);
+
+		/* 换之后：同一个 payload，输出变了 —— 这就是「不是硬编码」的证明。 */
+		assert.equal(textOfAction({ $type: 'rating', stars: 4 }, registry), '＜未注册的动作：rating＞');
+		/* 已注册的 type 不受影响（降级函数只作用于「查不到」那条路径）。 */
+		assert.equal(textOfAction({ $type: 'text', value: 'x' }, registry), '正文');
+	});
+
+	it('⭐ 证明题：没有 $type 的 payload 也走降级函数（不是另一条硬编码）', () => {
+		const registry = createActionTextRegistry();
+		registry.setFallback(() => '（没有类型）');
+		assert.equal(textOfAction({ value: 'x' }, registry), '（没有类型）');
+		assert.equal(textOfAction({ a: 1, b: 2 }, registry), '（没有类型）');
+	});
+
+	it('构造时可以给降级函数（省略 = 内置 JSON）', () => {
+		const custom = createActionTextRegistry([], () => '构造时给的');
+		assert.equal(textOfAction({ $type: 'nope' }, custom), '构造时给的');
+
+		const builtin = createActionTextRegistry([]);
+		assert.equal(textOfAction({ $type: 'nope' }, builtin), JSON.stringify({ $type: 'nope' }));
+	});
+
+	it('⚠ 重复 setFallback ⇒ 抛错（降级函数也只有一个提供者）', () => {
+		const registry = createActionTextRegistry();
+		registry.setFallback(() => '第一版');
+		assert.throws(() => { registry.setFallback(() => '第二版'); }, /降级函数已经设置过/);
+		/* 抛错后原来的还在，没被覆盖。 */
+		assert.equal(textOfAction({ $type: 'nope' }, registry), '第一版');
+	});
+
+	it('⚠ 构造时给了降级函数 ⇒ 再 setFallback 也抛（不能让构造和运行时各说一个）', () => {
+		const registry = createActionTextRegistry([], () => '构造时给的');
+		assert.throws(() => { registry.setFallback(() => '运行时给的'); }, /降级函数已经设置过/);
+		assert.equal(textOfAction({ $type: 'nope' }, registry), '构造时给的');
+	});
+
+	it('fallback() 永远有值（未设置时返回内置默认）', () => {
+		const registry = createActionTextRegistry();
+		assert.equal(typeof registry.fallback(), 'function');
+	});
+
+	it('渲染器表本身不受 setFallback 影响（不会凭空多出 type）', () => {
+		const registry = createActionTextRegistry([['a', () => 'A']]);
+		registry.setFallback(() => '兜底');
+		assert.deepEqual(registry.types(), ['a']);
+		assert.equal(registry.has('b'), false);
+	});
+});
