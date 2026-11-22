@@ -24,7 +24,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 
 import { createApi } from './api.ts';
-import { BoardBody } from './BoardBody.tsx';
+import { WorkspaceBody } from './WorkspaceBody.tsx';
 import { initRenderers } from './init-renderers.ts';
 import { registeredTypes } from './render-registry.ts';
 import { injectStyles } from './styles.ts';
@@ -136,7 +136,7 @@ export function apply(ctx: Context): void {
 	ctx.effect(
 		() =>
 			ctx.slots.inject('sidebar.right.pane.tab', () =>
-				ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, BoardBody),
+				ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, WorkspaceBody),
 			),
 		'taskboard3: register right-sidebar tab body',
 	);
