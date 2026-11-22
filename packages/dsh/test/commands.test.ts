@@ -18,8 +18,6 @@ import { registerCommands, type CommandRegistryLike } from '../src/commands.ts';
 
 /* ────────────────────────────── 夹具 ────────────────────────────── */
 
-const TEMPLATE_DIR = join(dirname(createRequire(import.meta.url).resolve('@taskboard/core/package.json')), 'templates');
-
 let dataDir = '';
 let taskboard: Taskboard;
 let current = '';
@@ -70,7 +68,6 @@ async function closeTaskboard(): Promise<void> {
 beforeEach(async () => {
 	await closeTaskboard();
 	taskboard = createTaskboard({ store: createSqliteStore(dataDir) });
-	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 	current = '';
 });
 

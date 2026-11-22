@@ -4,7 +4,7 @@
  * ## 为什么这个测试重要
  *
  * 模板是**用户定的文字 + 数据**。一个 YAML 加载失败不会让 core 崩
- * （`loadDirectory` 逐文件容错），但会让用户在选择器里**看不到那个模板** ——
+ * （`builtin.ts` 逐文件容错），但会让用户在选择器里**看不到那个模板** ——
  * 而且没有任何报错。⇒ 必须有一条测试守着「一个都没漏」。
  *
  * ## 断言什么
@@ -24,37 +24,11 @@
  */
 
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { ActionRegistry, BUILTIN_ACTIONS } from '../src/template/actions.ts';
+import { builtinTemplateErrors, builtinTemplates } from '../src/template/builtin.ts';
 import { TemplateRegistry } from '../src/template/registry.ts';
-
-/**
- * 模板目录 —— **从 `@taskboard/core` 包的位置推**，不走 cwd。
- *
- * ## 为什么不能用 `join('packages', 'core', 'templates')`
- *
- * 那要求调用者的工作目录正好是仓库根。`node --test` 从别的目录跑、
- * IDE 的测试运行器、CI 的任意 checkout 路径 —— 都会看到「找不到模板目录」，
- * 而那是**假失败**：模板明明在。
- *
- * ## 为什么是 `createRequire(...).resolve('@taskboard/core/package.json')`
- *
- * `import.meta.url` 指向**测试文件**（`packages/core/test/`），
- * 而模板在**包根**（`packages/core/templates/`）—— 从测试文件推要跨 `..`，
- * 一旦测试文件挪目录就错。
- *
- * 改从**包自己的 `package.json`** 推：无论从哪个 cwd 调用，
- * 无论测试文件在哪，拿到的都是这个包被解析到的真实位置。
- * 这也是 `packages/dsh/test/*.test.ts` 已经在用的写法（全仓统一）。
- */
-const TEMPLATES_DIR = join(
-	dirname(createRequire(import.meta.url).resolve('@taskboard/core/package.json')),
-	'templates',
-);
 
 /** 期望的模板数量。改模板就改这个数字 —— 让「少了一个」变成测试失败。 */
 const EXPECTED_COUNT = 18;
@@ -64,21 +38,26 @@ describe('全部模板', () => {
 	const actions = new ActionRegistry();
 	for (const action of BUILTIN_ACTIONS) actions.register(action);
 
-	const before = existsSync(TEMPLATES_DIR);
-	const result = before ? registry.loadDirectory(TEMPLATES_DIR) : { loaded: 0, errors: [] };
+	/*
+	 * 加载入口 = `builtinTemplates()`（用户 2026-11-23：
+	 * 「模板的读取不是 io。而是配置。跟随包的。只在包里面。」）。
+	 *
+	 * 它**在包初始化时就读完**（模块求值），这里只是取那份常量。
+	 * `loadDirectory(dir)` 已删 —— 外部不能给目录，只能以**包**的形式注册。
+	 */
+	const builtin = builtinTemplates();
+	const builtinErrors = builtinTemplateErrors();
+	registry.registerAll(builtin);
+	registry.setErrors(builtinErrors);
 	const templates = registry.list();
-
-	it('模板目录存在', () => {
-		assert.equal(before, true, `找不到模板目录 ${TEMPLATES_DIR}（工作目录应为仓库根）`);
-	});
 
 	it(`${EXPECTED_COUNT} 个模板全部加载，零错误`, () => {
 		assert.deepEqual(
-			result.errors.map((one) => `${one.file}: ${one.message}`),
+			builtinErrors.map((one) => `${one.file}: ${one.message}`),
 			[],
 			'有模板加载失败',
 		);
-		assert.equal(result.loaded, EXPECTED_COUNT, '加载数量与期望不符');
+		assert.equal(builtin.length, EXPECTED_COUNT, '加载数量与期望不符');
 		assert.equal(templates.length, EXPECTED_COUNT);
 	});
 

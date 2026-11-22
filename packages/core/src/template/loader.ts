@@ -11,13 +11,11 @@
  *
  * ⇒ 本文件只做前者。注册、注销、通知在 `registry.ts`。
  *
- * ## 逐文件容错
+ * ## 逐文件容错（调用方做）
  *
  * 一个坏模板文件不该让整个注册表不可用。用户：「如果他出错了，core 可以继续开。」
- * ⇒ `loadFile` 返回错误对象而不是抛；调用方决定记下来还是忽略。
+ * ⇒ `fromRaw` 返回错误对象而不是抛；调用方决定记下来还是忽略。
  */
-
-import { readFileSync } from 'node:fs';
 
 import { parse as parseYaml } from 'yaml';
 
@@ -171,22 +169,5 @@ export function fromRaw(ref: string, raw: unknown): { template: TemplateDef } | 
 			derives: parseDerives(value.derive),
 		},
 	};
-}
-
-/** 从单个 YAML 文件读一个模板（不抛，返回错误对象）。 */
-export function loadFile(file: string, ref: string): { template: TemplateDef } | { error: string } {
-	let text: string;
-	try {
-		text = readFileSync(file, 'utf8');
-	} catch (error) {
-		return { error: `读不了文件：${error instanceof Error ? error.message : String(error)}` };
-	}
-	let parsed: unknown;
-	try {
-		parsed = parseYaml(text);
-	} catch (error) {
-		return { error: `YAML 解析失败：${error instanceof Error ? error.message : String(error)}` };
-	}
-	return fromRaw(ref, parsed);
 }
 

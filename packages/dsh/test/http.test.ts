@@ -90,14 +90,6 @@ function makeRes(): OutgoingLike & {
 let dataDir = '';
 let taskboard: Taskboard;
 
-/**
- * core 包内的模板目录。
- *
- * 模板是 `@taskboard/core` 的资产（它 `files` 里带 `templates`），本包不带副本。
- * 这里从 core 的 `package.json` 反推定位置 —— 与 `src/index.ts` 的 `coreTemplateDir()` 同一做法。
- */
-const TEMPLATE_DIR = join(dirname(createRequire(import.meta.url).resolve('@taskboard/core/package.json')), 'templates');
-
 before(() => {
 	dataDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-'));
 });
@@ -127,8 +119,6 @@ beforeEach(async () => {
 	/* 每个用例一个全新实例（内存里；dataDir 共用，用例间用不同空间隔离）。 */
 	await closeTaskboard();
 	taskboard = createTaskboard({ store: createSqliteStore(dataDir) });
-	/* 模板必须加载，否则 `listTemplates()` 为空 —— 建卡路径全部无从测起。 */
-	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 });
 
 /** 造一份路由依赖；默认放行鉴权。 */

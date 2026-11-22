@@ -257,7 +257,7 @@ describe('脏值：回落默认 + 警告，不抛错', () => {
 			await store.kvSet(CARD_KEY, 'garbage');
 			await store.kvSet(GUARD_KEY, 'PLAN');
 
-			const { result: tb, warnings } = captureWarnings(() => createTaskboard({ store }));
+			const { result: tb, warnings } = captureWarnings(() => createTaskboard({ store, builtinTemplates: false }));
 			try {
 				assert.equal(tb.getCardActionLevel(), 'no-claim', '脏值 ⇒ 回落默认');
 				assert.equal(tb.getToolGuardLevel(), 'off', '脏值 ⇒ 回落默认');
@@ -287,7 +287,7 @@ describe('脏值：回落默认 + 警告，不抛错', () => {
 			await store.kvSet(CARD_KEY, '深入敌后'); // 脏
 			await store.kvSet(GUARD_KEY, 'manage'); // 合法
 
-			const { result: tb, warnings } = captureWarnings(() => createTaskboard({ store }));
+			const { result: tb, warnings } = captureWarnings(() => createTaskboard({ store, builtinTemplates: false }));
 			try {
 				assert.equal(tb.getCardActionLevel(), 'no-claim');
 				assert.equal(tb.getToolGuardLevel(), 'manage');

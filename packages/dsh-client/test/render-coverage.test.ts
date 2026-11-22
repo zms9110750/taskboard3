@@ -49,9 +49,8 @@
 import assert from 'node:assert/strict';
 import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 
 import { createTaskboard, missingRenderers, type Taskboard } from '@taskboard/core';
@@ -72,25 +71,20 @@ import { BUILTIN_TYPES } from '../src/renderers/builtin-types.ts';
 const DATA_DIR = mkdtempSync(join(tmpdir(), 'tb-render-check-'));
 
 /**
- * `@taskboard/core` 包内 `templates/` 的绝对路径。
- *
- * ⚠ **不能写 `join('packages', 'core', 'templates')`** —— 那样测试就绑死 cwd
- *   （AGENTS 规则 4）。走包名解析才对。
- */
-function coreTemplateDir(): string {
-	const require = createRequire(import.meta.url);
-	const manifest = require.resolve('@taskboard/core/package.json');
-	return join(dirname(manifest), 'templates');
-}
-
-/**
  * 造一个**加载了全部真实模板**的 Taskboard。
+ *
+ * ## 模板不需要这里手动加载（`2026-11-23` 改）
+ *
+ * 用户：
+ * > 「模板的读取不是 io。而是配置。跟随包的。只在包里面。」
+ *
+ * ⇒ `createTaskboard()` 内部已经注册好包内自带的 18 个模板
+ *   （见 `@taskboard/core` 的 `template/builtin.ts`）。
  *
  * `dataDir` 用临时目录 —— 不碰任何真实数据。
  */
 function realTaskboard(): Taskboard {
 	const taskboard = createTaskboard({ store: createSqliteStore(DATA_DIR) });
-	taskboard.templates().loadDirectory(coreTemplateDir());
 	return taskboard;
 }
 

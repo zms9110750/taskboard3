@@ -58,8 +58,6 @@ const fakeDefineTool: DefineTool = (options) => ({
 	},
 });
 
-const TEMPLATE_DIR = join(dirname(createRequire(import.meta.url).resolve('@taskboard/core/package.json')), 'templates');
-
 let taskboard: Taskboard;
 let tools: readonly ToolLike[];
 let workspaceId = '';
@@ -93,7 +91,6 @@ beforeEach(async () => {
 	const dataDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-tools-'));
 	createdDirs.push(dataDir);
 	taskboard = createTaskboard({ store: createSqliteStore(dataDir) });
-	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 
 	const created = await taskboard.createWorkspace(`适配层测试-${Date.now()}`);
 	assert.equal(created.ok, true);

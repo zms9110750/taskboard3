@@ -50,7 +50,7 @@ describe('Taskboard.requiredActions —— 模板实际用到的 action', () => 
 
 	before(() => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-ra-'));
-		tb = createTaskboard({ store: createMemoryStore(), now: () => 1_000 });
+		tb = createTaskboard({ store: createMemoryStore(), now: () => 1_000, builtinTemplates: false });
 	});
 
 	after(async () => {
@@ -166,34 +166,37 @@ describe('模板加载：action 与 default.$type 必须一致', () => {
 		}
 	});
 
-	it('⚠ 坏模板进 templateErrors()，不影响同目录其它模板', () => {
-		const dir = mkdtempSync(join(tmpdir(), 'tb3-err-'));
-		const templatesDir = join(dir, 'templates');
-		mkdirSync(templatesDir, { recursive: true });
-
-		writeFileSync(
-			join(templatesDir, 'good.yaml'),
-			'sections:\n  a:\n    label: A\n    action: text\n    default:\n      $type: text\n',
-			'utf8',
-		);
-		writeFileSync(
-			join(templatesDir, 'bad.yaml'),
-			'sections:\n  a:\n    label: A\n    action: text\n    default:\n      $type: markdown\n',
-			'utf8',
-		);
-
+	it('⚠ 加载错误进 errors()，注册表照样可用（一个坏文件不该拖垮整体）', () => {
+		/*
+		 * 用户： 「如果他出错了，core 可以继续开。」
+		 *
+		 * ## 为什么不再写盘
+		 *
+		 * 原来这条测试往临时目录里写 good.yaml + bad.yaml 再 `loadDirectory`。
+		 * `loadDirectory` 已删（用户 2026-11-23：「外来的包原则上不该挤进去这个放配置的地方」）
+		 * ⇒ 外部无法再塞文件。但**语义没变**：错误和注册是两条独立的通路。
+		 *
+		 * 现在钉的是注册表这一层的契约：`setErrors` 存下失败、`registerAll` 照常成功，
+		 * 两者互不影响。
+		 */
 		const registry = new TemplateRegistry();
-		const loaded = registry.loadDirectory(templatesDir);
 
-		assert.equal(loaded.loaded, 1, '好的那个应该加载成功');
-		assert.equal(loaded.errors.length, 1, '坏的那个应该产出一条错误');
+		const good = fromRaw('good', {
+			sections: { a: { label: 'A', action: 'text', default: { $type: 'text' } } },
+		});
+		assert.equal('template' in good, true, '构造好的模板应该解析成功');
+		if (!('template' in good)) return;
 
-		const error = loaded.errors[0];
+		registry.registerAll([good.template]);
+		registry.setErrors([{ file: '/fake/bad.yaml', message: 'YAML 解析失败：故意的' }]);
+
+		/* 错误被记下，形状是 `{ file, message }` —— 不新造一套。 */
+		const errors = registry.errors();
+		assert.equal(errors.length, 1);
+		const error = errors[0];
 		assert.equal(typeof error?.file, 'string');
 		assert.match(error?.file ?? '', /bad\.yaml/);
-		assert.match(error?.message ?? '', /action/);
-
-		/* 形状必须是现有的 `{ file, message }` —— 不新造一套。 */
+		assert.match(error?.message ?? '', /故意的/);
 		assert.deepEqual(Object.keys(error ?? {}).sort(), ['file', 'message']);
 
 		/* 好模板仍然可用 ⇒ 「一个坏文件不该让整个注册表不可用」。 */
@@ -201,7 +204,5 @@ describe('模板加载：action 与 default.$type 必须一致', () => {
 			registry.list().map((one) => one.ref),
 			['good'],
 		);
-
-		rmSync(dir, { recursive: true, force: true });
 	});
 });
