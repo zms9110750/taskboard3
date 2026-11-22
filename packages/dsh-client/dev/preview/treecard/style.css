@@ -1,10 +1,15 @@
 /*
- * TreeCard 形态预览的样式 —— **只有预览外壳 + 复刻 hover**。
+ * TreeCard 形态预览的**外壳样式** —— 只在 `dev/preview/treecard/` 里用。
  *
- * ⚠ 卡片本身的样式（`tb3t-card` 等）**不在这里**：它由
- *   `main.tsx` 调 `injectTechTreeStyles()` 注入（`src/pure/techtree-css.ts`），
- *   预览和产品用同一份。在预览里抄一份卡片 CSS 的后果是
- *   「预览是对的、产品是坏的」，而那种坏**不报错**。
+ * ## 卡片样式从哪来
+ *
+ * - 卡片本体（`.tb3t-card*`）由 `main.tsx` 调 `injectTechTreeStyles()` 注入
+ *   （`src/pure/techtree-css.ts`）—— 预览和产品同一份。
+ * - 卡片里的 `.card-id` / `.badge` 在 `WORKSPACE_CSS` 里（`injectStyles()` 注入，
+ *   作用域 `.tb3w-root`）—— 所以预览最外层必须有 `.tb3w-root`。
+ * - `.ghost-btn` 也来自 `WORKSPACE_CSS`（2026-11-22 起不再在这里手抄）。
+ *
+ * ⇒ 本文件只剩**预览外壳**：卡片舞台、绝对定位格、静态 hover 复刻、回执列表。
  *
  * ⚠ 本文件是纯 CSS（不是模板字符串）。
  */
@@ -49,19 +54,4 @@
 	list-style: none;
 	margin-left: -18px;
 	color: #9aa1ad;
-}
-
-.ghost-btn {
-	padding: 4px 10px;
-	border: 1px solid var(--border, #e7e9ee);
-	border-radius: 6px;
-	background: var(--bg-card, #fff);
-	color: var(--text-secondary, #5f6673);
-	font-family: inherit;
-	font-size: 12px;
-	cursor: pointer;
-}
-.ghost-btn:hover {
-	border-color: var(--text-weak, #9aa1ad);
-	color: var(--text, #16181d);
 }

@@ -15,6 +15,12 @@ import { StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { Markdown } from '../../../src/renderers/Markdown.tsx';
+/*
+ * 产品样式由 `injectStyles()` 在运行时注入 —— **预览和产品是同一份 CSS**
+ * （`SECTION_CSS` 的 `.md` 那一大段）。不调用它就是裸 HTML；
+ * 调用之后 `style.css` 只留预览外壳（区块标题）。
+ */
+import { injectStyles } from '../../../src/styles.ts';
 
 /** 正常语法样本（GFM 特性逐条点名）。 */
 const NORMAL = `# 一级标题
@@ -72,7 +78,12 @@ const XSS = [
 function App(): ReactNode {
 	return (
 		<StrictMode>
-			<div className="preview">
+			{/*
+			 * 最外层带 `.tb3w-root` —— 产品 CSS 全部挂在这个作用域下
+			 * （`.tb3w-root .md…`）。`.pv-shell` 把产品的「撑满 + 裁切」
+			 * 放开成「按内容撑开」。
+			 */}
+			<div className="preview tb3w-root pv-shell">
 				<div className="pv-head">
 					<h1>Markdown</h1>
 					<p>marked 18.2.1（GFM）+ 白名单建树 · 零 innerHTML / 零 DOMParser</p>
@@ -101,5 +112,7 @@ function App(): ReactNode {
 
 const holder = document.getElementById('root');
 if (holder === null) throw new Error('找不到 #root');
+
+injectStyles();
 
 createRoot(holder).render(<App />);
