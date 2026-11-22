@@ -120,16 +120,57 @@ export type FetchLike = (
 	init?: { readonly method?: string; readonly body?: string; readonly headers?: Record<string, string> },
 ) => Promise<{ readonly ok: boolean; readonly status: number; readonly text: () => Promise<string> }>;
 
+/**
+ * 模板的**展开视图**（`GET /api/templates?ref=<ref>`）。
+ *
+ * ⚠ 和 `TemplateSummary` 的区别：摘要只有 `ref/displayName/kind/domain`，
+ *   **没有章节清单**。建卡必须知道「这个模板有哪些章节、每章用哪个 action」，
+ *   所以要多一次请求。
+ *
+ * 形状照抄 `core/src/template/types.ts` 的 `TemplateMeta`（字段名逐个对齐）。
+ */
+export interface TemplateDetail {
+	readonly ref: string;
+	readonly displayName: string;
+	readonly kind: string;
+	readonly domain: string;
+	readonly usage: string;
+	readonly description: string;
+	readonly sections: readonly {
+		readonly id: string;
+		readonly label: string;
+		readonly hint: string;
+		readonly action: string;
+	}[];
+}
+
 /** 一个任务板 API 客户端。 */
 export interface TaskboardApi {
 	getState(workspaceId?: string): Promise<StateData>;
 	listWorkspaces(): Promise<readonly Workspace[]>;
 	createWorkspace(name: string): Promise<Workspace>;
+	/**
+	 * 取一个模板的展开视图（章节清单）。
+	 *
+	 * @param ref 模板 ref
+	 * @throws {ApiError} `TEMPLATE_NOT_FOUND`
+	 */
+	getTemplate(ref: string): Promise<TemplateDetail>;
 	createCard(input: {
 		readonly workspaceId: string;
 		readonly templateRef: string;
 		readonly title: string;
 		readonly content?: Readonly<Record<string, unknown>>;
+		/** 关系。`parent` 是派生父卡；`links` 是五种边。省略 = 没有关系。 */
+		readonly relations?: {
+			readonly parent?: string | null;
+			readonly links?: readonly { readonly label: string; readonly to: string }[];
+		};
+		/** 备注。省略 = 空。 */
+		readonly note?: string;
+		/** 空模板必须补的分类 / 领域（模板已声明时省略）。 */
+		readonly kind?: string;
+		readonly domain?: string;
 	}): Promise<Card>;
 	patchCard(input: {
 		readonly workspaceId: string;
@@ -227,6 +268,12 @@ export function createApi(fetchImpl?: FetchLike): TaskboardApi {
 		},
 		async createCard(input) {
 			return request<Card>('cards', { method: 'POST', body: input });
+		},
+		async getTemplate(ref) {
+			const data = await request<{ template: TemplateDetail }>('templates', {
+				query: { ref },
+			});
+			return data.template;
 		},
 		async patchCard(input) {
 			return request<Card>(`cards/${encodeURIComponent(input.cardId)}`, {

@@ -87,6 +87,23 @@ function fakeApi(): TaskboardApi {
 			CALLS.push({ method: 'listWorkspaces', args: undefined });
 			return WORKSPACES;
 		},
+		async getTemplate(ref: string) {
+			CALLS.push({ method: 'getTemplate', args: ref });
+			/* 假数据：摘要里没有章节，这里造两章够测「提交能带上 content」。 */
+			const summary = TEMPLATES.find((one) => one.ref === ref);
+			return {
+				ref,
+				displayName: summary?.displayName ?? ref,
+				kind: summary?.kind ?? '',
+				domain: summary?.domain ?? '',
+				usage: '预览假模板',
+				description: '',
+				sections: [
+					{ id: 'body', label: '正文', hint: '', action: 'text' },
+					{ id: 'extra', label: '补充', hint: '', action: 'markdown' },
+				],
+			};
+		},
 		async createWorkspace(name: string): Promise<SpaceEntity> {
 			CALLS.push({ method: 'createWorkspace', args: name });
 			return { id: `W${String(WORKSPACES.length + 1)}`, displayName: name, archived: false, createdAt: Date.now() };
