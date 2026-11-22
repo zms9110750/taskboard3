@@ -385,7 +385,7 @@ describe('search 的 updatedBy 走 Card.unread', () => {
 		tb.templates().register(makeTemplate('t-work', 'work'));
 		const ws = (await tb.createWorkspace('搜未读')).workspace.id;
 
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '搜未读' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '搜未读', actor: 'user' });
 		assert.ok(created.ok);
 		const id = created.card.id;
 		await tb.adopt(ws, id, 'user');
@@ -408,7 +408,7 @@ describe('search 的 updatedBy 走 Card.unread', () => {
 		tb.templates().register(makeTemplate('t-work', 'work'));
 		const ws = (await tb.createWorkspace('搜AND')).workspace.id;
 
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '搜AND' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '搜AND', actor: 'user' });
 		assert.ok(created.ok);
 		const id = created.card.id;
 		await tb.adopt(ws, id, 'user');
@@ -433,7 +433,7 @@ describe('markSeen 触发 bus 广播', () => {
 		tb.templates().register(makeTemplate('t-work', 'work'));
 		const ws = (await tb.createWorkspace('广播')).workspace.id;
 
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '广播' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '广播', actor: 'user' });
 		assert.ok(created.ok);
 		const id = created.card.id;
 		await tb.update(ws, id, { note: 'AI 改的' }, 'ai');
@@ -461,7 +461,7 @@ describe('markSeen 触发 bus 广播', () => {
 		tb.templates().register(makeTemplate('t-work', 'work'));
 		const ws = (await tb.createWorkspace('广播2')).workspace.id;
 
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '广播2' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-work', title: '广播2', actor: 'user' });
 		assert.ok(created.ok);
 		const id = created.card.id;
 		/* 只有 user 改过 ⇒ unread.ai 已经是 false。 */

@@ -146,7 +146,7 @@ describe('工作空间：CRUD 与归档', () => {
 
 	it('归档的空间照样可读写（归档 ≠ 失活）', async () => {
 		await tb.archiveWorkspace('ws1');
-		const created = await tb.create({ workspaceId: 'ws1', templateRef: 'nope', title: 'x' });
+		const created = await tb.create({ workspaceId: 'ws1', templateRef: 'nope', title: 'x', actor: 'user' });
 		/* 模板不存在会失败，但**不是**因为空间被归档 —— 报的是 TEMPLATE_NOT_FOUND。 */
 		assert.equal(created.ok, false);
 		assert.equal(created.code, 'TEMPLATE_NOT_FOUND');

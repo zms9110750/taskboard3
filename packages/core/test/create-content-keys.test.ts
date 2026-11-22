@@ -29,6 +29,7 @@ describe('建卡 content 的三条规则', () => {
 			templateRef: 't-two',
 			title: '缺一章',
 			content: { body: { $type: 'text', value: '只给正文' } },
+			actor: 'user',
 		});
 		assert.equal(created.ok, true, created.ok ? '' : created.message);
 		if (!created.ok) return;
@@ -45,6 +46,7 @@ describe('建卡 content 的三条规则', () => {
 			templateRef: 't-two',
 			title: '缺一章还多一个 key',
 			content: { body: { $type: 'text' }, 额外的东西: { $type: 'text' } },
+			actor: 'user',
 		});
 		assert.equal(created.ok, false);
 		if (created.ok) return;
@@ -68,6 +70,7 @@ describe('建卡 content 的三条规则', () => {
 				note2: { $type: 'text', value: '说明' },
 				额外的章节: { $type: 'text', value: '会被忽略' },
 			},
+			actor: 'user',
 		});
 		assert.equal(created.ok, true, created.ok ? '' : created.message);
 		if (!created.ok) return;
@@ -96,6 +99,7 @@ describe('空模板建卡（章节完全自定义）', () => {
 				'another key': { $type: 'markdown', value: '# 标题' },
 				数字也可以: { $type: 'ask', items: [] },
 			},
+			actor: 'user',
 		});
 		assert.equal(created.ok, true, created.ok ? '' : created.message);
 		if (!created.ok) return;
@@ -109,7 +113,7 @@ describe('空模板建卡（章节完全自定义）', () => {
 		const { tb, ws } = await makeBoard([
 			makeTemplate({ ref: 't-empty2', kind: 'work', domain: 'core', sections: [] }),
 		]);
-		const created = await tb.create({ workspaceId: ws, templateRef: 't-empty2', title: '空内容' });
+		const created = await tb.create({ workspaceId: ws, templateRef: 't-empty2', title: '空内容', actor: 'user' });
 		assert.equal(created.ok, true, created.ok ? '' : created.message);
 		if (!created.ok) return;
 		assert.deepEqual(created.card.sections, {});

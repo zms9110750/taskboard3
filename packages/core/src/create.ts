@@ -72,13 +72,33 @@ export interface CreateInput {
 	readonly note?: string;
 	readonly origin?: CreateOrigin;
 	/**
-	 * 谁建的卡。省略 = `'user'`。
+	 * 谁建的卡 —— **必填，没有默认值**（用户 `2026-11-22`）。
+	 *
+	 * 用户原话：
+	 * > 「actor 参数需要是必填的。以让 ui 处和 tool 处明确的要填入这两个参数。
+	 * >   实际上用户操作和 ai 操作都不会碰这两个参数。但**桥接操作者到 core 的
+	 * >   tool 和 ui 函数，他们要负责填写这个参数。而且必须明确填写**。」
+	 *
+	 * ## 为什么不给 `?? 'user'` 兜底
+	 *
+	 * 默认值让「**忘了传**」和「**故意传 user**」变成同一件事 —— 两者都编译通过、
+	 * 都不报错。而这个字段决定**未读标记的方向**（`card.ts` 的 `unreadAfter`）：
+	 *
+	 * | actor | 未读标记 |
+	 * |---|---|
+	 * | `'ai'` | `unread.ai = true`（AI 改过 ⇒ 用户未读）|
+	 * | `'user'` | `unread.user = true`（用户改过 ⇒ AI 未读）|
+	 *
+	 * 填错方向就反了，而且**不会有任何报错**。⇒ 必填，让漏传变成编译错误。
 	 *
 	 * ⚠ 与 `origin` 不是一回事：`origin` 说的是**从哪儿建**
 	 *   （面板 / 派生 / fork / 导入），`actor` 说的是**谁**（人还是 AI）。
 	 *   AI 工具建卡时 `origin: 'panel'` 且 `actor: 'ai'` 是合法组合。
+	 *
+	 * ⚠ **用户和 AI 本身都不碰这个参数** —— 是「桥接操作者到 core 的 UI 函数
+	 *   和 tool 函数」负责填（`dsh/http.ts` 传 `'user'`、`tools/create.ts` 传 `'ai'`）。
 	 */
-	readonly actor?: Actor;
+	readonly actor: Actor;
 }
 
 /** 建卡的依赖。 */
@@ -205,12 +225,13 @@ export function buildCard(input: CreateInput, deps: CreateDeps): CreateResult {
 		at: deps.now,
 		action: 'create',
 		/*
-		 * 谁建的卡。
+		 * 谁建的卡 —— **直接透传 `input.actor`，不做默认值**（用户 `2026-11-22`）。
 		 *
-		 * ⚠ **不能假设是 user** —— AI 工具也能建卡（`origin` 里就有 `'ai'` 语义）。
-		 * ⇒ 由调用方在 `CreateInput` 里显式给 `actor`。
+		 * 原来这里是 `input.actor ?? 'user'`。那个兜底正好把「忘了传」藏起来：
+		 * 桥接层漏填时 AI 建卡会被记成用户建卡，未读方向反了却零报错。
+		 * 现在 `actor` 是必填 ⇒ 漏传在编译期就红。
 		 */
-		actor: input.actor ?? 'user',
+		actor: input.actor,
 		detail: { origin: input.origin ?? 'panel', templateRef: template.ref },
 	};
 

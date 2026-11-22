@@ -45,13 +45,13 @@ describe('建卡的分类 / 领域覆盖', () => {
 	it('空模板缺 kind / domain ⇒ 拒绝，并指出缺哪个', async () => {
 		const tb = board();
 		const ws = await tb.ensureAnyWorkspace();
-		const noKind = await tb.create({ workspaceId: ws.id, templateRef: 'blank', title: 'x', domain: '核心' });
+		const noKind = await tb.create({ workspaceId: ws.id, templateRef: 'blank', title: 'x', domain: '核心', actor: 'user' });
 		assert.equal(noKind.ok, false);
 		if (!noKind.ok) {
 			assert.equal(noKind.code, 'FIELD_REQUIRED');
 			assert.ok(noKind.issues?.some((one) => one.path === '/kind'), JSON.stringify(noKind.issues));
 		}
-		const noDomain = await tb.create({ workspaceId: ws.id, templateRef: 'blank', title: 'x', kind: 'goal' });
+		const noDomain = await tb.create({ workspaceId: ws.id, templateRef: 'blank', title: 'x', kind: 'goal', actor: 'user' });
 		assert.equal(noDomain.ok, false);
 		if (!noDomain.ok) assert.ok(noDomain.issues?.some((one) => one.path === '/domain'));
 	});
@@ -66,6 +66,7 @@ describe('建卡的分类 / 领域覆盖', () => {
 			title: '一致',
 			kind: 'work',
 			domain: '核心',
+			actor: 'user',
 		});
 		assert.equal(same.ok, true, same.ok ? '' : same.message);
 
@@ -74,6 +75,7 @@ describe('建卡的分类 / 领域覆盖', () => {
 			templateRef: 'normal',
 			title: '不一致',
 			kind: 'goal',
+			actor: 'user',
 		});
 		assert.equal(differentKind.ok, false);
 
@@ -82,6 +84,7 @@ describe('建卡的分类 / 领域覆盖', () => {
 			templateRef: 'normal',
 			title: '不一致',
 			domain: '代码',
+			actor: 'user',
 		});
 		assert.equal(differentDomain.ok, false);
 	});
@@ -95,6 +98,7 @@ describe('建卡的分类 / 领域覆盖', () => {
 			title: '坏分类',
 			kind: '不存在的分类',
 			domain: '核心',
+			actor: 'user',
 		});
 		assert.equal(created.ok, false);
 		if (!created.ok) assert.ok(created.message.includes('taskboard_definitions'), created.message);
