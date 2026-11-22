@@ -33,7 +33,10 @@
  * - **入口位置**：卡片是 `position:relative`，入口由 `conversation.input.left`
  *   渲染在工具行里 ⇒ 用 `position:absolute;left:-32px;bottom:4px` 抬到卡片左外侧、
  *   与 28px 的 `+` 垂直居中。
- * - **高度**：`min(50vh, 480px)` 或 `50vh`，公式在纯逻辑里（`drawerHeightCssOf`）。
+ * - **高度**：恒为 `50vh`，公式在纯逻辑里（`drawerHeightCssOf`）。
+ *   ⇒ 屏越高面板越高（用户 `2026-11-23`：「这个抽屉视图只占这么点大小不对」）。
+ *   唯一的上限是**别顶出窗口上沿** —— 那个值在组件里量真实位置得出
+ *   （`--tb3d-max-height`），不是写死的数字。
  *
  * ## 受控
  *
@@ -72,6 +75,34 @@ const STATUS_MENU_SELECTOR = '[data-menu="status"]';
 
 /** 入口按钮自己的 DOM 钩子（它自己 toggle，不能被「点外部」抢先关一次）。 */
 const TRIGGER_SELECTOR = '[data-drawer-trigger]';
+
+/**
+ * 面板「动态上限」用的 CSS 变量名。
+ *
+ * ⚠ 这个变量的值**不是设计值**，是**量出来的可用空间** —— `Drawer` 在打开时
+ * 读一次 layer 的真实 `getBoundingClientRect().top`（= 输入框卡片的顶边），
+ * 减去形态间距和一点呼吸边距，写进这里当 `max-height`。
+ *
+ * 为什么不写死：输入框会随对话内容上下移动（空对话时垂直居中、有消息时贴底），
+ * 而面板高度是 `50vh`。写死任何数字都会在某个状态下顶出窗口上沿。
+ */
+const MAX_HEIGHT_VAR = '--tb3d-max-height';
+
+/** 面板顶边与视口上沿之间留的呼吸边距（px）。 */
+const PANEL_TOP_MARGIN_PX = 8;
+
+/**
+ * 同步「面板最多能长多高」。
+ *
+ * 面板底边 = layer 顶边 - 形态间距（CSS `bottom:calc(100% + gap)` 的结构保证），
+ * 所以可用高度 = 那个底边到视口上沿的距离，再减呼吸边距。
+ */
+function syncPanelMaxHeight(layer: HTMLElement, panel: HTMLElement, gapPx: number): void {
+	const bottom = layer.getBoundingClientRect().top - gapPx;
+	if (!Number.isFinite(bottom) || bottom <= 0) return;
+	const available = Math.max(Math.floor(bottom - PANEL_TOP_MARGIN_PX), 0);
+	panel.style.setProperty(MAX_HEIGHT_VAR, `${String(available)}px`);
+}
 
 /* ══════════════════════════════════════════════════════════
    1. 入口（conversation.input.left）—— 正方形按钮
@@ -157,6 +188,7 @@ export interface DrawerProps {
  */
 export function Drawer(props: DrawerProps): ReactNode {
 	const panelRef = useRef<HTMLElement>(null);
+	const layerRef = useRef<HTMLDivElement>(null);
 
 	/* 解构出来当 effect 依赖 —— 依赖 `props` 对象本身会让监听器每帧重挂。 */
 	const { open, onClose } = props;
@@ -202,6 +234,35 @@ export function Drawer(props: DrawerProps): ReactNode {
 		};
 	}, [open, onClose]);
 
+	/*
+	 * ── 动态上限：面板高 `50vh`，但绝不能顶出窗口上沿 ──
+	 *
+	 * 输入框会动（空对话时垂直居中、有消息时贴底），所以这里不是「开一次量一次」：
+	 * 挂一个低频轮询（100ms）+ resize 监听，位置变了就重写 `--tb3d-max-height`。
+	 *
+	 * 为什么不用 ResizeObserver：它只在**尺寸**变化时触发，而这里的输入框是
+	 * **位置**在变（尺寸不变）—— 漏掉那种情况，面板就会顶出去。
+	 */
+	useEffect(() => {
+		if (!open) return undefined;
+		const layer = layerRef.current;
+		const panel = panelRef.current;
+		if (layer === null || panel === null) return undefined;
+
+		const gapPx = props.variant.gapPx;
+		const sync = (): void => {
+			syncPanelMaxHeight(layer, panel, gapPx);
+		};
+
+		sync();
+		const timer = window.setInterval(sync, 100);
+		window.addEventListener('resize', sync);
+		return () => {
+			window.clearInterval(timer);
+			window.removeEventListener('resize', sync);
+		};
+	}, [open, props.variant.gapPx]);
+
 	/* ── 关闭态：什么都不渲染（不占位、不拦截事件；斜杠菜单同款约定） ── */
 	if (!open) return null;
 
@@ -213,7 +274,7 @@ export function Drawer(props: DrawerProps): ReactNode {
 		 * （`height:0;position:absolute;inset:0 0 auto`，宽度 = 输入框卡片宽）。
 		 * 面板相对这一层 `bottom:100%` ⇒ 面板底边 = 输入框上边缘。
 		 */
-		<div className="tb3d-layer" data-drawer-layer="1">
+		<div className="tb3d-layer" data-drawer-layer="1" ref={layerRef}>
 			{props.variant.mask ? <div className="tb3d-mask" data-drawer-mask="1" /> : null}
 			<section
 				className="tb3d-panel"
@@ -226,7 +287,6 @@ export function Drawer(props: DrawerProps): ReactNode {
 				data-drawer-variant={props.variant.id}
 				data-drawer-gap={String(props.variant.gapPx)}
 				data-drawer-radius={String(props.variant.radiusPx)}
-				data-drawer-height={props.variant.heightMode}
 				data-drawer-animated={String(props.variant.animated)}
 			>
 				<header className="tb3d-head" data-drawer-head="1">

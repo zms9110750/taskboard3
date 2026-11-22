@@ -6,7 +6,7 @@
  * | 块 | 断言什么 |
  * |---|---|
  * | 候选形态表 | 3 个组合齐全、id 与键一致、维度确实互不相同（用户要「全部过目」）|
- * | 高度公式 | `min(50vh, 480px)` / `50vh` 的数值版与 CSS 版**出自同一份公式** |
+ * | 高度公式 | 恒 `50vh`（`480px` 上限 `2026-11-23` 删）的数值版与 CSS 版**出自同一份公式** |
  * | 面板几何 | 底边 = 上边缘 + gap、圆角 / 阴影 / 动画由形态表插值 |
  * | 入口几何 | `left:-32px`（右边缘贴输入框左边缘）、`top:4px`（顶边对齐输入框顶边）|
  * | 共享 store | 开合、订阅、幂等；两个 session 各一份 |
@@ -17,13 +17,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import * as mod from '../src/pure/drawer-view.ts';
 import {
 	DRAWER_CLOSED,
 	DRAWER_COMPACT_SPACING,
 	DRAWER_DEFAULT_VARIANT_ID,
 	DRAWER_ENTRY_SIZE_PX,
 	DRAWER_ENTRY_TOP_PX,
-	DRAWER_HEIGHT_CAP_PX,
 	DRAWER_HEIGHT_RATIO,
 	DRAWER_OPEN,
 	DRAWER_VARIANTS,
@@ -77,11 +77,11 @@ describe('① 三个候选形态', () => {
 		);
 	});
 
-	it('高度候选：a/b = min(50vh,480px)，c = 50vh', () => {
-		assert.deepEqual(
-			DRAWER_VARIANT_IDS.map((id) => DRAWER_VARIANTS[id].heightMode),
-			['capped-half', 'capped-half', 'half'],
-		);
+	it('高度不再是形态差异：三个形态都跟同一个比例走', () => {
+		for (const id of DRAWER_VARIANT_IDS) {
+			assert.equal('heightMode' in DRAWER_VARIANTS[id], false, `${id} 不该再有 heightMode`);
+		}
+		assert.equal(drawerHeightCssOf(), `${String(DRAWER_HEIGHT_RATIO * 100)}vh`);
 	});
 
 	it('遮罩只有 c；动画是 b / c', () => {
@@ -120,45 +120,39 @@ describe('① 三个候选形态', () => {
 /* ② 高度公式：高度 ≈ 屏幕一半                                */
 /* ══════════════════════════════════════════════════════════ */
 
-describe('② 高度公式（用户原话「高度 ≈ 屏幕一半」）', () => {
-	it('比例 0.5、上限 480px', () => {
-		assert.equal(DRAWER_HEIGHT_RATIO, 0.5);
-		assert.equal(DRAWER_HEIGHT_CAP_PX, 480);
+describe('② 高度公式（用户 2026-11-23「只占这么点大小不对」⇒ 0.75）', () => {
+	it('比例 0.75（用户 2026-11-20 的「一半」已被 2026-11-23 否掉）', () => {
+		assert.equal(DRAWER_HEIGHT_RATIO, 0.75);
 	});
 
-	it('⭐ capped-half：屏高一半、但不超过 480', () => {
-		const a = DRAWER_VARIANTS.a;
-		assert.equal(drawerHeightPxOf(a, 900), 450);
-		assert.equal(drawerHeightPxOf(a, 960), 480);
-		assert.equal(drawerHeightPxOf(a, 1200), 480);
-		assert.equal(drawerHeightPxOf(a, 1400), 480);
+	it('没有 480px 上限（旧的 capped-half 已删）', () => {
+		/* 用户 2026-11-23：「这个抽屉视图只占这么点大小不对。」⇒ 上限已删。 */
+		assert.equal('DRAWER_HEIGHT_CAP_PX' in mod, false, '480 上限必须已删');
 	});
 
-	it('⭐ half：永远是屏高一半（高屏时比 capped 高）', () => {
-		const c = DRAWER_VARIANTS.c;
-		assert.equal(drawerHeightPxOf(c, 900), 450);
-		assert.equal(drawerHeightPxOf(c, 960), 480);
-		assert.equal(drawerHeightPxOf(c, 1200), 600);
+	it('⭐ 屏越高面板越高（比例 × 屏高的恒等式）', () => {
+		assert.equal(drawerHeightPxOf(596), Math.round(596 * 0.75));
+		assert.equal(drawerHeightPxOf(900), Math.round(900 * 0.75));
+		assert.equal(drawerHeightPxOf(1080), 810);
+		assert.equal(drawerHeightPxOf(1440), 1080);
 	});
 
-	it('capped 与 half 在 960 以下没有差别（如实：高度维度只在高屏可见）', () => {
-		assert.equal(drawerHeightPxOf(DRAWER_VARIANTS.a, 900), drawerHeightPxOf(DRAWER_VARIANTS.c, 900));
-		assert.equal(drawerHeightPxOf(DRAWER_VARIANTS.a, 1200), 480);
-		assert.notEqual(drawerHeightPxOf(DRAWER_VARIANTS.a, 1200), drawerHeightPxOf(DRAWER_VARIANTS.c, 1200));
+	it('⭐ 1080 屏上必须 > 540（旧 50vh 的 540 也得再大）', () => {
+		assert.ok(drawerHeightPxOf(1080) > 540);
 	});
 
-	it('⭐ CSS 版用真实视口单位：a 是 min(50vh, 480px)', () => {
-		assert.equal(drawerHeightCssOf(DRAWER_VARIANTS.a), 'min(50vh, 480px)');
-	});
-
-	it('⭐ CSS 版：c 是 50vh，不再套 min', () => {
-		assert.equal(drawerHeightCssOf(DRAWER_VARIANTS.c), '50vh');
-		assert.equal(drawerHeightCssOf(DRAWER_VARIANTS.c).includes('min('), false);
+	it('⭐ CSS 版跟常量一致，不套 min', () => {
+		assert.equal(drawerHeightCssOf(), '75vh');
+		assert.equal(drawerHeightCssOf().includes('min('), false);
 	});
 
 	it('⚠ 高度只用真实视口单位 —— 不许有「模拟屏高」自定义变量（用户 2026-11-20 否掉）', () => {
 		assert.equal(DRAWER_CSS.includes('--tb3d-vh'), false);
 		assert.equal(DRAWER_CSS.includes('calc(var('), false);
+	});
+
+	it('⚠ 面板必须有动态 max-height（防顶出窗口上沿），且默认值是 none', () => {
+		assert.equal(DRAWER_CSS.includes('max-height:var(--tb3d-max-height, none)'), true);
 	});
 });
 

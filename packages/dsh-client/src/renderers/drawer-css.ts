@@ -102,6 +102,12 @@ export const DRAWER_CSS = `
   display:flex;flex-direction:column;min-height:0;
   border:1px solid var(--tb3d-border);background:var(--tb3d-bg);
   overflow:hidden;pointer-events:auto;
+  /*
+   * 高度 = 50vh（形态规则里给），但**不许顶出窗口上沿**。
+   * 上限由 Drawer.tsx 量输入框的真实位置后写进这个变量 ——
+   * 不是设计值，所以不写默认像素数（拿不到就 none，交给 50vh）。
+   */
+  max-height:var(--tb3d-max-height, none);
 }
 ${DRAWER_VARIANT_IDS.map(
 	(id) => `.tb3d-panel[data-drawer-variant="${id}"]{${drawerPanelCssOf(DRAWER_VARIANTS[id])}}`,
