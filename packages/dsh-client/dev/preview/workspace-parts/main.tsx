@@ -9,7 +9,7 @@
  *
  * | 组件 | 形态 |
  * |---|---|
- * | `WorkspaceToolbar` | 列表视图 / 科技树视图 / 无权限按钮 / compact + 空间选择器 |
+ * | `WorkspaceToolbar` | 列表视图 / 科技树视图 / 无权限按钮 |
  * | `SpaceBar`（工作空间展开后的内容）| 8 个空间 / 40 个空间（换行）/ 无空间 |
  * | `ListHeader` | 正常（12 条）/ 0 条 |
  * | `SplitHandle` | 水平（宽版两栏）/ 垂直（窄版上下堆叠）—— 都能真拖 |
@@ -34,8 +34,6 @@ import type { EmptyReason } from '../../../src/pure/card-filter.ts';
 import { ListEmpty } from '../../../src/renderers/workspace/ListEmpty.tsx';
 import { ListHeader } from '../../../src/renderers/workspace/ListHeader.tsx';
 import { SpaceBar } from '../../../src/renderers/SpaceBar.tsx';
-import { SpacePicker } from '../../../src/renderers/workspace/SpacePicker.tsx';
-import type { SpacePickerProps } from '../../../src/renderers/workspace/SpacePicker.tsx';
 import { SplitHandle } from '../../../src/renderers/workspace/SplitHandle.tsx';
 import type { WorkspaceView } from '../../../src/renderers/workspace/WorkspaceToolbar.tsx';
 import { WorkspaceToolbar } from '../../../src/renderers/workspace/WorkspaceToolbar.tsx';
@@ -133,8 +131,6 @@ function ToolbarCase(props: {
 	readonly note: string;
 	readonly initialView: WorkspaceView;
 	readonly permission: boolean;
-	/** 有值 ⇒ 按 `Workspace` 的拼法在工具栏**外面**加空间开关。 */
-	readonly withPicker: boolean;
 }): React.ReactNode {
 	const [view, setView] = useState<WorkspaceView>(props.initialView);
 	const [events, setEvents] = useState<readonly string[]>([]);
@@ -142,27 +138,6 @@ function ToolbarCase(props: {
 		setEvents((prev) => [message, ...prev].slice(0, 8));
 	};
 
-	const picker: SpacePickerProps | undefined = !props.withPicker
-		? undefined
-		: {
-				workspaces: SPACES_8,
-				currentId: 'core',
-				viewingId: 'core',
-				showArchived: true,
-				cardCount: 12,
-				onView: (id) => {
-					record(`view: ${id}`);
-				},
-				onToggleArchived: (id) => {
-					record(`toggle-archived: ${id}`);
-				},
-				onToggleShowArchived: () => {
-					record('toggle-show-archived');
-				},
-				onCreate: () => {
-					record('create-workspace');
-				},
-			};
 
 	return (
 		<Case note={props.note}>
@@ -192,7 +167,6 @@ function ToolbarCase(props: {
 								}
 							: {})}
 					/>
-					{picker === undefined ? null : <SpacePicker {...picker} />}
 				</div>
 			</div>
 			<EventLog events={events} />
@@ -201,14 +175,12 @@ function ToolbarCase(props: {
 }
 
 /* ══════════════════════════════════════════════════════════
-   ② SpacePicker
+   ② SpaceBar
    ══════════════════════════════════════════════════════════ */
 
 /**
- * 空间选择器样例。
+ * 空间条样例（展开后的内容）。
  *
- * ⚠ 「点外面收起」要**点样例外面**才看得出来（它是组件自己挂的监听，
- *   不靠父容器）—— 点页面空白处即可。
  *
  * @param props 变体
  */
@@ -355,9 +327,9 @@ function App(): React.ReactNode {
 						计数 / 关系图例 / 权限 / 科技树⇄列表 / 新建。**不含空间选择器** —— 选工作区是独立组件，见 ②。
 						⚠ 分段按钮是**临时内联实现**（用户还没选定候选组件），这里不是新实现，是原样搬家。
 					</p>
-					<ToolbarCase note="列表视图 · 有权限按钮 · 无空间选择器（full 密度）" initialView="list" permission withPicker={false} />
-					<ToolbarCase note="科技树视图 · 有权限按钮" initialView="tree" permission withPicker={false} />
-					<ToolbarCase note="无权限按钮（onOpenPermission 省略 = 不画）" initialView="list" permission={false} withPicker={false} />
+					<ToolbarCase note="列表视图 · 有权限按钮 · 无空间选择器（full 密度）" initialView="list" permission />
+					<ToolbarCase note="科技树视图 · 有权限按钮" initialView="tree" permission />
+					<ToolbarCase note="无权限按钮（onOpenPermission 省略 = 不画）" initialView="list" permission={false} />
 
 				</section>
 
