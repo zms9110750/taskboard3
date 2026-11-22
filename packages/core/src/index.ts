@@ -48,7 +48,6 @@ import {
 	type ToolPolicyScopeInput,
 	type ToolPolicyStore,
 } from './permission.ts';
-import { createSqliteStore } from './storage/sqlite.ts';
 import {
 	computeUpdates,
 	markCardSeen,
@@ -81,18 +80,30 @@ import {
 } from './workspace.ts';
 
 /**
- * 工厂参数 —— **判别联合**。
+ * 工厂参数的公共部分。
  *
- * ## 为什么不是「`dataDir` 必填 + `store` 可选」
+ * ## 为什么 `store` 是必填的（用户 `2026-11-23`）
  *
- * 旧写法有一个类型上说不通的组合：
+ * > 「1.内存内容同步到磁盘的持久化这一边要做接口。
+ * >   然后另一边由 io 包实现接口并用 sqlite 实现。」
+ *
+ * 旧版本还有一个 `{ dataDir }` 形状 —— core 会自己 `createSqliteStore()`。
+ * 那让 **core 依赖了 `node:sqlite`**，于是「存储可替换」只写在注释里：
+ * 换实现的人仍然要把 core 连同它的 SQLite 拖进来。
+ *
+ * ⇒ SQLite 实现搬到 `@taskboard/io`。core 只认 `CardStore` 端口，
+ *   **不认识任何具体实现**。测试要内存实现就传内存实现。
  *
  * ```ts
- * createTaskboard({ dataDir: 'x', store: myStore })   // dataDir 被忽略
- * createTaskboard({ store: myStore })                 // ❌ 编译不过，虽然完全够用
+ * import { createSqliteStore } from '@taskboard/io';
+ * createTaskboard({ store: createSqliteStore(dir) });   // ✅
+ * createTaskboard({ dataDir: dir });                    // ❌ 编译错误
  * ```
  *
- * ⇒ 判别联合让两种合法调用都成立，而「两个都不给」变成**编译错误**：
+ * ## 旧的判别联合为什么取消
+ *
+ * 那个联合的意义是「给 `store` 或给 `dataDir`，二选一」。`dataDir` 分支删掉后
+ * 只剩一个形状，联合没有存在意义；「两个都不给」仍然是编译错误（`store` 必填）。
  *
  * ```ts
  * createTaskboard({})                                 // ❌ 编译错误
@@ -120,16 +131,11 @@ type CommonOptions = {
 	readonly bus?: Bus;
 };
 
-/** 工厂参数：给 `store` 或给 `dataDir`，二选一。 */
-export type TaskboardOptions =
-	| (CommonOptions & {
-			/** 注入存储实现（调用方负责 `close` 之外的装配）。 */
-			readonly store: CardStore;
-	  })
-	| (CommonOptions & {
-			/** 数据目录（内置 SQLite 库建在这里）。 */
-			readonly dataDir: string;
-	  });
+/** 工厂参数：`store` 必填，其余可选。 */
+export type TaskboardOptions = CommonOptions & {
+	/** 注入存储实现。**必填** —— core 不提供任何默认实现。 */
+	readonly store: CardStore;
+};
 
 /** 状态写操作的结果：改过的卡 + 沿树被连带改动的父卡。 */
 export interface StatusWriteOk {
@@ -633,11 +639,7 @@ export interface Taskboard {
  */
 export function createTaskboard(options: TaskboardOptions): Taskboard {
 	const now = options.now ?? (() => Date.now());
-	/*
-	 * 判别联合的窄化：`'store' in options` 在类型层就把两条分支分开，
-	 * 不需要 `as`。给了 `store` 时**绝不**去碰 `dataDir`（那个字段不存在）。
-	 */
-	const store: CardStore = 'store' in options ? options.store : createSqliteStore(options.dataDir);
+	const store: CardStore = options.store;
 	/*
 	 * 搜索**不可注入** —— 用户裁定强耦合（见 `ports.ts` 顶部）。
 	 * `createSearch()` 是无参的：状态 → 组名的映射直接 import protocol，不再需要注入。
@@ -1444,16 +1446,14 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
  *
  * ## 为什么在这里再导出一次
  *
- * 下面这些名字的实现分散在 `ports.ts` / `card.ts` / `storage/sqlite.ts`，
+ * 下面这些名字的实现分散在 `ports.ts` / `card.ts` 等文件，
  * 但**下游只该认一个入口**（`package.json` 的 `exports` 只有 `"."`）。
  * ⇒ 内部怎么分文件是 core 的自由，对外面只暴露这一个面。
  *
- * ⚠ **导出 ≠ 让下游乱用**：`createSqliteStore` 是给「默认存储插件行」和
- *   「测试 / mcp 入口」用的。dsh 与 store 插件应该通过 `CardStore` 端口拿实例，
- *   而不是自己 new 一个 —— 否则「替换存储实现」这件事就绕过去了。
+ * ⚠ **SQLite 实现不在 core**（用户 `2026-11-23` 的拆分）：
+ *   它在 `@taskboard/io`。core 只导出 `CardStore` **接口**，
+ *   不认识任何具体实现 —— 这才让「换实现」从注释变成事实。
  */
-
-export { createSqliteStore } from './storage/sqlite.ts';
 
 /*
  * ── 广播总线（⚠ 原型期脚手架，整个可删） ──

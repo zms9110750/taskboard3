@@ -47,6 +47,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -88,7 +89,7 @@ function coreTemplateDir(): string {
  * `dataDir` 用临时目录 —— 不碰任何真实数据。
  */
 function realTaskboard(): Taskboard {
-	const taskboard = createTaskboard({ dataDir: DATA_DIR });
+	const taskboard = createTaskboard({ store: createSqliteStore(DATA_DIR) });
 	taskboard.templates().loadDirectory(coreTemplateDir());
 	return taskboard;
 }

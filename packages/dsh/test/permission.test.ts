@@ -28,6 +28,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -92,7 +93,7 @@ beforeEach(async () => {
 	/* 每个用例独立的库目录（理由见上面）。 */
 	const dir = mkdtempSync(join(tmpdir(), 'tb3-perm-case-'));
 	createdDirs.push(dir);
-	taskboard = createTaskboard({ dataDir: dir });
+	taskboard = createTaskboard({ store: createSqliteStore(dir) });
 	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 	const created = await taskboard.createWorkspace('权限测试');
 	assert.equal(created.ok, true);

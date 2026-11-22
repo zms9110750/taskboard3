@@ -13,6 +13,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createMemoryStore } from './memory-store.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -42,7 +43,7 @@ function makeTemplate(ref: string, kind: string): TemplateDef {
 
 /** 造一个挂了 bus 的任务板。 */
 function makeBoard(dir: string, bus: Bus): Taskboard {
-	const tb = createTaskboard({ dataDir: dir, now: (() => { let t = 1_000; return () => { t += 10; return t; }; })(), bus });
+	const tb = createTaskboard({ store: createMemoryStore(), now: (() => { let t = 1_000; return () => { t += 10; return t; }; })(), bus });
 	tb.templates().register(makeTemplate('t-work', 'work'));
 	tb.templates().register(makeTemplate('t-goal', 'goal'));
 	return tb;
@@ -129,7 +130,7 @@ describe('接线：只在 persist 一处 emit', () => {
 
 	it('不传 bus ⇒ 写操作不炸（默认路径零开销）', async () => {
 		const plainDir = mkdtempSync(join(tmpdir(), 'tb3-bus-plain-'));
-		const plain = createTaskboard({ dataDir: plainDir });
+		const plain = createTaskboard({ store: createMemoryStore() });
 		plain.templates().register(makeTemplate('t-work', 'work'));
 		const plainWs = await plain.createWorkspace('无总线');
 		assert.ok(plainWs.ok);

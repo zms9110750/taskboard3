@@ -1,0 +1,30 @@
+{
+  "name": "@taskboard/io",
+  "version": "0.1.0-3.a.1",
+  "type": "module",
+  "description": "任务板持久化的 IO 实现：node:sqlite。实现 core 的 CardStore 端口，可整行替换。",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@taskboard/core": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

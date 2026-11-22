@@ -45,7 +45,8 @@
     }
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-tools": "0.2.1-rc.5"
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
+    "@taskboard/io": "workspace:*"
   },
   "engines": {
     "node": ">=22.13.0"

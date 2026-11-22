@@ -11,6 +11,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createMemoryStore } from './memory-store.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -66,7 +67,7 @@ describe('未读字段：基本语义', () => {
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-unread-'));
 		tb = createTaskboard({
-			dataDir: dir,
+			store: createMemoryStore(),
 			now: () => {
 				clock += 100;
 				return clock;
@@ -184,7 +185,7 @@ describe('未读字段：recompute 不算改过', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-unread-rc-'));
 		let clock = 1_000;
 		const tb = createTaskboard({
-			dataDir: dir,
+			store: createMemoryStore(),
 			now: () => {
 				clock += 10;
 				return clock;
@@ -247,7 +248,7 @@ describe('★ 不变量：unread 必须等于「按 history 重算」', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-unread-inv-'));
 		let clock = 1_000;
 		const tb = createTaskboard({
-			dataDir: dir,
+			store: createMemoryStore(),
 			now: () => {
 				clock += 10;
 				return clock;
@@ -314,7 +315,7 @@ describe('同一毫秒（回归保护）', () => {
 	 */
 	it('同一毫秒内：标记已读之后再改，仍然算未读', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-samems-'));
-		const fixed = createTaskboard({ dataDir: dir, now: () => 1_000 });
+		const fixed = createTaskboard({ store: createMemoryStore(), now: () => 1_000 });
 		fixed.templates().register(makeTemplate('t-work', 'work'));
 
 		const createdWs = await fixed.createWorkspace('同毫秒');
@@ -351,7 +352,7 @@ describe('同一毫秒（回归保护）', () => {
 
 	it('同一毫秒内连续多次改动，每次都正确置未读', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-samems2-'));
-		const fixed = createTaskboard({ dataDir: dir, now: () => 2_000 });
+		const fixed = createTaskboard({ store: createMemoryStore(), now: () => 2_000 });
 		fixed.templates().register(makeTemplate('t-work', 'work'));
 		const createdWs = await fixed.createWorkspace('同毫秒2');
 		assert.ok(createdWs.ok);
@@ -385,7 +386,7 @@ describe('同一毫秒（回归保护）', () => {
 describe('search 的 updatedBy 走 Card.unread', () => {
 	it('updatedBy:[ai] 筛出 AI 改过未读的卡；markSeen 后消失', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-upd-search-'));
-		const tb = createTaskboard({ dataDir: dir, now: () => 3_000 });
+		const tb = createTaskboard({ store: createMemoryStore(), now: () => 3_000 });
 		tb.templates().register(makeTemplate('t-work', 'work'));
 		const createdWs = await tb.createWorkspace('搜未读');
 		assert.ok(createdWs.ok);
@@ -410,7 +411,7 @@ describe('search 的 updatedBy 走 Card.unread', () => {
 
 	it('updatedBy 与其它条件 AND', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-upd-search2-'));
-		const tb = createTaskboard({ dataDir: dir, now: () => 4_000 });
+		const tb = createTaskboard({ store: createMemoryStore(), now: () => 4_000 });
 		tb.templates().register(makeTemplate('t-work', 'work'));
 		const createdWs = await tb.createWorkspace('搜AND');
 		assert.ok(createdWs.ok);
@@ -437,7 +438,7 @@ describe('markSeen 触发 bus 广播', () => {
 	it('清掉标记时 emit（另一个窗格要更新角标）', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-unread-bus-'));
 		const bus = createBus();
-		const tb = createTaskboard({ dataDir: dir, now: () => 5_000, bus });
+		const tb = createTaskboard({ store: createMemoryStore(), now: () => 5_000, bus });
 		tb.templates().register(makeTemplate('t-work', 'work'));
 		const createdWs = await tb.createWorkspace('广播');
 		assert.ok(createdWs.ok);
@@ -467,7 +468,7 @@ describe('markSeen 触发 bus 广播', () => {
 	it('没有变化时不广播（重复标记已读不该产生事件）', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'tb3-unread-bus2-'));
 		const bus = createBus();
-		const tb = createTaskboard({ dataDir: dir, now: () => 6_000, bus });
+		const tb = createTaskboard({ store: createMemoryStore(), now: () => 6_000, bus });
 		tb.templates().register(makeTemplate('t-work', 'work'));
 		const createdWs = await tb.createWorkspace('广播2');
 		assert.ok(createdWs.ok);

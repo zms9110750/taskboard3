@@ -14,6 +14,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createMemoryStore } from './memory-store.ts';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -49,7 +50,7 @@ describe('Taskboard.requiredActions —— 模板实际用到的 action', () => 
 
 	before(() => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-ra-'));
-		tb = createTaskboard({ dataDir: dir, now: () => 1_000 });
+		tb = createTaskboard({ store: createMemoryStore(), now: () => 1_000 });
 	});
 
 	after(async () => {

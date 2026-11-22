@@ -11,6 +11,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -125,7 +126,7 @@ async function closeTaskboard(): Promise<void> {
 beforeEach(async () => {
 	/* 每个用例一个全新实例（内存里；dataDir 共用，用例间用不同空间隔离）。 */
 	await closeTaskboard();
-	taskboard = createTaskboard({ dataDir });
+	taskboard = createTaskboard({ store: createSqliteStore(dataDir) });
 	/* 模板必须加载，否则 `listTemplates()` 为空 —— 建卡路径全部无从测起。 */
 	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 });

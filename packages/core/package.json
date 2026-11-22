@@ -12,7 +12,10 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["lib", "templates"],
+  "files": [
+    "lib",
+    "templates"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -b",

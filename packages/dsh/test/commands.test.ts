@@ -5,6 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -68,7 +69,7 @@ async function closeTaskboard(): Promise<void> {
 
 beforeEach(async () => {
 	await closeTaskboard();
-	taskboard = createTaskboard({ dataDir });
+	taskboard = createTaskboard({ store: createSqliteStore(dataDir) });
 	taskboard.templates().loadDirectory(TEMPLATE_DIR);
 	current = '';
 });
