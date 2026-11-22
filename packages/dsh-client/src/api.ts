@@ -351,7 +351,24 @@ export function createApi(fetchImpl?: FetchLike): TaskboardApi {
 
 	return {
 		async getState(workspaceId) {
-			return request<StateData>('state', workspaceId === undefined ? undefined : { query: { workspaceId } });
+			/*
+			 * ⚠ **query 名是 `workspace`，不是 `workspaceId`。**
+			 *
+			 * 服务端（`dsh/src/http.ts:283`）读的是 `query.get('workspace')`：
+			 *
+			 * ```ts
+			 * const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+			 * ```
+			 *
+			 * 发 `?workspaceId=ws2` 时服务端读不到 ⇒ **静默回落到默认空间（第一个）**。
+			 *
+			 * 症状（2026-11-23 在隔离 profile 里实测）：
+			 *   用户在「验收空间」里建了卡 ⇒ 切过去 ⇒ 仍然显示「共 0 条」。
+			 *   而 `GET /state?workspace=ws2` 直接请求能拿到 2 张卡。
+			 *
+			 * 「静默回落」比报错坏得多 —— 用户看到的是「我的卡没了」。
+			 */
+			return request<StateData>('state', workspaceId === undefined ? undefined : { query: { workspace: workspaceId } });
 		},
 		async listWorkspaces() {
 			return request<readonly Workspace[]>('workspaces');

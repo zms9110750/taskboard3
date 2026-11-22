@@ -52,7 +52,7 @@ describe('buildPath —— 相对路径拼接', () => {
 	});
 
 	it('query 单个值', () => {
-		assert.equal(buildPath('state', { workspaceId: 'w1' }), `${API_BASE}/state?workspaceId=w1`);
+		assert.equal(buildPath('state', { workspace: 'w1' }), `${API_BASE}/state?workspace=w1`);
 	});
 
 	it('query 数组用重复参数', () => {
@@ -76,14 +76,14 @@ describe('buildPath —— 相对路径拼接', () => {
 
 	it('query 值被 URL 编码', () => {
 		assert.equal(
-			buildPath('state', { workspaceId: 'a b/c' }),
-			`${API_BASE}/state?workspaceId=a%20b%2Fc`,
+			buildPath('state', { workspace: 'a b/c' }),
+			`${API_BASE}/state?workspace=a%20b%2Fc`,
 		);
 	});
 
 	it('中文空间 id 被编码', () => {
-		const path = buildPath('state', { workspaceId: '默认' });
-		assert.ok(path.includes('workspaceId=%E9%BB%98%E8%AE%A4'), `实际：${path}`);
+		const path = buildPath('state', { workspace: '默认' });
+		assert.ok(path.includes('workspace=%E9%BB%98%E8%AE%A4'), `实际：${path}`);
 	});
 });
 
@@ -400,5 +400,25 @@ describe('archiveWorkspace / unarchiveWorkspace —— 请求形状', () => {
 				return true;
 			},
 		);
+	});
+	/*
+	 * ⚠ 回归钉：**query 名必须是 `workspace`，不是 `workspaceId`**。
+	 *
+	 * 服务端（`dsh/src/http.ts:283`）读 `query.get('workspace')`。发错名字
+	 * 不会报错 —— 服务端**静默回落到默认空间（第一个）**。
+	 *
+	 * 症状（2026-11-23 在隔离 profile 里实测）：用户在「验收空间」建了卡，
+	 * 切过去仍显示「共 0 条」，看起来像卡丢了。
+	 */
+	it('⭐ getState 的 query 名是 workspace（不是 workspaceId）', async () => {
+		const { fetch, calls } = fakeFetch({ workspaceId: 'W2', workspaces: [], cards: [], templates: [] });
+		const api = createApi(fetch);
+
+		await api.getState('W2');
+
+		assert.equal(calls.length, 1);
+		const url = calls[0]?.url ?? '';
+		assert.ok(url.includes('workspace=W2'), `实际 url：${url}`);
+		assert.ok(!url.includes('workspaceId='), `不该出现 workspaceId=：${url}`);
 	});
 });
