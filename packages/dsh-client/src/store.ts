@@ -55,6 +55,18 @@ export interface BoardActions {
 	runAction(request: ActionRequest): Promise<boolean>;
 	/** 新建空间并切过去。 */
 	createWorkspace(name: string): Promise<boolean>;
+	/**
+	 * 归档 / 取消归档一个空间。
+	 *
+	 * ⚠ **归档掉正在查看的空间时**：`load()` 会按旧 id 重新拉 —— 那个空间
+	 * 在 `listWorkspaces(false)` 里没了，`getState` 会回落。
+	 * ⇒ 归档成功后**主动切到第一个可见空间**，不留一个"正在看不存在的东西"的状态。
+	 *
+	 * @param id 空间 id
+	 * @param archived `true` = 归档，`false` = 取消归档
+	 * @returns 成功了吗（失败时 `state.error` 有说明）
+	 */
+	setWorkspaceArchived(id: string, archived: boolean): Promise<boolean>;
 	/** 清掉当前错误提示。 */
 	clearError(): void;
 }
@@ -180,8 +192,62 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 		setState((prev) => (prev.error === undefined ? prev : { ...prev, error: undefined }));
 	}, []);
 
+	const setWorkspaceArchived = useCallback(
+		async (id: string, archived: boolean): Promise<boolean> => {
+			setState((prev) => ({ ...prev, pending: prev.pending + 1, error: undefined }));
+			try {
+				const result = archived
+					? await apiRef.current.archiveWorkspace(id)
+					: await apiRef.current.unarchiveWorkspace(id);
+
+				/*
+				 * 归档掉的是**正在看的那个空间** ⇒ 必须换一个，不能停在
+				 * 「正在看一个已从列表消失的空间」上（那种状态下 `workspaceId`
+				 * 指向的东西已经不在 `workspaces` 里了，UI 会自相矛盾）。
+				 *
+				 * 处理办法：**不指定空间重拉**。`getState()` 会让服务端按默认空间返回，
+				 * 再由 `chooseInitialWorkspace()` 在返回的列表里挑一个可见的
+				 * —— 这条路径本来就在 `load()` 里，不用在这里重新实现一遍。
+				 *
+				 * `changed: false` 时什么都不用做 —— 状态没变，重拉是浪费。
+				 */
+				if (!result.changed) {
+					setState((prev) => ({ ...prev, pending: Math.max(0, prev.pending - 1) }));
+					return true;
+				}
+
+				const wasViewing = id === workspaceRef.current;
+				const next = workspaceRef.current === '' ? undefined : workspaceRef.current;
+
+				if (archived && wasViewing) {
+					/*
+					 * 正在看的空间被归档 ⇒ `load()` 会让服务端给一律回默认空间，
+					 * 再由 `chooseInitialWorkspace()` 挑一个可见的。
+					 *
+					 * ⚠ 但**必须先把 `workspaceRef` 清掉** —— 否则 `load()` 内部
+					 *   仍会把它当「当前」，`chooseInitialWorkspace()` 拿到的是一个
+					 *   刚被归档的 id，可能又被选回来。
+					 */
+					workspaceRef.current = '';
+					await load(undefined);
+				} else {
+					await load(next);
+				}
+				return true;
+			} catch (cause) {
+				setState((prev) => ({
+					...prev,
+					pending: Math.max(0, prev.pending - 1),
+					error: messageOf(cause),
+				}));
+				return false;
+			}
+		},
+		[load],
+	);
+
 	return {
 		state,
-		actions: { switchWorkspace, reload, runAction, createWorkspace, clearError },
+		actions: { switchWorkspace, reload, runAction, createWorkspace, setWorkspaceArchived, clearError },
 	};
 }

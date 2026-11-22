@@ -144,6 +144,23 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 		[actions],
 	);
 
+	/**
+	 * 点「已归档」按钮 ⇒ 归档 / 取消归档那个空间。
+	 *
+	 * ⚠ 按钮的语义是**翻转**（不是「设为已归档」）——
+	 *   `SpaceBar` 的 `actionButtonOf()` 只在「显示已归档」打开时给这个按钮，
+	 *   此时按钮显示的是目标空间的**当前归档状态**，点一下就是反过来。
+	 *   所以这里要按当前状态判断传 `archived` 还是 `!archived`。
+	 */
+	const onToggleArchived = useCallback(
+		(id: string): void => {
+			const target = state.workspaces.find((one) => one.id === id);
+			const next = target?.archived !== true;
+			void actions.setWorkspaceArchived(id, next);
+		},
+		[actions, state.workspaces],
+	);
+
 	const onSelect = useCallback((cardId: string | null): void => {
 		setSelectedId(cardId);
 	}, []);
@@ -195,9 +212,7 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 			 *   这是「不编词」的口径，不是漏了。
 			 */
 			onView={onView}
-			onToggleArchived={(id) => {
-				notWired(`归档空间「${id}」`);
-			}}
+			onToggleArchived={onToggleArchived}
 			onToggleShowArchived={() => {
 				setShowArchived((now) => !now);
 			}}

@@ -136,6 +136,17 @@ export interface TaskboardApi {
 		readonly cardId: string;
 		readonly patch: Readonly<Record<string, unknown>>;
 	}): Promise<Card>;
+	/**
+	 * 归档一个空间。
+	 *
+	 * ⚠ **幂等**：已经归档的再归档不算错误，回 `changed: false`。
+	 *   调用方据此决定要不要重拉列表。
+	 *
+	 * @param id 空间 id
+	 */
+	archiveWorkspace(id: string): Promise<ArchiveResult>;
+	/** 取消归档（同样幂等）。 */
+	unarchiveWorkspace(id: string): Promise<ArchiveResult>;
 	act(input: {
 		readonly workspaceId: string;
 		readonly request: ActionRequest;
@@ -157,6 +168,25 @@ export interface RenderCheckResult {
 	readonly required: readonly string[];
 	/** 需要但 UI 没注册的 `$type`（去重、字母序）。空数组 = 全都有。 */
 	readonly missing: readonly string[];
+}
+
+/**
+ * `POST /workspaces/:id/archive` / `/unarchive` 的响应。
+ *
+ * ## 为什么带 `workspace` 而不只给 `changed`
+ *
+ * 客户端归档后要立刻用新的 `archived` 标记重画 chip。只给 `changed: true`
+ * 它还得再发一次 `GET /state` 才能知道新状态 —— 而服务端手上就有这张空间。
+ */
+export interface ArchiveResult {
+	/**
+	 * 这次调用**真的改了状态**吗。
+	 *
+	 * `false` = 本来就已是目标状态（幂等，**不是错误**）。
+	 */
+	readonly changed: boolean;
+	/** 归档 / 取消归档之后的空间（`archived` 已是新值）。 */
+	readonly workspace: Workspace | undefined;
 }
 
 /**
@@ -227,6 +257,16 @@ export function createApi(fetchImpl?: FetchLike): TaskboardApi {
 		},
 		async createCard(input) {
 			return request<Card>('cards', { method: 'POST', body: input });
+		},
+		async archiveWorkspace(id) {
+			return request<ArchiveResult>(`workspaces/${encodeURIComponent(id)}/archive`, {
+				method: 'POST',
+			});
+		},
+		async unarchiveWorkspace(id) {
+			return request<ArchiveResult>(`workspaces/${encodeURIComponent(id)}/unarchive`, {
+				method: 'POST',
+			});
 		},
 		async patchCard(input) {
 			return request<Card>(`cards/${encodeURIComponent(input.cardId)}`, {
