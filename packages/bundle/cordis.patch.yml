@@ -1,0 +1,48 @@
+# 任务板 —— **一个 bundle，三个插件条目**。
+#
+# 设置页看到的是一张「任务板」卡片，点进去能看到全部组件，各自独立开关。
+#
+# ## 这个结构是用户 `2026-11-23` 要的
+#
+# > 「为什么这里有3个包？任务板1是只有一个入口，然后入口里面有各自的包。」
+#
+# 在这之前，`@taskboard/store` / `@taskboard/dsh` / `@taskboard/dsh-client`
+# **各自带一个 `cordis.patch.yml`** ⇒ 它们在 profile 的 `dsh.profile.bundles`
+# 里是**三个平级条目** ⇒ 设置页显示 **3 张卡片**。
+#
+# 现在由本包（`@taskboard/bundle`）统一承载 patch，三个子包只作为
+# `node_modules` 里的实现存在，不再是独立 bundle。
+#
+# ## 参照
+#
+# 任务板1（`@local/taskboard`）：1 个 bundle 壳 + 8 行 insert。
+# 官方 `dsh-experimental-agent-team-profile`：1 壳 + 4 子包（协作 / 工具 / 面板）。
+#
+# ## ⚠ 子包各自的 `cordis.patch.yml` **不要删**
+#
+# 它们现在不再被 profile 装配，但保留着有价值：
+#   · 单测/预览可以直接应用
+#   · 将来如果要拆回独立 bundle（比如只想装 UI 不装 Host），直接可用
+#
+# 删了也不会报错 —— 只是丢了那条路。
+
+- insert:
+    # ① 持久化和提供者：处理从内存到磁盘
+    #
+    #    **唯一可替换点**。关掉这一行、装一个同样 `provide('taskboard3Store', …)`
+    #    的包，上层零改动就能换存储实现（用户原话：「可能使用者想要不同的实现，
+    #    关闭部分插件并替换他的实现」）。
+    - id: taskboard3-store
+      name: '@taskboard/store'
+
+    # ② Host 半边：HTTP 路由 + AI 工具 + 斜杠命令
+    #
+    #    依赖 ①。关掉它 ⇒ 只剩数据层，UI 和 AI 都用不了。
+    - id: taskboard3
+      name: '@taskboard/dsh'
+
+    # ③ 浏览器 UI：左侧栏 / 抽屉 / 右侧工作区 三个入口
+    #
+    #    依赖 ② 的路由。关掉它 ⇒ 数据还在、AI 还能用，只是人看不到。
+    - id: taskboard3-dsh-client
+      name: '@taskboard/dsh-client'
