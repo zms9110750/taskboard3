@@ -1,0 +1,69 @@
+/*
+ * 产品入口预览（`WorkspaceBody`）的外壳样式。
+ *
+ * ⚠ **不覆盖任何产品类名**。产品 CSS 由 `injectStyles()` 注入，
+ *   这里只有「页面背景 + 舞台尺寸 + 标题条」。
+ *
+ * 历史教训：`vp-drawer/style.css` 曾经有 175 行 `.pv-stage .tb3w-*` 覆盖
+ * （隐藏图例、隐藏 SpaceBar、把详情改成浮层），那是按 taskboard2 截图猜的形态，
+ * 后来被用户两条裁决推翻，导致「预览里看到的和产品不一样」。
+ * 见 `6010235`。
+ */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: #e9ebef;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#root {
+  height: 100%;
+}
+
+.pv {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 假 tab 头 —— 只是让人看得出「这是右栏的一个页签」 */
+.pv-tabhead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #d5dae1;
+  background: #f7f8fa;
+  font-size: 12px;
+  color: #5f6673;
+}
+
+.pv-tabhead b {
+  color: #16181d;
+}
+
+.pv-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* 舞台 —— 尺寸就是真实尺寸（570×920 是右侧工作区的典型尺寸） */
+.pv-stage {
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #d5dae1;
+  border-radius: 8px;
+}
+
+.pv-stage > * {
+  height: 100%;
+}
