@@ -28,6 +28,11 @@ import { TaskState } from '@taskboard/protocol';
 
 import { injectTechTreeStyles } from '../../../src/renderers/TechTree.tsx';
 import { TreeCard } from '../../../src/renderers/TreeCard.tsx';
+/*
+ * 卡片里还有 `.card-id` / `.badge` —— 那两条在 `WORKSPACE_CSS` 里，
+ * 挂在 `.tb3w-root` 作用域下。不注入 ⇒ 编号没有分类色、徽章没有底色。
+ */
+import { injectStyles } from '../../../src/styles.ts';
 import type { Card } from '../../../src/types.ts';
 
 /* ══════════════════════════════════════════════════════════════
@@ -157,7 +162,12 @@ function App(): ReactNode {
 	};
 
 	return (
-		<div className="preview">
+		/*
+		 * 最外层带 `.tb3w-root` —— 卡片里的 `.card-id` / `.badge` 规则挂在
+		 * 这个作用域下（`WORKSPACE_CSS`）。`.tb3t-*` 那批不带作用域，无所谓。
+		 * `.pv-shell` 把产品的「撑满 + 裁切」放开成「按内容撑开」。
+		 */
+		<div className="preview tb3w-root pv-shell">
 			<header className="pv-head">
 				<h1>TreeCard / 科技树卡片</h1>
 				<p>
@@ -400,6 +410,8 @@ const STATES: readonly StateCell[] = [
 
 /* 科技树样式（`tb3t-*`）由组件那边提供同一份；预览只额外注入它。 */
 injectTechTreeStyles();
+/* 卡片里的 `.card-id` / `.badge` 在 `WORKSPACE_CSS` 里（`.tb3w-root` 作用域）。 */
+injectStyles();
 
 const root = document.getElementById('root');
 if (root !== null) {

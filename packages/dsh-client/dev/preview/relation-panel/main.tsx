@@ -22,6 +22,12 @@ import { createRoot } from 'react-dom/client';
 
 import { relationsOf, statusGroupOf, type RelationsView } from '../../../src/pure/relations-block.ts';
 import { RelationPanel, type RelationPanelVariant } from '../../../src/renderers/RelationPanel.tsx';
+/*
+ * 产品样式由 `injectStyles()` 在运行时注入 —— **预览和产品是同一份 CSS**
+ * （`WORKSPACE_CSS` 里的 `.rel-*` / `.detail-action` / `.ghost-btn`）。
+ * 不调用它就是裸 HTML；调用之后 `style.css` 只留预览外壳。
+ */
+import { injectStyles } from '../../../src/styles.ts';
 import type { Card } from '../../../src/types.ts';
 
 /* ══════════════════════════════════════════════════════════
@@ -245,7 +251,12 @@ function App(): React.ReactNode {
 	};
 
 	return (
-		<div className="preview">
+		/*
+		 * 最外层带 `.tb3w-root` —— 产品 CSS 全部挂在这个作用域下
+		 * （`WORKSPACE_CSS` 的 `.tb3w-root .rel-panel…`）。
+		 * `.pv-shell` 把产品的「撑满 + 裁切」放开成「按内容撑开」。
+		 */
+		<div className="preview tb3w-root pv-shell">
 			<header className="pv-head">
 				<h1>RelationPanel / 关系折叠面板</h1>
 				<p>
@@ -317,6 +328,8 @@ function App(): React.ReactNode {
 		</div>
 	);
 }
+
+injectStyles();
 
 const root = document.getElementById('root');
 if (root !== null) {

@@ -15,6 +15,24 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   background:var(--bg);color:var(--text);font-size:13px;line-height:1.6}
 #root{min-height:100%}
 
+/*
+ * ── `.tb3w-root` 外壳（2026-11-22）──
+ *
+ * 产品 CSS 全部挂在 `.tb3w-root` 作用域下（`src/styles.ts` 的约定），
+ * 单组件预览里没有这个根节点 ⇒ 规则全不命中。所以每个把真组件放进来的
+ * 预览都要在**最外层**包一个 `<div className="tb3w-root pv-shell">`。
+ *
+ * 但产品里的 `.tb3w-root` 是「撑满 tab」的（`height:100%` + `overflow:hidden`），
+ * 预览页是按内容高度撑开、整页滚动的 —— 这两个意图冲突。
+ * ⇒ 只在外壳上改这三条，**不改产品规则**（产品里仍然是撑满 + 裁切）。
+ */
+/*
+ * ⚠ 用 `.tb3w-root.pv-shell`（两个类）压过产品那条单类的 `.tb3w-root`
+ *   —— 产品 CSS 是 `injectStyles()` 运行时追加的 `<style>`，在静态 <style>
+ *   之后 ⇒ 同特异性时它会赢。两个类才有确定优先级，不靠注入顺序。
+ */
+.tb3w-root.pv-shell{display:block;height:auto;min-height:0;overflow:visible}
+
 .preview{max-width:1180px;margin:0 auto;padding:28px 26px 60px}
 .pv-head h1{margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:-.01em}
 .pv-head p{margin:0;color:var(--text-secondary);font-size:12px}

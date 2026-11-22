@@ -4,7 +4,7 @@
  * ## 三段
  *
  * ① **舞台**（受控真交互）—— 三个状态切换按钮（空 / 有内容 / 禁用），
- *    直接在输入框里打字、回车、点「前往」都能用；右侧状态行 + 回调日志
+ *    直接在输入框里打字、回车、点框内放大镜都能用；右侧状态行 + 回调日志
  *    让 CDP 断言能读到「发生了什么」。
  * ② **三个固定场景** —— `data-scenario` 挂在这里，几何断言（图标在框内、
  *    按钮同一行、贴边）全部量这三个，不依赖舞台当前处在哪个模式。
@@ -21,6 +21,11 @@ import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { SearchBox } from '../../../src/renderers/SearchBox.tsx';
+/*
+ * 产品样式由 `injectStyles()` 在运行时注入 —— **预览和产品是同一份 CSS**。
+ * 不调用它就是裸 HTML；调用之后 `style.css` 只留预览外壳（见该文件头注释）。
+ */
+import { injectStyles } from '../../../src/styles.ts';
 
 /** 舞台的三个模式。 */
 type Mode = 'empty' | 'typed' | 'disabled';
@@ -55,7 +60,7 @@ function Stage(props: StageProps): ReactNode {
 
 	return (
 		<section className="pv-block" data-stage-block="1" data-mode={mode}>
-			<h2>① 舞台（受控 · 直接打字 / 回车 / 点「前往」都可以）</h2>
+			<h2>① 舞台（受控 · 直接打字 / 回车 / 点框内图标都可以）</h2>
 
 			<div className="sb-modes">
 				{(['empty', 'typed', 'disabled'] as const).map((one) => (
@@ -115,7 +120,7 @@ function Stage(props: StageProps): ReactNode {
 
 			<p className="pv-note" style={{ marginTop: 12, marginBottom: 0 }}>
 				⚠ 舞台是<b>受控</b>的：`value` 在 React state 里，组件自己不持有。
-				输入后**不清空**；回车和「前往」都走同一个 `onSubmit`（日志里只多一条，不是两条）。
+				输入后**不清空**；回车和点框内图标都走同一个 `onSubmit`（日志里只多一条，不是两条）。
 			</p>
 		</section>
 	);
@@ -172,25 +177,25 @@ const DETAILS: readonly Detail[] = [
 	},
 	{
 		what: '图标位置',
-		value: '框内左侧，距边框 11px',
-		why: '主流框架 start adornment 的默认位置',
+		value: '框内左侧，距边框 7px（图标是 20×20 的可点按钮，svg 14×14 居中）',
+		why: '主流框架 start adornment 的默认位置；做成按钮是为了能点',
 		source: '用户原话',
 	},
 	{
 		what: '「前往」位置',
-		value: '贴在输入框右边（共用一条外边框，不是隔开的两个盒子）',
-		why: '任务书那张 `┌────┬────┐` 的图就是这个形状',
+		value: '**没有「前往」按钮了**（用户 2026-11-22 删掉）—— 提交入口只剩回车 + 框内放大镜',
+		why: '用户原话：「右边也不需要一个按钮。做框内内联图标。」',
 		source: '用户原话',
 	},
 	{
 		what: '高度',
-		value: '36px（输入框与按钮等高）',
-		why: '跟 `.ghost-btn` / 列表条同一档呼吸感；SpaceBar 定过 36px',
-		source: '我定的',
+		value: '28px（只有输入框，没有并排按钮）',
+		why: '用户 2026-11-22「这个框长得有点太大了，弄小一点」；产品 CSS 里就是 28px',
+		source: '用户原话',
 	},
 	{
 		what: '圆角',
-		value: '8px（只有整条两端圆，中间拼缝是直角）',
+		value: '8px（整框四角都圆）',
 		why: '跟 `.tb3cc-input` / 新建页输入框一致',
 		source: '我定的',
 	},
@@ -202,21 +207,15 @@ const DETAILS: readonly Detail[] = [
 	},
 	{
 		what: '图标与文字间距',
-		value: '左内边距 33px = 11px 边距 + 14px 图标 + 8px 间距',
+		value: '左内边距 30px = 图标左 9px + 图标 14px + 间距 7px',
 		why: '文字不能压到图标；也不让图标离文字太远',
 		source: '我定的',
 	},
 	{
-		what: '「前往」配色',
-		value: '可点 = 实心 accent 蓝底白字；不可点 = 灰底灰字灰边',
-		why: '整页只有一个主操作，实心是「这是按钮」的最短路径；禁用靠真 `disabled` + 视觉弱化',
-		source: '我定的',
-	},
-	{
-		what: '按钮宽度',
-		value: 'padding 0 20px（不定死，2 个字撑开约 64px）',
-		why: '禁止硬编码宽度；将来文案变（如「搜索」）不挤破',
-		source: '我定的',
+		what: '图标可点',
+		value: 'hover 变 accent 蓝、disabled 时不可点、opacity 0.55',
+		why: '用户 2026-11-22「这个搜索框的内联图标没有点击事件吗？」⇒ 它是第二个提交入口',
+		source: '用户原话',
 	},
 	{
 		what: '焦点态',
@@ -265,9 +264,11 @@ function Details(): ReactNode {
 				</tbody>
 			</table>
 			<p className="pv-note" style={{ marginTop: 12, marginBottom: 0 }}>
-				⚠ 组件本体：<code>src/renderers/SearchBox.tsx</code>（受控、零依赖）；
-				样式：<code>dev/preview/searchbox/style.css</code>（还没进 <code>src/styles.ts</code>，
-				因为组件还没定稿）。行为断言在 <code>verify.mjs</code>。
+				⚠ 组件本体：<code>src/renderers/SearchBox.tsx</code>（受控、零依赖）。
+				<b>样式和产品是同一份</b>：<code>injectStyles()</code> 注入
+				<code>src/styles.ts</code> 的 <code>SEARCHBOX_CSS</code> —— 本预览的
+				<code>style.css</code> 只剩预览外壳（模式按钮 / 舞台 / 日志），
+				没有一行组件的 CSS。行为断言在 <code>verify.mjs</code>。
 			</p>
 		</section>
 	);
@@ -282,11 +283,18 @@ function App(): ReactNode {
 	};
 
 	return (
-		<div className="preview">
+		/*
+		 * 最外层带 `.tb3w-root` —— 产品 CSS 全部挂在这个作用域下
+		 * （`src/styles.ts` 的约定），产品里的单组件预览没有这个根节点时规则一条都不命中。
+		 *
+		 * `.pv-shell` 是预览外壳：产品里 `.tb3w-root` 是「撑满 tab + overflow:hidden」，
+		 * 预览页是「按内容撑开 + 整页滚动」，两者意图冲突 ⇒ 只在外壳上放开，不改产品规则。
+		 */
+		<div className="preview tb3w-root pv-shell">
 			<header className="pv-head">
 				<h1>SearchBox / 任务板搜索框</h1>
 				<p>
-					框内左侧放大镜（inline SVG）· 右边「前往」· 回车与按钮走同一个提交入口 ·
+					框内左侧放大镜（inline SVG，可点）· 没有「前往」按钮 · 回车与图标走同一个提交入口 ·
 					空输入 / 纯空格不提交 · 组件受控、零依赖
 				</p>
 			</header>
@@ -342,6 +350,8 @@ function App(): ReactNode {
 		</div>
 	);
 }
+
+injectStyles();
 
 const root = document.getElementById('root');
 if (root !== null) {

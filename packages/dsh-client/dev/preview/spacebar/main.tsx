@@ -18,6 +18,12 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { SpaceBar } from '../../../src/renderers/SpaceBar.tsx';
+/*
+ * 产品样式由 `injectStyles()` 在运行时注入 —— **预览和产品是同一份 CSS**
+ * （`WORKSPACE_CSS` 里的 `.space-bar` / `.space-chip` / `.space-action`）。
+ * 不调用它就是裸 HTML；调用之后 `style.css` 只留预览外壳。
+ */
+import { injectStyles } from '../../../src/styles.ts';
 import type { Workspace } from '../../../src/types.ts';
 
 /* ── 夹具 ── */
@@ -274,7 +280,12 @@ function App(): React.ReactNode {
 	};
 
 	return (
-		<div className="preview">
+		/*
+		 * 最外层带 `.tb3w-root` —— 产品 CSS 全部挂在这个作用域下
+		 * （`WORKSPACE_CSS` 的 `.tb3w-root .space-chip…`）。
+		 * `.pv-shell` 把产品的「撑满 + 裁切」放开成「按内容撑开」。
+		 */
+		<div className="preview tb3w-root pv-shell">
 			<header className="pv-head">
 				<h1>SpaceBar / 空间 chip 行</h1>
 				<p>
@@ -389,6 +400,8 @@ function App(): React.ReactNode {
 		</div>
 	);
 }
+
+injectStyles();
 
 const root = document.getElementById('root');
 if (root !== null) {

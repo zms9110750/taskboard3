@@ -1,236 +1,25 @@
 /*
- * SpaceBar（空间 chip 行）的样式 —— 只在 `dev/preview/spacebar/` 里用。
+ * SpaceBar 预览的**外壳样式** —— 只在 `dev/preview/spacebar/` 里用。
+ *
+ * ## ⚠ 这里不再有组件本身的 CSS（2026-11-22）
+ *
+ * 之前这份文件手抄了 `.space-bar` / `.space-action*` / `.space-chip*` /
+ * `.ghost-btn`。产品把这些收进 `src/styles.ts` 的 `WORKSPACE_CSS` 之后，
+ * 两份各自演化 —— 例如 `.ghost-btn` 的 padding 预览里是 4px 10px、
+ * 产品里是 4px 10px 但紧凑态又覆成 3px 9px ⇒ 预览看不到紧凑态。
+ *
+ * ⇒ 组件样式**只留一份**（`WORKSPACE_CSS`）；预览 `main.tsx` 调
+ *   `injectStyles()` 注入它，并在最外层包 `.tb3w-root`（产品 CSS 全部挂在
+ *   这个作用域下，没它一条都不命中）。
+ *
+ * 本文件只剩**预览页自己的零件**：每格场景的标题 / 说明 + 回调日志。
+ * 这些类名（`pv-case*` / `pv-events*`）产品里不存在。
  *
  * 由 `dev/preview/build.mjs spacebar` 追加在共享 `preview.css` **之后**
- * ⇒ 可以用共享变量（`--bg-card` / `--border` / `--accent` / `--text-weak` …），
- *   但**不要改共享的类名**（那是别的组件的）。
- *
- * ## 2026-11-18 改版（用户原话）
- *
- * > 「把『激活当前空间』和『当前空间』，改为『当前空间』，然后通过着色来表示
- * >  现在就是『当前空间』。那个 6 个字的占用文档流太宽了。然后现在这个组件的条，
- * >  太窄了。选中按钮的上下边框被遮挡了。」
- *
- * > 「这个组件后续还要换。因为如果只有一行，那么在拖动的时候，
- * >  是无法精确的点到横向滚动条的。这个视觉效果需要重新设计。」
- *
- * ⇒ 最终定案（用户）：**只保留顺序换行**，而且**开头两个按钮也在换行流里**。
- *   没有滚动条了 ⇒ 原来那段「滚动容器裁掉 outline」的问题从根上消失，
- *   但选中态仍然用 `border + inset box-shadow`（比 outline 稳，不受任何 overflow 影响）。
+ * ⇒ 可以用共享变量（`--bg-card` / `--border` / `--accent` / `--text-weak` …）。
  */
 
-/* ── 通用小按钮（旧版 `.ghost-btn`）── */
-.ghost-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 4px 10px;
-	border: 1px solid var(--border);
-	border-radius: 6px;
-	font-size: 12px;
-	font-family: inherit;
-	color: var(--text-secondary);
-	background: var(--bg-card);
-	cursor: pointer;
-	white-space: nowrap;
-	transition:
-		border-color 0.12s,
-		color 0.12s,
-		background 0.12s;
-}
-.ghost-btn:hover:not(:disabled) {
-	border-color: var(--text-weak, #9aa1ad);
-	color: var(--text);
-}
-.ghost-btn:disabled {
-	opacity: 0.45;
-	cursor: default;
-}
-/* 「显示已归档」开着 = **黑底白字**（开关类激活态，用户 2026-11-20） */
-.ghost-btn.is-active {
-	border-color: var(--text);
-	color: #fff;
-	background: var(--text);
-}
-
-/* ── 整行 ── */
-/*
- * ⚠ **这一层就是换行容器**（用户 2026-11-18）。
- *
- * > 「我希望他直接按顺序换行和列出。但是最开头的那两个按钮，归档和激活空间，
- * >  也在视图里，也就是说换行不是从那两个按钮右边才开始换行。」
- *
- * ⇒ 四个东西（操作按钮 / 显示已归档 / chips / +）全是本容器的**直接子元素**，
- *   没有中间那一层 `flex: none` 的 actions 包裹。
- *
- * 之前踩过的坑：**不要用 `display: contents` 来「假装拆掉」包裹层** ——
- *   FilterBox 上实测会让 `:scope >` 选择器失效、竖线画错。直接删掉包裹层。
- */
-.space-bar {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 6px;
-	min-width: 0;
-	/*
-	 * ⚠ 原来 `padding: 2px 0` ⇒ 整行 30px，按钮 24px，两侧各只剩 3px。
-	 *   用户说「条太窄了」。给到 6px 上下 ⇒ 行高 36px，按钮四周有呼吸。
-	 */
-	padding: 6px 2px;
-}
-
-/* 换行后行与行之间要有呼吸，否则第二行的按钮贴第一行的底边 */
-.space-bar > * {
-	flex: 0 0 auto;
-}
-
-/* ── 左侧那个**单个**按钮 ── */
-/*
- * ⚠ 固定最小宽度：文案合并后已经是同一句「当前空间」，
- *   但「显示已归档=开」时文案是「已归档」，两种仍需等宽，否则切开关时整行抖。
- */
-.space-action {
-	min-width: 84px;
-	justify-content: center;
-}
-
-/*
- * ## 强调档 —— 文案合并后**唯一**的区分手段
- *
- * 用户：「改为『当前空间』，然后通过着色来表示现在就是『当前空间』。」
- *
- * `current`（实心徽章）vs `action`（描边按钮）—— 两者**看起来就不是一类东西**，
- * 所以即使用户读到同一个词，也知道哪个能点。
- */
-
-/* 已是当前空间：实心浅底 + accent 边框，像「你在这里」的标记，不像按钮 */
-.space-action.is-emphasis-current {
-	border-color: var(--accent);
-	background: #eef4ff;
-	color: var(--accent);
-	font-weight: 600;
-	cursor: default;
-}
-.space-action.is-emphasis-current:hover {
-	border-color: var(--accent);
-	color: var(--accent);
-}
-
-/* 可以切过去：描边按钮，hover 才亮 —— 明确是「一个能点的东西」 */
-.space-action.is-emphasis-action {
-	border-color: var(--border);
-	background: var(--bg-card);
-	color: var(--text-secondary);
-}
-.space-action.is-emphasis-action:hover:not(:disabled) {
-	border-color: var(--accent);
-	color: var(--accent);
-	background: #f5f9ff;
-}
-
-/* 没有可作用的空间：普通灰 */
-.space-action.is-emphasis-plain {
-	color: var(--text-weak, #9aa1ad);
-}
-
-/*
- * 「已归档」的**选中**态（这个空间确实已归档）—— 黑底反白。
- * ⚠ 放最后：要盖掉上面 emphasis 的底色（第 2/4 行都是 checked + emphasis=action）。
- */
-.space-action.is-on {
-	border-color: var(--text);
-	background: var(--text);
-	color: #fff;
-}
-.space-action.is-on:hover:not(:disabled) {
-	border-color: var(--text);
-	background: var(--text);
-	color: #fff;
-}
-
-/* ══════════════════════════════════════════════════════════
-   chip
-   ══════════════════════════════════════════════════════════ */
-
-.space-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	padding: 4px 11px;
-	border: 1px solid var(--border);
-	border-radius: 999px;
-	font-size: 12px;
-	font-family: inherit;
-	color: var(--text-secondary);
-	background: var(--bg-card);
-	cursor: pointer;
-	white-space: nowrap;
-	transition:
-		border-color 0.12s,
-		background 0.12s;
-}
-
-.space-chip:hover {
-	border-color: var(--text-weak, #9aa1ad);
-}
-
-/* 当前**激活**空间：黑底白字（语义最重） */
-.space-chip.is-current {
-	background: var(--text);
-	color: #fff;
-	border-color: var(--text);
-}
-
-/*
- * 正在**查看**的空间：accent 强调。
- *
- * ⚠ **不用 outline** —— 见文件头「上下边框被遮挡」的解释：
- *   outline 画在 border-box 外面、不计入 rect、会被 `overflow` 裁掉。
- *   `border-color + inset box-shadow` 都画在盒子内部，物理上不可能被裁。
- *   视觉上仍是「2px 的 accent 环」，因为 1px 边框 + 1px inset 阴影叠加。
- */
-.space-chip.is-viewing {
-	border-color: var(--accent);
-	box-shadow: inset 0 0 0 1px var(--accent);
-}
-/* 当前 + 查看：黑底上再加 accent 内环，仍然看得见 */
-.space-chip.is-current.is-viewing {
-	border-color: var(--accent);
-	box-shadow: inset 0 0 0 1px var(--accent);
-}
-
-/*
- * 已归档：**虚线 + 降透明**（用户 2026-11-09：
- * 「已归档。的黑白状态，就是没启用的当前空间。」）
- */
-.space-chip.is-archived {
-	border-style: dashed;
-	opacity: 0.65;
-}
-.space-chip.is-archived:hover {
-	opacity: 1;
-}
-
-/* 当前 + 已归档（异常态）：虚线仍表「归档了」，但**不降透明** */
-.space-chip.is-current.is-archived {
-	opacity: 1;
-}
-
-.space-chip__count {
-	font-size: 11px;
-	opacity: 0.75;
-	font-family: var(--mono, ui-monospace, Consolas, monospace);
-}
-
-.space-chip--add {
-	padding: 4px 9px;
-	color: var(--text-weak, #9aa1ad);
-}
-
-/* ══════════════════════════════════════════════════════════
-   预览页专用
-   ══════════════════════════════════════════════════════════ */
-
+/* ── 静态矩阵：一格一段 ── */
 .pv-case {
 	margin-bottom: 16px;
 }
@@ -238,21 +27,21 @@
 	margin-bottom: 0;
 }
 .pv-case__note {
-	font-size: 11px;
-	color: var(--text-weak, #9aa1ad);
 	margin-bottom: 6px;
+	font-size: 11px;
 	font-family: var(--mono, ui-monospace, Consolas, monospace);
+	color: var(--text-weak, #9aa1ad);
 }
 
-/* 回调日志 */
+/* ── 回调日志 ── */
 .pv-events {
 	margin: 0 0 10px;
 	padding-left: 18px;
+	max-height: 150px;
+	overflow-y: auto;
 	font-size: 11.5px;
 	font-family: var(--mono, ui-monospace, Consolas, monospace);
 	color: #3f4652;
-	max-height: 150px;
-	overflow-y: auto;
 }
 .pv-events__empty {
 	list-style: none;
