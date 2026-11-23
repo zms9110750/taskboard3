@@ -49,8 +49,20 @@ export const PERMISSION_BOX_CSS = `
    2. 浮层容器（用户 2026-11-23：「他还是全屏的」）
    ══════════════════════════════════════════════════════════ */
 
-/* 锚点：正好裹住入口按钮，给浮层当定位基准。 */
-.tb3pbox-anchor{position:relative;display:inline-flex;align-items:center}
+/*
+ * 锚点：正好裹住入口按钮，给浮层当定位基准。
+ *
+ * ⚠ z-index:1200 不是随手写的（用户 2026-11-24：「有什么东西把权限的位置弄走了」）：
+ *   DSH 自己的「访问模式」下拉菜单是 position:fixed + z-index:1100，从它自己的
+ *   触发器往上弹。我们这一条入口就插在同一行、紧挨着那个触发器 ——
+ *   菜单一开，它的**右下角**正好压到我们按钮的左上角（实测水平重叠 ~6px，
+ *   垂直只差 4px 的间隙），看上去就是「权限的位置被弄走了」。
+ *
+ *   ⇒ 把锚点抬到 1200（高于 DSH 菜单的 1100），保证任何情况下我们的按钮
+ *     都画在菜单之上、且可点 —— 不改变位置，只保证不被盖住。
+ *     同处一个层叠上下文里才有效，所以 position:relative 必须保留。
+ */
+.tb3pbox-anchor{position:relative;z-index:1200;display:inline-flex;align-items:center}
 
 /*
  * 浮层：贴按钮**上方**弹出（composer 在视口底部，向下弹会出界）。
