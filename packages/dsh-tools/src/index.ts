@@ -53,9 +53,18 @@ export const name = 'taskboard3-tools';
  * 前置服务。
  *
  * `taskboard3Core` 由 `@taskboard/dsh-core` 提供（`Taskboard` 实例）。
+ * `taskboard3DefaultWorkspaceId` **也**由 `@taskboard/dsh-core` 提供（入口的
+ * 默认空间策略：第一个；没有就建一个）。工具里的 `workspaceId` 省略时要用它。
  * `tools` 是 DSH 的工具注册表。
+ *
+ * ⚠ **三个都要列**。少列一个不会报「缺依赖」，而是等到 `apply` 里第一次读
+ *   `ctx.taskboard3DefaultWorkspaceId` 时才抛
+ *   `cannot get property "taskboard3DefaultWorkspaceId" without inject` ——
+ *   那是**运行期**错误，构建期和全量单测都发现不了（单测直接调 `apply`，不经过
+ *   Cordis 的 inject 检查）。真实症状：隔离 profile 启动时报
+ *   `dsh: warning: 1 entry did not activate`，11 个 AI 工具整行不注册。
  */
-export const inject = ['taskboard3Core', 'tools'] as const;
+export const inject = ['taskboard3Core', 'taskboard3DefaultWorkspaceId', 'tools'] as const;
 
 /** 本插件行的配置。 */
 export interface Config {}
