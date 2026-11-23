@@ -29,7 +29,6 @@ import { createApi } from './api.ts';
 import { attachPermissionApi } from './pure/permission-box-state.ts';
 import { registerDrawerSlots } from './register-drawer.tsx';
 import { PermissionBoxEntry } from './renderers/PermissionBoxEntry.tsx';
-import { PermissionBoxPage } from './renderers/PermissionBoxPage.tsx';
 import { TaskboardIcon } from './renderers/TaskboardIcon.tsx';
 import { WorkspaceBody } from './WorkspaceBody.tsx';
 import { initRenderers } from './init-renderers.ts';
@@ -77,12 +76,6 @@ export const PERMISSION_ENTRY_REGISTRATION_ID = 'taskboard3-permission-entry';
 
 /** 权限框入口的排序 —— 抽屉入口是 100，这里排在它右边。 */
 export const PERMISSION_ENTRY_ORDER = 110;
-
-/** 权限全屏页在 `conversation.input.overlay` 里的条目 id。 */
-export const PERMISSION_PAGE_REGISTRATION_ID = 'taskboard3-permission-page';
-
-/** 权限全屏页的排序 —— 抽屉面板是 50，这里排它后面。 */
-export const PERMISSION_PAGE_ORDER = 60;
 
 /** 插件名（Cordis 用）。 */
 export const name = 'taskboard3-dsh-client';
@@ -265,19 +258,19 @@ export function apply(ctx: Context): void {
 	 * 和抽屉入口**同一个槽**（`conversation.input.left` = composer 工具行左侧），
 	 * 靠 `order` 排在它右边。槽名依据见 `pure/drawer-view.ts` 文件头（从 asar 核过原文）。
 	 *
-	 * ## 两半
+	 * ## 只有一个槽条目
 	 *
 	 * | 部件 | 槽 | 组件 |
 	 * |---|---|---|
-	 * | 入口按钮 | `conversation.input.left` | `PermissionBoxEntry` |
-	 * | 全屏页 | `conversation.input.overlay` | `PermissionBoxPage` |
+	 * | 入口按钮 + 浮层 | `conversation.input.left` | `PermissionBoxEntry` |
 	 *
-	 * 和抽屉一样是**两个独立槽条目** ⇒ 状态走模块级 store
-	 * （`pure/permission-box-state.ts`），不靠 props 传。
+	 * 浮层（`2026-11-23` 用户「他还是全屏的」之后）**长在入口按钮的子树里**，
+	 * 因为「贴按钮弹出」要求锚点就是按钮的 DOM。所以这里只剩一条注册 ——
+	 * `conversation.input.overlay` 那条已删除。
 	 *
 	 * ## 为什么把 API 注入进 store
 	 *
-	 * 权限页要 `GET/POST /permission`。store 是模块级的、拿不到 React 上下文，
+	 * 浮层要 `GET/POST /permission`。store 是模块级的、拿不到 React 上下文，
 	 * 所以在注册时把 `createApi()` 的结果喂给它一次。
 	 */
 	attachPermissionApi(createApi());
@@ -285,12 +278,6 @@ export function apply(ctx: Context): void {
 		ctx.slots.register(
 			{ name: 'conversation.input.left', id: PERMISSION_ENTRY_REGISTRATION_ID, order: PERMISSION_ENTRY_ORDER },
 			PermissionBoxEntry,
-		),
-	);
-	ctx.slots.inject('conversation.input.overlay', () =>
-		ctx.slots.register(
-			{ name: 'conversation.input.overlay', id: PERMISSION_PAGE_REGISTRATION_ID, order: PERMISSION_PAGE_ORDER },
-			PermissionBoxPage,
 		),
 	);
 
