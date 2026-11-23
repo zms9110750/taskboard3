@@ -26,7 +26,10 @@ import { createElement } from 'react';
 import type { ReactNode } from 'react';
 
 import { createApi } from './api.ts';
+import { attachPermissionApi } from './pure/permission-box-state.ts';
 import { registerDrawerSlots } from './register-drawer.tsx';
+import { PermissionBoxEntry } from './renderers/PermissionBoxEntry.tsx';
+import { PermissionBoxPage } from './renderers/PermissionBoxPage.tsx';
 import { TaskboardIcon } from './renderers/TaskboardIcon.tsx';
 import { WorkspaceBody } from './WorkspaceBody.tsx';
 import { initRenderers } from './init-renderers.ts';
@@ -98,6 +101,17 @@ function RightPaneBody(): ReactNode {
 function MainPanelBody(): ReactNode {
 	return createElement(WorkspaceBody, { density: 'full' });
 }
+/** 权限框入口在 `conversation.input.left` 里的条目 id（同槽唯一）。 */
+export const PERMISSION_ENTRY_REGISTRATION_ID = 'taskboard3-permission-entry';
+
+/** 权限框入口的排序 —— 抽屉入口是 100，这里排在它右边。 */
+export const PERMISSION_ENTRY_ORDER = 110;
+
+/** 权限全屏页在 `conversation.input.overlay` 里的条目 id。 */
+export const PERMISSION_PAGE_REGISTRATION_ID = 'taskboard3-permission-page';
+
+/** 权限全屏页的排序 —— 抽屉面板是 50，这里排它后面。 */
+export const PERMISSION_PAGE_ORDER = 60;
 
 /** 插件名（Cordis 用）。 */
 export const name = 'taskboard3-dsh-client';
@@ -265,4 +279,48 @@ export function apply(ctx: Context): void {
 	 *   再包一层会让「注册函数的执行时机」和「owner 坍缩」错位。
 	 */
 	registerDrawerSlots(ctx, { content: createElement(WorkspaceBody, { density: 'compact' }) });
+
+	/*
+	 * ══════════════════════════════════════════════════════════
+	 * ④ 权限框入口（composer 工具行内，`完全权限 ▾` 右边）
+	 * ══════════════════════════════════════════════════════════
+	 *
+	 * 用户 `2026-11-23`：
+	 * > 「这里要有一个权限框。任务板干涉工具。任务板限制工具。
+	 * >   ai可改任务板工作权限。之前说的权限正交问题。」
+	 *
+	 * ## 槽
+	 *
+	 * 和抽屉入口**同一个槽**（`conversation.input.left` = composer 工具行左侧），
+	 * 靠 `order` 排在它右边。槽名依据见 `pure/drawer-view.ts` 文件头（从 asar 核过原文）。
+	 *
+	 * ## 两半
+	 *
+	 * | 部件 | 槽 | 组件 |
+	 * |---|---|---|
+	 * | 入口按钮 | `conversation.input.left` | `PermissionBoxEntry` |
+	 * | 全屏页 | `conversation.input.overlay` | `PermissionBoxPage` |
+	 *
+	 * 和抽屉一样是**两个独立槽条目** ⇒ 状态走模块级 store
+	 * （`pure/permission-box-state.ts`），不靠 props 传。
+	 *
+	 * ## 为什么把 API 注入进 store
+	 *
+	 * 权限页要 `GET/POST /permission`。store 是模块级的、拿不到 React 上下文，
+	 * 所以在注册时把 `createApi()` 的结果喂给它一次。
+	 */
+	attachPermissionApi(createApi());
+	ctx.slots.inject('conversation.input.left', () =>
+		ctx.slots.register(
+			{ name: 'conversation.input.left', id: PERMISSION_ENTRY_REGISTRATION_ID, order: PERMISSION_ENTRY_ORDER },
+			PermissionBoxEntry,
+		),
+	);
+	ctx.slots.inject('conversation.input.overlay', () =>
+		ctx.slots.register(
+			{ name: 'conversation.input.overlay', id: PERMISSION_PAGE_REGISTRATION_ID, order: PERMISSION_PAGE_ORDER },
+			PermissionBoxPage,
+		),
+	);
+
 }

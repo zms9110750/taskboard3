@@ -191,6 +191,32 @@ function fakeApi(): TaskboardApi {
 			CALLS.push({ method: 'renderCheck', args: registered });
 			return { required: [], missing: [] };
 		},
+		/*
+		 * 权限框用到的两个方法。预览页只画任务板本身，权限框不在这里渲染，
+		 * 但 `TaskboardApi` 是完整接口 ⇒ 必须补齐，否则 `tsc -p tsconfig.dev.json` 报
+		 * 「缺少 getPermission / setPermission」。给一份最小可用的假实现。
+		 */
+		async getPermission() {
+			CALLS.push({ method: 'getPermission', args: undefined });
+			const option = (value: string, label: string): { value: string; label: string; description: string } => ({
+				value,
+				label,
+				description: '',
+			});
+			return {
+				cardActionLevel: 'no-claim',
+				toolGuardLevel: 'off',
+				cardActionOptions: [option('no-claim', '不允许领卡'), option('claim', '允许领卡'), option('adopt', '允许采纳草稿')],
+				toolGuardOptions: [option('off', '任务板不管理'), option('manage', '任务板管理权限'), option('manage-edit', '允许编辑档位权限')],
+			};
+		},
+		async setPermission(input: { readonly cardActionLevel?: string; readonly toolGuardLevel?: string }) {
+			CALLS.push({ method: 'setPermission', args: input });
+			return {
+				cardActionLevel: input.cardActionLevel ?? 'no-claim',
+				toolGuardLevel: input.toolGuardLevel ?? 'off',
+			};
+		},
 	};
 }
 

@@ -622,11 +622,23 @@ import { SEARCHBOX_CSS } from './renderers/searchbox-css.ts';
 import { SECTION_CSS } from './renderers/section-css.ts';
 /* 派生子任务浮窗的 CSS —— 用户 2026-11-22「CSS 必须跟着组件走」，同一形态。 */
 import { DERIVE_MENU_CSS } from './renderers/derive-menu-css.ts';
+/*
+ * 权限面板 + 权限框的 CSS —— 2026-11-23 从 `dev/preview/permission/style.css` 搬进来。
+ *
+ * 那份文件头原本写着「这份 CSS 现在是**预览样式**，还没并入 src/styles.ts……
+ * 确认后把 .tb3perm-* 那一段搬进 src/styles.ts 并挂到真实面板上」。
+ * 现在面板接进产品了（composer 权限框），所以执行那条待办。
+ *
+ * ⚠ 搬之前核过：产品段 437 行里 **0 处**预览专属变量（--bg-card / --border 等），
+ *   全部是 --perm-*（本段自定义，兜底走宿主 token）。
+ */
+import { PERMISSION_CSS } from './renderers/permission-css.ts';
+import { PERMISSION_BOX_CSS } from './renderers/permission-box-css.ts';
 
 export { TECHTREE_CSS };
 export { SEARCHBOX_CSS, SECTION_CSS };
 
-export { CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS };
+export { CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS, PERMISSION_BOX_CSS, PERMISSION_CSS };
 
 
 
@@ -656,7 +668,7 @@ export function injectStyles(): void {
 	 *   `.tb3w-root .badge` **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
 	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
-	element.textContent = `${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}`;
+	element.textContent = `${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}\n${DERIVE_MENU_CSS}\n${PERMISSION_CSS}\n${PERMISSION_BOX_CSS}`;
 	/*
 	 * ⚠ **必须挂上去**。`createElement` + 设 `textContent` 只是造了一个游离节点，
 	 *   不 `appendChild` 的话样式表根本不存在于文档里 ⇒ 面板渲染出来但**一点样式都没有**
