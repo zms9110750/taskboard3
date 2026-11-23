@@ -30,6 +30,8 @@ import { attachPermissionApi } from './pure/permission-box-state.ts';
 import { registerDrawerSlots } from './register-drawer.tsx';
 import { PermissionBoxEntry } from './renderers/PermissionBoxEntry.tsx';
 import { TaskboardIcon } from './renderers/TaskboardIcon.tsx';
+import { ToolPermissionPage } from './renderers/tool-permission/ToolPermissionPage.tsx';
+import { ToolsPermissionIcon } from './renderers/ToolsPermissionIcon.tsx';
 import { WorkspaceBody } from './WorkspaceBody.tsx';
 import { initRenderers } from './init-renderers.ts';
 import { registeredTypes } from './render-registry.ts';
@@ -48,6 +50,30 @@ export const PANEL_ID = 'taskboard3';
 
 /** 左侧栏图标在 panellist 里的排序（taskboard2 用 30）。 */
 export const PANEL_ORDER = 30;
+
+/**
+ * 第二个左侧入口：「工具权限」的 id。
+ *
+ * ## 为什么是独立入口而不是「任务板」里的一个页签
+ *
+ * 用户 `2026-11-23`：
+ * > 「左边也只有任务板。没有任务板权限。」
+ * > 「单独的包单独的一行的形式来开关它的功能。然后给个左侧的入口。」
+ *
+ * ⇒ 「工具权限」是一套**独立的权限面**（tag 组图 + 工具清单 + 模板授权），
+ *   和「任务板」不是同一层的东西，所以它有自己的侧栏条目、自己的主区域页面。
+ *
+ * ⚠ 和 `PANEL_ID` 一样：`panellist.id` = `main.key` = 本常量。
+ */
+export const TOOLS_PANEL_ID = 'taskboard3-tools';
+
+/**
+ * 「工具权限」在 panellist 里的排序 —— **排在「任务板」后面**。
+ *
+ * 取 40（不是 31）：留出一段空隙给将来可能插在两者之间的入口，
+ * 避免以后每加一个都要改别人的 order。
+ */
+export const TOOLS_PANEL_ORDER = 40;
 
 /** tab 类型判别符（`ctx.sidebarRight.openTab('taskboard')` 用它）。 */
 export const TAB_KIND = 'taskboard';
@@ -224,6 +250,34 @@ export function apply(ctx: Context): void {
 				ctx.slots.register({ name: 'main', key: PANEL_ID, label: '任务板' }, WorkspaceBody),
 			),
 		'taskboard3: register main panel body',
+	);
+
+	/*
+	 * ── 第二个左侧入口：「工具权限」────────────────────────────────
+	 *
+	 * 和上面那对完全同构：`sidebar.panellist` 出图标按钮，`main` 出页面，
+	 * 两边的 id / key 都用 `TOOLS_PANEL_ID`，label 都是「工具权限」。
+	 *
+	 * 页面是 `ToolPermissionPage`（自己取 `/api/tools` + 挂组图编辑器），
+	 * **不依赖宿主喂数据** —— 和 `WorkspaceBody` 一样是自取的。
+	 */
+	ctx.effect(
+		() =>
+			ctx.slots.inject('sidebar.panellist', () =>
+				ctx.slots.register(
+					{ name: 'sidebar.panellist', id: TOOLS_PANEL_ID, order: TOOLS_PANEL_ORDER, label: '工具权限' },
+					ToolsPermissionIcon,
+				),
+			),
+		'taskboard3: register tools-permission panellist entry',
+	);
+
+	ctx.effect(
+		() =>
+			ctx.slots.inject('main', () =>
+				ctx.slots.register({ name: 'main', key: TOOLS_PANEL_ID, label: '工具权限' }, ToolPermissionPage),
+			),
+		'taskboard3: register tools-permission main body',
 	);
 
 	/*
