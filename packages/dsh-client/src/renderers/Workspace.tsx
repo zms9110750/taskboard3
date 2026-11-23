@@ -65,7 +65,7 @@
  * 全仓规则：`./x.ts` / `./x.tsx`（见 AGENTS.md 规则 1）。
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 
 import { GROUP_LABELS, TASK_STATES, buttonsOf, isTaskState, statesInGroup } from '@taskboard/protocol';
@@ -73,6 +73,7 @@ import type { StatusGroup } from '@taskboard/protocol';
 import type { ButtonAction } from '@taskboard/protocol';
 
 import { KIND_ORDER, cardTimes, stateLabel } from '../pure/card-view.ts';
+import { uiStateStore } from '../ui-state-store.ts';
 import {
 	applyCardQuery,
 	emptyReasonOf,
@@ -237,6 +238,15 @@ export interface WorkspaceProps {
  * @param props 见 `WorkspaceProps`
  */
 export function Workspace(props: WorkspaceProps): ReactNode {
+	/*
+	 * 三入口共享的 UI 状态（组 / 折叠态）按**空间**分——用户 `2026-11-24`
+	 * 「状态属于容器，不属于文件」。这里负责把它指到正在看的那个空间；
+	 * 没这一步，store 的 workspaceId 永远是空串，折叠态读写全是空。
+	 */
+	useEffect(() => {
+		if (props.viewingId !== '') uiStateStore.setWorkspace(props.viewingId);
+	}, [props.viewingId]);
+
 	/* ── 纯 UI 状态 ── */
 	const [view, setView] = useState<'list' | 'tree'>(() => props.defaultView ?? 'tree');
 

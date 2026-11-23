@@ -49,6 +49,9 @@ import {
 	uiFoldedKeyOf,
 	uiGroupsKeyOf,
 	validateUiStateBody,
+	parseExpanded,
+	serializeExpanded,
+	uiExpandedKeyOf,
 } from './ui-state.ts';
 
 /** 路由前缀（Host 注册用，带前导 `/`）。 */
@@ -383,6 +386,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			sendOk(res, {
 				groups: parseUiGroups(deps.kv.kvGet(uiGroupsKeyOf(workspaceId))),
 				folded: parseFolded(deps.kv.kvGet(uiFoldedKeyOf(workspaceId))),
+				expanded: parseExpanded(deps.kv.kvGet(uiExpandedKeyOf(workspaceId))),
 			});
 			return;
 		}
@@ -401,6 +405,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			}
 			await deps.kv.kvSet(uiGroupsKeyOf(checked.value.workspace), serializeUiGroups(checked.value.groups));
 			await deps.kv.kvSet(uiFoldedKeyOf(checked.value.workspace), serializeFolded(checked.value.folded));
+			await deps.kv.kvSet(uiExpandedKeyOf(checked.value.workspace), serializeExpanded(checked.value.expanded));
 			sendOk(res, { saved: true });
 			return;
 		}

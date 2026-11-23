@@ -26,6 +26,7 @@ import {
 	EMPTY_UI_STATE,
 	parseUiState,
 	toSaveBody,
+	withFoldSetToggled,
 	withFoldedToggled,
 	withGroupAdded,
 	withGroupRemoved,
@@ -51,6 +52,8 @@ export interface UiStateSnapshot {
 	readonly workspaceId: string;
 	readonly groups: readonly TreeGroup[];
 	readonly folded: readonly string[];
+	/** 用户**强制展开**的 id（默认折叠判据不再折这些）。 */
+	readonly expanded: readonly string[];
 	/** 这个空间的数据取回来了吗（false ⇒ UI 可以显示占位）。 */
 	readonly loaded: boolean;
 	/** 最近一次失败的原因；成功一次就清空。 */
@@ -76,6 +79,8 @@ export interface UiStateStore {
 	/** 立刻把挂起的保存发出去（测试 / 关面板前用）。 */
 	readonly flush: () => Promise<void>;
 	readonly toggleFolded: (id: string) => void;
+	/** 显式设置折叠态（维护 folded / expanded 互斥）。UI 用这个。 */
+	readonly setFolded: (id: string, folded: boolean) => void;
 	readonly addGroup: (group: TreeGroup) => void;
 	readonly removeGroup: (groupId: string) => void;
 	readonly renameGroup: (groupId: string, name: string | undefined) => void;
@@ -121,6 +126,7 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 		workspaceId: '',
 		groups: [],
 		folded: [],
+		expanded: [],
 		loaded: false,
 		error: undefined,
 	};
@@ -143,7 +149,7 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 		const workspaceId = snapshot.workspaceId;
 		if (workspaceId === '') return;
 		cache.set(workspaceId, next);
-		setSnapshot({ ...snapshot, groups: next.groups, folded: next.folded });
+		setSnapshot({ ...snapshot, groups: next.groups, folded: next.folded, expanded: next.expanded });
 		scheduleSave();
 	};
 
@@ -201,6 +207,7 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 				workspaceId,
 				groups: data.groups,
 				folded: data.folded,
+				expanded: data.expanded,
 				loaded: true,
 				error: undefined,
 			});
@@ -223,7 +230,14 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 			/* ⚠ 期间可能已经切到别的空间 ⇒ 只写缓存，不动快照。 */
 			cache.set(workspaceId, data);
 			if (snapshot.workspaceId !== workspaceId) return;
-			setSnapshot({ workspaceId, groups: data.groups, folded: data.folded, loaded: true, error: undefined });
+			setSnapshot({
+				workspaceId,
+				groups: data.groups,
+				folded: data.folded,
+				expanded: data.expanded,
+				loaded: true,
+				error: undefined,
+			});
 		} catch (cause) {
 			if (snapshot.workspaceId !== workspaceId) return;
 			cache.set(workspaceId, EMPTY_UI_STATE);
@@ -231,6 +245,7 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 				workspaceId,
 				groups: [],
 				folded: [],
+				expanded: [],
 				loaded: true,
 				error: cause instanceof Error ? cause.message : String(cause),
 			});
@@ -261,12 +276,13 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 					workspaceId,
 					groups: cached.groups,
 					folded: cached.folded,
+					expanded: cached.expanded,
 					loaded: true,
 					error: undefined,
 				});
 				return;
 			}
-			setSnapshot({ workspaceId, groups: [], folded: [], loaded: false, error: undefined });
+			setSnapshot({ workspaceId, groups: [], folded: [], expanded: [], loaded: false, error: undefined });
 			const existing = pendingLoad.get(workspaceId);
 			if (existing !== undefined) {
 				void existing;
@@ -288,6 +304,10 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 
 		toggleFolded: (id) => {
 			commit(withFoldedToggled(stateOf(snapshot.workspaceId), id));
+		},
+
+		setFolded: (id, folded) => {
+			commit(withFoldSetToggled(stateOf(snapshot.workspaceId), id, folded));
 		},
 
 		addGroup: (group) => {

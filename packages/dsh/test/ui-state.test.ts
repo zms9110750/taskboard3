@@ -281,6 +281,7 @@ describe('GET / PUT /api/ui-state（真 handler + 真 SQLite kv）', () => {
 		assert.deepEqual((get.json as { data: unknown }).data, {
 			groups: [{ id: 'g1', memberIds: ['GE01', 'GE02'] }],
 			folded: ['g1'],
+			expanded: [],
 		});
 	});
 
@@ -334,6 +335,6 @@ describe('GET / PUT /api/ui-state（真 handler + 真 SQLite kv）', () => {
 			body: { workspace: 'ws-default', groups: [], folded: ['card:7'] },
 		});
 		const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/ui-state` });
-		assert.deepEqual((out.json as { data: unknown }).data, { groups: [], folded: ['card:7'] });
+		assert.deepEqual((out.json as { data: unknown }).data, { groups: [], folded: ['card:7'], expanded: [] });
 	});
 });

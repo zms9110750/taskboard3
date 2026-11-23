@@ -177,8 +177,8 @@ describe('UI 状态：同父才可成组（用户 2026-11-24）', () => {
 
 describe('UI 状态：PUT body', () => {
 	it('没名字的组不带 name 键', () => {
-		const body = toSaveBody('ws1', { groups: [{ id: 'g1', memberIds: ['A'] }], folded: [] });
-		assert.equal(JSON.stringify(body), '{"workspace":"ws1","groups":[{"id":"g1","memberIds":["A"]}],"folded":[]}');
+		const body = toSaveBody('ws1', { groups: [{ id: 'g1', memberIds: ['A'] }], folded: [], expanded: [] });
+		assert.equal(JSON.stringify(body), '{"workspace":"ws1","groups":[{"id":"g1","memberIds":["A"]}],"folded":[],"expanded":[]}');
 	});
 });
 
@@ -290,7 +290,7 @@ describe('ui-state store：加载与保存', () => {
 
 		const puts = fake.calls.filter((one) => one.method === 'PUT');
 		assert.equal(puts.length, 1);
-		assert.deepEqual(JSON.parse(puts[0]?.body ?? '{}'), { workspace: 'ws28', groups: [], folded: ['A', 'B'] });
+		assert.deepEqual(JSON.parse(puts[0]?.body ?? '{}'), { workspace: 'ws28', groups: [], folded: ['A', 'B'], expanded: [] });
 	});
 
 	it('PUT 失败 ⇒ error 有原因，但本地整理结果不回滚', async () => {

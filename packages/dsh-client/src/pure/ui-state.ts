@@ -40,12 +40,21 @@ export interface UiStateData {
 	readonly groups: readonly TreeGroup[];
 	/** 折叠的卡 id + 组 id（两个集合共用；id 不会撞）。 */
 	readonly folded: readonly string[];
+	/**
+	 * 用户**强制展开**的 id。
+	 *
+	 * ⚠ 默认折叠判据（全终结且无未读 ⇒ 自动折）是算出来的，光看 `folded`
+	 *   分不出「用户没动过」和「用户手动展开了」。没有这个集合，
+	 *   用户手动展开的节点会在下次打开面板时被默认判据又折回去。
+	 */
+	readonly expanded: readonly string[];
 }
 
 /** 空状态。 */
 export const EMPTY_UI_STATE: UiStateData = Object.freeze({
 	groups: Object.freeze([]),
 	folded: Object.freeze([]),
+	expanded: Object.freeze([]),
 });
 
 function isFilledString(value: unknown): value is string {
@@ -108,7 +117,16 @@ export function parseUiState(data: unknown): UiStateData {
 		}
 	}
 
-	return { groups, folded };
+	const expanded: string[] = [];
+	if (Array.isArray(fieldOf(data, 'expanded'))) {
+		for (const one of fieldOf(data, 'expanded') as unknown[]) {
+			if (!isFilledString(one)) continue;
+			if (expanded.includes(one.trim())) continue;
+			expanded.push(one.trim());
+		}
+	}
+
+	return { groups, folded, expanded };
 }
 
 /** 折叠集合（查询用，O(1)）。 */
@@ -126,7 +144,28 @@ export function withFoldedToggled(state: UiStateData, id: string): UiStateData {
 	const folded = state.folded.includes(id)
 		? state.folded.filter((one) => one !== id)
 		: [...state.folded, id];
-	return { groups: state.groups, folded };
+	return { groups: state.groups, folded, expanded: state.expanded };
+}
+
+/**
+ * 显式折叠 / 展开一个节点。
+ *
+ * ⚠ 两个集合必须**互斥维护**：折叠 ⇒ 进 `folded`、出 `expanded`；
+ *   展开 ⇒ 出 `folded`、进 `expanded`。只改一个会让三态优先级打架。
+ *
+ * @param folded 目标状态（`true` = 折叠，`false` = 展开）
+ */
+export function withFoldSetToggled(state: UiStateData, id: string, folded: boolean): UiStateData {
+	const foldedIds = new Set(state.folded);
+	const expandedIds = new Set(state.expanded);
+	if (folded) {
+		foldedIds.add(id);
+		expandedIds.delete(id);
+	} else {
+		foldedIds.delete(id);
+		expandedIds.add(id);
+	}
+	return { groups: state.groups, folded: [...foldedIds], expanded: [...expandedIds] };
 }
 
 /** 加一个组；id 撞了 ⇒ **原样返回**（幂等，不覆盖已有的）。 */
@@ -140,7 +179,7 @@ export function withGroupAdded(state: UiStateData, group: TreeGroup): UiStateDat
 			return kept.length === one.memberIds.length ? one : { ...one, memberIds: kept };
 		})
 		.filter((one) => one.memberIds.length > 0 || one.id === group.id);
-	return { groups: [...groups, group], folded: state.folded };
+	return { groups: [...groups, group], folded: state.folded, expanded: state.expanded };
 }
 
 /** 删组；成员回到「未分组」。 */
@@ -149,6 +188,7 @@ export function withGroupRemoved(state: UiStateData, groupId: string): UiStateDa
 		groups: state.groups.filter((one) => one.id !== groupId),
 		/* 折叠集合里同 id 的也一并清掉，避免留垃圾。 */
 		folded: state.folded.filter((one) => one !== groupId),
+		expanded: state.expanded.filter((one) => one !== groupId),
 	};
 }
 
@@ -161,6 +201,7 @@ export function withGroupRenamed(state: UiStateData, groupId: string, name: stri
 			return next === undefined ? { id: one.id, memberIds: one.memberIds } : { id: one.id, name: next, memberIds: one.memberIds };
 		}),
 		folded: state.folded,
+		expanded: state.expanded,
 	};
 }
 
@@ -174,7 +215,7 @@ export function withMemberAdded(state: UiStateData, groupId: string, cardId: str
 		const kept = one.memberIds.filter((id) => id !== cardId);
 		return kept.length === one.memberIds.length ? one : { ...one, memberIds: kept };
 	});
-	return { groups, folded: state.folded };
+	return { groups, folded: state.folded, expanded: state.expanded };
 }
 
 /** 移出成员；组空了 ⇒ 连同组一起删（否则会留一个空壳）。 */
@@ -189,7 +230,7 @@ export function withMemberRemoved(state: UiStateData, groupId: string, cardId: s
 		if (memberIds.length === 0) continue;
 		groups.push({ ...one, memberIds });
 	}
-	return { groups, folded: state.folded };
+	return { groups, folded: state.folded, expanded: state.expanded };
 }
 
 /**
@@ -206,7 +247,7 @@ export function withMissingCardsPruned(state: UiStateData, existingCardIds: Read
 		groups.push(memberIds.length === one.memberIds.length ? one : { ...one, memberIds });
 	}
 	if (groups.length === state.groups.length && groups.every((one, index) => one === state.groups[index])) return state;
-	return { groups, folded: state.folded };
+	return { groups, folded: state.folded, expanded: state.expanded };
 }
 
 /**
@@ -231,6 +272,7 @@ export function toSaveBody(workspaceId: string, state: UiStateData): {
 	readonly workspace: string;
 	readonly groups: readonly TreeGroup[];
 	readonly folded: readonly string[];
+	readonly expanded: readonly string[];
 } {
-	return { workspace: workspaceId, groups: state.groups, folded: state.folded };
+	return { workspace: workspaceId, groups: state.groups, folded: state.folded, expanded: state.expanded };
 }
