@@ -4,12 +4,21 @@
  * 拆自 `Workspace.tsx`（用户 `2026-11-20`：「一个视图那么多能拆的。做了组件吗」）。
  * **行为、DOM、类名、可访问性属性全部与拆之前逐字一致** —— 这不是重设计，是搬家。
  *
- * ## ⚠ 不含空间选择器（用户 2026-11-20）
+ * ## 右列（`tb3w-col--end`）从左到右的顺序
  *
- * > 「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮。」
+ * ```
+ * 领卡权限（CardActionControl） → 工作空间 ▾ → 科技树/列表 → 新建
+ * ```
  *
- * 所以「工作空间 ▾」按钮**不在这个组件里** —— 由 `Workspace` 在外面拼
- * （`density=compact` 时）。这个组件只做「任务条 + 图例 + 视图切换 + 新建」。
+ * 用户 `2026-11-23`：
+ * > 「是否允许领卡的那个权限。放在工作空间这个按钮的左边。
+ * >   他是一般ui提供的权限。影响的工具是通用tool的。所以放在一般ui里面。」
+ *
+ * ## ⚠ 关于空间选择器
+ *
+ * 用户 2026-11-20：「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮。」
+ * 那时「工作空间 ▾」由 `Workspace` 在外面拼。**2026-11-21 又推翻**：
+ * 「工作空间放在科技树的左边」⇒ 现在由 `space` prop 传进来，本组件只管摆位置。
  *
  * ## 它只做「画」
  *
@@ -77,6 +86,17 @@ export interface WorkspaceToolbarProps {
 	 * ⚠ 这推翻 2026-11-20 的「工具栏不含空间选择器」—— 那时是拆组件，现在是重排布局。
 	 */
 	readonly space?: ReactNode;
+	/**
+	 * 「是否允许领卡」控件（`CardActionControl`）。**渲染在 `space` 左边。**
+	 *
+	 * 用户 `2026-11-23`：
+	 * > 「是否允许领卡的那个权限。放在工作空间这个按钮的左边。
+	 * >   他是一般ui提供的权限。影响的工具是通用tool的。所以放在一般ui里面。」
+	 *
+	 * ⚠ 它是**一般 UI 的权限**（管 AI 能不能领卡/采纳），
+	 *   和 composer 那个 agent 侧权限框不是一回事。
+	 */
+	readonly cardAction?: ReactNode;
 }
 
 /**
@@ -126,6 +146,11 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps): ReactNode {
 
 				<div className="tb3w-col tb3w-col--end" data-toolbar-end>
 					<span className="tb3w-toolbar__actions">
+						{/*
+						 * ⚠ 顺序即语义（用户 2026-11-23）：
+						 *   领卡权限 **在「工作空间」按钮左边** ⇒ 先 cardAction、后 space。
+						 */}
+						{props.cardAction ?? null}
 						{props.space ?? null}
 						{props.onOpenPermission === undefined ? null : (
 							<button

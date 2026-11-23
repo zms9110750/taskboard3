@@ -1,13 +1,21 @@
 /**
- * 权限框的**入口按钮** —— composer 工具行里那颗，显示两条正交轴的当前档位。
+ * 权限框的**入口按钮** —— composer 工具行里那颗，显示 **agent 侧**档位。
  *
  * ## 用户裁决（`2026-11-23`）
  *
  * > 「这里要有一个权限框。任务板干涉工具。任务板限制工具。ai可改任务板工作权限。
  * >   之前说的权限正交问题。」
  *
- * ⇒ 这个按钮**同时反映两条轴**（正交的可见性），点开是全屏页。
- *   不是「一个总开关」，因为两条轴必须能各自取任何值。
+ * 后来又分流（同一天）：
+ *
+ * > 「是否允许领卡的那个权限。放在工作空间这个按钮的左边。
+ * >   他是一般ui提供的权限。影响的工具是通用tool的。所以放在一般ui里面。」
+ *
+ * ⇒ **card 轴搬去任务板工具栏**（`CardActionControl`），
+ *   这个按钮**只反映 agent 侧那一条轴**（三个 tool 档位）。
+ *
+ * ⚠ 摘要必须用 `toolSummaryOf()` / `isToolNonDefault()` —— 不能用两轴版本：
+ *   否则按钮上会显示一个「点开这个框也改不了」的档位。
  *
  * ## 为什么摘要不写「权限」二字
  *
@@ -20,7 +28,7 @@
 
 import type { ReactNode } from 'react';
 
-import { isNonDefault, summaryOf } from '../pure/permission-box.ts';
+import { isToolNonDefault, toolSummaryOf } from '../pure/permission-box.ts';
 import { openPermissionBox, usePermissionBox } from '../pure/permission-box-state.ts';
 
 /** 盾牌图标（20×20，和 DSH 其它图标同 stroke 风格）。 */
@@ -55,12 +63,12 @@ export function PermissionBoxEntry(): ReactNode {
 	 * ⚠ 只有 ready 才显示真实档位摘要。
 	 *
 	 * 加载中 / 加载失败时显示「权限」两个字 —— **不编造档位**。
-	 * 显示「不允许领卡 · 任务板不管理」而实际不知道，比显示「权限」坏得多：
+	 * 显示「任务板不管理」而实际不知道，比显示「权限」坏得多：
 	 * 用户会以为那就是当前设置。
 	 */
 	const ready = state.phase === 'ready';
-	const summary = ready ? summaryOf(state.snapshot) : '权限';
-	const nonDefault = ready && isNonDefault(state.snapshot);
+	const summary = ready ? toolSummaryOf(state.snapshot) : '权限';
+	const nonDefault = ready && isToolNonDefault(state.snapshot);
 
 	return (
 		<button

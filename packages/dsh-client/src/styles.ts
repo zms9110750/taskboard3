@@ -652,11 +652,12 @@ import { DERIVE_MENU_CSS } from './renderers/derive-menu-css.ts';
  */
 import { PERMISSION_CSS } from './renderers/permission-css.ts';
 import { PERMISSION_BOX_CSS } from './renderers/permission-box-css.ts';
+import { CARD_ACTION_CSS } from './renderers/workspace/card-action-css.ts';
 
 export { TECHTREE_CSS };
 export { SEARCHBOX_CSS, SECTION_CSS };
 
-export { CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS, PERMISSION_BOX_CSS, PERMISSION_CSS };
+export { CARD_ACTION_CSS, CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS, PERMISSION_BOX_CSS, PERMISSION_CSS };
 
 
 
@@ -686,7 +687,7 @@ export function injectStyles(): void {
 	 *   `.tb3w-root .badge` **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
 	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
-	element.textContent = `${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}\n${DERIVE_MENU_CSS}\n${PERMISSION_CSS}\n${PERMISSION_BOX_CSS}`;
+	element.textContent = `${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}\n${DERIVE_MENU_CSS}\n${PERMISSION_CSS}\n${PERMISSION_BOX_CSS}\n${CARD_ACTION_CSS}`;
 	/*
 	 * ⚠ **必须挂上去**。`createElement` + 设 `textContent` 只是造了一个游离节点，
 	 *   不 `appendChild` 的话样式表根本不存在于文档里 ⇒ 面板渲染出来但**一点样式都没有**

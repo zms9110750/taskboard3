@@ -98,6 +98,7 @@ import { ListEmpty } from './workspace/ListEmpty.tsx';
 import { ListHeader } from './workspace/ListHeader.tsx';
 import { SplitHandle } from './workspace/SplitHandle.tsx';
 import { WorkspaceToolbar } from './workspace/WorkspaceToolbar.tsx';
+import { CardActionControl } from './workspace/CardActionControl.tsx';
 import { SpaceFoldBody, SpaceFoldToggle } from './workspace/SpaceFold.tsx';
 
 /* ══════════════════════════════════════════════════════════
@@ -552,6 +553,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							view={view}
 							onViewChange={setView}
 							onCreateCard={props.onCreateCard}
+							cardAction={<CardActionControl />}
 							space={
 								<SpaceFoldToggle
 									open={spaceOpen}

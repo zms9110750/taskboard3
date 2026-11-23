@@ -89,3 +89,44 @@ export function summaryOf(snapshot: BoxSnapshot): string {
 export function isNonDefault(snapshot: BoxSnapshot): boolean {
 	return snapshot.cardActionLevel !== DEFAULT_CARD_LEVEL || snapshot.toolGuardLevel !== DEFAULT_TOOL_LEVEL;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   只取「agent 侧」那一条轴（`toolGuardLevel`）
+   ══════════════════════════════════════════════════════════════════════════
+
+   用户 `2026-11-23`：
+
+   > 「是否允许领卡的那个权限。放在工作空间这个按钮的左边。他是一般ui提供的权限。
+   >   影响的工具是通用tool的。所以放在一般ui里面。」
+
+   ⇒ `cardActionLevel` 搬去任务板工具栏（`CardActionControl`）；
+     composer 里那个权限框**只剩 agent 侧的 `toolGuardLevel`**。
+
+   所以 composer 入口按钮的摘要/非默认判定**不能再带上 card 轴** ——
+   否则按钮上会显示一个「这个框里改不了」的档位，用户点了找不到它。
+*/
+
+/**
+ * composer 入口按钮的摘要 —— **只看 agent 侧档位**。
+ *
+ * 例：`任务板不管理`
+ *
+ * @param snapshot 两轴快照
+ * @returns 只含 tool 轴的一句话
+ */
+export function toolSummaryOf(snapshot: BoxSnapshot): string {
+	return labelOf(snapshot.toolGuardOptions, snapshot.toolGuardLevel);
+}
+
+/**
+ * composer 入口要不要标「非默认」—— **只看 agent 侧档位**。
+ *
+ * ⚠ 不把 card 轴算进来：card 轴已经不归这个框管，算进来会让按钮
+ *   因为「别处的设置」而变色。
+ *
+ * @param snapshot 两轴快照
+ * @returns tool 轴偏离默认
+ */
+export function isToolNonDefault(snapshot: BoxSnapshot): boolean {
+	return snapshot.toolGuardLevel !== DEFAULT_TOOL_LEVEL;
+}

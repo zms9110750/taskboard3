@@ -120,6 +120,38 @@ export async function loadPermission(): Promise<void> {
 }
 
 /**
+ * 「确保已经拉过一次」—— 工具栏那个领卡控件用。
+ *
+ * ## 为什么需要它（和 `openPermissionBox()` 的区别）
+ *
+ * `openPermissionBox()` 是「打开全屏页」，会顺带拉数据；
+ * 但工具栏上的 `CardActionControl` **不打开任何页面**，它挂在任务板工具栏里，
+ * 一渲染就要显示当前档位 ⇒ 需要一个「只拉数据、不开页面」的入口。
+ *
+ * ## 幂等
+ *
+ * · 已 `ready` ⇒ 直接返回（不重复请求）
+ * · 正在飞的请求还在 ⇒ 直接返回（三个入口各挂一个控件，会同时调它，
+ *   没有这个闸就是三倍请求）
+ * · 上次失败（`load-error`）⇒ **允许重试**（否则一次网络抖动就永远空着）
+ *
+ * ⚠ `api === null`（还没 `attachPermissionApi`）时什么都不做 —— 不进入
+ *   `load-error`，否则模块级 store 会被这个「还没接上」污染，
+ *   后面 `openPermissionBox()` 会显示假的错误。
+ */
+let inFlight = false;
+
+export async function ensurePermissionLoaded(): Promise<void> {
+	if (api === null || inFlight || store.state.phase === 'ready') return;
+	inFlight = true;
+	try {
+		await loadPermission();
+	} finally {
+		inFlight = false;
+	}
+}
+
+/**
  * 打开全屏权限页。
  *
  * ⚠ 打开时才 `loadPermission()` —— 不是启动就拉。
@@ -220,5 +252,6 @@ export function usePermissionBox(): BoxStore {
 export function resetPermissionBoxForTest(): void {
 	store = { open: false, state: { phase: 'loading' } };
 	api = null;
+	inFlight = false;
 	listeners.clear();
 }
