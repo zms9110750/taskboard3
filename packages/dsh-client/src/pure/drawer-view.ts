@@ -77,7 +77,7 @@
  * 后半段在组件里量（见 `Drawer.tsx` 的 `--tb3d-max-height`）：
  * 输入框会随对话内容上下移动，写死任何像素上限都会在某个状态顶出窗口上沿。
  */
-export const DRAWER_HEIGHT_RATIO = 0.75;
+export const DRAWER_HEIGHT_RATIO = 2 / 3;
 
 /*
  * ## ⚠ 这里**没有** 480px 上限（`2026-11-23` 删）

@@ -84,7 +84,6 @@ function Stage(props: StageProps): React.ReactNode {
 		>
 			<div className="dl-stage__inner">
 				<Workspace
-					density="compact"
 					workspaces={workspaces}
 					currentId={currentId}
 					viewingId={viewingId}
