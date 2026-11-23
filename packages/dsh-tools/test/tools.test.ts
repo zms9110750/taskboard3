@@ -44,6 +44,7 @@ import {
 	type DefineTool,
 	type ToolLike,
 } from '../src/tools.ts';
+import { writeToolGuardLevel } from '../src/tool-guard.ts';
 
 /* ────────────────────────────── 夹具 ────────────────────────────── */
 
@@ -59,6 +60,13 @@ const fakeDefineTool: DefineTool = (options) => ({
 });
 
 let taskboard: Taskboard;
+/**
+ * agent 侧档位的存储端口。
+ *
+ * ⚠ 档位**不在 core 上了**（用户 2026-11-23）⇒ 复位档位要直接写 store 的 kv，
+ *   不再有 `taskboard.setToolGuardLevel()`。
+ */
+let store: ReturnType<typeof createSqliteStore>;
 let tools: readonly ToolLike[];
 let workspaceId = '';
 
@@ -90,7 +98,7 @@ beforeEach(async () => {
 	await closeTaskboard();
 	const dataDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-tools-'));
 	createdDirs.push(dataDir);
-	taskboard = createTaskboard({ store: createSqliteStore(dataDir) });
+	taskboard = createTaskboard({ store: (store = createSqliteStore(dataDir)) });
 
 	const created = await taskboard.createWorkspace(`适配层测试-${Date.now()}`);
 	assert.equal(created.ok, true);
@@ -98,10 +106,11 @@ beforeEach(async () => {
 
 	/* 每个用例显式复位两条轴（档位是 core 持久化状态，会漏到下一个用例）。 */
 	await taskboard.setCardActionLevel('no-claim');
-	await taskboard.setToolGuardLevel('off');
+	await writeToolGuardLevel(store, 'off');
 
 	tools = createTools({
 		taskboard,
+		kv: store,
 		defineTool: fakeDefineTool,
 		defaultWorkspaceId: async () => workspaceId,
 		subagents: stubSubagents('测试agent'),
@@ -246,6 +255,7 @@ describe('工具注册面（适配层 = 薄）', () => {
 	it('schema 静态：两次建工具参数表逐字节相同（prompt 前缀契约）', () => {
 		const again = createTools({
 			taskboard,
+			kv: store,
 			defineTool: fakeDefineTool,
 			defaultWorkspaceId: async () => workspaceId,
 			subagents: stubSubagents('测试agent'),
@@ -352,6 +362,7 @@ describe('ctx：holder（领取/释放的持有者）', () => {
 	it('subagents 缺席 ⇒ holder 回落 agent.id（功能照样可用）', async () => {
 		const local = createTools({
 			taskboard,
+			kv: store,
 			defineTool: fakeDefineTool,
 			defaultWorkspaceId: async () => workspaceId,
 		});
@@ -382,7 +393,7 @@ describe('ctx：权限开关（#9 的门槛 = 宿主轴 manage-edit）', () => {
 	});
 
 	it('manage-edit 档 ⇒ #9 可执行，且能读到写入结果', async () => {
-		await taskboard.setToolGuardLevel('manage-edit');
+		await writeToolGuardLevel(store, 'manage-edit');
 		const text = await run('taskboard_tool_policy', { tier: 'unclaimed', allow: ['bash'] });
 		assert.ok(text.includes('已更新'), text);
 		assert.ok(text.includes('bash'), text);
@@ -405,7 +416,17 @@ describe('taskboard_workspaces', () => {
 		const emptyDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-empty-'));
 		const empty = createTaskboard({ store: createSqliteStore(emptyDir) });
 		try {
-			const emptyTools = createTools({ taskboard: empty, defineTool: fakeDefineTool, defaultWorkspaceId: async () => '' });
+			const emptyTools = createTools({
+				taskboard: empty,
+				/*
+				 * 这里只要**读得到档位**（本用例不碰权限），给一个纯内存 kv 就够 ——
+				 * 别为它再开一个 sqlite 文件：Windows 上没关的句柄会让 finally 里的
+				 * `rmSync` 报 EPERM（已实测踩到）。
+				 */
+				kv: { kvGet: () => undefined, kvSet: async () => undefined },
+				defineTool: fakeDefineTool,
+				defaultWorkspaceId: async () => '',
+			});
 			const workspaces = emptyTools.find((one) => one.name === 'taskboard_workspaces') as ToolLike;
 			const value = (await workspaces.execute({}, {})) as { text: string };
 			assert.ok(value.text.includes('没有任何工作空间'), value.text);
@@ -657,13 +678,13 @@ describe('taskboard_transition', () => {
 
 describe('taskboard_tool_policy', () => {
 	it('tier 与 templateRef 二选一；两个都给 ⇒ 失败', async () => {
-		await taskboard.setToolGuardLevel('manage-edit');
+		await writeToolGuardLevel(store, 'manage-edit');
 		const text = await run('taskboard_tool_policy', { tier: 'claimed', templateRef: 'x', allow: [] });
 		assert.ok(text.includes('二选一'), text);
 	});
 
 	it('未知模板 ⇒ 失败', async () => {
-		await taskboard.setToolGuardLevel('manage-edit');
+		await writeToolGuardLevel(store, 'manage-edit');
 		const text = await run('taskboard_tool_policy', { templateRef: '不存在的模板', allow: ['bash'] });
 		assert.ok(text.includes('失败'), text);
 	});

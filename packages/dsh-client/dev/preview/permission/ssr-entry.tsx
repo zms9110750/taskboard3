@@ -34,7 +34,9 @@ export * from '../../../src/pure/permission-view.ts';
  * 真实选项表也从 core re-export（和服务端 HTTP 路由返回的是同一份常量）——
  * verify 用它渲染「已加载」，断言显示的是真文案，而不是测试里另抄的一份。
  */
-export { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS } from '../../../../core/src/permission.ts';
+export { CARD_ACTION_OPTIONS } from '../../../../core/src/permission.ts';
+/* `TOOL_GUARD_OPTIONS` 已搬进 `@taskboard/dsh-tools`（用户 2026-11-23）。 */
+export { TOOL_GUARD_OPTIONS } from '../../../../dsh-tools/src/tool-guard.ts';
 
 const noop = (): void => {};
 

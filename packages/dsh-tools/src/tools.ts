@@ -50,6 +50,7 @@ import {
 } from '@taskboard/tools';
 
 import { holderOf } from './holder.ts';
+import { readToolGuardLevelOf, type ToolGuardKv } from './tool-guard.ts';
 
 /* ────────────────────────── 形状（与 v1 公开面兼容） ────────────────────────── */
 
@@ -91,6 +92,13 @@ export interface ToolDeps {
 	 *   那时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
 	 */
 	readonly subagents?: unknown;
+	/**
+	 * agent 侧档位的存储端口（借 store 的 kv）。
+	 *
+	 * ⚠ 这套档位**不归 core**（用户 `2026-11-23`）：由 `@taskboard/dsh-tools`
+	 *   的 `tool-guard.ts` 拥有。工具层只读它一个值。
+	 */
+	readonly kv: ToolGuardKv;
 }
 
 /* ────────────────────────── 工厂 ────────────────────────── */
@@ -212,8 +220,8 @@ function renderText(_args: unknown, value: unknown): readonly unknown[] {
 function contextOf(deps: ToolDeps, exec: unknown): TaskboardToolContext {
 	return {
 		holder: holderOf(deps.subagents, exec),
-		/* 宿主轴「允许编辑档位权限」= core 的 manage-edit；不在 dsh 侧另存开关。 */
-		canManageToolPolicies: deps.taskboard.getToolGuardLevel() === 'manage-edit',
+		/* agent 侧「允许编辑档位权限」= manage-edit；档位由本包 tool-guard.ts 拥有。 */
+		canManageToolPolicies: readToolGuardLevelOf(deps.kv) === 'manage-edit',
 	};
 }
 /* ────────────────────────── 公开面兼容（v1 导出） ────────────────────────── */

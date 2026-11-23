@@ -51,26 +51,35 @@
  * ⇒ 组只是一个**命名的 templateRef 集合**。给它设一次策略，集合内都生效。
  *   它不参与判定优先级、不覆盖独立档 —— 四档全是**增量**，并集。
  *
- * ## 两条正交轴（`2026-11-19` 定稿）
+ * ## 两套权限，**归属不同**（`2026-11-23` 用户裁决：宿主轴搬出 core）
  *
- * 「AI 能不能领卡 / 采纳草稿」和「任务板管不管工具调用」是**两件事**，
- * 各自有一条档位轴：
+ * 用户原话：
  *
- * | 轴 | 类型 | 取值 | 谁定 |
- * |---|---|---|---|
- * | UI 轴 | `CardActionLevel` | `no-claim` / `claim` / `adopt` | 用户（任务板 UI；MCP 也有） |
- * | 宿主轴 | `ToolGuardLevel` | `off` / `manage` / `manage-edit` | 宿主（DSH 等） |
+ * > 「而且我说了。权限，一个在core的ui里面。一个在agentui里面，
+ * >   core完全不知道也不干涉agent的那一侧的注入权限。说白了，这个组件视图就不对。」
  *
- * **正交**的意思是判定分两段、各看各的轴：
+ * | 归属 | 类型 | 取值 | 谁定 | 在哪 |
+ * |---|---|---|---|---|
+ * | UI 权限 | `CardActionLevel` | `no-claim` / `claim` / `adopt` | 用户 | **本文件** |
+ * | agent 侧权限 | `ToolGuardLevel` | `off` / `manage` / `manage-edit` | 实现者（注入 agent 时） | **`@taskboard/dsh-tools`**（`tool-guard.ts`） |
  *
- * - **第一段 = 领卡类动作**（`claim` / `release` / `adopt`），**只看 `cardLevel`**，
- *   **永远先跑且完全不看 `toolLevel`**；
- * - **第二段 = 其它工具**（含 `BASE_TOOLS` / `POLICY_TOOLS` / 卡的增量），**只看 `toolLevel`**。
+ * ⇒ 本文件**只**判定「用户授权 AI 做什么任务板动作」这一侧。
+ *   「任务板这个 mod 管不管 agent 的工具调用」是 agent 连接器的权限，
+ *   没有 `ctx.tools.guard` 就没有它 —— 所以它不能住在 core。
+ *
+ * 正交语义仍然成立，只是**两段分居两个包**：
+ *
+ * - 领卡类动作（`claim` / `release` / `adopt`）只看 UI 档位 ⇒ **本文件**
+ *   （`judgeCardAction`）；agent 侧判定跑在 `dsh-tools` 里，第一段永远先跑且
+ *   完全不看 agent 侧档位。
+ * - 其它工具（含 `BASE_TOOLS` / `POLICY_TOOLS` / 卡的增量）只看 agent 侧档位
+ *   ⇒ **`@taskboard/dsh-tools`** 的 `judgeToolCall`。
  *
  * ⚠ 第一段在第二段之前是**规则**，不是实现细节：
- * 宿主把 `toolLevel` 设成 `off`（「任务板不管理工具」）时，`claim` 仍然要受
- * `cardLevel` 管 —— 领卡是任务板的业务规则，宿主不管理工具不等于替用户授权领卡。
- * 反过来，宿主 `manage-edit` 也不会让 `no-claim` 档能领卡。
+ * agent 侧把档位设成 `off`（「任务板不管理工具」）时，`claim` 仍然要受
+ * UI 档位管 —— 领卡是任务板的业务规则，不管理工具不等于替用户授权领卡。
+ * 反过来，agent 侧 `manage-edit` 也不会让 `no-claim` 档能领卡。
+ * （实现上：`dsh-tools` 的 `judgeToolCall` 把第一段抄在自己文件里并**先跑**。）
  *
  * ## 三条结构性决定
  *
@@ -94,8 +103,6 @@
  * ---
  */
 
-/** 一次判定。 */
-export type ToolCallVerdict = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 /*
  * ⚠ 清单先写成**裸字面量 + `as const`**，再导出 widened 版本。
@@ -381,18 +388,6 @@ export function effectiveToolsOf(store: ToolPolicyStore, templateRef: string): r
  */
 export type CardActionLevel = 'no-claim' | 'claim' | 'adopt';
 
-/**
- * 宿主侧：任务板管不管工具调用。
- *
- * | 档位 | 管不管工具 | 能否改档位权限 |
- * |---|---|---|
- * | `off` | 不管（一律放行） | ❌ |
- * | `manage` | 管（按 BASE / 四档 / 持有卡判） | ❌ |
- * | `manage-edit` | 管 | ✅ |
- *
- * ⚠ 它**只管第二段**（领卡类动作之外的工具）。
- */
-export type ToolGuardLevel = 'off' | 'manage' | 'manage-edit';
 
 /**
  * **UI 轴的全档位选项** —— 给任务板 UI 的下拉列表 / HTTP 路由直接渲染。
@@ -427,30 +422,6 @@ export const CARD_ACTION_OPTIONS = [
 	readonly description: string;
 }[];
 
-/**
- * **宿主轴的全档位选项** —— 同上，给 UI / HTTP 路由用的唯一一份定义。
- */
-export const TOOL_GUARD_OPTIONS = [
-	{
-		value: 'off',
-		label: '任务板不管理',
-		description: '任务板不拦截任何工具调用（领卡类动作仍受 UI 轴管）。',
-	},
-	{
-		value: 'manage',
-		label: '任务板管理权限',
-		description: '按 BASE / 持有卡 / 四档策略判定工具调用。',
-	},
-	{
-		value: 'manage-edit',
-		label: '允许编辑档位权限',
-		description: '在「管理权限」之上，额外允许 AI 读写档位权限工具。',
-	},
-] as const satisfies readonly {
-	readonly value: ToolGuardLevel;
-	readonly label: string;
-	readonly description: string;
-}[];
 
 /* ────────────────────────── 领卡类动作的 UI 轴判定 ────────────────────────── */
 
@@ -527,161 +498,10 @@ export function judgeCardAction(input: {
 	};
 }
 
-/* ────────────────────────── 判定 ────────────────────────── */
-
-/**
- * 一次工具调用判定的输入（**调用方面向**）。
- *
- * `heldCards` 由 dsh 的 guard 收集后传进来（core 不认识 dsh 的 agent）。
- */
-export interface ToolCallJudgement {
-	/** UI 轴：用户对任务板动作的授权档位。 */
-	readonly cardLevel: CardActionLevel;
-	/** 宿主轴：任务板管不管工具调用。 */
-	readonly toolLevel: ToolGuardLevel;
-	readonly toolName: string;
-	/** 这个 agent 当前持有的工作卡。空的、或多于一张，都是有意义的状态。 */
-	readonly heldCards: readonly { readonly templateRef: string }[];
-}
-
-/**
- * 判定的外部事实（纯参数，不是注入的服务）。
- *
- * 由调用方从 `index.ts` 的策略缓存里取出来传进来 ——
- * 这样本模块保持纯函数（可穷举测试），也不需要认识存储。
- */
-export interface PermissionFacts {
-	/** 四档策略。 */
-	readonly policies: ToolPolicyStore;
-}
-
-/**
- * 判定一次工具调用 —— **纯函数**。
- *
- * ## 判定顺序（顺序本身是规则的一部分）
- *
- * ### 第一段 · 领卡类动作（**永远生效，与 `toolLevel` 无关**）
- *
- * | # | 条件 | 结果 |
- * |---|---|---|
- * | ① | `toolName === 'taskboard_release'` | **放行**（放手永远允许） |
- * | ② | `toolName === 'taskboard_claim'` 且 `cardLevel === 'no-claim'` | 拒绝：当前档位不允许领卡 |
- * | ③ | `toolName === 'taskboard_adopt'` 且 `cardLevel !== 'adopt'` | 拒绝：当前档位不允许采纳草稿 |
- *
- * ### 第二段 · 其它工具（**只看 `toolLevel`**）
- *
- * | # | 条件 | 结果 |
- * |---|---|---|
- * | ④ | `toolLevel === 'off'` | **放行**（任务板不管理工具） |
- * | ⑤ | `toolName ∈ POLICY_TOOLS` | `manage-edit` ⇒ 放行；否则拒绝：改档位权限需要「允许编辑档位权限」 |
- * | ⑥ | `toolName ∈ BASE_TOOLS` | **放行**（不需要任何卡） |
- * | ⑦ | `heldCards` 为空 | 拒绝：需要先持有一张工作卡 |
- * | ⑧ | `heldCards` 多于一张 | 拒绝：同时持有多张工作卡 |
- * | ⑨ | `toolName ∈ effectiveToolsOf(那张卡的模板)` | **放行** |
- * | ⑩ | 否则 | 拒绝：当前卡不授予该工具 |
- *
- * ⚠ **第一段必须在第二段之前** —— 正交语义的实现。宿主 `toolLevel === 'off'`
- *   只说明「宿主不管理工具」，不等于「用户放开了领卡」。
- *
- * ⚠ **⑤ 在 ⑥ 之前** —— 权限管理工具能改写权限本身（等于「给自己发权限」）。
- *   不能只依赖「不在 BASE、也不在四档里」—— 因为四档是**用户可配的**，
- *   有人把 `taskboard_tool_policy_set` 写进 common 就绕过去了。
- *
- * ⚠ **⑥ 在 ⑦ 之前** —— 「基础权限不需要领卡」这条规则的实现。
- *
- * ⚠ **⑧ 排在 ⑨ 前面**：多张卡时无法判断该用哪份权限。这个状态本身不该出现
- *   （`claim` 的「一次一张」挡着），但**库里可能有** ⇒ 拒绝且说清，不猜。
- *
- * ⚠ **只校验工具名字，不校验是否存在**（用户原话）。
- */
-export function judgeToolCall(input: ToolCallJudgement, facts: PermissionFacts): ToolCallVerdict {
-	const { cardLevel, toolLevel, toolName, heldCards } = input;
-
-	/* ── 第一段：领卡类动作。永远先跑，完全不看 toolLevel。 ── */
-
-	/* ① 放手永远允许 —— 否则 AI 可能被一张卡锁死。 */
-	if (toolName === 'taskboard_release') return ALLOW;
-
-	/* ② 领卡：`no-claim` 档拒绝，其它两档放行（adopt 也允许领卡）。 */
-	if (toolName === 'taskboard_claim') {
-		if (cardLevel === 'no-claim') {
-			return reject(
-				`「${toolName}」不能执行：当前档位不允许领卡。` +
-					'要领取工作卡，请把任务板档位调到「允许领卡」或「允许采纳草稿」。',
-			);
-		}
-		return ALLOW;
-	}
-
-	/* ③ 采纳草稿：只有 `adopt` 档放行。 */
-	if (toolName === 'taskboard_adopt') {
-		if (cardLevel !== 'adopt') {
-			return reject(
-				`「${toolName}」不能执行：当前档位不允许采纳草稿。` +
-					'只有「允许采纳草稿」档位才能由 AI 采纳草稿，其它档位要用户自己点采纳。',
-			);
-		}
-		return ALLOW;
-	}
-
-	/* ── 第二段：其它工具。只看 toolLevel。 ── */
-
-	/* ④ 宿主不管理工具 ⇒ 一律放行。 */
-	if (toolLevel === 'off') return ALLOW;
-
-	/* ⑤ 权限管理工具：只有 `manage-edit` 放行。 */
-	if (POLICY_SET.has(toolName)) {
-		if (toolLevel === 'manage-edit') return ALLOW;
-		return reject(
-			`「${toolName}」是档位权限管理工具：改档位权限需要『允许编辑档位权限』。` +
-				'当前宿主档位只允许按已有权限判定，不允许改写权限本身。',
-		);
-	}
-
-	/* ⑥ 基础策略 + 未领取档：不需要任何卡。 */
-	if (BASE_SET.has(toolName)) return ALLOW;
-	if ((facts.policies.unclaimed ?? []).includes(toolName)) return ALLOW;
-
-	/* ⑦ 没有工作卡 ⇒ 拒绝。 */
-	if (heldCards.length === 0) {
-		return reject(`「${toolName}」需要先持有一张工作卡；当前没有持有任何工作卡。`);
-	}
-
-	/* ⑧ 多张工作卡 ⇒ 无法判断该用哪一份权限，拒绝（不猜）。 */
-	if (heldCards.length > 1) {
-		const refs = heldCards.map((one) => one.templateRef).join('、');
-		return reject(`同时持有多张工作卡（${refs}），无法判断该用哪一份额外权限；先释放到只剩一张。`);
-	}
-
-	/* ⑨ 那张卡的生效集含它 ⇒ 放行。 */
-	const card = heldCards[0];
-	/* 结构上走不到：上面已排除 0 张与多张。保留真实分支，不用 `as` 让编译器闭嘴。 */
-	if (card === undefined) {
-		return reject(`「${toolName}」需要先持有一张工作卡；当前没有持有任何工作卡。`);
-	}
-	const effective = effectiveToolsOf(facts.policies, card.templateRef);
-	if (effective.includes(toolName)) return ALLOW;
-
-	/* ⑩ 否则拒绝，并说清这张卡现在有哪些「额外」工具。 */
-	const extras = extrasOf(facts.policies, card.templateRef);
-	const available =
-		extras.length === 0 ? '（该模板没有额外权限）' : `（它有：${extras.join('、')}）`;
-	return reject(
-		`「${toolName}」需要持有工作卡授予的权限：当前卡「${card.templateRef}」不授予该工具${available}。`,
-	);
-}
 
 /** 一个模板的**额外**工具（从生效集里扣掉 BASE，用于错误消息）。 */
 export function extrasOf(store: ToolPolicyStore, templateRef: string): readonly string[] {
 	return effectiveToolsOf(store, templateRef).filter((one) => !BASE_SET.has(one));
-}
-
-/** 放行常量（复用，避免每次分配）。 */
-const ALLOW: ToolCallVerdict = Object.freeze({ ok: true });
-
-/** 造一个拒绝。 */
-function reject(reason: string): ToolCallVerdict {
-	return { ok: false, reason };
 }
 
 /* ────────────────────────── 编译期断言 ────────────────────────── */
@@ -737,14 +557,6 @@ type _CardOptionsCoverAll =
 			: false
 		: false;
 
-/** ⑦ 宿主轴选项表**覆盖全部档位且恰好 3 条**（同上）。 */
-type _GuardOptionsCoverAll =
-	Exclude<ToolGuardLevel, (typeof TOOL_GUARD_OPTIONS)[number]['value']> extends never
-		? (typeof TOOL_GUARD_OPTIONS)['length'] extends 3
-			? true
-			: false
-		: false;
-
 export type _PERMISSION_VOCABULARY_CONSISTENT = AssertTrue<
 	[
 		_PolicyNotInBase,
@@ -753,8 +565,7 @@ export type _PERMISSION_VOCABULARY_CONSISTENT = AssertTrue<
 		_PolicyNotExecution,
 		_BaseIsNine,
 		_CardOptionsCoverAll,
-		_GuardOptionsCoverAll,
-	] extends [true, true, true, true, true, true, true]
+	] extends [true, true, true, true, true, true]
 		? true
 		: false
 >;

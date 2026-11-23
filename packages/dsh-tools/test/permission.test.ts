@@ -10,15 +10,21 @@
  * | `createPermissionGuard` | 端到端：两条正交轴的档位组合 | 真正的行为 |
  * | 依赖面 | `judgeToolCall` 收到什么、**不**读什么 | 防止「悄悄又接回 DSH 预设」 |
  *
- * ## ⚠ 档位在 core，不在本文件（`2026-11-19` 两条正交轴定稿）
+ * ## ⚠ 两套档位各归其主（`2026-11-23` 用户裁决）
  *
- * core 的 `judgeToolCall` 入参只有 `{ toolName, heldCards }` ——
- * 两个档位（`cardActionLevel` / `toolGuardLevel`）由 `Taskboard` 实例自己从
- * kv 缓存读。所以本文件的用例通过 `taskboard.setCardActionLevel(...)` /
- * `taskboard.setToolGuardLevel(...)` 改档位，然后断言 **guard 的行为跟着变**。
+ * > 「权限，一个在 core 的 ui 里面。一个在 agent ui 里面，core 完全不知道也不干涉
+ * >   agent 的那一侧的注入权限。」
  *
- * 默认值（`core/src/index.ts:188,191`）：
- * `cardActionLevel = 'no-claim'`、`toolGuardLevel = 'off'`。
+ * ⇒ `cardActionLevel`（UI 轴）留在 core，`toolGuardLevel`（agent 侧）**归本包**、
+ *   借用 store 的 kv 端口落库。所以本文件的用例这样改档位：
+ *
+ * ```
+ * taskboard.setCardActionLevel(...)        ← UI 轴：core 的方法
+ * writeToolGuardLevel(store, ...)          ← agent 侧：本包的函数，写 kv
+ * ```
+ *
+ * 然后断言 **guard 的行为跟着变**。默认值：`cardActionLevel = 'no-claim'`、
+ * `toolGuardLevel = 'off'`。
  *
  * ## ⚠ 与 DSH 自己的权限不再有关系
  *
@@ -44,11 +50,19 @@ import {
 	holderOf,
 	type PermissionSubagentsLike,
 } from '../src/permission.ts';
+import { writeToolGuardLevel } from '../src/tool-guard.ts';
 
 /* ────────────────────────────── 夹具 ────────────────────────────── */
 
 let dataDir = '';
 let taskboard: Taskboard;
+/**
+ * agent 侧档位的存储端口。
+ *
+ * ⚠ 档位**不在 core 上了**（用户 2026-11-23：core 不干涉 agent 那一侧的注入权限）
+ * ⇒ 测试里改档位要直接写 store 的 kv，不再有 `taskboard.setToolGuardLevel()`。
+ */
+let store: ReturnType<typeof createSqliteStore>;
 let workspaceId = '';
 
 /**
@@ -91,7 +105,7 @@ beforeEach(async () => {
 	/* 每个用例独立的库目录（理由见上面）。 */
 	const dir = mkdtempSync(join(tmpdir(), 'tb3-perm-case-'));
 	createdDirs.push(dir);
-	taskboard = createTaskboard({ store: createSqliteStore(dir) });
+	taskboard = createTaskboard({ store: (store = createSqliteStore(dir)) });
 	const created = await taskboard.createWorkspace('权限测试');
 	assert.equal(created.ok, true);
 	if (created.ok) workspaceId = created.workspace.id;
@@ -211,10 +225,11 @@ describe('heldWorkCardsOf', () => {
 /* ────────────────────────── guard 端到端 ────────────────────────── */
 
 describe('createPermissionGuard', () => {
-	/** 造 guard（档位**不注入** —— 它从 taskboard 读）。 */
+	/** 造 guard（档位**不注入** —— 它从 taskboard + kv 读）。 */
 	function guardOf(options: { subagents?: unknown } = {}): (exec: unknown) => string | undefined {
 		return createPermissionGuard({
 			taskboard,
+			kv: store,
 			...(options.subagents === undefined ? {} : { subagents: options.subagents }),
 		});
 	}
@@ -247,7 +262,7 @@ describe('createPermissionGuard', () => {
 		 * 正交语义的核心：宿主「不管理工具」不等于「用户授权 AI 领卡」。
 		 * ⇒ 把 toolLevel 显式设成 off，claim / adopt 仍按 cardLevel 判。
 		 */
-		await taskboard.setToolGuardLevel('off');
+		await writeToolGuardLevel(store, 'off');
 		await taskboard.setCardActionLevel('no-claim');
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 
@@ -274,7 +289,7 @@ describe('createPermissionGuard', () => {
 	/* ── 第二段：其它工具（只看 toolLevel） ── */
 
 	it('toolLevel=manage + BASE 工具 ⇒ 放行（不需要领卡）', async () => {
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		/*
 		 * ⚠ `taskboard_claim` 也在 BASE 里，但它同时受**第一段**（UI 轴）管 ——
 		 *   `no-claim` 档下会被拒。这里把 UI 轴调到 claim，测的才是
@@ -288,7 +303,7 @@ describe('createPermissionGuard', () => {
 	});
 
 	it('toolLevel=manage + 执行类 + 没有卡 ⇒ 拒绝，且说清「先领卡」', async () => {
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 		const verdict = guard(exec('bash'));
 		assert.notEqual(verdict, undefined, '没领卡跑 bash 该被拒');
@@ -296,14 +311,14 @@ describe('createPermissionGuard', () => {
 	});
 
 	it('toolLevel=manage + 持有卡但独立档没有 ⇒ 拒绝', async () => {
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		await claimedWorkCard('要写代码', 'lead');
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.notEqual(guard(exec('bash')), undefined, '独立档里没 bash 该被拒');
 	});
 
 	it('toolLevel=manage + 独立档有 ⇒ 放行；没有的仍拒绝', async () => {
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		const cardId = await claimedWorkCard('要写代码', 'lead');
 		const ref = taskboard.get(workspaceId, cardId);
 		assert.equal(ref.ok, true);
@@ -317,7 +332,7 @@ describe('createPermissionGuard', () => {
 	});
 
 	it('toolLevel=manage：通用档对所有工作卡生效', async () => {
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		await claimedWorkCard('吃通用档', 'lead');
 		await taskboard.setCommonPolicy(['bash']);
 		const guard = guardOf({ subagents: subagentsOf('lead') });
@@ -325,7 +340,7 @@ describe('createPermissionGuard', () => {
 	});
 
 	it('toolLevel=manage：组档只对组成员生效', async () => {
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		const cardId = await claimedWorkCard('组测试', 'lead');
 		const ref = taskboard.get(workspaceId, cardId);
 		assert.equal(ref.ok, true);
@@ -343,13 +358,13 @@ describe('createPermissionGuard', () => {
 	});
 
 	it('⚠ 权限管理工具：manage 拒、manage-edit 放行', async () => {
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		let guard = guardOf({ subagents: subagentsOf('lead') });
 		const verdict = guard(exec('taskboard_tool_policy'));
 		assert.notEqual(verdict, undefined, 'manage 下不该能改档位权限');
 		assert.ok(verdict?.includes('允许编辑档位权限'), `理由该指向那一档：${verdict}`);
 
-		await taskboard.setToolGuardLevel('manage-edit');
+		await writeToolGuardLevel(store, 'manage-edit');
 		guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('taskboard_tool_policy')), undefined, 'manage-edit ⇒ 允许改权限');
 	});
@@ -359,50 +374,43 @@ describe('createPermissionGuard', () => {
 		 * core 的判定 ⑤ 在 ⑥（BASE）与四档之前 —— 这是**结构性**保护。
 		 * 这里从 dsh 侧确认：把权限工具配进 common 也绕不过去。
 		 */
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		await taskboard.setCommonPolicy(['taskboard_tool_policy']);
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.notEqual(guard(exec('taskboard_tool_policy')), undefined, '能给自己发权限的工具必须硬拒');
 	});
 
-	/* ── 依赖面：参数里有什么、没什么 ── */
+	/* ── 档位来源：三样输入各归其主 ── */
 
-	it('⚠ judgeToolCall 只收到 { toolName, heldCards }（档位不在入参里）', async () => {
-		const cardId = await claimedWorkCard('持有卡', 'lead');
-		const ref = taskboard.get(workspaceId, cardId);
-		assert.equal(ref.ok, true);
-		if (!ref.ok) return;
-
-		/**
-		 * 记录 core 被判定的入参。
+	it('⚠ 档位不来自调用方：exec 上塞 cardLevel / toolLevel 一律无效', async () => {
+		/*
+		 * `judgeToolCall` 已搬进本包、变成**纯函数**（用户 2026-11-23：agent 侧那套
+		 * 权限不归 core）。它的三样输入各归其主：
 		 *
-		 * ⚠ `input` 必须**显式标注类型**：`spy` 是用对象字面量 + `as unknown as Taskboard`
-		 *   造的，字面量里的箭头函数参数**推不出** `Taskboard.judgeToolCall` 的形状
-		 *   ⇒ tsc 报 TS7006（implicitly has an 'any' type）。照着 `core/src/index.ts:377` 写。
+		 *   cardLevel ← core（`tb.getCardActionLevel()`）
+		 *   toolLevel ← 本包的 kv（`readToolGuardLevelOf(store)`）
+		 *   policies  ← core（`tb.getToolPolicies()`）
+		 *
+		 * ⇒ 调用方（工具执行上下文）只能提供 `toolName` / agent 身份，
+		 *   **塞档位字段不能改变判定**。这条就是「档位不由调用方传」的行为证明。
 		 */
-		const seen: { readonly toolName: string; readonly heldCards: readonly { readonly templateRef: string }[] }[] = [];
-		const spy: Taskboard = {
-			...taskboard,
-			judgeToolCall: (input: {
-				readonly toolName: string;
-				readonly heldCards: readonly { readonly templateRef: string }[];
-			}) => {
-				seen.push(input);
-				return { ok: true };
-			},
-		} as unknown as Taskboard;
+		await taskboard.setCardActionLevel('no-claim');
+		await writeToolGuardLevel(store, 'manage');
+		const guard = guardOf({ subagents: subagentsOf('lead') });
 
-		const guard = createPermissionGuard({ taskboard: spy, subagents: subagentsOf('lead') });
-		assert.equal(guard(exec('bash')), undefined);
+		/* 想放开领卡：塞 cardLevel='adopt' —— 必须仍然拒（core 里是 no-claim）。 */
+		const sneakyClaim = {
+			...execOf({ agent: { id: 'child' }, name: 'taskboard_claim' }),
+			cardLevel: 'adopt',
+		} as unknown;
+		assert.notEqual(guard(sneakyClaim), undefined, 'cardLevel 只能从 core 读，塞进来不该生效');
 
-		assert.equal(seen.length, 1, '每次工具调用恰好判一次');
-		const input = seen[0] as Record<string, unknown>;
-		assert.deepEqual(Object.keys(input).sort(), ['heldCards', 'toolName'], '入参只有两个字段');
-		assert.equal(input['toolName'], 'bash');
-		assert.deepEqual(input['heldCards'], [{ templateRef: ref.card.template.ref }]);
-		assert.equal('mode' in input, false, '旧的 mode 入参必须彻底消失');
-		assert.equal('cardLevel' in input, false, '档位由 core 自己读，调用方不该传');
-		assert.equal('toolLevel' in input, false, '档位由 core 自己读，调用方不该传');
+		/* 想不管理工具：塞 toolLevel='off' —— 必须仍然拒（kv 里是 manage、无卡）。 */
+		const sneakyBash = {
+			...execOf({ agent: { id: 'child' }, name: 'bash' }),
+			toolLevel: 'off',
+		} as unknown;
+		assert.notEqual(guard(sneakyBash), undefined, 'toolLevel 只能从 kv 读，塞进来不该生效');
 	});
 
 	it('⚠ 不读 DSH 权限预设：塞进去也不影响判定', async () => {
@@ -413,6 +421,7 @@ describe('createPermissionGuard', () => {
 		 */
 		const withPresetService = createPermissionGuard({
 			taskboard,
+			kv: store,
 			subagents: subagentsOf('lead'),
 			...( {
 				permissionPresets: {
@@ -444,7 +453,7 @@ describe('createPermissionGuard', () => {
 		assert.equal(guard(exec('taskboard_adopt')), undefined, '改 adopt 后采纳放行');
 
 		assert.equal(guard(exec('bash')), undefined, '默认 off ⇒ bash 放行');
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 		assert.notEqual(guard(exec('bash')), undefined, '改 manage 后无卡 bash 被拒');
 	});
 
@@ -463,7 +472,7 @@ describe('createPermissionGuard', () => {
 				throw new Error('boom');
 			},
 		} as unknown as Taskboard;
-		const guard = createPermissionGuard({ taskboard: broken, subagents: subagentsOf('lead') });
+		const guard = createPermissionGuard({ taskboard: broken, kv: store, subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('bash')), undefined, '内部错应放行（并 console.error）');
 	});
 });

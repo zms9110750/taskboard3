@@ -24,7 +24,12 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS } from '../../../../core/src/permission.ts';
+import { CARD_ACTION_OPTIONS } from '../../../../core/src/permission.ts';
+/*
+ * `TOOL_GUARD_OPTIONS` 已搬进 `@taskboard/dsh-tools`（用户 2026-11-23：agent 侧那套
+ * 权限不归 core）。预览页是 dev 产物、不走包边界，所以直接相对路径取源码。
+ */
+import { TOOL_GUARD_OPTIONS } from '../../../../dsh-tools/src/tool-guard.ts';
 import { PermissionPanel } from '../../../src/renderers/PermissionPanel.tsx';
 import {
 	NO_PENDING,

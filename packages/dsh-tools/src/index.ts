@@ -44,6 +44,7 @@
 import type { Taskboard } from '@taskboard/core';
 
 import { createPermissionGuard } from './permission.ts';
+import type { ToolGuardKv } from './tool-guard.ts';
 import { createTools } from './tools.ts';
 
 /** Cordis 插件名。 */
@@ -53,9 +54,23 @@ export const name = 'taskboard3-tools';
  * 前置服务。
  *
  * `taskboard3Core` 由 `@taskboard/dsh-core` 提供（`Taskboard` 实例）。
+ * `taskboard3DefaultWorkspaceId` 也由它提供（入口的默认空间策略）。
+ * `taskboard3Store` 由 `@taskboard/store` 提供 —— 本包**借用它的 kv 端口**
+ *   存 agent 侧档位（那套权限不归 core，见 `tool-guard.ts` 文件头）。
  * `tools` 是 DSH 的工具注册表。
+ *
+ * ⚠ **四个都要列**。少列一个不报「缺依赖」，而是等到 `apply` 里第一次读
+ *   `ctx.<服务名>` 时才抛 `cannot get property "…" without inject` ——
+ *   那是**运行期**错误，构建期和单测都发现不了（单测直接调 `apply`，
+ *   不经过 Cordis 的 inject 检查）。真实症状：profile 启动报
+ *   `dsh: warning: 1 entry did not activate`，整行插件不注册。
  */
-export const inject = ['taskboard3Core', 'tools'] as const;
+export const inject = [
+	'taskboard3Core',
+	'taskboard3DefaultWorkspaceId',
+	'taskboard3Store',
+	'tools',
+] as const;
 
 /** 本插件行的配置。 */
 export interface Config {}
@@ -70,6 +85,8 @@ export interface ApplyContext {
 	readonly taskboard3Core: Taskboard;
 	/** 默认空间策略（由 `@taskboard/dsh-core` 提供）。 */
 	taskboard3DefaultWorkspaceId?: () => Promise<string>;
+	/** `@taskboard/store` 提供的存储端口（借它的 kv 存 agent 侧档位）。 */
+	readonly taskboard3Store: ToolGuardKv;
 	/** DSH 的工具服务：注册 + guard。 */
 	readonly tools: {
 		register(tool: unknown): () => void;
@@ -113,7 +130,7 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	 * ⚠ **不往 DSH 的权限预设表注册任何东西**（`2026-11-19` 用户裁定：
 	 *   「因为细节问题没必要给 dsh 开一堆权限」）。
 	 */
-	const permissionGuard = createPermissionGuard({ taskboard, subagents });
+	const permissionGuard = createPermissionGuard({ taskboard, kv: ctx.taskboard3Store, subagents });
 	const disposeGuard = ctx.tools.guard(permissionGuard);
 
 	const defaultWorkspaceId =
@@ -125,7 +142,7 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 		});
 
 	/* 工具：定义在 `@taskboard/tools`，本包只做 DSH 适配 + 注册。 */
-	const tools = createTools({ taskboard, defaultWorkspaceId, subagents });
+	const tools = createTools({ taskboard, defaultWorkspaceId, subagents, kv: ctx.taskboard3Store });
 	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
 
 	const disposeAll = (): void => {
@@ -153,3 +170,10 @@ export {
 	type GuardDeps,
 	type GuardVerdict,
 } from './permission.ts';
+/*
+ * agent 侧权限（用户 `2026-11-23`：「完全由 dsh 桥接包提供」）。
+ *
+ * `@taskboard/dsh` 的 HTTP 路由和 UI 都要读它，所以这一层必须导出；
+ * 但**不能**从 `@taskboard/core` 导出 —— core 不知道也不干涉这一侧。
+ */
+export * from './tool-guard.ts';
