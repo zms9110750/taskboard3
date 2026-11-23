@@ -38,6 +38,15 @@ export const ErrorCode = {
 	CLAIM_REJECTED: 'CLAIM_REJECTED',
 	/** 建卡时必填项缺失。 */
 	FIELD_REQUIRED: 'FIELD_REQUIRED',
+	/**
+	 * 卡已处于**完结态**（成功 / 失败 / 取消 / 拒绝）⇒ 内容不可再改。
+	 *
+	 * 用户 `2026-11-23`：「处于完结态的卡，action 内容不可再改变。」
+	 *
+	 * ⚠ 拦的只是**内容**（`content` / `sections`）。标题、备注、状态转移、
+	 *   关系、领取都不受这条规则影响 —— 它们各有自己的规则。
+	 */
+	CARD_ENDED_IMMUTABLE: 'CARD_ENDED_IMMUTABLE',
 
 	/* ── 装配方的问题（不是用户能修的） ── */
 	/** 模板注册表不可用（YAML 解析失败 / 尚未加载）。 */
@@ -69,6 +78,7 @@ export const ERROR_HINTS: Readonly<Record<ErrorCode, string>> = Object.freeze({
 	RELATION_TARGET_INVALID: '换一个目标卡编号，或改为不建这条关系。',
 	CLAIM_REJECTED: '先完成依赖，或释放手上另一个处理中的卡。',
 	FIELD_REQUIRED: '补上缺失字段后重试。',
+	CARD_ENDED_IMMUTABLE: '这张卡已完结，内容不能再改。要看内容用 taskboard_card / taskboard_raw_card；要接着做就新建一张卡。',
 	TEMPLATES_UNAVAILABLE: '模板注册表未就绪；这是安装问题，不是调用问题。',
 	ACTION_NOT_FOUND: 'action 未注册。用注册表工具查可用 action。',
 	PORT_UNAVAILABLE: '该能力未装配；检查插件是否完整。',

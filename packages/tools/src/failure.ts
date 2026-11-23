@@ -48,6 +48,12 @@ const RETRYABILITY: Readonly<Record<ErrorCode, Retryability>> = Object.freeze({
 	TRANSITION_REJECTED: 'after-fix',
 	CLAIM_REJECTED: 'after-fix',
 	ACTION_NOT_FOUND: 'after-fix',
+	/*
+	 * 完结态不可改内容 —— 「改参数」也没用（换成同一张卡还是被拦），
+	 * 但**换一张卡**是有效的下一步 ⇒ 仍归 `after-fix`，不是 `no`。
+	 * `no` 只留给装配/权限问题（重试同一个调用永远没意义）。
+	 */
+	CARD_ENDED_IMMUTABLE: 'after-fix',
 	TEMPLATES_UNAVAILABLE: 'no',
 	PORT_UNAVAILABLE: 'no',
 	INTERNAL_ERROR: 'no',

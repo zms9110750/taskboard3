@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createTaskboard, type Taskboard } from '@taskboard/core';
+import { TaskState } from '@taskboard/protocol';
 import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS } from '@taskboard/core';
 
 import { createHandler, ROUTE_PREFIX, type RouteDeps } from '../src/http.ts';
@@ -1365,5 +1366,108 @@ describe('路径与异常', () => {
 		const payload = out.json as { ok: boolean; code: string };
 		assert.equal(payload.ok, false);
 		assert.equal(payload.code, 'INTERNAL_ERROR');
+	});
+});
+
+/* ══════════════════════════════════════════════════════════
+   完结态 ⇒ 内容不可再改（用户 2026-11-23）
+
+   > 「处于完结态的卡，action 内容不可再改变。在 core 里面设置。
+   >   并对 tool 和 dsh 指令这两处调用打错误原因」
+
+   这条钉的是 **dsh 这一侧**：HTTP 客户端（浏览器 UI）拿到的必须是
+
+     · 409（请求与当前状态冲突，不是参数写错）
+     · `code = CARD_ENDED_IMMUTABLE`（机器可读）
+     · `message` 里带卡 id + 状态中文名（人可读，界面直接展示）
+
+   ⚠ 为什么不写在 PATCH 那个 describe 里：它同时涉及 `update` 的 content
+      分支和状态机，单独一块更看得清「这是完结态规则」而不是某个端点细节。
+   ══════════════════════════════════════════════════════════ */
+describe('完结态：dsh 侧把原因传出去', () => {
+	/* 空间名要唯一：同一个 sqlite 库在整份文件里共用（重名会 WORKSPACE_EXISTS）。 */
+	let seq = 0;
+
+	/** 造一张已完结的卡（提交 → 成功），返回空间与卡。 */
+	async function endedCard(): Promise<{ wsId: string; cardId: string; ref: string } | null> {
+		seq += 1;
+		const created = await taskboard.createWorkspace(`完结态-${String(seq)}`);
+		assert.equal(created.ok, true);
+		if (!created.ok) return null;
+		const wsId = created.workspace.id;
+		const template = anyTemplate();
+		if (template === undefined) return null;
+
+		const made = await taskboard.create({
+			workspaceId: wsId,
+			templateRef: template.ref,
+			title: '会被冻结的卡',
+			actor: 'user',
+		});
+		assert.equal(made.ok, true);
+		if (!made.ok) return null;
+
+		const adopted = await taskboard.adopt(wsId, made.card.id, 'user');
+		assert.equal(adopted.ok, true, adopted.ok ? '' : adopted.message);
+		/* 只有「提交 / 处理中」才有人工按钮能进完结态（`transition.ts` 按钮表）。 */
+		const moved = await taskboard.transition(wsId, made.card.id, TaskState.COMPLETED, 'button');
+		assert.equal(moved.ok, true, moved.ok ? '' : moved.message);
+		return { wsId, cardId: made.card.id, ref: template.ref };
+	}
+
+	it('PATCH content ⇒ 409 + CARD_ENDED_IMMUTABLE + 理由带 id 与状态', async () => {
+		const ctx = await endedCard();
+		if (ctx === null) return;
+
+		const deps = depsOf({ defaultWorkspaceId: async () => ctx.wsId });
+		const out = await call(deps, {
+			method: 'PATCH',
+			url: `${ROUTE_PREFIX}/api/cards/${ctx.cardId}`,
+			body: { content: {} },
+		});
+
+		assert.equal(out.status, 409, out.raw);
+		const payload = out.json as { ok: boolean; code: string; message: string };
+		assert.equal(payload.ok, false);
+		assert.equal(payload.code, 'CARD_ENDED_IMMUTABLE');
+		assert.ok(payload.message.includes(ctx.cardId), `理由要带卡 id：${payload.message}`);
+		assert.ok(payload.message.includes('成功'), `理由要带状态中文名：${payload.message}`);
+	});
+
+	it('PATCH 只改备注 ⇒ 仍然 200（备注不是 action 内容）', async () => {
+		const ctx = await endedCard();
+		if (ctx === null) return;
+
+		const deps = depsOf({ defaultWorkspaceId: async () => ctx.wsId });
+		const out = await call(deps, {
+			method: 'PATCH',
+			url: `${ROUTE_PREFIX}/api/cards/${ctx.cardId}`,
+			body: { note: '完结之后补一条备注' },
+		});
+
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { data: { card: { note: string } } };
+		assert.equal(payload.data.card.note, '完结之后补一条备注');
+	});
+
+	it('拒绝之后卡的内容没变', async () => {
+		const ctx = await endedCard();
+		if (ctx === null) return;
+
+		const before = taskboard.get(ctx.wsId, ctx.cardId);
+		assert.equal(before.ok, true);
+		if (!before.ok) return;
+
+		const deps = depsOf({ defaultWorkspaceId: async () => ctx.wsId });
+		await call(deps, {
+			method: 'PATCH',
+			url: `${ROUTE_PREFIX}/api/cards/${ctx.cardId}`,
+			body: { content: {} },
+		});
+
+		const after = taskboard.get(ctx.wsId, ctx.cardId);
+		assert.equal(after.ok, true);
+		if (!after.ok) return;
+		assert.deepEqual(after.card.sections, before.card.sections);
 	});
 });
