@@ -781,3 +781,132 @@ export function canvasSizeOf(
 				metrics.padding * 2;
 	return { width, height };
 }
+
+/* ══════════════════════════════════════════════════════════════
+ * 列内独立排版（用户 `2026-11-24`：「让列成为一个组件。内部管理」）
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * 一个槽位的纵向尺寸。
+ *
+ * - `height` = 这一项自己画多高（卡 78 / 收起的分组横幅 18）
+ * - `pitch`  = 它到下一项的步进（**已含与下一项的间距**）；卡 = 78 + 14 = 92，
+ *              横幅 = 92 / 2 = 46 ⇒ **两个横幅正好等于一个卡槽**（用户 `2026-11-24`：
+ *              「一个横幅的占位（包括间距），让他变成0.5卡高。也就是说两个横幅=1卡（包括间距）」）。
+ */
+export interface TreeSlot {
+	readonly height: number;
+	readonly pitch: number;
+}
+
+/** 列里的一项：节点 + 它的纵向位置。 */
+export interface TreeLaneItem {
+	readonly node: TreeLayoutNode;
+	readonly top: number;
+	readonly height: number;
+}
+
+/** 一个物理栏（列）的排版结果。**列内独立，不与其他列共享行坐标。** */
+export interface TreeLane {
+	/** 物理栏号（= `layoutTree` 里的 `column`，决定 x）。 */
+	readonly lane: number;
+	readonly x: number;
+	readonly width: number;
+	readonly items: readonly TreeLaneItem[];
+	/** 内容底边（最后一个 item 的 bottom）；空列 = `padding`。 */
+	readonly bottom: number;
+}
+
+/**
+ * 按**物理栏**独立排版：每一列自己累加步进，列与列之间不再共享行坐标。
+ *
+ * ## 为什么要拆
+ *
+ * 旧实现是「全局行表」(`rowMetricsOf`)：所有列共用 `tops[row]`。
+ * 好处是父子跨列时天然同行、连线水平；坏处是**一列里的组收起后，只要别列同一行还有卡，
+ * 这一行就压不下去** —— 用户 `2026-11-24` 实测到的「多栏收不干净」。
+ *
+ * 现在每列只对自己的 item 序列累加 ⇒ 某一列收起一个组，**只有该列后面的 item 上移**，
+ * 别的列纹丝不动。代价：父子卡不再保证同行，`parentCurve` 会画出斜/弧线（这是接受的）。
+ *
+ * @param layout `layoutTree()` 的结果（分层 / 折栏规则不变）
+ * @param metrics 渲染尺寸
+ * @param slotOf 某个节点的槽位；返回 `undefined` = 按卡槽（78 / 92）
+ * @returns `lanes` 每列一项（按 lane 升序）；`boxes` 节点 id → 矩形（画边用）；
+ *          `stageHeight` = 最高列的底边 + 下留白
+ */
+export function lanePlansOf(
+	layout: TreeLayout,
+	metrics: TreeMetrics,
+	slotOf?: (id: string) => TreeSlot | undefined,
+): {
+	readonly lanes: readonly TreeLane[];
+	readonly boxes: ReadonlyMap<string, TreeBox>;
+	readonly stageHeight: number;
+} {
+	const cardSlot: TreeSlot = {
+		height: metrics.cardHeight,
+		pitch: metrics.cardHeight + metrics.rowGap,
+	};
+
+	const byLane = new Map<number, TreeLayoutNode[]>();
+	for (const node of layout.nodes) {
+		const list = byLane.get(node.column);
+		if (list === undefined) byLane.set(node.column, [node]);
+		else list.push(node);
+	}
+
+	const lanes: TreeLane[] = [];
+	const boxes = new Map<string, TreeBox>();
+	let maxBottom = metrics.padding;
+
+	for (const lane of [...byLane.keys()].sort((a, b) => a - b)) {
+		const nodes = byLane.get(lane) ?? [];
+		/* 列内顺序 = 逻辑行号升序（`layoutTree` 已经排好行，这里只按行稳定排序）。 */
+		nodes.sort((a, b) => a.row - b.row);
+
+		const x = lane * (metrics.cardWidth + metrics.columnGap) + metrics.padding;
+		const items: TreeLaneItem[] = [];
+		let y = metrics.padding;
+		for (const node of nodes) {
+			const slot = slotOf?.(node.id) ?? cardSlot;
+			const top = y;
+			items.push({ node, top, height: slot.height });
+			boxes.set(node.id, {
+				left: x,
+				top,
+				right: x + metrics.cardWidth,
+				bottom: top + slot.height,
+				midX: x + metrics.cardWidth / 2,
+				midY: top + slot.height / 2,
+			});
+			y += slot.pitch;
+		}
+		const last = items[items.length - 1];
+		const bottom = last === undefined ? metrics.padding : last.top + last.height;
+		if (bottom > maxBottom) maxBottom = bottom;
+		lanes.push({ lane, x, width: metrics.cardWidth, items, bottom });
+	}
+
+	return { lanes, boxes, stageHeight: maxBottom + metrics.padding };
+}
+
+/**
+ * 父子边：用**给定的矩形表**画（列内独立排版时用这个，不用 `rowTops`）。
+ *
+ * @param layout `layoutTree()` 的结果
+ * @param boxes 节点 id → 矩形（`lanePlansOf().boxes`）
+ */
+export function parentEdgePathsOf(
+	layout: TreeLayout,
+	boxes: ReadonlyMap<string, TreeBox>,
+): readonly TreeEdgePath[] {
+	const out: TreeEdgePath[] = [];
+	for (const edge of layout.edges) {
+		const from = boxes.get(edge.from);
+		const to = boxes.get(edge.to);
+		if (from === undefined || to === undefined) continue;
+		out.push({ from: edge.from, to: edge.to, d: toPathData(parentCurve(from, to)) });
+	}
+	return out;
+}

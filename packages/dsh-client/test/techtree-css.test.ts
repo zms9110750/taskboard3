@@ -32,7 +32,7 @@ void test('TECHTREE_CSS 非空，且关键规则在（不是空壳骗过相等�
 	for (const rule of [
 		'.tb3t-edge.is-dim{opacity:0.25}', // 用户 2026-11-19：hover 时无关的边淡到 25%
 		'.tb3t-card.is-draft{border-color:transparent;box-shadow:none}', // 用户 2026-11-10：草稿无边框
-		'.tb3t-links{position:absolute;left:0;pointer-events:none;overflow:visible}', // 线层不吃鼠标事件
+		'.tb3t-links{position:absolute;z-index:1;left:0;pointer-events:none;overflow:visible}', // 线层不吃鼠标事件
 	]) {
 		assert.ok(FROM_PURE.includes(rule), `缺少关键规则：${rule}`);
 	}

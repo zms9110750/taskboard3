@@ -73,15 +73,16 @@ import type { TreeFilterCriteria } from '../pure/tree-filter.ts';
 import {
 	boxOf,
 	canvasSizeOf,
+	lanePlansOf,
 	layoutTree,
 	linkCurve,
-	parentEdgePaths,
-	rowMetricsOf,
+	parentEdgePathsOf,
 	toPathData,
 } from '../pure/tree-layout.ts';
 import type {
 	TreeBox,
 	TreeCurve,
+	TreeLane,
 	TreeLayout,
 	TreeLayoutNode,
 	TreeMetrics,
@@ -128,6 +129,18 @@ export const TREE_HEADER_HEIGHT = 34;
  * 展开时把它挤在行距（14px）附近，尽量减少压到上面的卡。
  */
 export const GROUP_BANNER_HEIGHT = 18;
+
+/**
+ * 一列里「收起的分组横幅」的**槽位步进**（含与下一项的间距）。
+ *
+ * 用户 `2026-11-24`：
+ * > 「让列成为一个组件。内部管理。」
+ * > 「一个横幅的占位（包括间距），让他变成0.5卡高。也就是说两个横幅=1卡（包括间距）」
+ *
+ * 卡槽 = 78 + 14 = 92 ⇒ 横幅槽 = 46（**两个横幅正好一个卡槽**）。
+ * 横幅本体仍是 `GROUP_BANNER_HEIGHT`（18），多的 28 是这一槽的余白 —— 不把横幅拉高。
+ */
+export const GROUP_BANNER_PITCH = (TREE_METRICS.cardHeight + TREE_METRICS.rowGap) / 2;
 
 /** 无关的边在 hover 时淡到多少（用户 `2026-11-19`：「淡到 25%」）。 */
 export const TREE_DIM_OPACITY = 0.25;
@@ -294,14 +307,12 @@ function pairKey(a: string, b: string): string {
 function buildEdges(
 	cards: readonly Card[],
 	layout: TreeLayout,
-	metrics: TreeMetrics,
-	rowTops?: readonly number[],
+	boxes: ReadonlyMap<string, TreeBox>,
 ): readonly EdgeGeometry[] {
-	const nodeById = new Map(layout.nodes.map((node) => [node.id, node]));
 	const out: EdgeGeometry[] = [];
 
 	/* ── ① 父子派生边 ── */
-	for (const path of parentEdgePaths(layout, metrics, rowTops)) {
+	for (const path of parentEdgePathsOf(layout, boxes)) {
 		out.push({
 			key: `parent:${path.from}>${path.to}`,
 			from: path.from,
@@ -324,17 +335,17 @@ function buildEdges(
 	}
 	const candidates: Candidate[] = [];
 	for (const card of cards) {
-		const fromNode = nodeById.get(card.id);
-		if (fromNode === undefined) continue;
+		const fromBox = boxes.get(card.id);
+		if (fromBox === undefined) continue;
 		for (const link of card.relations.links) {
-			const toNode = nodeById.get(link.to);
-			if (toNode === undefined) continue;
+			const toBox = boxes.get(link.to);
+			if (toBox === undefined) continue;
 			candidates.push({
 				from: card.id,
 				to: link.to,
 				rel: resolveLinkRel(link.label),
-				fromBox: boxOf(fromNode, metrics, rowTops),
-				toBox: boxOf(toNode, metrics, rowTops),
+				fromBox,
+				toBox,
 			});
 		}
 	}
@@ -542,6 +553,112 @@ const CardsLayer = memo(function CardsLayer(props: CardsLayerProps): ReactNode {
 	);
 });
 
+/** 一条组横幅的渲染位置与文案（由主组件算好，列只负责画）。 */
+interface BannerView {
+	readonly group: TreeGroup;
+	readonly label: string;
+	readonly collapsed: boolean;
+	readonly count: number;
+	readonly left: number;
+	readonly top: number;
+	readonly width: number;
+}
+
+/** 列组件的属性。 */
+interface TreeColumnProps {
+	/** 这一列的排版结果（y 已经按列独立算好）。 */
+	readonly lane: TreeLane;
+	/** 这一列的列背景 + 列头（没有 band 的列不画）。 */
+	readonly band:
+		| { readonly layer: number; readonly label: string; readonly height: number }
+		| undefined;
+	/** 这一列要画的卡（已剔除被横幅取代的锚点）。 */
+	readonly items: readonly CardItem[];
+	/** 这一列的组横幅。 */
+	readonly banners: readonly BannerView[];
+	readonly metrics: TreeMetrics;
+	readonly selectedId: string | null;
+	readonly kindLabelOf: (kind: string) => string;
+	readonly templateLabelOf: ((ref: string) => string) | undefined;
+	readonly onSelect: (cardId: string) => void;
+	readonly onHoverChange: ((cardId: string | null) => void) | undefined;
+	readonly foldable: ReadonlySet<string>;
+	readonly folded: ReadonlySet<string>;
+	readonly badgeCountOf: (id: string) => number;
+	readonly onToggleFold: (id: string, folded: boolean) => void;
+}
+
+/**
+ * 一列（一个物理栏）—— **列自己管理自己的纵向排版**。
+ *
+ * 用户 `2026-11-24`：
+ * > 「让列成为一个组件。内部管理。」
+ * > 「一个横幅的占位（包括间距），让他变成0.5卡高。也就是说两个横幅=1卡（包括间距）」
+ *
+ * 坐标由 `lanePlansOf()` 按列独立算（纯函数，和主组件共用同一份 —— 主组件只用它给连线拿矩形）。
+ * 本组件不写任何 y 计算：它拿到自己那一列的 `lane.items`（含 top/height）直接画。
+ *
+ * ⚠ 为什么用 Fragment 而不是包一层 `<div>`：卡片/横幅都是相对 `.tb3t-stage` 绝对定位的，
+ *   多包一层会改掉定位基准和点击层级；列只是「渲染单元」，不是一个盒子。
+ */
+function TreeColumn(props: TreeColumnProps): ReactNode {
+	const { lane, band, metrics, items, banners } = props;
+	return (
+		<>
+			{band === undefined ? null : (
+				<div
+					className="tb3t-band"
+					data-band={String(lane.lane)}
+					data-layer={String(band.layer)}
+					style={{ left: lane.x, top: 0, width: lane.width, height: band.height }}
+				>
+					<span className="tb3t-band__title">{band.label}</span>
+				</div>
+			)}
+
+			<CardsLayer
+				items={items}
+				metrics={metrics}
+				selectedId={props.selectedId}
+				kindLabelOf={props.kindLabelOf}
+				foldable={props.foldable}
+				folded={props.folded}
+				badgeCountOf={props.badgeCountOf}
+				onToggleFold={props.onToggleFold}
+				templateLabelOf={props.templateLabelOf}
+				onSelect={props.onSelect}
+				onHoverChange={props.onHoverChange}
+			/>
+
+			{banners.map((banner) => (
+				<button
+					type="button"
+					key={`group:${banner.group.id}`}
+					className={`tb3t-groupbanner${banner.collapsed ? ' is-collapsed' : ' is-expanded'}`}
+					data-tree-group-banner={banner.group.id}
+					data-collapsed={banner.collapsed ? '1' : '0'}
+					title={banner.collapsed ? '展开这个组' : '收起这个组'}
+					aria-expanded={!banner.collapsed}
+					style={{
+						left: banner.left,
+						top: TREE_HEADER_HEIGHT + banner.top,
+						width: banner.width,
+					}}
+					onClick={(event) => {
+						event.stopPropagation();
+						/* 折叠 → 展开传 false；展开 → 收起传 true。 */
+						props.onToggleFold(banner.group.id, !banner.collapsed);
+					}}
+				>
+					<span className="tb3t-groupbanner__caret">{banner.collapsed ? '▸' : '▾'}</span>
+					<span className="tb3t-groupbanner__name">{banner.label}</span>
+					<span className="tb3t-groupbanner__count">{String(banner.count)} 张</span>
+				</button>
+			))}
+		</>
+	);
+}
+
 /* ══════════════════════════════════════════════════════════════
  * 六、主组件
  * ══════════════════════════════════════════════════════════════ */
@@ -675,22 +792,26 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	}, [treeCards, props.maxRowsPerColumn]);
 
 	/*
-	 * 收起的分组：它那一行只画一条 18px 横幅 ⇒ **行高也应该是 18**，不是卡高 78。
+	 * 收起的分组：那一槽只画一条 18px 横幅 ⇒ 槽位步进 46（两个横幅 = 一个卡槽）。
 	 *
-	 * 用户 `2026-11-24`：「组收起的就如果那些组内卡不存在一样」。
-	 * 不这么算的话，行高仍是 78 ⇒ 横幅下面空 60px（用户截图里那块圆角空白）。
+	 * 用户 `2026-11-24`：
+	 * > 「让列成为一个组件。内部管理。」
+	 * > 「一个横幅的占位（包括间距），让他变成0.5卡高。也就是说两个横幅=1卡（包括间距）」
 	 *
-	 * ⚠ 只有「折叠组的锚点」会变矮；真卡永远是卡高。
-	 *   同一行别处若还有真卡，`rowMetricsOf` 取该行最大高 ⇒ 仍是 78。
+	 * ⚠ 与上一轮的差别：上一轮是**全局行表**（所有列共享 `tops[row]`），
+	 *   所以别的列同一行还有卡时，这一列压不下去。现在 `lanePlansOf` **按列独立累加**，
+	 *   收起的组只影响它自己那一列后面的 item，别的列纹丝不动。
 	 */
 	const collapsedAnchorIds = useMemo(
 		() => new Set(groupPlan.anchors.values()),
 		[groupPlan.anchors],
 	);
-	const rows = useMemo(
+	const lanePlans = useMemo(
 		() =>
-			rowMetricsOf(layout, metrics, (id) =>
-				collapsedAnchorIds.has(id) ? GROUP_BANNER_HEIGHT : undefined,
+			lanePlansOf(layout, metrics, (id) =>
+				collapsedAnchorIds.has(id)
+					? { height: GROUP_BANNER_HEIGHT, pitch: GROUP_BANNER_PITCH }
+					: undefined,
 			),
 		[layout, metrics, collapsedAnchorIds],
 	);
@@ -698,9 +819,9 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	const canvas = useMemo(
 		() => ({
 			width: canvasSizeOf(layout, metrics).width,
-			height: rows.stageHeight,
+			height: lanePlans.stageHeight,
 		}),
-		[layout, metrics, rows.stageHeight],
+		[layout, metrics, lanePlans.stageHeight],
 	);
 
 	const cardById = useMemo(
@@ -712,15 +833,16 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		const out: CardItem[] = [];
 		for (const node of layout.nodes) {
 			const card = cardById.get(node.id);
-			if (card === undefined) continue;
-			out.push({ card, node, box: boxOf(node, metrics, rows.tops) });
+			const box = lanePlans.boxes.get(node.id);
+			if (card === undefined || box === undefined) continue;
+			out.push({ card, node, box });
 		}
 		return out;
-	}, [layout, cardById, metrics, rows.tops]);
+	}, [layout, cardById, lanePlans.boxes]);
 
 	const edges = useMemo(
-		() => buildEdges(props.cards, layout, metrics, rows.tops),
-		[props.cards, layout, metrics, rows.tops],
+		() => buildEdges(props.cards, layout, lanePlans.boxes),
+		[props.cards, layout, lanePlans.boxes],
 	);
 
 	/* 组横幅：**折叠态也画、展开态也画** —— 展开后必须还能点回收起（用户 2026-11-24 报的 bug）。 */
@@ -760,9 +882,8 @@ export function TechTree(props: TechTreeProps): ReactNode {
 				left = box.left;
 				width = metrics.cardWidth;
 				/*
-				 * 这一行的高度已经是 `GROUP_BANNER_HEIGHT`（`rowMetricsOf` 按锚点给的）⇒
-				 * 横幅直接贴行顶，不再「在卡高里居中」（居中会上下各留 30px 空白）。
-				 * 若同一行别处还有真卡，行高仍是卡高，此时贴顶也读得通。
+				 * 折叠时这一槽的步进已经是 `GROUP_BANNER_PITCH`（46，两个横幅=一卡槽）
+				 * ⇒ 横幅直接贴槽顶，不在卡高里居中（居中会上下各留 30px 空白）。
 				 */
 				top = box.top;
 			} else {
@@ -798,37 +919,46 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		return items.filter((item) => !hide.has(item.card.id));
 	}, [items, groupPlan.anchors]);
 
-	/* ── ③ 列背景 + 列头（每个**物理栏**一条；折栏后同层多栏各自有头） ── */
-	const bands = useMemo(() => {
-		const laneOf = new Map<number, number>();
+	/*
+	 * ── ③ 列背景 + 列头（每个**物理栏**一条） ──
+	 *
+	 * 栏高取该列自己的排版结果（`lanePlans.lanes[].bottom`）——
+	 * 列与列独立之后，每列高度可以不同，不再从全局行表推。
+	 */
+	const bandByLane = useMemo(() => {
+		const out = new Map<
+			number,
+			{ readonly layer: number; readonly label: string; readonly height: number }
+		>();
 		const seenPerLayer = new Map<number, number>();
-		return layout.bands.map((band) => {
+		for (const band of layout.bands) {
 			const lane = seenPerLayer.get(band.layer) ?? 0;
 			seenPerLayer.set(band.layer, lane + 1);
-			laneOf.set(band.column, lane);
-			const x = band.column * (metrics.cardWidth + metrics.columnGap) + metrics.padding;
-			/*
-			 * 栏高按**变高行**算（收起的分组只占 18px）：
-			 * 底边 = 该栏最后一行的行底（`rows.tops[last] + rows.heights[last]`）。
-			 */
-			const lastRow = band.rowCount - 1;
-			const bottom =
-				lastRow < 0
-					? metrics.padding
-					: (rows.tops[lastRow] ?? metrics.padding) +
-						(rows.heights[lastRow] ?? metrics.cardHeight);
-			const height = TREE_HEADER_HEIGHT + bottom + Math.round(metrics.padding / 2);
-			return {
-				column: band.column,
+			const plan = lanePlans.lanes.find((one) => one.lane === band.column);
+			const bottom = plan?.bottom ?? metrics.padding;
+			out.set(band.column, {
 				layer: band.layer,
-				lane,
-				x,
-				width: metrics.cardWidth,
-				height,
 				label: lane === 0 ? layerLabel(band.layer) : `第 ${String(band.layer)} 层 · 第 ${String(lane + 1)} 栏`,
-			};
-		});
-	}, [layout.bands, metrics, rows.tops, rows.heights]);
+				height: TREE_HEADER_HEIGHT + bottom + Math.round(metrics.padding / 2),
+			});
+		}
+		return out;
+	}, [layout.bands, lanePlans.lanes, metrics.padding]);
+
+	/*
+	 * 横幅按**所在物理栏**分组（列渲染单元只画自己那一列的横幅）。
+	 * 横幅的 `left` 是画布绝对坐标 ⇒ 反推栏号：left = padding + lane * (卡宽 + 列间距)。
+	 */
+	const bannersByLane = useMemo(() => {
+		const out = new Map<number, readonly BannerView[]>();
+		const pitch = metrics.cardWidth + metrics.columnGap;
+		for (const banner of groupBanners) {
+			const lane = Math.max(0, Math.round((banner.left - metrics.padding) / pitch));
+			const list = out.get(lane) ?? [];
+			out.set(lane, [...list, banner]);
+		}
+		return out;
+	}, [groupBanners, metrics.cardWidth, metrics.columnGap, metrics.padding]);
 
 	/* ── ④ hover / 选中 ⇒ 相连的边高亮，无关的淡到 25% ── */
 	const nodeIds = useMemo(() => new Set(layout.nodes.map((node) => node.id)), [layout]);
@@ -915,19 +1045,6 @@ export function TechTree(props: TechTreeProps): ReactNode {
 						data-edge-count={String(edges.length)}
 						style={{ width: stageWidth, height: stageHeight }}
 					>
-					{/* 列背景 + 列头（在 SVG / 卡片下面） */}
-					{bands.map((band) => (
-						<div
-							className="tb3t-band"
-							key={`band:${String(band.column)}`}
-							data-band={String(band.column)}
-							data-layer={String(band.layer)}
-							style={{ left: band.x, top: 0, width: band.width, height: band.height }}
-						>
-							<span className="tb3t-band__title">{band.label}</span>
-						</div>
-					))}
-
 					{/* SVG 线层：箭头 / 关系色 / hover 淡化都在这层 */}
 					<svg
 						className="tb3t-links"
@@ -1002,55 +1119,33 @@ export function TechTree(props: TechTreeProps): ReactNode {
 						))}
 					</svg>
 
-					{/* 卡片层（memo：hover 不重建；卡片本体在 TreeCard.tsx） */}
-					<CardsLayer
-						items={renderItems}
-						metrics={metrics}
-						selectedId={props.selectedId}
-						kindLabelOf={kindLabelOf}
-					foldable={foldState.foldable}
-					folded={foldState.folded}
-					badgeCountOf={(id) => badgeCountOf(foldState, id)}
-					onToggleFold={onToggleFold}
-						templateLabelOf={props.templateLabelOf}
-						onSelect={props.onSelect}
-						onHoverChange={props.onHoverChange}
-					/>
-
 					{/*
-					 * 组横幅层：**折叠和展开都在**（用户 2026-11-24「组展开了就收不回来了」）。
+					 * 每列一个 `TreeColumn`（用户 2026-11-24：「让列成为一个组件。内部管理」）。
 					 *
-					 *   折叠 ⇒ 横幅占锚点位置，成员藏起来
-					 *   展开 ⇒ 横幅画在成员区域上方，点它随时收回
+					 * 列自己带着自己的 y（`lanePlansOf` 按列独立累加）：一列里的组收起，
+					 * 只有这一列后面的 item 上移，别的列纹丝不动。
 					 *
-					 * 高 18（卡片 78），所以一眼能分辨「这是横幅不是卡」。
+					 * 层叠靠 CSS 的 z-index：band 0 / svg 1 / 卡 2 / 横幅 3 ——
+					 * 所以列虽然把 band 和卡画在一起，线仍然在带底色之上、在卡片之下。
 					 */}
-					{groupBanners.map((banner) => (
-						<button
-							type="button"
-							key={`group:${banner.group.id}`}
-							className={`tb3t-groupbanner${banner.collapsed ? ' is-collapsed' : ' is-expanded'}`}
-							data-tree-group-banner={banner.group.id}
-							data-collapsed={banner.collapsed ? '1' : '0'}
-							title={banner.collapsed ? '展开这个组' : '收起这个组'}
-							aria-expanded={!banner.collapsed}
-							style={{
-								left: banner.left,
-								top: TREE_HEADER_HEIGHT + banner.top,
-								width: banner.width,
-							}}
-							onClick={(event) => {
-								event.stopPropagation();
-								/* 折叠 → 展开传 false；展开 → 收起传 true。 */
-								onToggleFold(banner.group.id, !banner.collapsed);
-							}}
-						>
-							<span className="tb3t-groupbanner__caret">
-								{banner.collapsed ? '▸' : '▾'}
-							</span>
-							<span className="tb3t-groupbanner__name">{banner.label}</span>
-							<span className="tb3t-groupbanner__count">{String(banner.count)} 张</span>
-						</button>
+					{lanePlans.lanes.map((lane) => (
+						<TreeColumn
+							key={`lane:${String(lane.lane)}`}
+							lane={lane}
+							band={bandByLane.get(lane.lane)}
+							items={renderItems.filter((item) => item.node.column === lane.lane)}
+							banners={bannersByLane.get(lane.lane) ?? []}
+							metrics={metrics}
+							selectedId={props.selectedId}
+							kindLabelOf={kindLabelOf}
+							templateLabelOf={props.templateLabelOf}
+							onSelect={props.onSelect}
+							onHoverChange={props.onHoverChange}
+							foldable={foldState.foldable}
+							folded={foldState.folded}
+							badgeCountOf={(id) => badgeCountOf(foldState, id)}
+							onToggleFold={onToggleFold}
+						/>
 					))}
 				</div>
 			</div>
