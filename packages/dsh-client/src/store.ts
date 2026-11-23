@@ -26,7 +26,7 @@ import {
 	messageOf,
 } from './pure.ts';
 import { toOfAction } from './pure/card-action.ts';
-import type { ActionRequest, Card, StateData, TemplateSummary, Workspace } from './types.ts';
+import type { ActionRequest, Card, KindSummary, StateData, TemplateSummary, Workspace } from './types.ts';
 
 /** `useBoardState` 的状态。 */
 export interface BoardState {
@@ -38,6 +38,8 @@ export interface BoardState {
 	readonly cards: readonly Card[];
 	/** 模板清单。 */
 	readonly templates: readonly TemplateSummary[];
+	/** 类别注册表（中文名 + 编号字母；老服务端可能没有 ⇒ 空数组）。 */
+	readonly kinds: readonly KindSummary[];
 	/** 首次加载中。 */
 	readonly loading: boolean;
 	/** 最近一次错误的人话说明（成功请求后清空）。 */
@@ -93,6 +95,7 @@ const EMPTY: BoardState = Object.freeze({
 	workspaceId: '',
 	cards: Object.freeze([]) as readonly Card[],
 	templates: Object.freeze([]) as readonly TemplateSummary[],
+	kinds: Object.freeze([]) as readonly KindSummary[],
 	loading: true,
 	error: undefined,
 	pending: 0,
@@ -136,6 +139,8 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 				workspaceId: nextId,
 				cards: data.cards,
 				templates: data.templates,
+				/* 老服务端不带 `kinds` ⇒ 空数组 ⇒ 客户端降级显示英文 id（不编中文）。 */
+				kinds: data.kinds ?? [],
 				loading: false,
 				error: undefined,
 				pending: 0,

@@ -60,13 +60,14 @@
  *   提交成功 ⇒ 关闭建卡页 + `reload()` 让新卡进列表。
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { toCardAction } from './actions.ts';
 import { createApi, type TaskboardApi, type TemplateDerive } from './api.ts';
 import { CreateFlow, type CreateInitial } from './CreateFlow.tsx';
 import { deriveMenuItemsOf, derivePrefillOf, deriveSourceOf, type DeriveMenuItem } from './pure/derive-menu.ts';
+import { kindLabelsOf } from './pure/kind-labels.ts';
 import { DeriveMenu } from './renderers/DeriveMenu.tsx';
 import { useBoardState } from './store.ts';
 import type { Card, CardAction } from './types.ts';
@@ -127,6 +128,15 @@ function PageMessage(props: {
 export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 	const { state, actions } = useBoardState(props.api);
 	const [showArchived, setShowArchived] = useState(false);
+	/*
+	 * 类别显示：中文名 + 编号字母都来自 core 的注册表（`state.kinds`），
+	 * **前端不写第二份中文表**。注册表缺项 / 字段不全时 `kindLabelsOf` 自己降级。
+	 *
+	 * ⚠ 两种消费方要的形状不同，所以拆两个 prop：
+	 *   · `Workspace` 的徽标 = `G 目标`（字母 + 中文，一个字符串）
+	 *   · 模板选择器的「类别」列 = 字母、中文**两段分开放**（`letterOf` + `labelOf`）
+	 */
+	const kindLabels = useMemo(() => kindLabelsOf(state.kinds), [state.kinds]);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	/** 建卡页是否打开（打开时**整个替换** `Workspace`，不是浮层）。 */
 	const [creating, setCreating] = useState(false);
@@ -326,6 +336,12 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 				templates={state.templates}
 				cards={cards}
 				/*
+				 * 类别显示注入：选择器「类别」列要 `G` + `目标` 两段分开画，
+				 * 所以这里传「纯中文名」和「纯字母」，不是徽标那个拼好的串。
+				 */
+				kindLabelOf={kindLabels.labelOf}
+				kindLetterOf={kindLabels.letterOf}
+				/*
 				 * 预填（「+ 派生子任务」那条路带，工具栏「新建」不带）。
 				 * ⚠ 只在打开那一刻算一次 —— 用户进去后改的三样以他改的为准。
 				 */
@@ -363,10 +379,10 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 			 */
 			loading={state.loading}
 			/*
-			 * ⚠ 不传 `kindLabelOf`：v3 的模板只有 `displayName`，**没有类别的中文名**
-			 *   （`pure/card-view.ts` 文件头写了为什么）。不传 ⇒ 显示英文 id，
-			 *   这是「不编词」的口径，不是漏了。
+			 * 类别徽标 = `字母 + 空格 + 中文`（`G 目标`）。数据来自 core 的注册表
+			 * （`state.kinds`）；注册表没有的类别降级成 `G goal` —— **不编中文**。
 			 */
+			kindLabelOf={kindLabels.badgeOf}
 			onView={onView}
 			onToggleArchived={onToggleArchived}
 			onToggleShowArchived={() => {

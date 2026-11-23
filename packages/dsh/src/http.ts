@@ -342,6 +342,17 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			cards: taskboard.list(workspaceId),
 			templates: taskboard.listTemplates(),
 			templateErrors: taskboard.templateErrors(),
+			/*
+			 * 类别注册表 —— 客户端显示类别要用中文名 + 编号字母，而那些**只有 core 知道**
+			 * （`KindRegistry`，第三方还能注册更多）。
+			 *
+			 * ⚠ 不许在前端写一份中文表、也不许只发内置四个：那会成为第二份真值。
+			 *   这里发的是**注册表本身**（`KindDef` 的公开投影：id/displayName/letter/
+			 *   description/reopenable/needsClaim，没有内部字段）。
+			 *
+			 * 用户 2026-11-24：「模板分类那里要用中文的。并且中文前面要有一个大写的G。」
+			 */
+			kinds: taskboard.kinds().list(),
 		});
 		return;
 	}
