@@ -43,8 +43,26 @@ import { type TaskState, TaskState as S, isTaskState, statesInGroup } from './st
 
 /* ────────────────────────────── 词汇 ────────────────────────────── */
 
-/** 触发转移的主体种类。`user` = 人点按钮，`ai` = 模型调用工具。 */
-export type Actor = 'user' | 'ai';
+/**
+ * 触发转移的主体种类。
+ *
+ * - `user`   = 人点按钮
+ * - `ai`     = 模型调用工具
+ * - `system` = 系统自动算出来的（沿子任务推导父卡，见 `recomputeTargetOf`）
+ *
+ * ## `system` 为什么要独立于 `ai`（用户 `2026-11-23`）
+ *
+ * > 「改卡状态的角色，还有一个系统。目标这一类自动算出来的，改卡角色都是系统。」
+ *
+ * 之前重算的 history 作者被写成 `'ai'`（`core/src/transition.ts` 的
+ * `recomputeTargetOf`），于是「AI 改过、用户未读」这类按作者统计的东西
+ * 把机器自己的推导也算成 AI 干的。**「自动算出来的」不是 AI 干的** ⇒
+ * 独立成 `system`。
+ *
+ * ⚠ `system` **不进按钮表**（`USER` / `BOTH` 里都没有它）：自动计算走
+ *   `autoTargetsOf` 那条独立通路，本来就绕开按钮表（规则 1）。
+ */
+export type Actor = 'user' | 'ai' | 'system';
 
 /**
  * 类别 id。

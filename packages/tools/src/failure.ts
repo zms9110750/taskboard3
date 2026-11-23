@@ -54,6 +54,13 @@ const RETRYABILITY: Readonly<Record<ErrorCode, Retryability>> = Object.freeze({
 	 * `no` 只留给装配/权限问题（重试同一个调用永远没意义）。
 	 */
 	CARD_ENDED_IMMUTABLE: 'after-fix',
+	/*
+	 * 总闸关着 ⇒ **重试同一个调用永远没意义**（改参数也没用，拦的是角色不是参数）。
+	 * 但这不是「装配错」也不是「缺陷」—— 是用户配置。
+	 * ⇒ `no`：AI 应该改道（告诉用户，让用户点按钮），不是重试。
+	 *   按上面那条约定「`no` 只留给装配/权限问题」—— 这条正是权限。
+	 */
+	AI_STATE_CHANGE_DISABLED: 'no',
 	TEMPLATES_UNAVAILABLE: 'no',
 	PORT_UNAVAILABLE: 'no',
 	INTERNAL_ERROR: 'no',

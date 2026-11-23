@@ -186,15 +186,26 @@ interface PermissionState {
 	readonly toolGuardLevel: ToolGuardLevel;
 	readonly cardActionOptions: typeof CARD_ACTION_OPTIONS;
 	readonly toolGuardOptions: typeof TOOL_GUARD_OPTIONS;
+	/**
+	 * 总闸：角色为 `ai` 的改卡状态操作允不允许。
+	 *
+	 * 用户 `2026-11-23`：「core提供的后端里面有一个开关设置和权限。
+	 * 用指令和UI可以改这个开关。然后会限制改卡状态的角色为ai的部分的操作。」
+	 *
+	 * ⚠ **它不是第三条轴**（用户已明确「两条正交轴」）—— 它管的是**角色**：
+	 *   关掉之后 `user` 点按钮、`system` 自动重算都不受影响。
+	 */
+	readonly aiStateChangeAllowed: boolean;
 }
 
-/** 读两条轴的当前档位 + 选项表。 */
+/** 读两条轴的当前档位 + 总闸 + 选项表。 */
 function permissionStateOf(taskboard: Taskboard): PermissionState {
 	return {
 		cardActionLevel: taskboard.getCardActionLevel(),
 		toolGuardLevel: taskboard.getToolGuardLevel(),
 		cardActionOptions: CARD_ACTION_OPTIONS,
 		toolGuardOptions: TOOL_GUARD_OPTIONS,
+		aiStateChangeAllowed: taskboard.getAiStateChangeAllowed(),
 	};
 }
 
@@ -214,6 +225,16 @@ function asCardActionLevel(value: unknown): CardActionLevel | undefined {
  */
 function asToolGuardLevel(value: unknown): ToolGuardLevel | undefined {
 	return TOOL_GUARD_OPTIONS.find((one) => one.value === value)?.value;
+}
+
+/**
+ * 把 body 里的原始值解析成布尔。
+ *
+ * 只认**真布尔**，不认 `'true'` / `1` —— 这个开关是安全边界，
+ * 宽松解析会让「前端传错类型」变成「静默关掉/打开」。
+ */
+function asBoolean(value: unknown): boolean | undefined {
+	return typeof value === 'boolean' ? value : undefined;
 }
 
 /** 路由装配参数。 */
@@ -392,6 +413,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			const body = await readJson(req);
 			const cardRaw = rawField(body, 'cardActionLevel');
 			const guardRaw = rawField(body, 'toolGuardLevel');
+			const switchRaw = rawField(body, 'aiStateChangeAllowed');
 			/*
 			 * 先解析成类型化变量，**只判一次** —— 后面的写直接用解析结果。
 			 *
@@ -400,13 +422,16 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			 */
 			const cardLevel = cardRaw === undefined ? undefined : asCardActionLevel(cardRaw);
 			const guardLevel = guardRaw === undefined ? undefined : asToolGuardLevel(guardRaw);
+			const switchValue = switchRaw === undefined ? undefined : asBoolean(switchRaw);
 
-			if (cardRaw === undefined && guardRaw === undefined) {
+			if (cardRaw === undefined && guardRaw === undefined && switchRaw === undefined) {
 				sendFailure(
 					res,
-					failure(ErrorCode.FIELD_REQUIRED, '至少要给 cardActionLevel 或 toolGuardLevel 之一。', {
-						issues: [{ path: '', message: 'body 里没有任何档位字段' }],
-					}),
+					failure(
+						ErrorCode.FIELD_REQUIRED,
+						'至少要给 cardActionLevel / toolGuardLevel / aiStateChangeAllowed 之一。',
+						{ issues: [{ path: '', message: 'body 里没有任何档位或开关字段' }] },
+					),
 					400,
 				);
 				return;
@@ -438,6 +463,19 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 				return;
 			}
 
+			if (switchRaw !== undefined && switchValue === undefined) {
+				sendFailure(
+					res,
+					failure(
+						ErrorCode.FIELD_REQUIRED,
+						`aiStateChangeAllowed 非法：${String(switchRaw)}。必须是布尔 true / false。`,
+						{ issues: [{ path: '/aiStateChangeAllowed', message: '不是布尔' }] },
+					),
+					400,
+				);
+				return;
+			}
+
 			/*
 			 * 两个写各自落 kv（core 负责持久化 + 更新缓存）。
 			 * 只改传了的那个；没传的保持原值 —— 这是 PATCH 语义，
@@ -445,6 +483,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			 */
 			if (cardLevel !== undefined) await taskboard.setCardActionLevel(cardLevel);
 			if (guardLevel !== undefined) await taskboard.setToolGuardLevel(guardLevel);
+			if (switchValue !== undefined) await taskboard.setAiStateChangeAllowed(switchValue);
 
 			sendOk(res, permissionStateOf(taskboard));
 			return;

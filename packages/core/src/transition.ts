@@ -514,13 +514,19 @@ export function recomputeOne(card: Card, cards: readonly Card[], at: number): Re
 		card: withHistory(
 			{ ...card, status: to },
 			/*
-			 * 重算的**作者是 `'ai'`**：它是系统自动算出来的，不是人点的。
+			 * 重算的**作者是 `'system'`** —— 用户 `2026-11-23`：
+			 * > 「改卡状态的角色，还有一个系统。目标这一类自动算出来的，
+			 * >   改卡角色都是系统。」
 			 *
-			 * ⚠ 但不能无条件算「AI 改过」—— 重算只改**父卡状态**，
-			 *   而「AI 改过、用户未读」这条计数关心的是**内容变更**。
+			 * ⚠ **曾经写成 `'ai'`**，那是个错误：这是系统沿子任务推导出来的
+			 *   父卡状态，不是模型干的。「AI 改过、用户未读」这类按作者统计的
+			 *   东西会把机器自己的推导算成 AI 的功劳/过错。
+			 *
+			 * ⚠ 但仍然不能无条件算「有人改过」—— 重算只改**父卡状态**，
+			 *   而「改过、用户未读」这条计数关心的是**内容变更**。
 			 *   详见 `updates.ts`：那里会**跳过 `recompute` 事件**。
 			 */
-			{ at, action: 'recompute', actor: 'ai', detail: { to } },
+			{ at, action: 'recompute', actor: 'system', detail: { to } },
 		),
 		from: card.status,
 		to,

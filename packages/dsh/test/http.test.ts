@@ -1151,6 +1151,12 @@ describe('GET / POST /api/permission', () => {
 		readonly toolGuardLevel: string;
 		readonly cardActionOptions: unknown;
 		readonly toolGuardOptions: unknown;
+		/**
+		 * 总闸：角色为 `ai` 的改卡状态操作允不允许。
+		 *
+		 * ⚠ 它不是第三条轴 —— 用户已定「两条正交轴」。这个开关管的是**角色**。
+		 */
+		readonly aiStateChangeAllowed: boolean;
 	}
 
 	it('GET 返回两个档位 + 选项表（选项就是 core 的那一张）', async () => {
@@ -1248,6 +1254,60 @@ describe('GET / POST /api/permission', () => {
 		const out = await call(depsOf(), { method: 'DELETE', url: `${ROUTE_PREFIX}/api/permission` });
 		assert.equal(out.status, 405);
 		assert.equal(out.headers.allow, 'GET, POST');
+	});
+
+	/*
+	 * ── 总闸：角色为 ai 的改卡状态操作 ──
+	 *
+	 * 用户 `2026-11-23`：「core提供的后端里面有一个开关设置和权限。
+	 * **用指令和UI可以改这个开关**。」⇒ UI 那条路就是这里。
+	 *
+	 * ⚠ 它不是第三条轴（用户已定「两条正交轴」）：`GET` 里多一个布尔，
+	 *   `POST` 接受 `aiStateChangeAllowed`。
+	 */
+	it('GET 带总闸的当前值（默认 true）', async () => {
+		await taskboard.setAiStateChangeAllowed(true);
+
+		const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/permission` });
+		assert.equal(out.status, 200, out.raw);
+		const payload = out.json as { ok: boolean; data: PermissionData };
+		assert.equal(payload.data.aiStateChangeAllowed, true);
+	});
+
+	it('POST 改总闸 ⇒ 回声；随后 GET 读得到（真的落 core）', async () => {
+		const out = await call(depsOf(), {
+			method: 'POST',
+			url: `${ROUTE_PREFIX}/api/permission`,
+			body: { aiStateChangeAllowed: false },
+		});
+		assert.equal(out.status, 200, out.raw);
+
+		const payload = out.json as { ok: boolean; data: PermissionData };
+		assert.equal(payload.data.aiStateChangeAllowed, false);
+		assert.equal(taskboard.getAiStateChangeAllowed(), false);
+
+		const again = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/permission` });
+		assert.equal((again.json as { data: PermissionData }).data.aiStateChangeAllowed, false);
+
+		/* 复位，别把状态带给后面的用例（共用一个 dataDir）。 */
+		await taskboard.setAiStateChangeAllowed(true);
+	});
+
+	it('⚠ 总闸只认真布尔：`"false"` / `0` ⇒ 400，且不动开关', async () => {
+		await taskboard.setAiStateChangeAllowed(true);
+
+		for (const bad of ['false', 0, 1, 'true', null] as const) {
+			const out = await call(depsOf(), {
+				method: 'POST',
+				url: `${ROUTE_PREFIX}/api/permission`,
+				body: { aiStateChangeAllowed: bad },
+			});
+			assert.equal(out.status, 400, `应拒绝 ${JSON.stringify(bad)}：${out.raw}`);
+			const payload = out.json as { ok: boolean; code: string };
+			assert.equal(payload.code, 'FIELD_REQUIRED');
+		}
+
+		assert.equal(taskboard.getAiStateChangeAllowed(), true, '非法请求不该动开关');
 	});
 });
 
