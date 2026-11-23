@@ -87,8 +87,19 @@ describe('两个权限策略工具（已搬进 dsh-agent-guard）', () => {
 		void workspaceId;
 	});
 
-	after(() => {
-		rmSync(dir, { recursive: true, force: true });
+	/*
+	 * ⚠ **必须先 `taskboard.close()` 再删目录**。
+	 *
+	 * `node:sqlite` 的句柄不关就删目录，Windows 会 `EPERM` —— 断言全过，
+	 * 但整个测试文件被记成失败（`node --test` 的退出码 1）。
+	 * 症状：`ℹ pass 1668 / ℹ fail 0` 但 `exit 1`，报错里只有一行文件级 ✖，
+	 * 找不到任何失败的断言 ⇒ 很容易被当成 flake 忽略。
+	 *
+	 * `maxRetries` 是兜底：杀毒/索引服务偶尔短暂占用新建的文件。
+	 */
+	after(async () => {
+		await taskboard.close();
+		rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	});
 
 	it('① 建出两个工具，名字与顺序稳定', () => {
