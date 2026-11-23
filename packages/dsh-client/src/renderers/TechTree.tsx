@@ -461,68 +461,56 @@ const CardsLayer = memo(function CardsLayer(props: CardsLayerProps): ReactNode {
 					}}
 				/>
 			))}
-			{/* ── 折叠三角：有子卡的节点才有（用户 2026-11-24 要求） ── */}
+			{/*
+			 * ── 折叠控件：有子卡的节点才有（用户 2026-11-24） ──
+			 *
+			 * 用户原话：「这个箭头，放的不太对。挡住东西了。放在卡的右下角。并且不用三角形。用加号。
+			 *   而且还要现实数字。默认数字。鼠标放上去他就变成加号。展开以后就是减号，不显示数字了。」
+			 *
+			 * ⇒ 一个控件、三态：
+			 *   折叠且未 hover  → 数字（后代数）
+			 *   折叠且 hover    → ＋
+			 *   已展开          → －（不显示数字）
+			 * 位置：卡片**右下角内侧**（原来是右上角，挡住了类别/状态）。
+			 */}
 			{props.items.map((item) => {
 				if (!props.foldable.has(item.card.id)) return null;
 				const isFolded = props.folded.has(item.card.id);
-				const count = props.badgeCountOf(item.card.id);
 				return (
 					<button
 						key={`fold:${item.card.id}`}
 						type="button"
-						className={`tb3t-fold${isFolded ? ' is-folded' : ''}`}
+						className={`tb3t-fold${isFolded ? ' is-folded' : ' is-open'}`}
 						data-fold-toggle={item.card.id}
 						data-folded={isFolded ? '1' : '0'}
-						title={isFolded ? `展开（${String(count)} 张）` : '折叠这一棵子树'}
+						title={isFolded ? '展开这一棵子树' : '折叠这一棵子树'}
 						aria-label={isFolded ? '展开' : '折叠'}
+						aria-expanded={!isFolded}
 						onClick={(event) => {
 							event.stopPropagation();
 							props.onToggleFold(item.card.id, !isFolded);
 						}}
 						style={{
 							position: 'absolute',
-							left: item.box.left + props.metrics.cardWidth - 24,
-							top: TREE_HEADER_HEIGHT + item.box.top + 6,
-							width: 18,
-							height: 18,
-							fontSize: 11,
-							lineHeight: '16px',
-							zIndex: 4,
-							cursor: 'pointer',
-							borderRadius: 5,
-							border: '1px solid #d7dbe2',
-							background: '#fff',
-							color: '#4b5563',
-							padding: 0,
+							left: item.box.left + props.metrics.cardWidth - 28,
+							top: TREE_HEADER_HEIGHT + item.box.top + props.metrics.cardHeight - 22,
 						}}
 					>
-						{isFolded ? '▸' : '▾'}
+						{isFolded ? (
+							<>
+								<span className="tb3t-fold__count">
+									{String(props.badgeCountOf(item.card.id))}
+								</span>
+								<span className="tb3t-fold__plus" aria-hidden="true">
+									+
+								</span>
+							</>
+						) : (
+							<span className="tb3t-fold__minus" aria-hidden="true">
+								−
+							</span>
+						)}
 					</button>
-				);
-			})}
-			{/* ── 折叠后显示「N 张」（N = 后代数，不含自己） ── */}
-			{props.items.map((item) => {
-				if (!props.folded.has(item.card.id)) return null;
-				return (
-					<span
-						key={`badge:${item.card.id}`}
-						data-fold-badge={item.card.id}
-						style={{
-							position: 'absolute',
-							left: item.box.left + 8,
-							top: TREE_HEADER_HEIGHT + item.box.top + props.metrics.cardHeight - 18,
-							fontSize: 10.5,
-							lineHeight: '14px',
-							padding: '0 5px',
-							borderRadius: 7,
-							background: '#eef2f7',
-							color: '#4b5563',
-							zIndex: 4,
-							pointerEvents: 'none',
-						}}
-					>
-						{String(props.badgeCountOf(item.card.id))} 张
-					</span>
 				);
 			})}
 		</>

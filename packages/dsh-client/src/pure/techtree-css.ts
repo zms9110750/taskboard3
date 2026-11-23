@@ -109,4 +109,30 @@ export const TECHTREE_CSS = `
 .tb3t-legend__head{fill:currentColor;stroke:none}
 .tb3t-legend__item[data-rel="related"] .tb3t-legend__path{stroke-dasharray:4 3}
 .tb3t-legend__item[data-rel="references"] .tb3t-legend__path{stroke-dasharray:4 3}
+
+/*
+ * ── 折叠控件（用户 2026-11-24）──
+ *
+ * 「放在卡的右下角。不用三角形。用加号。而且还要现实数字。默认数字。
+ *   鼠标放上去他就变成加号。展开以后就是减号，不显示数字了。」
+ *
+ * 三态：折叠=数字 → hover=＋ → 展开=－
+ * 放在右下角内侧，不再挡卡片上的类别/状态。
+ */
+.tb3t-fold{
+  position:absolute;z-index:4;
+  display:inline-flex;align-items:center;justify-content:center;gap:0;
+  min-width:18px;height:18px;padding:0 5px;
+  border:1px solid #d7dbe2;border-radius:9px;background:#fff;color:#4b5563;
+  font-family:inherit;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;
+  cursor:pointer;transition:border-color .12s,color .12s,background .12s;
+}
+.tb3t-fold:hover{border-color:#9aa4b2;background:#f8fafc;color:#111827}
+.tb3t-fold:focus-visible{outline:2px solid #2563eb;outline-offset:1px}
+/* 折叠时显示数字，hover 换成加号 */
+.tb3t-fold .tb3t-fold__plus{display:none}
+.tb3t-fold.is-folded:hover .tb3t-fold__count{display:none}
+.tb3t-fold.is-folded:hover .tb3t-fold__plus{display:inline}
+/* 展开时只显示减号 */
+.tb3t-fold .tb3t-fold__minus{display:inline;font-size:13px;line-height:14px}
 `;
