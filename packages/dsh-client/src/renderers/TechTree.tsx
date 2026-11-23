@@ -5,7 +5,7 @@
  *
  * | 要画什么 | 谁算的 |
  * |---|---|
- * | 每张卡的列 / 行（含折栏） | `layoutTree()` |
+ * | 每张卡的列 / 行 | `layoutTree()` |
  * | 父子拱弧的 `d` | `parentEdgePaths()`（`parentCurve` + `boxOf`） |
  * | 任意两卡之间的连线 `d` | `linkCurve()` + `toPathData()` |
  * | 画布尺寸 | `canvasSizeOf()` |
@@ -407,8 +407,6 @@ export interface TechTreeProps {
 	 * （列表行 `CardRow` 那种「类别 / 领域 / 模板」三个 label）。
 	 */
 	readonly templateLabelOf?: (ref: string) => string;
-	/** 每栏最多几行（超过折栏）；省略 = `tree-layout.ts` 的默认 10。 */
-	readonly maxRowsPerColumn?: number;
 	/**
 	 * 用户显式**折叠**的 id；省略 = 读模块级单例 store（三入口共享）。
 	 *
@@ -784,12 +782,7 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	);
 
 	/* ── ② 布局（已定稿算法，不重算） ── */
-	const layout = useMemo(() => {
-		const options = props.maxRowsPerColumn === undefined
-			? undefined
-			: { maxRowsPerColumn: props.maxRowsPerColumn };
-		return layoutTree(treeCards, options);
-	}, [treeCards, props.maxRowsPerColumn]);
+	const layout = useMemo(() => layoutTree(treeCards), [treeCards]);
 
 	/*
 	 * 收起的分组：那一槽只画一条 18px 横幅 ⇒ 槽位步进 46（两个横幅 = 一个卡槽）。
@@ -925,20 +918,21 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	 * 栏高取该列自己的排版结果（`lanePlans.lanes[].bottom`）——
 	 * 列与列独立之后，每列高度可以不同，不再从全局行表推。
 	 */
+	/*
+	 * 列头：不折栏之后「一个逻辑层 = 一个物理列」⇒ 一层只有一个列头，
+	 * 不再有「第 N 层 · 第 M 栏」这种同层多栏的后缀（`2026-11-24` 取消自动换列）。
+	 */
 	const bandByLane = useMemo(() => {
 		const out = new Map<
 			number,
 			{ readonly layer: number; readonly label: string; readonly height: number }
 		>();
-		const seenPerLayer = new Map<number, number>();
 		for (const band of layout.bands) {
-			const lane = seenPerLayer.get(band.layer) ?? 0;
-			seenPerLayer.set(band.layer, lane + 1);
 			const plan = lanePlans.lanes.find((one) => one.lane === band.column);
 			const bottom = plan?.bottom ?? metrics.padding;
 			out.set(band.column, {
 				layer: band.layer,
-				label: lane === 0 ? layerLabel(band.layer) : `第 ${String(band.layer)} 层 · 第 ${String(lane + 1)} 栏`,
+				label: layerLabel(band.layer),
 				height: TREE_HEADER_HEIGHT + bottom + Math.round(metrics.padding / 2),
 			});
 		}
@@ -1023,7 +1017,7 @@ export function TechTree(props: TechTreeProps): ReactNode {
 				 * 最左「根卡」窄列（用户 2026-11-24：「加一个列头吧。一个很窄的一个列。
 				 * 可以点击。进去以后只有一个关系区作为详情」）。
 				 *
-				 * ⚠ 它是**装饰层 + 点击热区**，不参与 `layoutTree` 的分层/折栏。
+				 * ⚠ 它是**装饰层 + 点击热区**，不参与 `layoutTree` 的分层。
 				 */}
 				{props.onRootColumnClick === undefined ? null : (
 					<button

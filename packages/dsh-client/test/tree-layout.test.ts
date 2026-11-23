@@ -289,54 +289,57 @@ describe('排行：row(父) = min(row(所有直接子卡))', () => {
  * ③ 折栏
  * ══════════════════════════════════════════════════════════════ */
 
-describe('折栏：同层超过 maxRowsPerColumn 行', () => {
-	it('41 张无关系卡 → 5 栏，行数 9/8/8/8/8', () => {
+/**
+ * ③ 一个逻辑层 = 一个物理列（不折栏）
+ *
+ * 用户 `2026-11-24`：
+ * > 「取消那个自动换列的功能。有了组和折叠进行排版。应该就不需要那个东西了。」
+ *
+ * ⇒ 旧的「同层超过 10 行均分成多栏」已删除：`column === layer`、`lane === column`，
+ *   第 0 层再多根卡也只有一列（靠组 / 折叠来收），**位置不随可见数变化**。
+ */
+describe('不折栏：一层一列', () => {
+	it('41 张无关系卡 → 1 列 41 行（不再切成 5 栏）', () => {
 		const cards = Array.from({ length: 41 }, (_, i) =>
 			mk(`R${String(i + 1).padStart(2, '0')}`),
 		);
 		const layout = layoutTree(cards);
 		assert.equal(layout.nodes.length, 41, '不丢卡');
-		assert.equal(layout.columnCount, 5);
+		assert.equal(layout.columnCount, 1, '一层一列');
 		assert.deepEqual(
-			layout.bands.map((band) => band.rowCount),
-			[9, 8, 8, 8, 8],
-			'按行数尽量平均，最后一栏不许只剩 1 张',
+			layout.bands.map((band) => [band.column, band.layer, band.rowCount, band.cardCount]),
+			[[0, 0, 41, 41]],
 		);
-		assert.deepEqual(
-			layout.bands.map((band) => band.layer),
-			[0, 0, 0, 0, 0],
-		);
-		assert.equal(layout.rowCount, 9);
+		assert.equal(layout.rowCount, 41);
 		const physical = physicalShape(layout);
 		assert.deepEqual(physical['R01'], [0, 0]);
-		assert.deepEqual(physical['R09'], [0, 8]);
-		assert.deepEqual(physical['R10'], [1, 0]);
-		assert.deepEqual(physical['R41'], [4, 7]);
+		assert.deepEqual(physical['R41'], [0, 40]);
+		/* 每张卡的物理列 = 逻辑层、物理行 = 逻辑行（不折栏后二者同值）。 */
+		for (const node of layout.nodes) {
+			assert.equal(node.column, node.layer, `${node.id} column === layer`);
+			assert.equal(node.row, node.logicalRow, `${node.id} row === logicalRow`);
+		}
 		assertBandsConsistent(layout);
 	});
 
-	it('23 张无关系卡 → 3 栏（旧版 __selfTest 的确定数字）', () => {
+	it('23 张无关系卡 → 1 列 23 行', () => {
 		const cards = Array.from({ length: 23 }, (_, i) =>
 			mk(`R${String(i + 1).padStart(2, '0')}`),
 		);
 		const layout = layoutTree(cards);
-		assert.equal(layout.columnCount, 3);
-		assert.equal(layout.rowCount, 8);
+		assert.equal(layout.columnCount, 1);
+		assert.equal(layout.rowCount, 23);
 		assert.deepEqual(
 			layout.bands.map((band) => band.rowCount),
-			[8, 8, 7],
+			[23],
 		);
-		const physical = physicalShape(layout);
-		assert.deepEqual(physical['R01'], [0, 0]);
-		assert.deepEqual(physical['R11'], [1, 2]);
-		assert.deepEqual(physical['R21'], [2, 4]);
 		assertBandsConsistent(layout);
 	});
 
-	it('折栏不改拓扑：小树的层数 / 栏数不变', () => {
+	it('折栏不改拓扑那套仍然成立：小树的层数 / 列数不变', () => {
 		const cards = [mk('P01'), mk('C01', 'P01'), mk('C02', 'P01')];
 		const layout = layoutTree(cards);
-		assert.equal(layout.columnCount, 2, '父一栏 + 子一栏');
+		assert.equal(layout.columnCount, 2, '父一列 + 子一列');
 		assert.deepEqual(logicalShape(layout), {
 			P01: [0, 0],
 			C01: [1, 0],
@@ -345,55 +348,48 @@ describe('折栏：同层超过 maxRowsPerColumn 行', () => {
 		assert.deepEqual(slantedSingleChildren(layout), []);
 	});
 
-	it('树折栏：父一栏、12 个子卡跨两栏', () => {
+	it('父 1 张 + 12 个子卡 → 2 列（子卡全在第 1 列）', () => {
 		const cards: TreeCard[] = [mk('R01')];
 		for (let i = 1; i <= 12; i += 1) {
 			cards.push(mk(`C${String(i).padStart(2, '0')}`, 'R01'));
 		}
 		const layout = layoutTree(cards);
-		assert.equal(layout.columnCount, 3);
+		assert.equal(layout.columnCount, 2, '父一列、子一列（不再跨两栏）');
 		assert.deepEqual(
 			layout.bands.map((band) => [band.column, band.layer, band.rowCount, band.cardCount]),
 			[
 				[0, 0, 1, 1],
-				[1, 1, 6, 6],
-				[2, 1, 6, 6],
+				[1, 1, 12, 12],
 			],
 		);
 		const physical = physicalShape(layout);
 		assert.deepEqual(physical['R01'], [0, 0]);
 		assert.deepEqual(physical['C01'], [1, 0]);
 		assert.deepEqual(physical['C06'], [1, 5]);
-		assert.deepEqual(physical['C07'], [2, 0]);
-		assert.deepEqual(physical['C12'], [2, 5]);
-		/* 逻辑层 / 逻辑行不受折栏影响：12 个子卡逻辑行 0..11。 */
+		assert.deepEqual(physical['C07'], [1, 6], '第 7 个子卡也在第 1 列');
+		assert.deepEqual(physical['C12'], [1, 11]);
 		assert.equal(nodeOf(layout, 'C12').logicalRow, 11);
 		assert.equal(nodeOf(layout, 'C12').layer, 1);
 		assertBandsConsistent(layout);
 	});
 
-	it('maxRowsPerColumn 选项：合法值 / 0 / NaN', () => {
-		const five = Array.from({ length: 5 }, (_, i) => mk(`R${String(i + 1).padStart(2, '0')}`));
-		const narrow = layoutTree(five, { maxRowsPerColumn: 2 });
-		assert.equal(narrow.columnCount, 3);
-		assert.deepEqual(
-			narrow.bands.map((band) => band.rowCount),
-			[2, 2, 1],
+	it('可见卡数变化不改变列数（这是取消折栏要保的性质）', () => {
+		const many = Array.from({ length: 41 }, (_, i) =>
+			mk(`R${String(i + 1).padStart(2, '0')}`),
 		);
-
-		/* 0 ⇒ 夹到 1（每卡一栏），不能算出 NaN / 负栏数。 */
-		const one = layoutTree(five, { maxRowsPerColumn: 0 });
-		assert.equal(one.columnCount, 5);
-		assert.equal(one.rowCount, 1);
-
-		/* NaN / 非法值 ⇒ 回落默认 10。 */
-		const twelve = Array.from({ length: 12 }, (_, i) => mk(`R${String(i + 1).padStart(2, '0')}`));
-		const fallback = layoutTree(twelve, { maxRowsPerColumn: Number.NaN });
-		assert.equal(fallback.columnCount, 2);
-		assert.deepEqual(
-			fallback.bands.map((band) => band.rowCount),
-			[6, 6],
-		);
+		const full = layoutTree(many);
+		const pruned = layoutTree(many.slice(0, 12));
+		assert.equal(full.columnCount, 1);
+		assert.equal(pruned.columnCount, 1, '少 29 张也还是 1 列 —— 不会因此重排');
+		/* 前 12 张的位置一模一样（列内顺序只由逻辑行 + id 决定）。 */
+		for (const node of pruned.nodes) {
+			const before = nodeOf(full, node.id);
+			assert.deepEqual(
+				[before.column, before.row],
+				[node.column, node.row],
+				`${node.id} 的位置不该因为别的卡不见了而变`,
+			);
+		}
 	});
 });
 
@@ -617,7 +613,7 @@ describe('性能：1000 张卡', () => {
 		assert.ok(elapsed < 5000, `1000 层深链耗时 ${elapsed}ms，疑似 O(n²) 以上`);
 	});
 
-	it('1000 张无关系卡 → 100 栏、不超时', () => {
+	it('1000 张无关系卡 → 1 列 1000 行、不超时', () => {
 		const cards = Array.from({ length: 1000 }, (_, i) =>
 			mk(`Z${String(i).padStart(4, '0')}`),
 		);
@@ -625,8 +621,8 @@ describe('性能：1000 张卡', () => {
 		const layout = layoutTree(cards);
 		const elapsed = Date.now() - startedAt;
 		assert.equal(layout.nodes.length, 1000);
-		assert.equal(layout.columnCount, 100);
-		assert.equal(layout.rowCount, 10);
+		assert.equal(layout.columnCount, 1);
+		assert.equal(layout.rowCount, 1000);
 		assert.equal(layout.warnings.length, 0);
 		assertBandsConsistent(layout);
 		assert.ok(elapsed < 5000, `1000 张无关系卡耗时 ${elapsed}ms，疑似 O(n²) 以上`);
@@ -676,11 +672,13 @@ describe('rowMetricsOf：行高可以不等', () => {
 	});
 
 	it('同一行别处还有真卡 ⇒ 行高取最大值（仍是卡高）', () => {
-		/* 两张根卡折栏后可能同 row 不同 column：用 11 张触发折栏 ⇒ 两栏，行号从 0 重排。 */
-		const many = Array.from({ length: 11 }, (_one, index) => mk(`R${String(index)}`));
-		const layout = layoutTree(many);
+		/*
+		 * 不折栏后同一行可能有多张卡的地方只剩「父子同行」：
+		 * 单子链 ⇒ 父 (列0,行0) + 子 (列1,行0)，同一逻辑行、两张真卡。
+		 */
+		const layout = layoutTree([mk('P01'), mk('C01', 'P01')]);
 		const sameRow = layout.nodes.filter((node) => node.row === 0);
-		assert.ok(sameRow.length >= 2, '夹具应该造出「同一行有两张卡」');
+		assert.equal(sameRow.length, 2, '夹具应该造出「同一行有两张卡」');
 		const first = sameRow[0];
 		assert.ok(first !== undefined);
 
