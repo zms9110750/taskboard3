@@ -28,7 +28,7 @@
  */
 
 import type { CardActionLevel, SearchCondition, Taskboard } from '@taskboard/core';
-import { CARD_ACTION_OPTIONS, isAdoptTransition, missingRenderers } from '@taskboard/core';
+import { BASE_TOOLS, CARD_ACTION_OPTIONS, isAdoptTransition, missingRenderers } from '@taskboard/core';
 import type { ToolGuardKv, ToolGuardLevel } from '@taskboard/dsh-agent-guard';
 import {
 	TOOL_GUARD_OPTIONS,
@@ -483,6 +483,51 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			return;
 		}
 		sendOk(res, { template: meta });
+		return;
+	}
+
+	/* ── GET /api/tool-policy —— 工具权限策略的**只读**视图（给「模板授权」页） ──
+	 *
+	 * 用户 `2026-11-24`：「什么模板对应什么工具可用还没有界面。」
+	 *
+	 * ## 为什么 `effective` 由服务端算
+	 *
+	 * 并集规则是 core 的**唯一一份真值**（`effectiveToolsOf`：BASE ∪ 未领取 ∪ common ∪
+	 * 命中的组 ∪ 独立档）。让客户端再算一遍就是第二份真值 —— 将来 core 改了并集语义，
+	 * 前端会静静地对不上（AGENTS 3.6 明令禁止的形态）。
+	 * ⇒ 这里直接调 core 的方法，客户端只负责**按来源分组展示**。
+	 *
+	 * ## 为什么把各档的增量也一起返回
+	 *
+	 * 「这个模板的工具里，哪些来自 BASE、哪些来自通用档 / 组档 / 独立档」——
+	 * 这需要每个档的原始增量，光有 `effective` 拆不出来。
+	 *
+	 * ⚠ 只读：本轮不做写入（写策略仍走 AI 工具 `taskboard_tool_policy_*`）。
+	 * ⚠ 不进 `/api/state`：那是 AI / MCP 也会看的通道；这是 UI 专用视图。
+	 */
+	if (tail === '/tool-policy') {
+		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+		/* 鉴权已经在 `route()` 开头统一做过（`rejected()` 先于任何路径判断）。 */
+		const store = taskboard.getToolPolicies();
+		const templates = taskboard.listTemplates();
+		sendOk(res, {
+			baseTools: [...BASE_TOOLS],
+			unclaimed: [...store.unclaimed],
+			common: [...store.common],
+			groups: Object.entries(store.groups).map(([name, tools]) => ({ name, tools: [...tools] })),
+			groupMembers: Object.entries(store.groupMembers).map(([group, refs]) => ({
+				group,
+				templates: [...refs],
+			})),
+			templates: Object.entries(store.templates).map(([templateRef, tools]) => ({
+				templateRef,
+				tools: [...tools],
+			})),
+			effective: templates.map((one) => ({
+				templateRef: one.ref,
+				tools: [...taskboard.effectiveToolsOf(one.ref)],
+			})),
+		});
 		return;
 	}
 

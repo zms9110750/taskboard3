@@ -51,6 +51,7 @@ import {
 import type { ToolGraph, ToolGraphNode } from '../../pure/tool-graph.ts';
 import { sourceOfName } from '../../pure/tool-permission.ts';
 import type { ToolEntry } from '../../pure/tool-permission.ts';
+import { TemplateAuthPanel } from './TemplateAuthPanel.tsx';
 
 /* ══════════════════════════════════════════════════════════
    工具清单：真实来源 + 降级夹具
@@ -670,15 +671,12 @@ export function GraphEditor(props: GraphEditorProps): ReactNode {
 				</section>
 			) : null}
 
-			{tab === 'templates' ? (
-				<section className="tb3g-page" data-testid="tab-templates">
-					<div className="tb3g-placeholder">
-						<div className="tb3g-placeholder__title">模板授权</div>
-						<p>这一页要放「三档并集」：没领卡的可用工具 ∪ 领了卡的通用权限 ∪ 具体工作卡的额外权限。领取卡以后权限完全取决于该卡的工作模板。</p>
-						<p className="tb3g-muted">本版只做占位 —— 权限逻辑不在这个组件里。</p>
-					</div>
-				</section>
-			) : null}
+			{/*
+			 * 模板授权页：真实数据（用户 2026-11-24「什么模板对应什么工具可用还没有界面」）。
+			 * 数据源 GET /taskboard3/api/tool-policy（服务端用 core 的 effectiveToolsOf 算好并集）
+			 * —— 本组件只按来源分组展示，**不重算并集**。
+			 */}
+			{tab === 'templates' ? <TemplateAuthPanel /> : null}
 
 			<div className="tb3g-debug" data-testid="graph-stats" aria-hidden="true">
 				{JSON.stringify({ nodes: graph.nodes.length, edges: graph.edges.length, active: activeId })}
