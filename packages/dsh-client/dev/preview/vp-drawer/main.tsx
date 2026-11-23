@@ -465,7 +465,6 @@ function App(): React.ReactNode {
 				>
 					<div className="pv-ws">
 						<Workspace
-							density="compact"
 							workspaces={workspaces}
 							currentId={currentId}
 							viewingId={viewingId}

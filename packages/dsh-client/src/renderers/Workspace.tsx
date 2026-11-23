@@ -92,7 +92,6 @@ import { CardRow } from './CardRow.tsx';
 import type { FilterSpec } from './FilterRow.tsx';
 import { FilterRow } from './FilterRow.tsx';
 import { SearchBox } from './SearchBox.tsx';
-import { SpaceBar } from './SpaceBar.tsx';
 import { StatusMenu } from './StatusMenu.tsx';
 import { TechTree } from './TechTree.tsx';
 import { ListEmpty } from './workspace/ListEmpty.tsx';
@@ -212,23 +211,6 @@ export interface WorkspaceProps {
 	/** 详情右上角 ⧉（放大成抽屉，V4）。不传 = 不画这个按钮。 */
 	readonly onExpandDetail?: () => void;
 	/**
-	 * chrome 密度（用户 `2026-11-20`）。
-	 *
-	 * 原话：「有些按钮要收起的。有些东西要常驻的。不能交互只能看的东西就当装饰品常驻。
-	 * 需要点但是用不上的东西要折叠。」
-	 *
-	 * - `full`（默认）：原样 —— 空间 chip 行常驻、权限按钮常驻、AI chip 常驻（三行）
-	 * - `compact`：压成**两行** ——
-	 *   · 空间 chip 行折叠，第一行只留一个「工作空间 ▾」按钮，点开展开成一行
-	 *   · 权限与约定、AI chip 折叠掉（低频/用不上）
-	 *
-	 * 只读不交互的东西（任务计数、关系图例）**照样常驻** —— 它们是装饰品。
-	 *
-	 * ⚠ 这是**布局密度**，不是视口尺寸：调用方按自己那块视口的高度决定传哪个。
-	 *   1200×476 的抽屉视口和 570×920 的页签视口都可以各自选。
-	 */
-	readonly density?: 'full' | 'compact';
-	/**
 	 * 数据在飞（切空间时会短暂为真）。
 	 *
 	 * 用户 `2026-11-23`：
@@ -268,11 +250,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 	/* 空间折叠栏是否展开（A 款：展开区在工具栏下一行）。 */
 	const [spaceOpen, setSpaceOpen] = useState(false);
-	/*
-	 * `density === 'compact'` 时空间 chip 行默认折叠（用户 2026-11-20：
-	 * 「需要点但是用不上的东西要折叠」）。点「工作空间 ▾」展开成一行。
-	 */
-	const compact = props.density === 'compact';
+	/* 三处入口共用同一套 DOM（用户 2026-11-23）⇒ 没有「布局密度」这一档。 */
 	const [search, setSearch] = useState<string>('');
 	/** 科技树里正 hover 的卡（`TechTree` 的 hover 是受控 prop，见组件文件头）。 */
 	const [treeHoverId, setTreeHoverId] = useState<string | null>(null);
@@ -555,24 +533,9 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 			className="tb3w-root"
 			data-view={view}
 			data-detail={detailOpen ? 'open' : 'closed'}
-			data-density={compact ? 'compact' : 'full'}
 		>
 			<div className="tb3w-page">
 				<div className="tb3w-chrome">
-					{/* full：空间 chip 行常驻在最上面；compact：折叠成工具栏里的一个按钮 */}
-					{compact ? null : (
-						<SpaceBar
-							workspaces={props.workspaces}
-							currentId={props.currentId}
-							viewingId={props.viewingId}
-							showArchived={props.showArchived}
-							cardCount={props.cards.length}
-							onView={props.onView}
-							onToggleArchived={props.onToggleArchived}
-							onToggleShowArchived={props.onToggleShowArchived}
-							onCreate={props.onCreateWorkspace}
-						/>
-					)}
 
 					{/*
 					 * 行 1：工具栏 + 空间开关。
@@ -589,28 +552,14 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							view={view}
 							onViewChange={setView}
 							onCreateCard={props.onCreateCard}
-							{...(compact || props.onOpenPermission === undefined
-								? {}
-								: { onOpenPermission: props.onOpenPermission })}
-							{...(compact
-								? {
-										/*
-										 * 空间选择器**在视图切换左边** ——
-										 * 用户 2026-11-21：「工作空间放在科技树的左边」。
-										 *
-										 * ⚠ 这推翻 2026-11-20 的「工具栏不含空间选择器」：
-										 *   那条是拆组件时的边界，现在是重排布局。
-										 */
-										space: (
-											<SpaceFoldToggle
-												open={spaceOpen}
-												onToggle={() => {
-													setSpaceOpen((now) => !now);
-												}}
-											/>
-										),
-									}
-								: {})}
+							space={
+								<SpaceFoldToggle
+									open={spaceOpen}
+									onToggle={() => {
+										setSpaceOpen((now) => !now);
+									}}
+								/>
+							}
 						/>
 					</div>
 
@@ -688,7 +637,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					</div>
 				</div>
 
-					{compact && spaceOpen ? (
+					{spaceOpen ? (
 						<SpaceFoldBody
 							workspaces={props.workspaces}
 							currentId={props.currentId}
@@ -767,11 +716,11 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 					{selectedCard === null ? null : renderDetail(selectedCard)}
 
-					{detailOpen ? null : (
-						<aside className="tb3w-detail" data-detail-empty>
-							<div className="tb3w-detail__empty">点左边一张卡看详情。</div>
-						</aside>
-					)}
+					{/*
+					 * ⚠ **不点卡时列表/科技树占满整个视口**（用户 2026-11-23）。
+					 *   旧实现会画一个「点左边一张卡看详情」的占位 aside，占掉右半屏 —— 删掉。
+					 *   `detailOpen` 为假时这里什么都不渲染，`.tb3w-list` 自然占满。
+					 */}
 				</div>
 			</div>
 

@@ -55,7 +55,7 @@ export const name = 'taskboard3-tools';
  * `taskboard3Core` 由 `@taskboard/dsh-core` 提供（`Taskboard` 实例）。
  * `tools` 是 DSH 的工具注册表。
  */
-export const inject = ['taskboard3Core', 'tools'] as const;
+export const inject = ['taskboard3Core', 'taskboard3DefaultWorkspaceId', 'tools'] as const;
 
 /** 本插件行的配置。 */
 export interface Config {}

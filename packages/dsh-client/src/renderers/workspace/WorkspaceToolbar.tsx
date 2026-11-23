@@ -87,14 +87,25 @@ export interface WorkspaceToolbarProps {
 export function WorkspaceToolbar(props: WorkspaceToolbarProps): ReactNode {
 	return (
 		<div className="tb3w-toolbar" data-toolbar>
-			<span className="tb3w-toolbar__title">
-				任务
-				<span className="tb3w-toolbar__count" data-count>
-					{props.queryActive
-						? `筛出 ${String(props.shownCount)} / 共 ${String(props.totalCount)} 条`
-						: `共 ${String(props.totalCount)} 条`}
-				</span>
-			</span>
+			{/*
+			 * ⚠ **一行两列**（用户 `2026-11-23`）：
+			 *   > 「分割线是假的。不画。……而你要做的是像组件库一样，写一个 row。
+			 *   >   然后这里面写列。两个列包裹的内容一个左对齐一个右对齐。」
+			 *   > 「宽度不够换行。就像所有组件库提供的 row 那样」
+			 *
+			 * 所以这里**不画视觉分隔线**：右列靠 `margin-left:auto` 把剩余空间吃掉。
+			 * 放不下时 `flex-wrap` 让右列整组掉到下一行，**仍然右对齐**。
+			 */}
+			<div className="tb3w-row" data-toolbar-row>
+				<div className="tb3w-col tb3w-col--start" data-toolbar-start>
+					<span className="tb3w-toolbar__title">
+						任务
+						<span className="tb3w-toolbar__count" data-count>
+							{props.queryActive
+								? `筛出 ${String(props.shownCount)} / 共 ${String(props.totalCount)} 条`
+								: `共 ${String(props.totalCount)} 条`}
+						</span>
+					</span>
 
 			{/*
 			 * 图例不写「只在科技树视图显示」这类说明（`2026-11-23` 删了两个 hint）。
@@ -111,59 +122,62 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps): ReactNode {
 					</span>
 				))}
 			</span>
+				</div>
 
-			<span className="tb3w-toolbar__actions">
-				{/* 紧凑：权限与约定收起来（低频、用不上 —— 用户 2026-11-20「要折叠」） */}
-				{props.space ?? null}
-				{props.onOpenPermission === undefined ? null : (
-					<button
-						type="button"
-						className="ghost-btn tb3w-toolbar__perm"
-						onClick={props.onOpenPermission}
-					>
-						权限与约定
-					</button>
-				)}
-				{/*
+				<div className="tb3w-col tb3w-col--end" data-toolbar-end>
+					<span className="tb3w-toolbar__actions">
+						{props.space ?? null}
+						{props.onOpenPermission === undefined ? null : (
+							<button
+								type="button"
+								className="ghost-btn tb3w-toolbar__perm"
+								onClick={props.onOpenPermission}
+							>
+								权限与约定
+							</button>
+						)}
+						{/*
 
-				 * ⚠ 分段按钮**没有定稿组件**。这里是临时内联实现，
-				 *   候选在 `dev/components/buttons.tsx` 的 `SegmentedControl`
-				 *   —— 用户还没选，所以不接进产品（用户 2026-11-20：
-				 *   「这不是我当初选定的定稿组件」）。
-				 */}
-				<span className="tb3w-seg" role="group" aria-label="视图切换">
-					<button
-						type="button"
-						className={props.view === 'tree' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
-						data-view-btn="tree"
-						aria-pressed={props.view === 'tree'}
-						onClick={() => {
-							props.onViewChange('tree');
-						}}
-					>
-						科技树
-					</button>
-					<button
-						type="button"
-						className={props.view === 'list' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
-						data-view-btn="list"
-						aria-pressed={props.view === 'list'}
-						onClick={() => {
-							props.onViewChange('list');
-						}}
-					>
-						列表
-					</button>
-				</span>
-				<button
-					type="button"
-					className="tb3w-btn-primary"
-					data-create-card
-					onClick={props.onCreateCard}
-				>
-					新建
-				</button>
-			</span>
+						 * ⚠ 分段按钮**没有定稿组件**。这里是临时内联实现，
+						 *   候选在 `dev/components/buttons.tsx` 的 `SegmentedControl`
+						 *   —— 用户还没选，所以不接进产品（用户 2026-11-20：
+						 *   「这不是我当初选定的定稿组件」）。
+						 */}
+						<span className="tb3w-seg" role="group" aria-label="视图切换">
+							<button
+								type="button"
+								className={props.view === 'tree' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
+								data-view-btn="tree"
+								aria-pressed={props.view === 'tree'}
+								onClick={() => {
+									props.onViewChange('tree');
+								}}
+							>
+								科技树
+							</button>
+							<button
+								type="button"
+								className={props.view === 'list' ? 'tb3w-seg__btn is-on' : 'tb3w-seg__btn'}
+								data-view-btn="list"
+								aria-pressed={props.view === 'list'}
+								onClick={() => {
+									props.onViewChange('list');
+								}}
+							>
+								列表
+							</button>
+						</span>
+						<button
+							type="button"
+							className="tb3w-btn-primary"
+							data-create-card
+							onClick={props.onCreateCard}
+						>
+							新建
+						</button>
+					</span>
+				</div>
+			</div>
 		</div>
 	);
 }

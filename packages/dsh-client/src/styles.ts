@@ -177,9 +177,9 @@ export const WORKSPACE_CSS = `
 .tb3w-main[data-loading="1"] > :not(.tb3w-main__loading){display:none}
 @keyframes tb3w-fade-in{from{opacity:0}to{opacity:1}}
 
-/* ── 紧凑密度（data-density="compact"，用户 2026-11-20） ──
+/* ── chrome 的固定形态（用户 2026-11-23：三处入口同一套，没有密度档） ──
    常驻的：任务计数 / 关系图例（只读装饰）、视图切换 / 新建（高频）
-   折叠的：空间 chip 行（点开才显示）、权限与约定、AI chip
+   折叠的：空间 chip 行（点「工作空间 ▾」才显示）
    目标：chrome 只占两行 —— 第 1 行工具、第 2 行筛选。 */
 .tb3w-space-wrap{position:relative;display:inline-flex}
 .tb3w-space-toggle{flex:0 0 auto;padding:3px 10px;border-radius:7px}
@@ -208,6 +208,24 @@ export const WORKSPACE_CSS = `
 .tb3w-chrome__bar > .tb3w-toolbar{flex:1 1 auto;min-width:0}
 
 /* ── 工具栏：条数 / 图例 / 视图切换 / 新建 ── */
+/*
+ * ── 行布局原语（用户 2026-11-23）──
+ *
+ * > 「分割线是假的。不画。是我用blazor用他们的组建库，他们的分割线提供
+ * >   挤过去对齐的功能。而你要做的是像组建库一样，写一个row。
+ * >   然后这里面写列。两个列包裹的内容一个左对齐一个右对齐。」
+ * > 「宽度不够换行。就像所有组建库提供的row那样」
+ *
+ * ⇒ **不画任何视觉分隔线**：右列靠 「margin-left:auto」 把剩余空间吃掉。
+ *   放不下时 「flex-wrap」 让右列整组掉到下一行，**仍然右对齐**。
+ *
+ * 三处入口（左侧栏全屏 / 抽屉 / 右侧工作区页签）共用这一套 —— 没有第二份。
+ */
+.tb3w-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;min-width:0;width:100%}
+.tb3w-col{display:flex;align-items:center;gap:8px;min-width:0}
+.tb3w-col--start{flex:0 1 auto;flex-wrap:wrap}
+.tb3w-col--end{margin-left:auto;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
+
 .tb3w-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;min-width:0;margin-top:10px;padding:0 2px}
 .tb3w-toolbar__title{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
 .tb3w-toolbar__count{margin-left:4px;font-weight:400;color:var(--text-secondary)}

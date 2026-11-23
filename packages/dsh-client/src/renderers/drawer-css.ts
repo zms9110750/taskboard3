@@ -195,7 +195,7 @@ ${DRAWER_VARIANT_IDS.map(
  */
 .tb3d-panel .tb3w-chrome{flex-direction:column;gap:0}
 .tb3d-panel .tb3w-chrome > .space-bar{flex:0 1 auto;min-width:0;padding:2px 2px;gap:5px}
-.tb3d-panel .tb3w-toolbar{flex:0 0 auto;justify-content:flex-end;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)};gap:4px 8px}
+	.tb3d-panel .tb3w-toolbar{flex:1 1 auto;min-width:0;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)};gap:4px 8px}
 .tb3d-panel .tb3w-toolbar__perm{display:none}
 /* 行 2：筛选 + 搜索。参与文档流（不浮层）—— 展开只撑高这一行。 */
 .tb3d-panel .tb3w-filters{flex:0 0 auto;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)}}

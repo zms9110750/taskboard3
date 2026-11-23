@@ -54,53 +54,24 @@ export const PANEL_ORDER = 30;
 export const TAB_KIND = 'taskboard';
 
 /* ══════════════════════════════════════════════════════════
-   三处入口各自的布局密度
+   三处入口：同一套 DOM，只有视口不同
    ══════════════════════════════════════════════════════════
 
    用户 `2026-11-23`：
 
-   > 「工作空间为什么是默认显示的。之前不是要按按钮才显示的吗。
-   >   这个样子和我之前选的组件不一样啊。」
+   > 「用同一套dom。让他们的视口不一样。但是视口内用同一个组件。」
+   > 「视口组件以工作区的那个为准。」
 
-   ## 病根
+   ⇒ 删掉 `density` 这个参数。三处入口**直接注册 `WorkspaceBody`**，
+     不再有自己的 wrapper、不再传密度。
 
-   三处入口都直接把 `WorkspaceBody` 注册成组件，**谁都没传 `density`** ⇒
-   全部落成 `Workspace` 的默认 `full` ⇒ 空间 chip 行常驻。而用户 `2026-11-22`
-   选定的是 **A 款折叠栏**（`renderers/workspace/SpaceFold.tsx`：
-   「工作空间 ▾」按钮 + 展开区），它**只在 `compact` 密度下渲染**。
+   能不能放下（工具栏换行、切线横/竖）由**容器宽度**自己决定
+   —— 那是 `@container tb3w` 的职责，不该再由一个手传的参数二次判断。
 
-   ⇒ 用户选的组件在产品里成了死代码，只有 `dev/preview/*` 看得见
-     （那些预览页全都传了 `density="compact"`）。
-
-   ## 三处各自的视口（决定密度）
-
-   | 入口 | 真实视口 | 密度 | 理由 |
-   |---|---|---|---|
-   | 抽屉（composer 旁） | 约 1200×476 / 952×482 | `compact` | 宽但**矮**：chip 行要折两行，吃掉的正是最紧张的纵向空间 |
-   | 右侧工作区页签 | 约 570×920 | `compact` | **窄**（`Workspace` 文件头：≤700px 走窄版堆叠）|
-   | 左侧栏主面板（全屏） | 约 1616×988 | `full` | 宽且高：chip 行一行放得下（用户 2026-11-23 截图里就是一行）|
-
-   ⚠ **不要用 `window.innerWidth` 自动判断**：三处入口共用一个浏览器窗口，
-     窗口宽 ≠ 那一块视口的宽。宿主给多高就多高 —— 只有入口自己知道自己那块多大。
+   ⚠ 曾经三处传了不同密度（全屏 `full`、抽屉/右栏 `compact`）⇒ 三个入口
+     长成三种样子。用户否掉：「为什么三个入口的样子不一样。为什么不统一一样」。
 */
 
-/**
- * 右侧工作区页签的 body —— 窄视口（约 570×920）⇒ 紧凑密度。
- *
- * 紧凑密度下空间 chip 行折进工具栏的「工作空间 ▾」按钮（A 款折叠栏）。
- */
-function RightPaneBody(): ReactNode {
-	return createElement(WorkspaceBody, { density: 'compact' });
-}
-
-/**
- * 左侧栏主面板的 body —— 宽且高的全屏视口（约 1616×988）⇒ 完整密度。
- *
- * 完整密度下空间 chip 行常驻在页面最上面一行（放得下，不用点按钮）。
- */
-function MainPanelBody(): ReactNode {
-	return createElement(WorkspaceBody, { density: 'full' });
-}
 /** 权限框入口在 `conversation.input.left` 里的条目 id（同槽唯一）。 */
 export const PERMISSION_ENTRY_REGISTRATION_ID = 'taskboard3-permission-entry';
 
@@ -214,7 +185,7 @@ export function apply(ctx: Context): void {
 	ctx.effect(
 		() =>
 			ctx.slots.inject('sidebar.right.pane.tab', () =>
-				ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, RightPaneBody),
+				ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, WorkspaceBody),
 			),
 		'taskboard3: register right-sidebar tab body',
 	);
@@ -257,7 +228,7 @@ export function apply(ctx: Context): void {
 	ctx.effect(
 		() =>
 			ctx.slots.inject('main', () =>
-				ctx.slots.register({ name: 'main', key: PANEL_ID, label: '任务板' }, MainPanelBody),
+				ctx.slots.register({ name: 'main', key: PANEL_ID, label: '任务板' }, WorkspaceBody),
 			),
 		'taskboard3: register main panel body',
 	);
@@ -278,7 +249,7 @@ export function apply(ctx: Context): void {
 	 *   两个槽各做了一次 `inject`，disposer 由 Cordis 按 owner 管理。
 	 *   再包一层会让「注册函数的执行时机」和「owner 坍缩」错位。
 	 */
-	registerDrawerSlots(ctx, { content: createElement(WorkspaceBody, { density: 'compact' }) });
+	registerDrawerSlots(ctx, { content: createElement(WorkspaceBody) });
 
 	/*
 	 * ══════════════════════════════════════════════════════════

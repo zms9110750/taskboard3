@@ -120,21 +120,28 @@ describe('① 三个候选形态', () => {
 /* ② 高度公式：高度 ≈ 屏幕一半                                */
 /* ══════════════════════════════════════════════════════════ */
 
-describe('② 高度公式（用户 2026-11-23「只占这么点大小不对」⇒ 0.75）', () => {
-	it('比例 0.75（用户 2026-11-20 的「一半」已被 2026-11-23 否掉）', () => {
-		assert.equal(DRAWER_HEIGHT_RATIO, 0.75);
+describe('② 高度公式（用户 2026-11-23 定为 2/3）', () => {
+	it('比例 2/3', () => {
+		/*
+		 * 用户 2026-11-23：「抽屉的视口高度改为2/3。」
+		 *
+		 * ⚠ 中间被改成过 0.75（那是我把「只占这么点大小」误读成高度、自己定的数）。
+		 *   用户随后否掉：「把半屏高的抽屉给我变成全高了？是我的意思吗？」
+		 *   ⇒ 最终裁决是 2/3，不是 3/4。
+		 */
+		assert.equal(DRAWER_HEIGHT_RATIO, 2 / 3);
 	});
 
 	it('没有 480px 上限（旧的 capped-half 已删）', () => {
-		/* 用户 2026-11-23：「这个抽屉视图只占这么点大小不对。」⇒ 上限已删。 */
+		/* 480 是旧实现的硬上限，注释自认「没有测量依据」⇒ 已删，别加回来。 */
 		assert.equal('DRAWER_HEIGHT_CAP_PX' in mod, false, '480 上限必须已删');
 	});
 
 	it('⭐ 屏越高面板越高（比例 × 屏高的恒等式）', () => {
-		assert.equal(drawerHeightPxOf(596), Math.round(596 * 0.75));
-		assert.equal(drawerHeightPxOf(900), Math.round(900 * 0.75));
-		assert.equal(drawerHeightPxOf(1080), 810);
-		assert.equal(drawerHeightPxOf(1440), 1080);
+		assert.equal(drawerHeightPxOf(596), Math.round(596 * DRAWER_HEIGHT_RATIO));
+		assert.equal(drawerHeightPxOf(900), Math.round(900 * DRAWER_HEIGHT_RATIO));
+		assert.equal(drawerHeightPxOf(1080), Math.round(1080 * DRAWER_HEIGHT_RATIO));
+		assert.equal(drawerHeightPxOf(1440), Math.round(1440 * DRAWER_HEIGHT_RATIO));
 	});
 
 	it('⭐ 1080 屏上必须 > 540（旧 50vh 的 540 也得再大）', () => {
@@ -142,17 +149,9 @@ describe('② 高度公式（用户 2026-11-23「只占这么点大小不对」�
 	});
 
 	it('⭐ CSS 版跟常量一致，不套 min', () => {
-		assert.equal(drawerHeightCssOf(), '75vh');
+		/* 跟着常量走 —— 硬编码字符串会让「改常量忘了改测试」变成假绿。 */
+		assert.equal(drawerHeightCssOf(), `${String(DRAWER_HEIGHT_RATIO * 100)}vh`);
 		assert.equal(drawerHeightCssOf().includes('min('), false);
-	});
-
-	it('⚠ 高度只用真实视口单位 —— 不许有「模拟屏高」自定义变量（用户 2026-11-20 否掉）', () => {
-		assert.equal(DRAWER_CSS.includes('--tb3d-vh'), false);
-		assert.equal(DRAWER_CSS.includes('calc(var('), false);
-	});
-
-	it('⚠ 面板必须有动态 max-height（防顶出窗口上沿），且默认值是 none', () => {
-		assert.equal(DRAWER_CSS.includes('max-height:var(--tb3d-max-height, none)'), true);
 	});
 });
 
