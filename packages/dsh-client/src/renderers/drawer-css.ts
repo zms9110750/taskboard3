@@ -231,5 +231,15 @@ ${DRAWER_VARIANT_IDS.map(
 @container tb3w (min-width: 700px) {
   .tb3d-panel .tb3w-list{flex:0 0 ${px(DRAWER_COMPACT_SPACING.listWidth)}}
   .tb3d-panel .tb3w-detail{flex:1 1 0;min-width:0;max-width:none}
+  /*
+   * ⚠ 详情没开 ⇒ 列表必须吃满（用户 2026-11-23：「抽屉还是只有一半」）。
+   *
+   * 宽版布局的前提是「详情在右边占位」，所以把列表钉死 listWidth。
+   * 但**不点卡时详情整个不渲染**（styles.ts 的 [data-detail="closed"] 只 display:none，
+   * 连 flex 都不占）⇒ 剩下那一片空间没人要，界面上就是「抽屉右边空一半」。
+   *
+   * ⇒ 详情关着的时候列表改回会长大，和全屏 / 工作区那份一致。
+   */
+  .tb3d-panel .tb3w-root[data-detail="closed"] .tb3w-list{flex:1 1 0}
 }
 `;

@@ -347,6 +347,21 @@ describe('⑥ CSS 由表插值生成', () => {
 		}
 	});
 
+	it('详情关着时列表吃满（否则抽屉右边空一半）', () => {
+		/*
+		 * 宽版布局把列表钉死 `listWidth`，前提是详情在右边占位。
+		 * 但详情关着时 `[data-detail="closed"]` 只 `display:none` —— 连弹性空间都不占
+		 * ⇒ 必须让列表改回 `flex:1 1 0`，否则右边那一半是没人要的空地。
+		 *
+		 * 用户 2026-11-23：「抽屉还是只有一半」。
+		 */
+		assert.equal(
+			DRAWER_CSS.includes('.tb3d-panel .tb3w-root[data-detail="closed"] .tb3w-list{flex:1 1 0}'),
+			true,
+			'详情关着时列表必须吃满；否则抽屉右边空一半',
+		);
+	});
+
 	it('压缩间距表每个数都对（改一个数这里就红）', () => {
 		assert.deepEqual(DRAWER_COMPACT_SPACING, {
 			headerHeight: 36,

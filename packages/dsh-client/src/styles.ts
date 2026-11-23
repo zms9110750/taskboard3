@@ -579,6 +579,14 @@ export const WORKSPACE_CSS = `
   .tb3w-page{padding:10px 12px}
   .tb3w-main{flex-direction:column;margin-top:6px}
   .tb3w-list{flex:0 0 52%}
+  /*
+   * ⚠ 详情关着 ⇒ 列表吃满（用户 2026-11-23：「抽屉还是只有一半」）。
+   *
+   * 横版宽版那条在 drawer-css.ts（列表被钉死 listWidth）；
+   * 竖版这条是同一个毛病：列表占 52% 高，详情不渲染时下面 48% 没人要。
+   * 两处必须成对，否则一改宽高就漏一头。
+   */
+  .tb3w-root[data-detail="closed"] .tb3w-list{flex:1 1 0}
   .tb3w-split{flex:0 0 20px;cursor:row-resize}
   .tb3w-split__line{top:50%;bottom:auto;left:8px;right:8px;width:auto;height:0;border-left:0;border-top:3px dashed #c3cad4}
   .tb3w-split__grip{display:none}
