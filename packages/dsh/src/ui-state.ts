@@ -48,12 +48,21 @@ export interface UiState {
 	readonly groups: readonly UiGroup[];
 	/** 折叠的卡 id + 组 id（两者共用这一个集合，id 不会撞）。 */
 	readonly folded: readonly string[];
+	/**
+	 * 用户**强制展开**的 id。
+	 *
+	 * ⚠ 为什么不能只存 folded：默认折叠判据（全终结且无未读 ⇒ 自动折）是**算出来的**，
+	 *   光看 folded 分不出「用户没动过这个节点」和「用户手动展开了它」。
+	 *   没有这个集合，用户手动展开的节点会在下次打开面板时被默认判据又折回去。
+	 */
+	readonly expanded: readonly string[];
 }
 
 /** 空状态（读不到 / 坏数据时返回它）。 */
 export const EMPTY_UI_STATE: UiState = Object.freeze({
 	groups: Object.freeze([]),
 	folded: Object.freeze([]),
+	expanded: Object.freeze([]),
 });
 
 /** kv 键前缀：组定义。 */
@@ -61,6 +70,9 @@ const GROUPS_KEY_PREFIX = 'ui.groups.';
 
 /** kv 键前缀：折叠态。 */
 const FOLDED_KEY_PREFIX = 'ui.folded.';
+
+/** kv 键前缀：强制展开态。 */
+const EXPANDED_KEY_PREFIX = 'ui.expanded.';
 
 /** `ui.groups.<workspaceId>`。 */
 export function uiGroupsKeyOf(workspaceId: string): string {
@@ -70,6 +82,11 @@ export function uiGroupsKeyOf(workspaceId: string): string {
 /** `ui.folded.<workspaceId>`。 */
 export function uiFoldedKeyOf(workspaceId: string): string {
 	return `${FOLDED_KEY_PREFIX}${workspaceId}`;
+}
+
+/** `ui.expanded.<workspaceId>`。 */
+export function uiExpandedKeyOf(workspaceId: string): string {
+	return `${EXPANDED_KEY_PREFIX}${workspaceId}`;
 }
 
 /** 是否是非空字符串（去空白后）。 */
@@ -140,6 +157,16 @@ export function parseUiGroups(raw: string | undefined): readonly UiGroup[] {
 
 /** 读路径：解析 kv 里的折叠态。坏数据 ⇒ 空数组。 */
 export function parseFolded(raw: string | undefined): readonly string[] {
+	return parseIdList(raw);
+}
+
+/** 读路径：解析 kv 里的强制展开态。坏数据 ⇒ 空数组。 */
+export function parseExpanded(raw: string | undefined): readonly string[] {
+	return parseIdList(raw);
+}
+
+/** 解析一个「字符串 id 数组」的 kv 值（坏数据 ⇒ 空数组）。 */
+function parseIdList(raw: string | undefined): readonly string[] {
 	if (raw === undefined || raw.trim() === '') return [];
 	let parsed: unknown;
 	try {
@@ -170,11 +197,21 @@ export function serializeFolded(folded: readonly string[]): string {
 	return JSON.stringify(folded);
 }
 
+/** 序列化强制展开态。 */
+export function serializeExpanded(expanded: readonly string[]): string {
+	return JSON.stringify(expanded);
+}
+
 /** `PUT` body 的校验结果。 */
 export type UiStateBodyCheck =
 	| {
 			readonly ok: true;
-			readonly value: { readonly workspace: string; readonly groups: readonly UiGroup[]; readonly folded: readonly string[] };
+			readonly value: {
+				readonly workspace: string;
+				readonly groups: readonly UiGroup[];
+				readonly folded: readonly string[];
+				readonly expanded: readonly string[];
+			};
 	  }
 	| { readonly ok: false; readonly path: string; readonly message: string };
 
@@ -237,6 +274,21 @@ export function validateUiStateBody(body: unknown): UiStateBodyCheck {
 		groups.push(parsed);
 	}
 
+	/* ⚠ expanded 是**后加的**字段：老客户端没这个键 ⇒ 当空数组，不许 400。 */
+	const rawExpanded = fieldOf(body, 'expanded');
+	const expanded: string[] = [];
+	if (rawExpanded !== undefined) {
+		if (!Array.isArray(rawExpanded)) {
+			return { ok: false, path: '/expanded', message: 'expanded 必须是数组（省略表示空）。' };
+		}
+		for (const one of rawExpanded) {
+			if (!isFilledString(one)) {
+				return { ok: false, path: '/expanded', message: 'expanded 里只能是非空字符串 id。' };
+			}
+			if (!expanded.includes(one.trim())) expanded.push(one.trim());
+		}
+	}
+
 	const rawFolded = fieldOf(body, 'folded');
 	if (!Array.isArray(rawFolded)) {
 		return { ok: false, path: '/folded', message: 'folded 必须是数组。' };
@@ -249,5 +301,5 @@ export function validateUiStateBody(body: unknown): UiStateBodyCheck {
 		if (!folded.includes(one.trim())) folded.push(one.trim());
 	}
 
-	return { ok: true, value: { workspace: workspace.trim(), groups, folded } };
+	return { ok: true, value: { workspace: workspace.trim(), groups, folded, expanded } };
 }

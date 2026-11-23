@@ -54,15 +54,16 @@
  * 类名（预览里由 `preview.css` 提供同一条规则），所以颜色**只有一份真值**。
  */
 
-import { memo, useId, useMemo } from 'react';
+import { memo, useId, useMemo, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 
 import { RELATION_KINDS, TASK_STATES, isLinkKindId } from '@taskboard/protocol';
 import type { RelationKindId } from '@taskboard/protocol';
 
-import { stateLabel } from '../pure/card-view.ts';
+import { isEndedStatus, stateLabel, unreadSides } from '../pure/card-view.ts';
 import { TECHTREE_CSS } from '../pure/techtree-css.ts';
 import { isFiltering, treeCardsOf, visibleCardIds } from '../pure/tree-filter.ts';
+import { badgeCountOf, treeFoldOf } from '../pure/tree-fold.ts';
 import type { TreeFilterCriteria } from '../pure/tree-filter.ts';
 import {
 	boxOf,
@@ -80,6 +81,7 @@ import type {
 	TreeMetrics,
 } from '../pure/tree-layout.ts';
 import type { Card } from '../types.ts';
+import { uiStateStore } from '../ui-state-store.ts';
 import { StatusDot } from './StatusDot.tsx';
 import { TreeCard } from './TreeCard.tsx';
 
@@ -381,6 +383,16 @@ export interface TechTreeProps {
 	readonly templateLabelOf?: (ref: string) => string;
 	/** 每栏最多几行（超过折栏）；省略 = `tree-layout.ts` 的默认 10。 */
 	readonly maxRowsPerColumn?: number;
+	/**
+	 * 用户显式**折叠**的 id；省略 = 读模块级单例 store（三入口共享）。
+	 *
+	 * ⚠ 省略时本组件自己订阅 store —— 那是产品形态；预览 / 测试传显式值，避免打网络。
+	 */
+	readonly foldedIds?: readonly string[];
+	/** 用户显式**展开**的 id；省略 = 读 store。 */
+	readonly expandedIds?: readonly string[];
+	/** 点折叠三角；省略 = 写 store。 */
+	readonly onToggleFold?: (id: string, folded: boolean) => void;
 	/** 点一张卡。 */
 	readonly onSelect: (cardId: string) => void;
 	/** hover 变化（离开时传 `null`）。省略 = 不响应 hover（仍可点选）。 */
@@ -408,6 +420,13 @@ interface CardsLayerProps {
 	readonly templateLabelOf: ((ref: string) => string) | undefined;
 	readonly onSelect: (cardId: string) => void;
 	readonly onHoverChange: ((cardId: string | null) => void) | undefined;
+	/** 可以折叠的节点（有子卡）。 */
+	readonly foldable: ReadonlySet<string>;
+	/** 当前折叠的节点。 */
+	readonly folded: ReadonlySet<string>;
+	/** 「N 张」的数量查询。 */
+	readonly badgeCountOf: (id: string) => number;
+	readonly onToggleFold: (id: string, folded: boolean) => void;
 }
 
 /**
@@ -442,6 +461,70 @@ const CardsLayer = memo(function CardsLayer(props: CardsLayerProps): ReactNode {
 					}}
 				/>
 			))}
+			{/* ── 折叠三角：有子卡的节点才有（用户 2026-11-24 要求） ── */}
+			{props.items.map((item) => {
+				if (!props.foldable.has(item.card.id)) return null;
+				const isFolded = props.folded.has(item.card.id);
+				const count = props.badgeCountOf(item.card.id);
+				return (
+					<button
+						key={`fold:${item.card.id}`}
+						type="button"
+						className={`tb3t-fold${isFolded ? ' is-folded' : ''}`}
+						data-fold-toggle={item.card.id}
+						data-folded={isFolded ? '1' : '0'}
+						title={isFolded ? `展开（${String(count)} 张）` : '折叠这一棵子树'}
+						aria-label={isFolded ? '展开' : '折叠'}
+						onClick={(event) => {
+							event.stopPropagation();
+							props.onToggleFold(item.card.id, !isFolded);
+						}}
+						style={{
+							position: 'absolute',
+							left: item.box.left + props.metrics.cardWidth - 24,
+							top: TREE_HEADER_HEIGHT + item.box.top + 6,
+							width: 18,
+							height: 18,
+							fontSize: 11,
+							lineHeight: '16px',
+							zIndex: 4,
+							cursor: 'pointer',
+							borderRadius: 5,
+							border: '1px solid #d7dbe2',
+							background: '#fff',
+							color: '#4b5563',
+							padding: 0,
+						}}
+					>
+						{isFolded ? '▸' : '▾'}
+					</button>
+				);
+			})}
+			{/* ── 折叠后显示「N 张」（N = 后代数，不含自己） ── */}
+			{props.items.map((item) => {
+				if (!props.folded.has(item.card.id)) return null;
+				return (
+					<span
+						key={`badge:${item.card.id}`}
+						data-fold-badge={item.card.id}
+						style={{
+							position: 'absolute',
+							left: item.box.left + 8,
+							top: TREE_HEADER_HEIGHT + item.box.top + props.metrics.cardHeight - 18,
+							fontSize: 10.5,
+							lineHeight: '14px',
+							padding: '0 5px',
+							borderRadius: 7,
+							background: '#eef2f7',
+							color: '#4b5563',
+							zIndex: 4,
+							pointerEvents: 'none',
+						}}
+					>
+						{String(props.badgeCountOf(item.card.id))} 张
+					</span>
+				);
+			})}
 		</>
 	);
 });
@@ -467,10 +550,49 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	const unread = props.filter?.unread;
 
 	const filtering = isFiltering(props.filter);
-	const visibleIds = useMemo<ReadonlySet<string>>(
+
+	/*
+	 * 折叠态：省略 props 时读模块级单例（三入口共享一份，用户 2026-11-24
+	 * 「三出入口用同一的。内存都是一份数据。」）。
+	 */
+	const uiSnapshot = useSyncExternalStore(uiStateStore.subscribe, uiStateStore.getSnapshot);
+	const foldedIds = props.foldedIds ?? uiSnapshot.folded;
+	const expandedIds = props.expandedIds ?? uiSnapshot.expanded;
+	const onToggleFold =
+		props.onToggleFold ??
+		((id: string, folded: boolean): void => {
+			uiStateStore.setFolded(id, folded);
+		});
+
+	/*
+	 * 子树折叠（用户 2026-11-24）：
+	 * 默认判据 = 自己终结 + 后代全终结 + 无用户未读 + 有子卡 + 不在 expanded 里。
+	 * 折叠 ⇒ **整棵后代不参与布局**（只留折叠节点自己）。
+	 */
+	const foldState = useMemo(() => {
+		const nodes = props.cards.map((card) => {
+			const rawParent = card.relations.parent;
+			return {
+				id: card.id,
+				parent: typeof rawParent === 'string' && rawParent !== '' ? rawParent : null,
+				ended: isEndedStatus(card.status),
+				userUnread: unreadSides(card.unread).left,
+			};
+		});
+		return treeFoldOf(nodes, foldedIds, expandedIds);
+	}, [props.cards, foldedIds, expandedIds]);
+
+	const filteringVisibleIds = useMemo<ReadonlySet<string>>(
 		() => visibleCardIds(props.cards, { status, kind, domain, search, unread }),
 		[props.cards, status, kind, domain, search, unread],
 	);
+	/* 两个隐藏来源取交集：筛选掉的 + 被折叠盖住的，都不参与布局。 */
+	const visibleIds = useMemo<ReadonlySet<string>>(() => {
+		if (foldState.hidden.size === 0) return filteringVisibleIds;
+		const out = new Set<string>();
+		for (const id of filteringVisibleIds) if (!foldState.hidden.has(id)) out.add(id);
+		return out;
+	}, [filteringVisibleIds, foldState]);
 	const treeCards = useMemo(
 		() => treeCardsOf(props.cards, visibleIds),
 		[props.cards, visibleIds],
@@ -692,6 +814,10 @@ export function TechTree(props: TechTreeProps): ReactNode {
 						metrics={metrics}
 						selectedId={props.selectedId}
 						kindLabelOf={kindLabelOf}
+					foldable={foldState.foldable}
+					folded={foldState.folded}
+					badgeCountOf={(id) => badgeCountOf(foldState, id)}
+					onToggleFold={onToggleFold}
 						templateLabelOf={props.templateLabelOf}
 						onSelect={props.onSelect}
 						onHoverChange={props.onHoverChange}
