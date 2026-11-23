@@ -1,5 +1,5 @@
 /**
- * `GET /api/tools` —— 读 DSH 的**全局**工具清单。
+ * `GET /api/tools` —— 读 DSH 的**全量**工具清单（全局 ∪ 每个 agent preset ∪ 活 agent）。
  *
  * ## 为什么这个端点在本包（用户 `2026-11-23`）
  *
@@ -8,16 +8,18 @@
  * 只有「工具权限」这套 UI 需要工具清单，所以端点跟着本行走 ——
  * 关掉本行，端点一起消失，不污染 `@taskboard/dsh` 的公开面。
  *
- * ## 数据从哪来（已核实的 DSH API）
+ * ## 数据从哪来（两次修订，都是实测推翻的）
  *
- * ```ts
- * // packages/dsh-tools/node_modules/@deepseek-ai/dsh-tools/lib/types/index.d.ts:712
- * schemas(scope?: ScopeKey): ToolSchema[];
- * // 文档 L706-711：Project visible definitions onto the allowlisted model-facing
- * //              schema fields, omitting scope = the global view
- * ```
+ * 第一版只读 `ctx.tools.schemas()`（不传 scope = 全局视图）。用户 `2026-11-24` 看到只有 16 个：
  *
- * **不传 `scope`** ⇒ 全局视图（用户 `2026-11-23`：「就用全局吧。保险起见」）。
+ * > 「这里的工具集显然没有真正连通后端。不可能就这么一点工具」
+ *
+ * 实测：全局视图只含 root/host 层注册的工具；那几十个常用工具
+ * （bash / read / write / grep / glob / pwsh / web_search / subagent / todo_write …）
+ * 长在 **agent-preset 的 scope 层**里。
+ *
+ * ⇒ 现在的数据来源是 {@link createToolInventory}：全局 ∪ 每个 preset 的 scope ∪ 活 agent，
+ *   按 name 去重（隔离 profile 实测 16 → 53）。
  *
  * ## 鉴权与 `@taskboard/dsh` 同源，不另发明
  *
@@ -77,17 +79,27 @@ export const TOOLS_TAIL = '/api/tools';
 /**
  * 在 `@taskboard/dsh` 的 prefix handler 里处理 `GET /api/tools`。
  *
+ * ## 为什么允许 `listTools` 返回 Promise 却仍返回 `boolean`
+ *
+ * 枚举 preset scope 必须异步（`agentPresets.list()` / `acquireScope()` 都是 Promise），
+ * 但 `@taskboard/dsh` 那侧的 `agentGuardTools` 是**同步分派**（它只判断「这条 tail 归你」）。
+ *
+ * ⇒ 保持「同步返回 true = 我接了」，需要异步时**内部 fire-and-forget**：
+ *   响应可以稍后 `res.end()`，node 的 `ServerResponse` 允许。
+ *   这样不用把 `boolean` 的契约改成 `Promise<boolean>`，也不用动 `@taskboard/dsh` 的
+ *   `deps` 类型（那会牵动另一行的公开面）。
+ *
  * @param connection Host 的连接服务（鉴权）
  * @param req 请求
  * @param res 响应
- * @param listTools 取全局工具清单（调用方负责读 `ctx.tools.schemas()`）
+ * @param listTools 取全量工具清单（调用方负责 `createToolInventory()`）
  * @returns `true` = 已处理（调用方不要再往下走）
  */
 export function handleToolsRequest(
 	connection: ConnectionLike,
 	req: IncomingLike,
 	res: OutgoingLike,
-	listTools: () => readonly unknown[],
+	listTools: () => readonly unknown[] | Promise<readonly unknown[]>,
 ): boolean {
 	/* ① 鉴权：与 `@taskboard/dsh` 同一调用、同一返回值处理。 */
 	if (rejected(connection, req, res)) return true;
@@ -98,9 +110,37 @@ export function handleToolsRequest(
 		return true;
 	}
 
-	/* ③ 返回清单（只保留白名单三字段）。 */
-	sendJson(res, 200, { tools: normalize(listTools()) });
+	/* ③ 返回清单（只保留白名单三字段）。同步返回的直接写，异步的等它写完。 */
+	const result = listTools();
+	if (isPromiseLike(result)) {
+		void result.then(
+			(tools) => {
+				sendJson(res, 200, { tools: normalize(tools) });
+			},
+			(error: unknown) => {
+				/*
+				 * 走到这里说明 `createToolInventory()` 的兜底也没兜住。
+				 * ⚠ 仍然**不返回 500**：清单读不到是降级，不是请求非法。
+				 *   返回空清单 + 200，UI 那边会显示「0 个」，比整页报错好定位。
+				 */
+				console.warn(`[taskboard3-agent-guard] /api/tools 枚举失败：${String(error)}`);
+				sendJson(res, 200, { tools: [] });
+			},
+		);
+		return true;
+	}
+	sendJson(res, 200, { tools: normalize(result) });
 	return true;
+}
+
+/**
+ * 判断返回值是不是 Promise（不依赖构造函数，避免跨 realm 误判）。
+ *
+ * @param value 候选值
+ * @returns `true` = 需要 await
+ */
+function isPromiseLike(value: readonly unknown[] | Promise<readonly unknown[]>): value is Promise<readonly unknown[]> {
+	return typeof (value as { then?: unknown }).then === 'function';
 }
 
 /**

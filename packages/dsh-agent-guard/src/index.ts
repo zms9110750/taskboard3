@@ -54,6 +54,11 @@ import type { Taskboard } from '@taskboard/core';
 import { handleToolsRequest, type ConnectionLike, type IncomingLike, type OutgoingLike } from './http.ts';
 import { createPermissionGuard } from './permission.ts';
 import { createAgentGuardTools } from './tools.ts';
+import {
+	createToolInventory,
+	type AgentsLike,
+	type PresetsLike,
+} from './tool-inventory.ts';
 import { readToolGuardLevelOf, writeToolGuardLevel, type ToolGuardKv, type ToolGuardLevel } from './tool-guard.ts';
 
 /** Cordis 插件名（bundle 第 6 行的 id 用 `taskboard3-agent-guard`）。 */
@@ -107,6 +112,13 @@ export interface ApplyContext {
 		}): () => void;
 	};
 	readonly subagents?: unknown;
+	/**
+	 * `ctx.loader`（cordis loader）。
+	 *
+	 * 只用来 `await()` 等挂载稳定 —— 枚举 preset 之前要先等挂载完成，
+	 * 否则会拿到「还没注册完」的半个注册表。可选：没有就跳过等待。
+	 */
+	readonly loader?: { await?(): Promise<unknown> } | undefined;
 	get?(name: string): unknown;
 	provide(serviceName: string, api: unknown): void;
 	effect?(effect: () => () => void, label?: string): void;
@@ -132,8 +144,43 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	/* ① 档位读写 + 对外服务（`dsh` 的 /api/permission 和 composer 权限框都靠它）。 */
 
 	/* ④ GET /api/tools 的处理器（服务上暴露给 `@taskboard/dsh` 的 prefix handler）。 */
+	/*
+	 * 数据源 = 全量并集：全局层 ∪ 每个 agent preset 的 scope ∪ 活 agent。
+	 *
+	 * ⚠ `agentPresets` / `agents` 都是**可选**服务（preset registry 只在 web-app 形态存在），
+	 *   只能 `ctx.get(…)` 可选访问 —— 写进 `inject` 会让 TUI / headless profile 整行不激活。
+	 *   现成先例：上面 `ctx.get('subagents')`。
+	 */
+	const optionalService = <T>(serviceName: string): T | undefined => {
+		if (typeof ctx.get !== 'function') return undefined;
+		const found = ctx.get(serviceName);
+		return found === undefined || found === null ? undefined : (found as T);
+	};
+	const permissionTools = ctx.tools as unknown as ToolsSchemasLike;
+	/*
+	 * ⚠ 全部用**延迟解析**（函数），不在 apply 时固化。
+	 *
+	 * `apply()` 执行时别的插件可能还没激活（本行是 bundle 第 6 行，
+	 * preset-registry 由 `dsh-web-app` 插入，激活顺序不由我们决定）。
+	 * 第一版就是在这里取一次值 ⇒ `/api/tools` 只返回 16 个（preset 层被静默跳过）。
+	 * 枚举发生在**请求到达时**，那时服务早就齐了。
+	 */
+	const toolInventory = createToolInventory({
+		schemas: (scope?: unknown) => permissionTools.schemas?.(scope) ?? [],
+		resolvePresets: () => optionalService<PresetsLike>('agentPresets'),
+		resolveAgents: () => optionalService<AgentsLike>('agents'),
+		resolveAwaitReady: () => {
+			const loader = ctx.loader ?? optionalService<{ await?(): Promise<unknown> }>('loader');
+			if (loader?.await === undefined) return undefined;
+			return async (): Promise<unknown> => loader.await?.();
+		},
+		warn: (message) => {
+			console.warn(`[taskboard3-agent-guard] ${message}`);
+		},
+	});
+
 	const handleTools = (connection: ConnectionLike, req: IncomingLike, res: OutgoingLike): boolean =>
-		handleToolsRequest(connection, req, res, () => (ctx.tools as unknown as ToolsSchemasLike).schemas?.() ?? []);
+		handleToolsRequest(connection, req, res, toolInventory);
 
 	const service: AgentGuardService = {
 		readLevel: () => readToolGuardLevelOf(kv),
