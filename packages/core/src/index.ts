@@ -243,6 +243,26 @@ const CARD_ACTION_LEVEL_KEY = 'taskboard.permission.cardActionLevel';
 /** kv 键：宿主轴档位。 */
 const TOOL_GUARD_LEVEL_KEY = 'taskboard.permission.toolGuardLevel';
 
+/* ─────────────────────── 「AI 能不能改卡状态」的总闸 ─────────────────────── */
+
+/**
+ * 开关默认值：**默认允许**。
+ *
+ * 理由与两条轴相反：那两条默认最严是因为它们管的是**授权**（没授权就别放开）；
+ * 这个开关管的是**限制**（没配置就别拦着）。默认拦住会让装上插件后 AI
+ * 一张卡都推不动，而用户并不知道有这么个开关。
+ */
+const DEFAULT_AI_STATE_CHANGE = true;
+
+/**
+ * kv 键：角色为 `ai` 的改卡状态操作是否允许。
+ *
+ * ⚠ 与另外两个键**分开存**（同「两条轴分开存」的理由）：它们改的是不同的东西，
+ *   合成一个 JSON 会写放大、互相踩。
+ */
+const AI_STATE_CHANGE_KEY = 'taskboard.permission.aiStateChange';
+
+
 /*
  * ⚠ 合法值**从选项常量派生**，不在这里再抄一份 ——
  *   否则「选项表加一档、读取白名单没加」会让新档位永远读成脏值回落默认（静默）。
@@ -267,6 +287,23 @@ function readLevel<T extends string>(
 	for (const choice of choices) if (choice === raw) return choice;
 	console.warn(
 		`[taskboard3-core] kv「${key}」的值「${raw}」不是合法档位，已回落默认「${fallback}」。`,
+	);
+	return fallback;
+}
+
+/**
+ * 从不可信的 kv 值里读一个布尔开关。
+ *
+ * 只认 `'true'` / `'false'`（`kvSet` 写的就是这两个字面量）。
+ * 脏值 ⇒ 回落默认 + `console.warn`，与 `readLevel` 同一取舍：
+ * **一条坏记录不该让整个插件挂掉，但要留痕**。
+ */
+function readFlag(raw: string | undefined, fallback: boolean, key: string): boolean {
+	if (raw === undefined) return fallback;
+	if (raw === 'true') return true;
+	if (raw === 'false') return false;
+	console.warn(
+		`[taskboard3-core] kv「${key}」的值「${raw}」不是布尔，已回落默认「${String(fallback)}」。`,
 	);
 	return fallback;
 }
@@ -448,6 +485,19 @@ export interface Taskboard {
 	getToolGuardLevel(): ToolGuardLevel;
 	/** 写宿主轴档位（落 kv，下次启动仍在）。 */
 	setToolGuardLevel(level: ToolGuardLevel): Promise<void>;
+
+	/**
+	 * 读「角色为 `ai` 的改卡状态操作允不允许」这个总闸。
+	 *
+	 * 用户 `2026-11-23`：
+	 * > 「core提供的后端里面有一个开关设置和权限。用指令和UI可以改这个开关。
+	 * >   然后会限制改卡状态的角色为ai的部分的操作。」
+	 *
+	 * **拦的是角色，不是能力**：`user` 点按钮、`system` 自动重算**都不受影响**。
+	 */
+	getAiStateChangeAllowed(): boolean;
+	/** 写这个总闸（落 kv，下次启动仍在）。 */
+	setAiStateChangeAllowed(allowed: boolean): Promise<void>;
 
 	/* ── 写 ── */
 	create(input: CreateInput): Promise<CreateResult>;
@@ -820,6 +870,47 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	);
 
 	/**
+	 * 「角色为 `ai` 的改卡状态操作允不允许」的总闸（缓存）。
+	 *
+	 * 与上面两个档位同一模式：初值从 kv 读一次，写入时同步更新缓存 + 写回。
+	 * 缓存理由更强：判定在每个写方法的热路径上，不能每次 `kvGet`。
+	 */
+	let aiStateChangeAllowed: boolean = readFlag(
+		store.kvGet(AI_STATE_CHANGE_KEY),
+		DEFAULT_AI_STATE_CHANGE,
+		AI_STATE_CHANGE_KEY,
+	);
+
+	/**
+	 * 总闸的**唯一判定口**：角色是 `ai` 且开关关着 ⇒ 返回带原因的失败。
+	 *
+	 * ## 为什么返回 `Failure` 而不是抛
+	 *
+	 * 本仓库的写方法一律返回判别联合（`{ ok: false, code, message }`），
+	 * 调用方（AI 工具 / HTTP / 命令）各自把它翻译成人话。
+	 * 抛异常会逼上层 `try/catch`，而 `catch` 里拿不到 `code`。
+	 *
+	 * @param actor 本次操作的角色；只有 `'ai'` 会被拦
+	 * @param what 人话动作名（「领取」「采纳」…），拼进 message
+	 */
+	const aiStateChangeBlocked = (card: Card, actor: Actor, what: string): Failure | null => {
+		if (aiStateChangeAllowed || actor !== 'ai') return null;
+		return failure(
+			ErrorCode.AI_STATE_CHANGE_DISABLED,
+			`卡「${card.id}」现在不能让 AI ${what}：它处于「${labelOf(card.status)}」状态，而任务板已关闭「AI 可改卡状态」这个开关。`,
+			{
+				detail: {
+					cardId: card.id,
+					status: card.status,
+					actor,
+					action: what,
+					switch: 'aiStateChange',
+				},
+			},
+		);
+	};
+
+	/**
 	 * 落库 + 返回。
 	 *
 	 * ## ⚠ 这里是**唯一的广播收口**（原型期脚手架）
@@ -1178,6 +1269,17 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			await store.kvSet(TOOL_GUARD_LEVEL_KEY, level);
 		},
 
+		/* ── 「AI 能不能改卡状态」总闸 ── */
+
+		getAiStateChangeAllowed() {
+			return aiStateChangeAllowed;
+		},
+
+		async setAiStateChangeAllowed(allowed) {
+			aiStateChangeAllowed = allowed;
+			await store.kvSet(AI_STATE_CHANGE_KEY, allowed ? 'true' : 'false');
+		},
+
 		judgeToolCall(input) {
 			/*
 			 * 档位从缓存读，不让调用方传 —— 调用方（dsh / MCP）只需要知道
@@ -1365,6 +1467,10 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
 			}
 
+			/* 采纳会改状态 ⇒ 过总闸（`user` 点按钮不受影响）。 */
+			const blocked = aiStateChangeBlocked(existing, actor, '采纳草稿');
+			if (blocked !== null) return blocked;
+
 			const result = adoptCard(existing, actor, now(), options);
 			if (!result.ok) return result;
 
@@ -1382,6 +1488,15 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			if (existing.deleted) {
 				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
 			}
+
+			/*
+			 * 领取会把「提交」推到「处理中」⇒ 过总闸。
+			 *
+			 * ⚠ 用户点按钮是「代 AI 指派」，那种情况 `actor` 传 `'user'`，
+			 *   总闸不管它 —— 与「限制角色为 ai 的那部分」一致。
+			 */
+			const blocked = aiStateChangeBlocked(existing, actor, '领取');
+			if (blocked !== null) return blocked;
 
 			/*
 			 * ## claim 是**权限边界**，不是并发控制（用户 `2026-11-13`）
@@ -1431,7 +1546,16 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			/*
 			 * 只移除**自己**那一条。列表里还有别人 ⇒ 状态不变；
 			 * 空了才回「提交」—— 那由 `releaseCard` 处理。
+			 *
+			 * ⚠ 「列表还有别人」时状态不变 ⇒ 严格说没改状态。但**释放**是
+			 *   改卡状态那一族动作（`WORKING → SUBMITTED` 正是它干的事），
+			 *   而且用户说的是「角色为 ai 的改卡状态操作」——
+			 *   放行一半（有别人时放、没别人时拦）会让 AI 看到不一致的行为。
+			 *   ⇒ 一律过总闸。
 			 */
+			const blocked = aiStateChangeBlocked(existing, actor, '释放');
+			if (blocked !== null) return blocked;
+
 			const result = releaseCard(existing, holder, actor, now());
 			if (!result.ok) return result;
 
@@ -1448,6 +1572,18 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			}
 			if (existing.deleted) {
 				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
+			}
+
+			/*
+			 * 通用转移：`trigger === 'ai'` 就是「角色为 ai 的改卡状态」。
+			 *
+			 * ⚠ 这是**唯一一处**按 trigger 判总闸的地方 —— 另外三处
+			 *   （adopt / claim / release）按 `actor`。两套入参是既有形状，
+			 *   不改签名（那会波及全部调用方与测试）。
+			 */
+			if (trigger === 'ai') {
+				const blocked = aiStateChangeBlocked(existing, 'ai', '改状态');
+				if (blocked !== null) return blocked;
 			}
 
 			const result = transitionCard(existing, to, trigger, now());

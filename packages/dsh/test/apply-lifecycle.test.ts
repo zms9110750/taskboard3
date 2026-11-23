@@ -151,7 +151,11 @@ describe('apply() 的生命周期契约（@taskboard/dsh = HTTP + 命令）', ()
 		apply(ctx as never, {});
 
 		const names = events.filter((one) => one.what === 'command+').map((one) => one.detail);
-		assert.deepEqual(names, ['taskboard', 'task-card', 'task-create']);
+		/*
+		 * `task-ai-switch` 是用户 `2026-11-23` 要的「用指令可以改这个开关」那条入口
+		 * （另一条是 `POST /api/permission`，界面用）。
+		 */
+		assert.deepEqual(names, ['taskboard', 'task-card', 'task-create', 'task-ai-switch']);
 	});
 
 	it('⭐ 本包**不注册 AI 工具、不加 guard**（那些在 @taskboard/dsh-tools 里）', () => {

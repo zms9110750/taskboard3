@@ -47,6 +47,19 @@ export const ErrorCode = {
 	 *   关系、领取都不受这条规则影响 —— 它们各有自己的规则。
 	 */
 	CARD_ENDED_IMMUTABLE: 'CARD_ENDED_IMMUTABLE',
+	/**
+	 * 任务板的开关把「角色 = `ai` 的改卡状态操作」关掉了。
+	 *
+	 * 用户 `2026-11-23`：
+	 * > 「core提供的后端里面有一个开关设置和权限。用指令和UI可以改这个开关。
+	 * >   然后会限制改卡状态的角色为ai的部分的操作。
+	 * >   然后在ai tool侧要返回对应的错误和提示。」
+	 *
+	 * ⚠ 拦的只是**角色为 `ai`** 的那部分：`user` 点按钮、`system` 自动重算
+	 *   **都不受影响**。这是「限制改卡状态中属于 AI 的那部分操作」，
+	 *   不是「限制 AI 的一部分操作」。
+	 */
+	AI_STATE_CHANGE_DISABLED: 'AI_STATE_CHANGE_DISABLED',
 
 	/* ── 装配方的问题（不是用户能修的） ── */
 	/** 模板注册表不可用（YAML 解析失败 / 尚未加载）。 */
@@ -79,6 +92,7 @@ export const ERROR_HINTS: Readonly<Record<ErrorCode, string>> = Object.freeze({
 	CLAIM_REJECTED: '先完成依赖，或释放手上另一个处理中的卡。',
 	FIELD_REQUIRED: '补上缺失字段后重试。',
 	CARD_ENDED_IMMUTABLE: '这张卡已完结，内容不能再改。要看内容用 taskboard_card / taskboard_raw_card；要接着做就新建一张卡。',
+	AI_STATE_CHANGE_DISABLED: '任务板当前不允许 AI 改卡状态。请把要做的状态变化告诉用户，让用户点按钮；或让用户先把开关打开。',
 	TEMPLATES_UNAVAILABLE: '模板注册表未就绪；这是安装问题，不是调用问题。',
 	ACTION_NOT_FOUND: 'action 未注册。用注册表工具查可用 action。',
 	PORT_UNAVAILABLE: '该能力未装配；检查插件是否完整。',

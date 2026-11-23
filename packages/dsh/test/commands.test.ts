@@ -163,12 +163,12 @@ async function makeCard(title: string): Promise<string> {
 }
 
 describe('/task-card', () => {
-	it('注册了三个命令', async () => {
+	it('注册了四个命令', async () => {
 		const created = await taskboard.createWorkspace('命令空间');
 		assert.equal(created.ok, true);
 		if (created.ok) current = created.workspace.id;
 		const all = setupAll();
-		assert.deepEqual([...all.keys()].sort(), ['task-card', 'task-create', 'taskboard']);
+		assert.deepEqual([...all.keys()].sort(), ['task-ai-switch', 'task-card', 'task-create', 'taskboard']);
 	});
 
 	it('给编号 ⇒ 返回卡的元数据', async () => {
@@ -224,5 +224,43 @@ describe('/task-create', () => {
 		const result = (await command.handler({ rawInput: '   ' })) as { kind: string; text: string };
 		assert.equal(result.kind, 'error');
 		assert.ok(result.text.includes('用法'), result.text);
+	});
+});
+
+/* ────────────────────────── /task-ai-switch ────────────────────────── */
+
+describe('/task-ai-switch', () => {
+	it('不带参数 ⇒ 显示当前值（默认允许）', async () => {
+		await taskboard.setAiStateChangeAllowed(true);
+		const command = setupAll().get('task-ai-switch') as Registered;
+		const result = (await command.handler({ rawInput: '' })) as { kind: string; text: string };
+		assert.equal(result.kind, 'success');
+		assert.ok(result.text.includes('允许'), result.text);
+		/* 说清范围：只拦角色为 ai 的，不拦人和系统。 */
+		assert.ok(result.text.includes('人点按钮'), result.text);
+	});
+
+	it('off ⇒ 关掉总闸（真的落到 core）', async () => {
+		await taskboard.setAiStateChangeAllowed(true);
+		const command = setupAll().get('task-ai-switch') as Registered;
+		const result = (await command.handler({ rawInput: 'off' })) as { kind: string; text: string };
+		assert.equal(result.kind, 'success');
+		assert.equal(taskboard.getAiStateChangeAllowed(), false);
+	});
+
+	it('on ⇒ 打开总闸', async () => {
+		await taskboard.setAiStateChangeAllowed(false);
+		const command = setupAll().get('task-ai-switch') as Registered;
+		await command.handler({ rawInput: 'on' });
+		assert.equal(taskboard.getAiStateChangeAllowed(), true);
+	});
+
+	it('非法参数 ⇒ error，且不动开关', async () => {
+		await taskboard.setAiStateChangeAllowed(true);
+		const command = setupAll().get('task-ai-switch') as Registered;
+		const result = (await command.handler({ rawInput: 'maybe' })) as { kind: string; text: string };
+		assert.equal(result.kind, 'error');
+		assert.ok(result.text.includes('用法'), result.text);
+		assert.equal(taskboard.getAiStateChangeAllowed(), true);
 	});
 });

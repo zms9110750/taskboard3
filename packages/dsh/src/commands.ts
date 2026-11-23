@@ -225,4 +225,43 @@ export function registerCommands(registry: CommandRegistryLike, deps: CommandDep
 			return { kind: 'success', text: `已建卡 ${card.id}  ${card.title}（草稿，模板 ${card.template.ref}）` };
 		},
 	});
+
+	/* ── 4. 总闸 ── */
+	registry.register({
+		name: 'task-ai-switch',
+		description:
+			'开关：角色为 ai 的改卡状态操作允不允许。/task-ai-switch 看当前值，/task-ai-switch on|off 改它',
+		input: { hint: '[on|off]' },
+		recordInput: false,
+		async handler(invocation: unknown): Promise<CommandResult> {
+			const arg = inputOf(invocation).trim().toLowerCase();
+
+			/*
+			 * 用户 `2026-11-23`：
+			 * > 「core提供的后端里面有一个开关设置和权限。**用指令和UI可以改这个开关**。
+			 * >   然后会限制改卡状态的角色为ai的部分的操作。」
+			 *
+			 * ⇒ 命令是「改这个开关」的两条入口之一（另一条是 `POST /api/permission`，
+			 *   界面用）。两条都只写 core 的那一个 kv 键，不各存一份。
+			 */
+			if (arg === '') {
+				const on = deps.taskboard.getAiStateChangeAllowed();
+				return {
+					kind: 'success',
+					text: `AI 改卡状态：${on ? '允许' : '不允许'}\n（/task-ai-switch on 打开；/task-ai-switch off 关闭）\n注意：关掉后只拦角色为 ai 的操作；人点按钮和系统自动重算不受影响。`,
+				};
+			}
+
+			if (arg !== 'on' && arg !== 'off') {
+				return { kind: 'error', text: `用法：/task-ai-switch [on|off]（收到「${arg}」）` };
+			}
+
+			const on = arg === 'on';
+			await deps.taskboard.setAiStateChangeAllowed(on);
+			return {
+				kind: 'success',
+				text: on ? '已允许 AI 改卡状态。' : '已禁止 AI 改卡状态（人点按钮、系统自动重算仍照常）。',
+			};
+		},
+	});
 }
