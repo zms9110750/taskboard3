@@ -73,6 +73,7 @@ import type { StatusGroup } from '@taskboard/protocol';
 import type { ButtonAction } from '@taskboard/protocol';
 
 import { KIND_ORDER, cardTimes, stateLabel } from '../pure/card-view.ts';
+import { SiblingRelationPanel } from './SiblingRelationPanel.tsx';
 import { uiStateStore } from '../ui-state-store.ts';
 import {
 	applyCardQuery,
@@ -273,6 +274,13 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	);
 	/** 分隔条拖过之后的列表占比；`null` = 用 CSS 默认（宽 2:1.2 / 窄 52%）。 */
 	const [splitRatio, setSplitRatio] = useState<number | null>(null);
+	/**
+	 * 根卡关系视图开着吗（科技树最左窄列点开的那个）。
+	 *
+	 * 用户 2026-11-24：「加一个列头吧。一个很窄的一个列。可以点击。进去以后只有一个关系区作为详情。」
+	 * ⇒ 它和「选中一张卡」共用详情位，互斥：开它就把卡选中清掉。
+	 */
+	const [rootsOpen, setRootsOpen] = useState(false);
 
 	/* ── 派生数据 ── */
 
@@ -441,6 +449,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 	const select = (cardId: string | null): void => {
 		setMenu(null);
+		if (cardId !== null) setRootsOpen(false);
 		props.onSelect(cardId);
 	};
 
@@ -477,7 +486,11 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	/** 工具栏计数用哪一份：列表视图用列表的判决，科技树视图用科技树的判决。 */
 	const shownCount = view === 'tree' ? treeVisibleCount : visibleCards.length;
 
-	const detailOpen = selectedCard !== null;
+	/*
+	 * 根卡关系视图（用户 2026-11-24：科技树最左窄列点开，详情位只放关系区）。
+	 * 和「选中一张卡」互斥：开根卡关系就清掉卡选中，反之亦然。
+	 */
+	const detailOpen = selectedCard !== null || rootsOpen;
 
 	/**
 	 * 详情面板。抽成函数而不是内联 JSX —— 内联时 `selectedCard` 的收窄
@@ -531,6 +544,17 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					select(null);
 				}}
 				{...(props.onExpandDetail === undefined ? {} : { onExpand: props.onExpandDetail })}
+				/*
+				 * 「子卡归组」进关系折叠区（用户 2026-11-24：「放在卡的关系的那个折叠组件里面」）。
+				 * 和根卡视图是同一个组件，只是父是这张卡。
+				 */
+				siblingGroups={
+					<SiblingRelationPanel
+						cards={props.cards}
+						parentId={card.id}
+						title="子卡关系"
+					/>
+				}
 			/>
 		</aside>
 	);
@@ -694,6 +718,11 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 									kindLabelOf={kindLabel}
 									onSelect={select}
 									onHoverChange={setTreeHoverId}
+									onRootColumnClick={() => {
+										setRootsOpen((open) => !open);
+										props.onSelect(null);
+									}}
+									rootColumnOpen={rootsOpen}
 								/>
 							</div>
 						) : (
@@ -727,6 +756,27 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					{detailOpen ? <SplitHandle onResize={setSplitRatio} /> : null}
 
 					{selectedCard === null ? null : renderDetail(selectedCard)}
+
+					{/*
+					 * 根卡关系视图：和最左窄列配合（用户 2026-11-24）。
+					 * 只放关系区 —— 没有卡详情，因为它代表的是「所有根卡的兄弟集合」。
+					 */}
+					{rootsOpen ? (
+						<aside
+							className="tb3w-detail"
+							style={detailStyle}
+							data-detail-pane
+							data-roots-pane
+						>
+							<SiblingRelationPanel
+								cards={props.cards}
+								parentId={null}
+								onClose={() => {
+									setRootsOpen(false);
+								}}
+							/>
+						</aside>
+					) : null}
 
 					{/*
 					 * ⚠ **不点卡时列表/科技树占满整个视口**（用户 2026-11-23）。

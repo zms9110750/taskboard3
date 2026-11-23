@@ -99,6 +99,8 @@ export interface CardDetailProps {
 	readonly onClose?: () => void;
 	/** 右上角 ⧉；省略 = 不显示这个按钮。 */
 	readonly onExpand?: () => void;
+	/** 兄弟归组面板（用户 2026-11-24：放在关系折叠区里点选成组）。 */
+	readonly siblingGroups?: ReactNode;
 }
 
 /**
@@ -150,6 +152,7 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 				onJumpRelation={props.onJumpRelation}
 				onClose={props.onClose}
 				onExpand={props.onExpand}
+				siblingGroups={props.siblingGroups}
 			/>
 
 			{/*

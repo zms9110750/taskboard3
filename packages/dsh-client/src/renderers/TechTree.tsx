@@ -64,6 +64,13 @@ import { isEndedStatus, stateLabel, unreadSides } from '../pure/card-view.ts';
 import { TECHTREE_CSS } from '../pure/techtree-css.ts';
 import { isFiltering, treeCardsOf, visibleCardIds } from '../pure/tree-filter.ts';
 import { badgeCountOf, treeFoldOf } from '../pure/tree-fold.ts';
+import {
+	collapsedGroupsOf,
+	hiddenByFoldedGroups,
+	groupLabelOf,
+	type GroupableCard,
+} from '../pure/sibling-groups.ts';
+import type { TreeGroup } from '../pure/ui-state.ts';
 import type { TreeFilterCriteria } from '../pure/tree-filter.ts';
 import {
 	boxOf,
@@ -393,6 +400,16 @@ export interface TechTreeProps {
 	readonly expandedIds?: readonly string[];
 	/** 点折叠三角；省略 = 写 store。 */
 	readonly onToggleFold?: (id: string, folded: boolean) => void;
+	/**
+	 * 组的定义；省略 = 读模块级单例 store。
+	 *
+	 * 组只影响**布局**：折叠的组把成员藏起来、在原位置画一个组节点。
+	 */
+	readonly groups?: readonly TreeGroup[];
+	/** 点最左「根卡」窄列；省略 = 不渲染那一列（预览 / 测试）。 */
+	readonly onRootColumnClick?: () => void;
+	/** 根卡关系视图是否正开着（给窄列高亮）。 */
+	readonly rootColumnOpen?: boolean;
 	/** 点一张卡。 */
 	readonly onSelect: (cardId: string) => void;
 	/** hover 变化（离开时传 `null`）。省略 = 不响应 hover（仍可点选）。 */
@@ -574,13 +591,60 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		() => visibleCardIds(props.cards, { status, kind, domain, search, unread }),
 		[props.cards, status, kind, domain, search, unread],
 	);
-	/* 两个隐藏来源取交集：筛选掉的 + 被折叠盖住的，都不参与布局。 */
+	/*
+	 * 兄弟归组（用户 2026-11-24）：
+	 *   折叠中的组 ⇒ 成员不参与布局（和子树折叠同一个隐藏来源）；
+	 *   在原位置画一个组节点替代。
+	 * 组只影响布局，不碰卡数据。
+	 */
+	const groups = props.groups ?? uiSnapshot.groups;
+	const groupableCards = useMemo<readonly GroupableCard[]>(
+		() =>
+			props.cards.map((card) => ({
+				id: card.id,
+				title: card.title,
+				parent: card.relations.parent,
+			})),
+		[props.cards],
+	);
+	const foldedIdSet = useMemo(() => new Set(foldedIds), [foldedIds]);
+	/*
+	 * 折叠中的组：**留第一个成员当锚点**（组节点画在它的 box 上），其余成员藏起来。
+	 *
+	 * 为什么不把成员全藏：藏光了就没有 box 可放组节点了；
+	 * 而且成员在布局里本来就占位置——留一个锚点位置不跳。
+	 */
+	const groupPlan = useMemo(() => {
+		const present = new Set(props.cards.map((card) => card.id));
+		const collapsed = collapsedGroupsOf(groupableCards, groups, foldedIdSet);
+		const anchors = new Map<string, string>();
+		const hidden = new Set<string>();
+		for (const group of collapsed) {
+			const anchor = group.memberIds.find((id) => present.has(id));
+			if (anchor === undefined) continue;
+			anchors.set(group.id, anchor);
+			for (const id of group.memberIds) {
+				if (id !== anchor && present.has(id)) hidden.add(id);
+			}
+		}
+		return { collapsed, anchors, hidden };
+	}, [props.cards, groupableCards, groups, foldedIdSet]);
+	const groupHidden = groupPlan.hidden;
+	const rootCardCount = useMemo(
+		() => groupableCards.filter((card) => card.parent === null).length,
+		[groupableCards],
+	);
+	/* 三个隐藏来源取交集：筛选掉的 + 子树折叠的 + 组折叠的，都不参与布局。 */
 	const visibleIds = useMemo<ReadonlySet<string>>(() => {
-		if (foldState.hidden.size === 0) return filteringVisibleIds;
+		if (foldState.hidden.size === 0 && groupHidden.size === 0) return filteringVisibleIds;
 		const out = new Set<string>();
-		for (const id of filteringVisibleIds) if (!foldState.hidden.has(id)) out.add(id);
+		for (const id of filteringVisibleIds) {
+			if (foldState.hidden.has(id)) continue;
+			if (groupHidden.has(id)) continue;
+			out.add(id);
+		}
 		return out;
-	}, [filteringVisibleIds, foldState]);
+	}, [filteringVisibleIds, foldState, groupHidden]);
 	const treeCards = useMemo(
 		() => treeCardsOf(props.cards, visibleIds),
 		[props.cards, visibleIds],
@@ -615,6 +679,31 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		() => buildEdges(props.cards, layout, metrics),
 		[props.cards, layout, metrics],
 	);
+
+	/* 组节点：画在锚点成员的 box 上（锚点仍在布局里）。 */
+	const groupNodes = useMemo(() => {
+		if (groupPlan.collapsed.length === 0) return [];
+		const byCard = new Map(items.map((item) => [item.card.id, item]));
+		const out: {
+			readonly group: TreeGroup;
+			readonly label: string;
+			readonly box: { readonly left: number; readonly top: number };
+			readonly count: number;
+		}[] = [];
+		groupPlan.collapsed.forEach((group, index) => {
+			const anchorId = groupPlan.anchors.get(group.id);
+			if (anchorId === undefined) return;
+			const item = byCard.get(anchorId);
+			if (item === undefined) return;
+			out.push({
+				group,
+				label: groupLabelOf(group, index),
+				box: { left: item.box.left, top: item.box.top },
+				count: group.memberIds.length,
+			});
+		});
+		return out;
+	}, [groupPlan, items]);
 
 	/* ── ③ 列背景 + 列头（每个**物理栏**一条；折栏后同层多栏各自有头） ── */
 	const bands = useMemo(() => {
@@ -701,14 +790,33 @@ export function TechTree(props: TechTreeProps): ReactNode {
 			data-filtering={filtering ? 'true' : 'false'}
 			data-selected={props.selectedId ?? ''}
 		>
-			<div className="tb3t-scroll" data-canvas-scroll>
-				<div
-					className="tb3t-stage"
-					data-stage
-					data-card-count={String(layout.nodes.length)}
-					data-edge-count={String(edges.length)}
-					style={{ width: stageWidth, height: stageHeight }}
-				>
+			<div className="tb3t-canvas-row">
+				{/*
+				 * 最左「根卡」窄列（用户 2026-11-24：「加一个列头吧。一个很窄的一个列。
+				 * 可以点击。进去以后只有一个关系区作为详情」）。
+				 *
+				 * ⚠ 它是**装饰层 + 点击热区**，不参与 `layoutTree` 的分层/折栏。
+				 */}
+				{props.onRootColumnClick === undefined ? null : (
+					<button
+						type="button"
+						className={`tb3t-rootcol${props.rootColumnOpen === true ? ' is-open' : ''}`}
+						data-root-column
+						title="点开根卡关系（成组 / 收纳）"
+						onClick={props.onRootColumnClick}
+					>
+						<span className="tb3t-rootcol__label">根卡</span>
+						<span className="tb3t-rootcol__count">{String(rootCardCount)}</span>
+					</button>
+				)}
+				<div className="tb3t-scroll" data-canvas-scroll>
+					<div
+						className="tb3t-stage"
+						data-stage
+						data-card-count={String(layout.nodes.length)}
+						data-edge-count={String(edges.length)}
+						style={{ width: stageWidth, height: stageHeight }}
+					>
 					{/* 列背景 + 列头（在 SVG / 卡片下面） */}
 					{bands.map((band) => (
 						<div
@@ -810,7 +918,33 @@ export function TechTree(props: TechTreeProps): ReactNode {
 						onSelect={props.onSelect}
 						onHoverChange={props.onHoverChange}
 					/>
+
+					{/* 组节点层：折叠中的组画在锚点成员的 box 上（盖住它）。 */}
+					{groupNodes.map((node) => (
+						<button
+							type="button"
+							key={`group:${node.group.id}`}
+							className="tb3t-groupnode"
+							data-tree-group-node={node.group.id}
+							title="展开这个组"
+							style={{
+								left: node.box.left,
+								top: TREE_HEADER_HEIGHT + node.box.top,
+								width: metrics.cardWidth,
+								height: metrics.cardHeight,
+							}}
+							onClick={(event) => {
+								event.stopPropagation();
+								onToggleFold(node.group.id, false);
+							}}
+						>
+							<span className="tb3t-groupnode__caret">▸</span>
+							<span className="tb3t-groupnode__name">{node.label}</span>
+							<span className="tb3t-groupnode__count">{String(node.count)} 张</span>
+						</button>
+					))}
 				</div>
+			</div>
 			</div>
 
 			{/* 画布下面：状态图例（圆点 + 中文名，不只靠颜色）+ 布局警告 */}
