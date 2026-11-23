@@ -14,8 +14,10 @@ import {
 	DEFAULT_CARD_LEVEL,
 	DEFAULT_TOOL_LEVEL,
 	isNonDefault,
+	isToolNonDefault,
 	labelOf,
 	summaryOf,
+	toolSummaryOf,
 	type BoxSnapshot,
 } from '../src/pure/permission-box.ts';
 
@@ -111,5 +113,51 @@ describe('labelOf', () => {
 
 	it('空选项表回落原始值（不抛）', () => {
 		assert.equal(labelOf([], 'x'), 'x');
+	});
+});
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ *   agent 侧单轴摘要（用户 2026-11-23 把 card 轴搬到任务板工具栏之后）
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * composer 那颗盾牌按钮现在**只管 tool 轴**。如果它继续用两轴版本：
+ * 按钮上会显示一个「点开这个框也改不了」的档位 —— 用户会去找，找不到。
+ */
+
+describe('composer 入口的摘要（只看 agent 侧 tool 轴）', () => {
+	it('⭐ 只出现 tool 轴文案，**不含** card 轴', () => {
+		assert.equal(toolSummaryOf(snapshotOf('no-claim', 'off')), '任务板不管理');
+	});
+
+	it('⭐ card 轴怎么变都不影响（3 档逐个试）', () => {
+		for (const card of ['no-claim', 'claim', 'adopt'] as const) {
+			assert.equal(toolSummaryOf(snapshotOf(card, 'manage')), '任务板管理权限');
+		}
+	});
+
+	it('⭐ 摘要里不能出现「领卡 / 采纳」这类 card 轴措辞', () => {
+		const summary = toolSummaryOf(snapshotOf('adopt', 'manage-edit'));
+		assert.equal(summary.includes('领卡'), false, `摘要「${summary}」里出现了 card 轴措辞`);
+		assert.equal(summary.includes('采纳'), false, `摘要「${summary}」里出现了 card 轴措辞`);
+	});
+
+	it('⚠ 未知档位回落原始值（不编造文案）', () => {
+		assert.equal(toolSummaryOf(snapshotOf('weird', 'nope')), 'nope');
+	});
+});
+
+describe('composer 入口的「非默认」判定（只看 tool 轴）', () => {
+	it('⭐ tool 轴是默认 ⇒ false', () => {
+		assert.equal(isToolNonDefault(snapshotOf(DEFAULT_CARD_LEVEL, DEFAULT_TOOL_LEVEL)), false);
+	});
+
+	it('⚠ card 轴偏离但 tool 轴默认 ⇒ **仍 false**', () => {
+		/* 这条是这次搬家的关键：别处的设置不该让这个按钮变色。 */
+		assert.equal(isToolNonDefault(snapshotOf('adopt', DEFAULT_TOOL_LEVEL)), false);
+	});
+
+	it('⭐ tool 轴偏离 ⇒ true（card 轴默认也算）', () => {
+		assert.equal(isToolNonDefault(snapshotOf(DEFAULT_CARD_LEVEL, 'manage')), true);
 	});
 });
