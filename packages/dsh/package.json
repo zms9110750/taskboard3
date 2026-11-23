@@ -31,7 +31,8 @@
     "@taskboard/core": "workspace:*",
     "@taskboard/protocol": "workspace:*",
     "@taskboard/dsh-core": "workspace:*",
-		"@taskboard/dsh-tools": "workspace:*"
+    "@taskboard/dsh-tools": "workspace:*",
+    "@taskboard/dsh-agent-guard": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",

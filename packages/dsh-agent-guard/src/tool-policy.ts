@@ -29,11 +29,17 @@
  * 里的名字 **remove 优先**（一次调用里「移除」比「添加」更不可逆，应该赢）。
  */
 
-import { strs, str } from '../context.ts';
-import { failureResult, hostFailure, inputFailure } from '../failure.ts';
-import { okText } from '../schema.ts';
-import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, type ToolDeps } from './shared.ts';
+import {
+	defineTool,
+	failureResult,
+	hostFailure,
+	inputFailure,
+	okText,
+	str,
+	strs,
+	type TaskboardToolHandler,
+	type ToolDeps,
+} from '@taskboard/tools';
 
 export function createToolPolicyTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;

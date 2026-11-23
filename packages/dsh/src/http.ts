@@ -29,13 +29,13 @@
 
 import type { CardActionLevel, SearchCondition, Taskboard } from '@taskboard/core';
 import { CARD_ACTION_OPTIONS, isAdoptTransition, missingRenderers } from '@taskboard/core';
-import type { ToolGuardKv, ToolGuardLevel } from '@taskboard/dsh-tools';
+import type { ToolGuardKv, ToolGuardLevel } from '@taskboard/dsh-agent-guard';
 import {
 	TOOL_GUARD_OPTIONS,
 	parseToolGuardLevel,
 	readToolGuardLevelOf,
 	writeToolGuardLevel,
-} from '@taskboard/dsh-tools';
+} from '@taskboard/dsh-agent-guard';
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
@@ -265,6 +265,15 @@ export interface RouteDeps {
 	 */
 	readonly defaultWorkspaceId: () => Promise<string>;
 	/**
+	 * GET /api/tools 的处理器 —— 由 `@taskboard/dsh-agent-guard` 那一行提供。
+	 *
+	 * ⚠ 本包**不实现**它，只把请求转过去：端点随 agent-guard 那一行开关，
+	 *   关掉 ⇒ `undefined` ⇒ 落到下面的 404，且本包不 import 那个包（不会崩）。
+	 *   用户 `2026-11-23`：「这个访问工具的事情也要在agentguard这个包里。
+	 *   因为只有他会用。」
+	 */
+	readonly agentGuardTools?: (connection: ConnectionLike, req: IncomingLike, res: OutgoingLike) => boolean;
+	/**
 	 * SSE 连接管理器 —— **原型期脚手架**。
 	 *
 	 * ⚠ 与 `core/src/bus.ts` 同生共死。拆 `bus.ts` 时删掉本字段与
@@ -316,6 +325,12 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		return;
 	}
 	const tail = path.slice(prefix.length);
+
+	/* ── GET /api/tools —— 交给 `@taskboard/dsh-agent-guard` 那一行 ── */
+	if (tail === '/tools' && deps.agentGuardTools !== undefined) {
+		deps.agentGuardTools(connection, req, res);
+		return;
+	}
 
 	/* ── GET /api/state?workspace=<id> ── */
 	if (tail === '/state') {

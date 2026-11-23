@@ -1,0 +1,45 @@
+{
+  "name": "@taskboard/dsh-agent-guard",
+  "version": "0.1.0-3.a.1",
+  "type": "module",
+  "description": "任务板对 DSH 的「入侵式」权限面：三个 agent 侧 tool 档位 + guard + 两个权限 AI 工具 + GET /api/tools。整行可单独关闭，MCP 不提供这一套。",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@taskboard/core": "workspace:*",
+    "@taskboard/protocol": "workspace:*",
+    "@taskboard/tools": "workspace:*",
+    "@taskboard/dsh-tools": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.5"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
+    "@taskboard/io": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

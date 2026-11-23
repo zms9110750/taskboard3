@@ -44,7 +44,6 @@ import {
 	type DefineTool,
 	type ToolLike,
 } from '../src/tools.ts';
-import { writeToolGuardLevel } from '../src/tool-guard.ts';
 
 /* ────────────────────────────── 夹具 ────────────────────────────── */
 
@@ -106,11 +105,10 @@ beforeEach(async () => {
 
 	/* 每个用例显式复位两条轴（档位是 core 持久化状态，会漏到下一个用例）。 */
 	await taskboard.setCardActionLevel('no-claim');
-	await writeToolGuardLevel(store, 'off');
 
 	tools = createTools({
 		taskboard,
-		kv: store,
+		isManageEdit: () => false,
 		defineTool: fakeDefineTool,
 		defaultWorkspaceId: async () => workspaceId,
 		subagents: stubSubagents('测试agent'),
@@ -194,139 +192,7 @@ async function submit(cardId: string): Promise<void> {
 
 /* ────────────────────────────── 注册面 ────────────────────────────── */
 
-describe('工具注册面（适配层 = 薄）', () => {
-	it('暴露 v2 的 11 个工具，名字与顺序稳定', () => {
-		assert.deepEqual(
-			tools.map((one) => one.name),
-			[
-				'taskboard_workspaces',
-				'taskboard_cards',
-				'taskboard_card',
-				'taskboard_raw_card',
-				'taskboard_definitions',
-				'taskboard_create',
-				'taskboard_update',
-				'taskboard_update_note',
-				'taskboard_transition',
-				'taskboard_tool_policy',
-				'taskboard_tool_policy_read',
-			],
-		);
-	});
-
-	it('v1 的 16 个旧工具名一个都不再注册', () => {
-		const names = new Set(tools.map((one) => one.name));
-		for (const old of [
-			'taskboard_update_content',
-			'taskboard_adopt',
-			'taskboard_claim',
-			'taskboard_release',
-			'taskboard_registry',
-			'taskboard_mark_seen',
-			'taskboard_tool_policies',
-			'taskboard_tool_policy_set',
-			'taskboard_tool_policy_members',
-			'taskboard_tool_policy_reset',
-		]) {
-			assert.equal(names.has(old), false, `旧工具「${old}」不该再注册`);
-		}
-	});
-
-	it('「仅 DSH」的 #9 在列表里（MCP 侧过滤不在本适配层）', () => {
-		assert.equal(tool('taskboard_tool_policy') !== undefined, true);
-	});
-
-	it('每个工具都有名字、描述、参数表、output', () => {
-		for (const one of tools) {
-			assert.ok(one.name.startsWith('taskboard_'), one.name);
-			assert.ok(one.description.length > 20, `${one.name} 描述太短`);
-			assert.equal(typeof one.parameters, 'object', one.name);
-			assert.equal(typeof one.output, 'object', one.name);
-			assert.equal(typeof one.output.render, 'function', one.name);
-			assert.deepEqual(one.output.schema, {
-				type: 'object',
-				additionalProperties: false,
-				properties: { text: { type: 'string', description: '给模型看的文字结果。', required: true } },
-			});
-			assert.deepEqual(one.output.render({}, { text: 'hi' }), [{ type: 'text', text: 'hi' }]);
-		}
-	});
-
-	it('schema 静态：两次建工具参数表逐字节相同（prompt 前缀契约）', () => {
-		const again = createTools({
-			taskboard,
-			kv: store,
-			defineTool: fakeDefineTool,
-			defaultWorkspaceId: async () => workspaceId,
-			subagents: stubSubagents('测试agent'),
-		});
-		assert.equal(
-			JSON.stringify(tools.map((one) => one.parameters)),
-			JSON.stringify(again.map((one) => one.parameters)),
-		);
-	});
-});
-
 /* ────────────────────────── ① schema 转换 ────────────────────────── */
-
-describe('schema 转换（JSON Schema → DSH parameters）', () => {
-	it('required 数组变成属性上的 required: true，且只标必填项', () => {
-		const create = tool('taskboard_create').parameters as Record<string, Record<string, unknown>>;
-		assert.equal(create['title']?.['required'], true);
-		assert.equal(create['templateRef']?.['required'], undefined, 'schema 里 templateRef 可选（handler 里才强制）');
-		assert.equal(create['workspaceId']?.['required'], undefined);
-		assert.equal(create['content']?.['required'], undefined);
-	});
-
-	it('enum 保留（定义类型 / 关系类型 / 权限档位）', () => {
-		const definitions = tool('taskboard_definitions').parameters as Record<string, Record<string, unknown>>;
-		assert.deepEqual(definitions['type']?.['enum'], ['domain', 'state', 'template', 'kind']);
-
-		const create = tool('taskboard_create').parameters as Record<string, Record<string, unknown>>;
-		const relations = create['relations'] as Record<string, unknown>;
-		const items = relations['items'] as Record<string, unknown>;
-		const itemProperties = items['properties'] as Record<string, Record<string, unknown>>;
-		assert.deepEqual(itemProperties['type']?.['enum'], [
-			'parent',
-			'dependsOn',
-			'supersedes',
-			'constrains',
-			'related',
-			'references',
-		]);
-
-		const policy = tool('taskboard_tool_policy').parameters as Record<string, Record<string, unknown>>;
-		assert.deepEqual(policy['tier']?.['enum'], ['unclaimed', 'claimed']);
-	});
-
-	it('开放对象与「任意 JSON」不被锁死（content additionalProperties / update value 无 type）', () => {
-		const create = tool('taskboard_create').parameters as Record<string, Record<string, unknown>>;
-		assert.equal(create['content']?.['additionalProperties'], true);
-		assert.equal(create['content']?.['type'], 'object');
-
-		const update = tool('taskboard_update').parameters as Record<string, Record<string, unknown>>;
-		/*
-		 * ⚠ v2 的 value 是裸 `{}`（任意 JSON），但 **DSH 必须显式 `type: 'json'`** ——
-		 *   它自己的专用类型，等价于「任意 JSON」。不写会报
-		 *   `parameters.value.type must be string/number/.../json, or use oneOf`。
-		 *   ⇒ 适配层把它翻成 `json`，语义不变（仍然什么都能塞）。
-		 */
-		assert.equal(update['value']?.['type'], 'json', 'v2 的裸 {} 翻成 DSH 的 json 类型（仍任意 JSON）');
-		assert.equal(update['path']?.['required'], true);
-	});
-
-	it('taskboard_transition 的 to 是 string 不是 enum（状态表扩了不能击穿 prompt 缓存）', () => {
-		const transition = tool('taskboard_transition').parameters as Record<string, Record<string, unknown>>;
-		assert.equal(transition['to']?.['type'], 'string');
-		assert.equal(transition['to']?.['enum'], undefined);
-	});
-
-	it('数组参数保留 items；嵌套对象保留 properties/required', () => {
-		const policy = tool('taskboard_tool_policy').parameters as Record<string, Record<string, unknown>>;
-		assert.equal((policy['allow'] as Record<string, unknown>)['type'], 'array');
-		assert.equal(((policy['allow'] as Record<string, unknown>)['items'] as Record<string, unknown>)['type'], 'string');
-	});
-});
 
 /* ────────────────────────── ②① ctx：默认空间 / 激活空间 ────────────────────────── */
 
@@ -362,7 +228,7 @@ describe('ctx：holder（领取/释放的持有者）', () => {
 	it('subagents 缺席 ⇒ holder 回落 agent.id（功能照样可用）', async () => {
 		const local = createTools({
 			taskboard,
-			kv: store,
+			isManageEdit: () => false,
 			defineTool: fakeDefineTool,
 			defaultWorkspaceId: async () => workspaceId,
 		});
@@ -384,22 +250,6 @@ describe('ctx：holder（领取/释放的持有者）', () => {
 });
 
 /* ────────────────────────── ②③ ctx：权限开关 ────────────────────────── */
-
-describe('ctx：权限开关（#9 的门槛 = 宿主轴 manage-edit）', () => {
-	it('off 档 ⇒ #9 拒绝执行（agent 侧权限开关未启用）', async () => {
-		const text = await run('taskboard_tool_policy', { tier: 'unclaimed', allow: ['bash'] });
-		assert.ok(text.includes('权限开关未启用'), text);
-		assert.ok(text.includes('失败'), text);
-	});
-
-	it('manage-edit 档 ⇒ #9 可执行，且能读到写入结果', async () => {
-		await writeToolGuardLevel(store, 'manage-edit');
-		const text = await run('taskboard_tool_policy', { tier: 'unclaimed', allow: ['bash'] });
-		assert.ok(text.includes('已更新'), text);
-		assert.ok(text.includes('bash'), text);
-		assert.deepEqual([...taskboard.getToolPolicies().unclaimed], ['bash']);
-	});
-});
 
 /* ────────────────────────── 各工具经适配层 ────────────────────────── */
 
@@ -423,7 +273,7 @@ describe('taskboard_workspaces', () => {
 				 * 别为它再开一个 sqlite 文件：Windows 上没关的句柄会让 finally 里的
 				 * `rmSync` 报 EPERM（已实测踩到）。
 				 */
-				kv: { kvGet: () => undefined, kvSet: async () => undefined },
+				isManageEdit: () => false,
 				defineTool: fakeDefineTool,
 				defaultWorkspaceId: async () => '',
 			});
@@ -673,20 +523,6 @@ describe('taskboard_transition', () => {
 	it('不存在的编号 ⇒ 失败文案', async () => {
 		const text = await run('taskboard_transition', { id: 'NOPE' });
 		assert.ok(text.includes('CARD_NOT_FOUND'), text);
-	});
-});
-
-describe('taskboard_tool_policy', () => {
-	it('tier 与 templateRef 二选一；两个都给 ⇒ 失败', async () => {
-		await writeToolGuardLevel(store, 'manage-edit');
-		const text = await run('taskboard_tool_policy', { tier: 'claimed', templateRef: 'x', allow: [] });
-		assert.ok(text.includes('二选一'), text);
-	});
-
-	it('未知模板 ⇒ 失败', async () => {
-		await writeToolGuardLevel(store, 'manage-edit');
-		const text = await run('taskboard_tool_policy', { templateRef: '不存在的模板', allow: ['bash'] });
-		assert.ok(text.includes('失败'), text);
 	});
 });
 

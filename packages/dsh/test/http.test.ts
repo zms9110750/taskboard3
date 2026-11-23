@@ -25,7 +25,7 @@ import {
 	TOOL_GUARD_OPTIONS,
 	readToolGuardLevelOf,
 	writeToolGuardLevel,
-} from '@taskboard/dsh-tools';
+} from '@taskboard/dsh-agent-guard';
 
 import { createHandler, ROUTE_PREFIX, type RouteDeps } from '../src/http.ts';
 import type { SseHub } from '../src/sse.ts';

@@ -67,3 +67,10 @@
     #    关掉它 ⇒ 数据还在、AI 还能用，只是人看不到。
     - id: taskboard3-client
       name: '@taskboard/dsh-client'
+      # ⑥ agent 侧权限面：三个 tool 档位 + 入侵式 guard + 两个权限 AI 工具 + GET /api/tools
+      #
+      #    **DSH 私人专属**（用户 2026-11-23：「这是对于dsh私人的专属功能」「mcp不提供这个工具和ui」）。
+      #    关掉它 ⇒ 三档位消失、guard 不挂、两个 policy 工具没了、/api/tools 404；
+      #    任务板其它功能不受影响。
+      - id: taskboard3-agent-guard
+        name: '@taskboard/dsh-agent-guard'

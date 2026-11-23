@@ -54,7 +54,7 @@ import type { Bus, Taskboard } from '@taskboard/core';
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
 import { createSseHub } from './sse.ts';
-import type { CommandsLike, ConnectionLike, ToolsLike, WebServerLike } from './types.ts';
+import type { CommandsLike, ConnectionLike, IncomingLike, OutgoingLike, ToolsLike, WebServerLike } from './types.ts';
 
 /** Cordis 插件名。 */
 export const name = 'taskboard3';
@@ -121,6 +121,13 @@ export type ApplyContext = {
 		kvGet(key: string): string | undefined;
 		kvSet(key: string, value: string | undefined): Promise<void>;
 	};
+	/**
+	 * Cordis 的 `ctx.get(name)` —— 可选访问服务，不触发 inject 检查。
+	 *
+	 * ⚠ 读 `ctx.<服务>` 会走 Cordis 属性拦截器，服务不在 `inject` 里就抛
+	 *   `cannot get property "…" without inject`。用这个探测 `@taskboard/dsh-agent-guard`。
+	 */
+	get?(name: string): unknown;
 	effect?(dispose: () => void, label?: string): void;
 };
 
@@ -184,6 +191,17 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		return created.id;
 	};
 
+	/*
+	 * `@taskboard/dsh-agent-guard` 那一行 provide 的服务（可选）。
+	 * 缺席 ⇒ 三档位 / guard / 两个 policy 工具 / `/api/tools` 全都没有 —— 那是它的开关。
+	 */
+	const guardService =
+		typeof ctx.get === 'function'
+			? (ctx.get('taskboard3AgentGuard') as
+					| { handleTools: (connection: ConnectionLike, req: IncomingLike, res: OutgoingLike) => boolean }
+					| undefined)
+			: undefined;
+
 	const disposeRoutes = mountRoutes(ctx.webServer, {
 		taskboard,
 		/* agent 侧档位的存储端口（那套权限不归 core）。 */
@@ -192,6 +210,12 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		defaultWorkspaceId,
 		/* ⚠ 原型期脚手架：与 `core/src/bus.ts` 同生共死。见 `src/sse.ts` 文件头。 */
 		events: hub,
+		/*
+		 * `GET /api/tools` 的处理器由 `@taskboard/dsh-agent-guard` 那一行提供。
+		 * 那一行被关掉 ⇒ 服务不存在 ⇒ `undefined` ⇒ 请求落到 404。
+		 * ⚠ **不 import 那个包** —— 否则关掉那一行会让本行一起崩。
+		 */
+		...(guardService === undefined ? {} : { agentGuardTools: guardService.handleTools }),
 	});
 
 	registerCommands(ctx.commands, { taskboard, defaultWorkspaceId });

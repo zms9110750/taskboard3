@@ -14,10 +14,13 @@
  * · **写**（`taskboard_tool_policy`）：有 `canManageToolPolicies` 门槛。
  */
 
-import { str } from '../context.ts';
-import { okText } from '../schema.ts';
-import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, type ToolDeps } from './shared.ts';
+import {
+	defineTool,
+	okText,
+	str,
+	type TaskboardToolHandler,
+	type ToolDeps,
+} from '@taskboard/tools';
 
 /**
  * 一串增量工具名的可读文本。
