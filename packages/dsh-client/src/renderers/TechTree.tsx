@@ -65,8 +65,6 @@ import { TECHTREE_CSS } from '../pure/techtree-css.ts';
 import { isFiltering, treeCardsOf, visibleCardIds } from '../pure/tree-filter.ts';
 import { badgeCountOf, treeFoldOf } from '../pure/tree-fold.ts';
 import {
-	collapsedGroupsOf,
-	hiddenByFoldedGroups,
 	groupLabelOf,
 	type GroupableCard,
 } from '../pure/sibling-groups.ts';
@@ -121,6 +119,14 @@ export const TREE_METRICS = {
 
 /** 列头（「第 0 层 · 根卡」）占的高度；卡片/连线整体下移这么多。 */
 export const TREE_HEADER_HEIGHT = 34;
+
+/**
+ * 组横幅的高度（用户 2026-11-24：「把组变成很矮的横幅」）。
+ *
+ * 卡片高 78，横幅只有 18 ⇒ 一眼能看出「这是一条横幅，不是一张卡」。
+ * 展开时把它挤在行距（14px）附近，尽量减少压到上面的卡。
+ */
+export const GROUP_BANNER_HEIGHT = 18;
 
 /** 无关的边在 hover 时淡到多少（用户 `2026-11-19`：「淡到 25%」）。 */
 export const TREE_DIM_OPACITY = 0.25;
@@ -609,17 +615,25 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	);
 	const foldedIdSet = useMemo(() => new Set(foldedIds), [foldedIds]);
 	/*
-	 * 折叠中的组：**留第一个成员当锚点**（组节点画在它的 box 上），其余成员藏起来。
+	 * 组的两种状态都要能被点到（用户 2026-11-24「组展开了就收不回来了」）。
 	 *
-	 * 为什么不把成员全藏：藏光了就没有 box 可放组节点了；
-	 * 而且成员在布局里本来就占位置——留一个锚点位置不跳。
+	 * ⇒ 这里**不再只算折叠中的组**，而是算出「这个空间里所有还有成员的组」，
+	 *   折叠态只决定两件事：
+	 *     ① 折叠 ⇒ 除锚点外的成员藏起来（不参与布局）
+	 *     ② 横幅画在哪（折叠 ⇒ 占锚点位置；展开 ⇒ 画在成员区域上方）
+	 *
+	 * 为什么折叠时留第一个成员当锚点：藏光了就没有 box 可放横幅了，
+	 * 而且成员本来就在布局里占位置，留锚点位置不跳。
 	 */
 	const groupPlan = useMemo(() => {
 		const present = new Set(props.cards.map((card) => card.id));
-		const collapsed = collapsedGroupsOf(groupableCards, groups, foldedIdSet);
+		const presentGroups = groups.filter((group) =>
+			group.memberIds.some((id) => present.has(id)),
+		);
 		const anchors = new Map<string, string>();
 		const hidden = new Set<string>();
-		for (const group of collapsed) {
+		for (const group of presentGroups) {
+			if (!foldedIdSet.has(group.id)) continue;
 			const anchor = group.memberIds.find((id) => present.has(id));
 			if (anchor === undefined) continue;
 			anchors.set(group.id, anchor);
@@ -627,8 +641,8 @@ export function TechTree(props: TechTreeProps): ReactNode {
 				if (id !== anchor && present.has(id)) hidden.add(id);
 			}
 		}
-		return { collapsed, anchors, hidden };
-	}, [props.cards, groupableCards, groups, foldedIdSet]);
+		return { presentGroups, anchors, hidden };
+	}, [props.cards, groups, foldedIdSet]);
 	const groupHidden = groupPlan.hidden;
 	const rootCardCount = useMemo(
 		() => groupableCards.filter((card) => card.parent === null).length,
@@ -680,30 +694,75 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		[props.cards, layout, metrics],
 	);
 
-	/* 组节点：画在锚点成员的 box 上（锚点仍在布局里）。 */
-	const groupNodes = useMemo(() => {
-		if (groupPlan.collapsed.length === 0) return [];
+	/* 组横幅：**折叠态也画、展开态也画** —— 展开后必须还能点回收起（用户 2026-11-24 报的 bug）。 */
+	const groupBanners = useMemo(() => {
+		if (groupPlan.presentGroups.length === 0) return [];
 		const byCard = new Map(items.map((item) => [item.card.id, item]));
+		/*
+		 * ⚠ 「N 张」的数必须按**这个空间里真实存在的成员**算，不能按 items 算。
+		 *
+		 * 折叠时非锚点成员已被藏掉、不在 items 里 ⇒ 用 items 数出来永远是 1。
+		 * 这是上一版真踩到的 bug（横幅写着「1 张」，实际 5 张）。
+		 */
+		const presentIds = new Set(groupableCards.map((card) => card.id));
 		const out: {
 			readonly group: TreeGroup;
 			readonly label: string;
-			readonly box: { readonly left: number; readonly top: number };
+			readonly collapsed: boolean;
 			readonly count: number;
+			readonly left: number;
+			readonly top: number;
+			readonly width: number;
 		}[] = [];
-		groupPlan.collapsed.forEach((group, index) => {
-			const anchorId = groupPlan.anchors.get(group.id);
-			if (anchorId === undefined) return;
-			const item = byCard.get(anchorId);
-			if (item === undefined) return;
+		for (const group of groupPlan.presentGroups) {
+			const members = group.memberIds
+				.map((id) => byCard.get(id))
+				.filter((item): item is CardItem => item !== undefined);
+			if (members.length === 0) continue;
+			const collapsed = foldedIdSet.has(group.id);
+			let left: number;
+			let top: number;
+			let width: number;
+			if (collapsed) {
+				// 折叠：横幅占锚点（第一个成员）的位置，其余成员已藏 ⇒ 只剩这一条
+				const anchorId = groupPlan.anchors.get(group.id) ?? members[0]?.card.id;
+				const anchorItem = (anchorId === undefined ? undefined : byCard.get(anchorId)) ?? members[0];
+				const box = anchorItem?.box ?? { left: 0, top: 0 };
+				left = box.left;
+				width = metrics.cardWidth;
+				top = box.top + (metrics.cardHeight - GROUP_BANNER_HEIGHT) / 2;
+			} else {
+				// 展开：横幅横跨成员区域，画在成员最上方（挤进行距里，尽量不压卡）
+				const lefts = members.map((item) => item.box.left);
+				const rights = members.map((item) => item.box.left + metrics.cardWidth);
+				const tops = members.map((item) => item.box.top);
+				left = Math.min(...lefts);
+				width = Math.max(...rights) - left;
+				top = Math.max(0, Math.min(...tops) - GROUP_BANNER_HEIGHT - 4);
+			}
+			const index = groups.indexOf(group);
 			out.push({
 				group,
-				label: groupLabelOf(group, index),
-				box: { left: item.box.left, top: item.box.top },
-				count: group.memberIds.length,
+				label: groupLabelOf(group, index < 0 ? 0 : index),
+				collapsed,
+				count: group.memberIds.filter((id) => presentIds.has(id)).length,
+				left,
+				top,
+				width,
 			});
-		});
+		}
 		return out;
-	}, [groupPlan, items]);
+	}, [groupPlan, items, groupableCards, foldedIdSet, groups, metrics]);
+
+	/*
+	 * 折叠的组：锚点那张卡**不画**（横幅取代它）。
+	 * 否则横幅下面还露出一张卡，读起来像「组里只有一张卡」。
+	 */
+	const renderItems = useMemo<readonly CardItem[]>(() => {
+		if (groupPlan.anchors.size === 0) return items;
+		const hide = new Set(groupPlan.anchors.values());
+		return items.filter((item) => !hide.has(item.card.id));
+	}, [items, groupPlan.anchors]);
 
 	/* ── ③ 列背景 + 列头（每个**物理栏**一条；折栏后同层多栏各自有头） ── */
 	const bands = useMemo(() => {
@@ -906,7 +965,7 @@ export function TechTree(props: TechTreeProps): ReactNode {
 
 					{/* 卡片层（memo：hover 不重建；卡片本体在 TreeCard.tsx） */}
 					<CardsLayer
-						items={items}
+						items={renderItems}
 						metrics={metrics}
 						selectedId={props.selectedId}
 						kindLabelOf={kindLabelOf}
@@ -919,28 +978,39 @@ export function TechTree(props: TechTreeProps): ReactNode {
 						onHoverChange={props.onHoverChange}
 					/>
 
-					{/* 组节点层：折叠中的组画在锚点成员的 box 上（盖住它）。 */}
-					{groupNodes.map((node) => (
+					{/*
+					 * 组横幅层：**折叠和展开都在**（用户 2026-11-24「组展开了就收不回来了」）。
+					 *
+					 *   折叠 ⇒ 横幅占锚点位置，成员藏起来
+					 *   展开 ⇒ 横幅画在成员区域上方，点它随时收回
+					 *
+					 * 高 18（卡片 78），所以一眼能分辨「这是横幅不是卡」。
+					 */}
+					{groupBanners.map((banner) => (
 						<button
 							type="button"
-							key={`group:${node.group.id}`}
-							className="tb3t-groupnode"
-							data-tree-group-node={node.group.id}
-							title="展开这个组"
+							key={`group:${banner.group.id}`}
+							className={`tb3t-groupbanner${banner.collapsed ? ' is-collapsed' : ' is-expanded'}`}
+							data-tree-group-banner={banner.group.id}
+							data-collapsed={banner.collapsed ? '1' : '0'}
+							title={banner.collapsed ? '展开这个组' : '收起这个组'}
+							aria-expanded={!banner.collapsed}
 							style={{
-								left: node.box.left,
-								top: TREE_HEADER_HEIGHT + node.box.top,
-								width: metrics.cardWidth,
-								height: metrics.cardHeight,
+								left: banner.left,
+								top: TREE_HEADER_HEIGHT + banner.top,
+								width: banner.width,
 							}}
 							onClick={(event) => {
 								event.stopPropagation();
-								onToggleFold(node.group.id, false);
+								/* 折叠 → 展开传 false；展开 → 收起传 true。 */
+								onToggleFold(banner.group.id, !banner.collapsed);
 							}}
 						>
-							<span className="tb3t-groupnode__caret">▸</span>
-							<span className="tb3t-groupnode__name">{node.label}</span>
-							<span className="tb3t-groupnode__count">{String(node.count)} 张</span>
+							<span className="tb3t-groupbanner__caret">
+								{banner.collapsed ? '▸' : '▾'}
+							</span>
+							<span className="tb3t-groupbanner__name">{banner.label}</span>
+							<span className="tb3t-groupbanner__count">{String(banner.count)} 张</span>
 						</button>
 					))}
 				</div>
@@ -1008,3 +1078,5 @@ export function injectTechTreeStyles(): void {
 	element.textContent = TECHTREE_CSS;
 	document.head.appendChild(element);
 }
+
+
