@@ -41,6 +41,15 @@ import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@ta
 
 import type { SseHub, SseResponseLike } from './sse.ts';
 import type { ConnectionLike, IncomingLike, OutgoingLike, ReadableIncoming, WebServerLike } from './types.ts';
+import {
+	parseFolded,
+	parseUiGroups,
+	serializeFolded,
+	serializeUiGroups,
+	uiFoldedKeyOf,
+	uiGroupsKeyOf,
+	validateUiStateBody,
+} from './ui-state.ts';
 
 /** 路由前缀（Host 注册用，带前导 `/`）。 */
 export const ROUTE_PREFIX = '/taskboard3';
@@ -357,7 +366,48 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		return;
 	}
 
-	/* ── GET / POST /api/workspaces ── */
+	/*
+	 * ── GET / PUT /api/ui-state?workspace=<id> ──
+	 *
+	 * 科技树的「组」与「折叠态」。**UI 专用**：不进 `/api/state`（那个通道模型也会看），
+	 * 也没有任何 AI 工具暴露它 ⇒ MCP 和别的 agent 读不到。
+	 *
+	 * 用户 `2026-11-24`：「组的数据在 dsh 里面共享。但是不共享别的 agent 和 mcp。」
+	 *
+	 * ⚠ 存的是 `taskboard3Store` 的 kv（SQLite，可改、可删单键）——
+	 *   不用 DSH 自己的 jsonl 存储（用户明确否掉：「他用的是 jsonl。不能用这个」）。
+	 */
+	if (tail === '/ui-state') {
+		if (method === 'GET') {
+			const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+			sendOk(res, {
+				groups: parseUiGroups(deps.kv.kvGet(uiGroupsKeyOf(workspaceId))),
+				folded: parseFolded(deps.kv.kvGet(uiFoldedKeyOf(workspaceId))),
+			});
+			return;
+		}
+		if (method === 'PUT') {
+			const body = await readJson(req);
+			const checked = validateUiStateBody(body);
+			if (!checked.ok) {
+				sendFailure(
+					res,
+					failure(ErrorCode.FIELD_REQUIRED, checked.message, {
+						issues: [{ path: checked.path, message: checked.message }],
+					}),
+					400,
+				);
+				return;
+			}
+			await deps.kv.kvSet(uiGroupsKeyOf(checked.value.workspace), serializeUiGroups(checked.value.groups));
+			await deps.kv.kvSet(uiFoldedKeyOf(checked.value.workspace), serializeFolded(checked.value.folded));
+			sendOk(res, { saved: true });
+			return;
+		}
+		return sendMethodNotAllowed(res, 'GET, PUT');
+	}
+
+	/* ── GET / POST / api/workspaces ── */
 	if (tail === '/workspaces') {
 		if (method === 'GET') {
 			sendOk(res, { workspaces: taskboard.listWorkspaces(true) });
