@@ -29,10 +29,12 @@ import { describe, it } from 'node:test';
 import {
 	boxOf,
 	canvasSizeOf,
+	lanePlansOf,
 	layoutTree,
 	linkCurve,
 	parentCurve,
 	parentEdgePaths,
+	parentEdgePathsOf,
 	rowMetricsOf,
 	toPathData,
 } from '../src/pure/tree-layout.ts';
@@ -722,3 +724,114 @@ describe('boxOf 支持传入行顶边', () => {
 		assert.notEqual(plainPath, shiftedPath, '行顶边变了，路径必须变');
 	});
 });
+
+/* ══════════════════════════════════════════════════════════════
+ * 列内独立排版（`lanePlansOf`）
+ *
+ * 用户 `2026-11-24`：
+ * > 「让列成为一个组件。内部管理。」
+ * > 「一个横幅的占位（包括间距），让他变成0.5卡高。也就是说两个横幅=1卡（包括间距）」
+ *
+ * 上一轮是**全局行表**（`rowMetricsOf`）：所有列共享 `tops[row]` ⇒ 别的列同一行还有卡时，
+ * 这一列压不下去。现在每列自己累加步进，列间互不影响。
+ * ══════════════════════════════════════════════════════════════ */
+
+/** 卡槽步进（卡高 + 行距）。 */
+const CARD_PITCH = METRICS.cardHeight + METRICS.rowGap;
+
+describe('lanePlansOf —— 列内独立排版', () => {
+	it('空布局 ⇒ 没有列、没有盒子、高度只有上下留白', () => {
+		const plans = lanePlansOf(layoutTree([]), METRICS);
+		assert.deepEqual(plans.lanes, []);
+		assert.equal(plans.boxes.size, 0);
+		assert.equal(plans.stageHeight, METRICS.padding * 2);
+	});
+
+	it('一列两张卡 ⇒ 步进 = 卡高 + 行距，盒子与卡宽一致', () => {
+		/* 两张根卡 ⇒ 同层 ⇒ 同一物理栏（父子会被分到不同栏）。 */
+		const layout = layoutTree([mk('A'), mk('B')]);
+		const plans = lanePlansOf(layout, METRICS);
+		const lane = plans.lanes[0];
+		assert.ok(lane !== undefined);
+		assert.equal(lane.items.length, 2);
+		assert.equal(lane.items[0]?.top, METRICS.padding);
+		assert.equal(lane.items[1]?.top, METRICS.padding + CARD_PITCH);
+		const box = plans.boxes.get('A');
+		assert.ok(box !== undefined);
+		assert.equal(box.top, METRICS.padding);
+		assert.equal(box.bottom, METRICS.padding + METRICS.cardHeight);
+		assert.equal(box.left, METRICS.padding);
+		assert.equal(box.right, METRICS.padding + METRICS.cardWidth);
+	});
+
+	it('⭐ 横幅槽 pitch = 半个卡槽（两个横幅 = 一个卡槽）', () => {
+		const layout = layoutTree([mk('P'), mk('C1', 'P'), mk('C2', 'P')]);
+		const half = CARD_PITCH / 2;
+		const banner = { height: 18, pitch: half } as const;
+		const plans = lanePlansOf(layout, METRICS, (id) =>
+			id === 'C1' || id === 'C2' ? banner : undefined,
+		);
+		const lane = plans.lanes[1];
+		assert.ok(lane !== undefined);
+		const [first, second] = lane.items;
+		assert.ok(first !== undefined && second !== undefined);
+		assert.equal(second.top - first.top, half, '两个相邻横幅的 y 差必须 = 半个卡槽');
+		assert.equal(half * 2, CARD_PITCH, '两个横幅必须正好等于一个卡槽（含间距）');
+		assert.equal(first.height, 18, '横幅本体仍然只有 18 高（不拉高）');
+	});
+
+	it('⭐ 列间独立：一列里的横幅槽**不影响**别的列', () => {
+		/* P 在 0 栏（有子卡 ⇒ 可折叠），C1/C2 在 1 栏。 */
+		const layout = layoutTree([mk('P'), mk('C1', 'P'), mk('C2', 'P')]);
+		const plain = lanePlansOf(layout, METRICS);
+		const foldedP = lanePlansOf(layout, METRICS, (id) =>
+			id === 'P' ? { height: 18, pitch: 46 } : undefined,
+		);
+		const laneOnePlain = plain.lanes[1];
+		const laneOneFolded = foldedP.lanes[1];
+		assert.ok(laneOnePlain !== undefined && laneOneFolded !== undefined);
+		/* 1 栏里每张卡的 y 一点都不能变。 */
+		assert.deepEqual(
+			laneOneFolded.items.map((one) => one.top),
+			laneOnePlain.items.map((one) => one.top),
+			'0 栏折叠了，1 栏的 y 不许动',
+		);
+		/* 0 栏自己变矮了（46 < 92）。 */
+		assert.equal(foldedP.lanes[0]?.bottom, METRICS.padding + 18);
+	});
+
+	it('画布高度 = 最高列的底边 + 下留白（各列高度可以不同）', () => {
+		const layout = layoutTree([mk('P'), mk('C1', 'P'), mk('C2', 'P'), mk('G1', 'C1'), mk('G2', 'C2')]);
+		const plans = lanePlansOf(layout, METRICS);
+		const deepest = Math.max(...plans.lanes.map((one) => one.bottom));
+		assert.equal(plans.stageHeight, deepest + METRICS.padding);
+	});
+});
+
+describe('parentEdgePathsOf —— 用矩形表画父子边', () => {
+	it('端点贴在两张卡的边上（与 boxOf 同源）', () => {
+		const layout = layoutTree([mk('P'), mk('C', 'P')]);
+		const plans = lanePlansOf(layout, METRICS);
+		const paths = parentEdgePathsOf(layout, plans.boxes);
+		assert.equal(paths.length, 1);
+		const path = paths[0];
+		assert.ok(path !== undefined);
+		assert.equal(path.from, 'P');
+		assert.equal(path.to, 'C');
+		const from = plans.boxes.get('P');
+		const to = plans.boxes.get('C');
+		assert.ok(from !== undefined && to !== undefined);
+		/* 右向：起点在父卡右边、终点在子卡左边（`parentCurve` 的第一分支）。 */
+		assert.ok(path.d.includes(`${String(from.right)} ${String(from.midY)}`));
+		assert.ok(path.d.includes(`${String(to.left)} ${String(to.midY)}`));
+	});
+
+	it('盒子缺失的边直接跳过（可见集变化时不崩）', () => {
+		const layout = layoutTree([mk('P'), mk('C', 'P')]);
+		const boxes = new Map<string, never>();
+		const paths = parentEdgePathsOf(layout, boxes);
+		assert.equal(paths.length, 0);
+	});
+});
+
+
