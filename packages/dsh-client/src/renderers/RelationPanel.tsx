@@ -97,6 +97,12 @@ export interface RelationPanelProps {
 	readonly variant?: RelationPanelVariant;
 	/** 「+ 派生子任务」的展示决定；省略 = 旧文案 + 可点。 */
 	readonly derive?: RelationDeriveAction;
+	/**
+	 * 兄弟归组面板（用户 2026-11-24：「放在卡的关系的那个折叠组件里面。在那里面进行点选」）。
+	 *
+	 * 传了 ⇒ 画在关系表下方、`+ 添加关系` 上方；只有展开时才画。
+	 */
+	readonly siblingGroups?: ReactNode;
 	/** 「+ 添加关系」禁用（卡已删除）；省略 = 可点。 */
 	readonly addRelationDisabled?: boolean;
 	/** 空态文案；省略 = 「这张卡还没有任何关系。」（原版文案）。 */
@@ -177,6 +183,12 @@ export function RelationPanel(props: RelationPanelProps): ReactNode {
 					<FlatBody relations={relations} onJump={props.onJump} emptyText={props.emptyText} />
 				)
 			) : null}
+
+			{props.siblingGroups === undefined || !(expanded || variant === 'b') ? null : (
+				<div className="rel-sibling-groups" data-rel-sibling-groups>
+					{props.siblingGroups}
+				</div>
+			)}
 
 			{expanded || variant === 'b' ? (
 				<div className="rel-foot">

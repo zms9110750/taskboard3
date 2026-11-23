@@ -87,6 +87,8 @@ export interface DetailHeadProps {
 	readonly onClose: (() => void) | undefined;
 	/** 点「⧉」（放大）；`undefined` = 不显示这个按钮。 */
 	readonly onExpand: (() => void) | undefined;
+	/** 兄弟归组面板（用户 2026-11-24：放在关系区里点选成组）。 */
+	readonly siblingGroups: ReactNode | undefined;
 }
 
 /**
@@ -218,6 +220,7 @@ export function DetailHead(props: DetailHeadProps): ReactNode {
 					onDerive={props.onDerive}
 					{...(deriveAction === null ? {} : { derive: deriveAction })}
 					{...(relationsAction === null ? {} : { addRelationDisabled: relationsAction.disabled })}
+					{...(props.siblingGroups === undefined ? {} : { siblingGroups: props.siblingGroups })}
 				/>
 			)}
 
