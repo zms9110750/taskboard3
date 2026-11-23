@@ -46,11 +46,11 @@ import {
 	toolsForHost,
 	type JsonObjectSchema,
 	type JsonSchema,
+	type TaskboardTool,
 	type TaskboardToolContext,
 } from '@taskboard/tools';
 
 import { holderOf } from './holder.ts';
-import { readToolGuardLevelOf, type ToolGuardKv } from './tool-guard.ts';
 
 /* ────────────────────────── 形状（与 v1 公开面兼容） ────────────────────────── */
 
@@ -84,7 +84,7 @@ export interface ToolDeps {
 	/** 测试注入用；省略 = DSH 的 `defineTool`。 */
 	readonly defineTool?: DefineTool;
 	/** 解析默认空间（入口策略，不是 core 概念）。 */
-	readonly defaultWorkspaceId: () => Promise<string>;
+	readonly defaultWorkspaceId?: () => Promise<string>;
 	/**
 	 * `ctx.subagents` —— 用来取当前 agent 的**名字**（holder）。
 	 *
@@ -93,12 +93,13 @@ export interface ToolDeps {
 	 */
 	readonly subagents?: unknown;
 	/**
-	 * agent 侧档位的存储端口（借 store 的 kv）。
+	 * 「agent 侧档位是否 manage-edit」的探针。
 	 *
-	 * ⚠ 这套档位**不归 core**（用户 `2026-11-23`）：由 `@taskboard/dsh-tools`
-	 *   的 `tool-guard.ts` 拥有。工具层只读它一个值。
+	 * ⚠ 三档位**不归本包**（用户 `2026-11-23`）：它随 `@taskboard/dsh-agent-guard`
+	 *   那一行一起开关。本包通过 Cordis 服务读它，**不 import 那个包** ——
+	 *   否则关掉那一行会让本行也崩。缺席 ⇒ 一律 `false`（不允许改策略）。
 	 */
-	readonly kv: ToolGuardKv;
+	readonly isManageEdit: () => boolean;
 }
 
 /* ────────────────────────── 工厂 ────────────────────────── */
@@ -109,11 +110,30 @@ export interface ToolDeps {
  * @returns 工具定义数组（调用方逐个 `ctx.tools.register`）
  */
 export function createTools(deps: ToolDeps): readonly ToolLike[] {
-	const define = deps.defineTool ?? dshDefineTool;
 	/* DSH 侧过滤 `hosts`：MCP 专属/仅其它宿主的不注册。 */
 	const visible = toolsForHost(createTaskboardTools(deps.taskboard), 'dsh');
+	return adaptDefinitions(visible, deps);
+}
 
-	return visible.map((tool) => {
+/**
+ * 把**任意**宿主无关工具定义适配成 DSH 工具。
+ *
+ * 从 `createTools` 里抽出来的原因：`@taskboard/dsh-agent-guard` 那两个
+ * DSH 专属工具（`taskboard_tool_policy` / `_read`）也需要同一套转换，
+ * 而它们的定义搬到了那个包 ⇒ 这里必须开放一个入口，**不要复制第二份实现**
+ * （两份转换器会漂移，而 DSH 的 schema 约束很细：见下面 `toDshSchema` 的注释）。
+ *
+ * @param definitions 宿主无关工具定义（顺序即注册顺序）
+ * @param deps 宿主依赖（`isManageEdit` 提供 `canManageToolPolicies`）
+ * @returns DSH 形状的工具定义
+ */
+export function adaptDefinitions(
+	definitions: readonly TaskboardTool[],
+	deps: ToolDeps,
+): readonly ToolLike[] {
+	const define = deps.defineTool ?? dshDefineTool;
+
+	return definitions.map((tool) => {
 		const output = { schema: toDshSchema(TEXT_OUTPUT_SCHEMA), render: renderText };
 		return define({
 			name: tool.name,
@@ -221,7 +241,7 @@ function contextOf(deps: ToolDeps, exec: unknown): TaskboardToolContext {
 	return {
 		holder: holderOf(deps.subagents, exec),
 		/* agent 侧「允许编辑档位权限」= manage-edit；档位由本包 tool-guard.ts 拥有。 */
-		canManageToolPolicies: readToolGuardLevelOf(deps.kv) === 'manage-edit',
+		canManageToolPolicies: deps.isManageEdit(),
 	};
 }
 /* ────────────────────────── 公开面兼容（v1 导出） ────────────────────────── */

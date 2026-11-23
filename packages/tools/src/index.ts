@@ -62,3 +62,28 @@ export { RELATION_TYPES } from './tools/create.ts';
 
 /** `#4` 定义类型枚举（领域 / 状态 / 模板 / 分类）。 */
 export { DEFINITION_TYPES, type DefinitionType } from './definitions.ts';
+
+/*
+ * ─────────────────────────────────────────────────────────────────────
+ * 工具**实现零件**的公开面 —— 只为 `@taskboard/dsh-agent-guard` 而开
+ * ─────────────────────────────────────────────────────────────────────
+ *
+ * 用户 `2026-11-23`（第 4 条）：
+ * > 「这个 tool，不在 core 里提供。完全由 dsh 桥接包提供。并且这个 ui 也完全由
+ * >   dsh ui 提供。mcp 不提供这个 tool 和 ui。」
+ *
+ * ⇒ `taskboard_tool_policy` / `taskboard_tool_policy_read` 两个工具的定义
+ *   **搬到了 `@taskboard/dsh-agent-guard`**（MCP 从 `createTaskboardTools()`
+ *   拿不到它们了）。它们原本依赖本包的 5 个内部模块 —— 这里把那几个零件提到
+ *   公开面，**避免复制一份实现**（两份真值迟早漂移）。
+ *
+ * ⚠ **这不是「本包开始提供这套工具」**：本包只是把零件借出去。
+ *   `createTaskboardTools()` 已经不含那两个工具了（见 `tools.ts` 的清单）。
+ *
+ * ⚠ 将来若 MCP 也要这套工具，**不该**从本包重新导出工具本体 ——
+ *   按用户裁决，它属于 DSH 专属。
+ */
+export { str, strs } from './context.ts';
+export { hostFailure, inputFailure } from './failure.ts';
+export { okText } from './schema.ts';
+export { defineTool, type ToolDeps } from './tools/shared.ts';

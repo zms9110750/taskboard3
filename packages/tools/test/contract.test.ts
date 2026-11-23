@@ -37,8 +37,6 @@ const EXPECTED_NAMES = [
 	'taskboard_update',
 	'taskboard_update_note',
 	'taskboard_transition',
-	'taskboard_tool_policy',
-	'taskboard_tool_policy_read',
 ] as const;
 
 describe('包边界', () => {
@@ -87,7 +85,7 @@ describe('包边界', () => {
 });
 
 describe('工具注册面', () => {
-	it('11 个工具，名字与顺序稳定', async () => {
+	it('9 个工具，名字与顺序稳定（两个权限工具已按用户裁决搬到 dsh-agent-guard）', async () => {
 		const fixture = await makeFixture();
 		assert.deepEqual(
 			fixture.tools.map((one) => one.name),
@@ -121,13 +119,9 @@ describe('工具注册面', () => {
 		);
 	});
 
-	it('「仅 DSH」用 hosts 元数据表达', async () => {
+	it('9 个工具都不再标 hosts（「仅 DSH」的两个已按用户裁决搬走）', async () => {
 		const fixture = await makeFixture();
-		const policy = fixture.tools.find((one) => one.name === 'taskboard_tool_policy');
-		assert.notEqual(policy, undefined);
-		assert.deepEqual(policy?.hosts, ['dsh']);
 		for (const tool of fixture.tools) {
-			if (tool.name === 'taskboard_tool_policy' || tool.name === 'taskboard_tool_policy_read') continue;
 			assert.equal(tool.hosts, undefined, `${tool.name} 不该标 hosts`);
 		}
 	});
@@ -154,14 +148,14 @@ describe('工具注册面', () => {
 });
 
 describe('注册表 + 宿主过滤', () => {
-	it('DSH 11 个、MCP 9 个（#9 不出现）', async () => {
+	it('DSH 9 个、MCP 9 个（两个权限工具已搬到 dsh-agent-guard）', async () => {
 		const fixture = await makeFixture();
 		const dsh = createTaskboardToolRegistry(fixture.tools, { host: 'dsh' });
 		const mcp = createTaskboardToolRegistry(fixture.tools, { host: 'mcp' });
-		assert.equal(dsh.names.length, 11);
+		assert.equal(dsh.names.length, 9);
 		assert.equal(mcp.names.length, 9);
 		assert.equal(mcp.has('taskboard_tool_policy'), false);
-		assert.equal(dsh.has('taskboard_tool_policy'), true);
+		assert.equal(dsh.has('taskboard_tool_policy'), false);
 		assert.deepEqual(
 			toolsForHost(fixture.tools, 'mcp').map((one) => one.name),
 			mcp.names,

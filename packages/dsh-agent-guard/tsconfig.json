@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./lib",
+    "declarationDir": "./lib/types",
+    "tsBuildInfoFile": "./lib/.tsbuildinfo",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../protocol"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../dsh-tools"
+    }
+  ]
+}

@@ -1,50 +1,43 @@
 /**
- * `@taskboard/dsh-tools` —— 任务板**给 AI 的工具面**插件行。
+ * `@taskboard/dsh-tools` —— 任务板**给 AI 的工具面**插件行（宿主无关的 9 个工具）。
  *
  * ## 这个包为什么存在（用户 `2026-11-23`）
  *
  * > 「怎么接入dsh的那几个包没了？ui也是一个包也可以关掉的啊。」
  *
- * 之前 `@taskboard/dsh` 一个包塞了 5 件事。想只关掉「AI 工具」做不到 ——
- * 只能整行关掉，连 HTTP 和命令一起没。
- *
  * ## 本包只做两件事
  *
  * ```
- * ① 11 个 taskboard_* 工具  →  ctx.tools.register(...)
- * ② 权限 guard              →  ctx.tools.guard(...)
+ * ① 9 个宿主无关 taskboard_* 工具 → ctx.tools.register(...)
+ * ② DSH schema 适配器（`toDshSchema` / `toDshParameters`）—— 也借给
+ *    `@taskboard/dsh-agent-guard`，避免两份实现漂移
  * ```
  *
- * 定义在 `@taskboard/tools`（**纯库，宿主无关，MCP 也吃同一份**）。
- * 本包是 DSH 侧的薄适配：schema 形状转换 + 注册。
+ * 定义在 `@taskboard/tools`（**纯库，MCP 也吃同一份**）。
  *
- * ## 依赖谁
+ * ## ⚠ 权限 guard 与两个策略工具**不在这里**（用户 `2026-11-23`）
+ *
+ * > 「这个tool，不在core里提供。完全由dsh桥接包提供。并且这个ui也完全由dsh ui提供。
+ * >   mcp不提供这个tool和ui。」
  *
  * ```
- * inject: ['taskboard3Core', 'tools']
- *            ↑ 实例由 @taskboard/dsh-core 那一行 provide
- *                        ↑ DSH 自带
+ * ToolGuardLevel（off / manage / manage-edit） + 入侵式 guard
+ * + taskboard_tool_policy / taskboard_tool_policy_read
+ * + GET /api/tools
+ * ⇒ 全在 `@taskboard/dsh-agent-guard` 那一行（可单独关闭）
  * ```
  *
- * **⚠ 不自己 `createTaskboard()`** —— 那会有第二份内存状态，
- *   工具改了卡 HTTP 读不到。见 `@taskboard/dsh-core` 的文件头。
+ * 本包需要知道「是否 manage-edit」时，**走 Cordis 服务 `ctx.get(...)`**，
+ * 不 import 那个包 —— 否则关掉那一行会让本行一起崩。
  *
  * ## 关掉它会怎样
  *
- * 数据和界面都还在（HTTP 路由在 `@taskboard/dsh` 那一行），
- * 只是 **agent 调不到任务板的工具了**。这就是用户要的「可单独关」。
- *
- * ## 为什么 `defineTool` 只在这里 import
- *
- * 它不是 Cordis 服务，只能从 `@deepseek-ai/dsh-tools` 拿；而它在 npm 上
- * 没有与 DSH 同版本 ⇒ 编译期用 `src/dsh-tools.d.ts` 垫片。
- * **整个仓库只有本包 import 它一次**（ADR：`AGENTS.md` §3.1）。
+ * 数据和界面都还在（HTTP 在 `@taskboard/dsh` 那一行），只是 **agent 调不到
+ * 任务板的 9 个通用工具了**。
  */
 
 import type { Taskboard } from '@taskboard/core';
 
-import { createPermissionGuard } from './permission.ts';
-import type { ToolGuardKv } from './tool-guard.ts';
 import { createTools } from './tools.ts';
 
 /** Cordis 插件名。 */
@@ -55,83 +48,60 @@ export const name = 'taskboard3-tools';
  *
  * `taskboard3Core` 由 `@taskboard/dsh-core` 提供（`Taskboard` 实例）。
  * `taskboard3DefaultWorkspaceId` 也由它提供（入口的默认空间策略）。
- * `taskboard3Store` 由 `@taskboard/store` 提供 —— 本包**借用它的 kv 端口**
- *   存 agent 侧档位（那套权限不归 core，见 `tool-guard.ts` 文件头）。
  * `tools` 是 DSH 的工具注册表。
  *
- * ⚠ **四个都要列**。少列一个不报「缺依赖」，而是等到 `apply` 里第一次读
- *   `ctx.<服务名>` 时才抛 `cannot get property "…" without inject` ——
- *   那是**运行期**错误，构建期和单测都发现不了（单测直接调 `apply`，
- *   不经过 Cordis 的 inject 检查）。真实症状：profile 启动报
- *   `dsh: warning: 1 entry did not activate`，整行插件不注册。
+ * ⚠ **三个都要列**（AGENTS §3.10）：少列一个不报「缺依赖」，而是 `apply` 里
+ *   第一次读 `ctx.<服务>` 时才抛 `cannot get property … without inject`。
+ *   症状：profile 启动报 `dsh: warning: 1 entry did not activate`。
  */
-export const inject = [
-	'taskboard3Core',
-	'taskboard3DefaultWorkspaceId',
-	'taskboard3Store',
-	'tools',
-] as const;
+export const inject = ['taskboard3Core', 'taskboard3DefaultWorkspaceId', 'tools'] as const;
 
 /** 本插件行的配置。 */
 export interface Config {}
 
-/**
- * `apply` 用到的最小上下文形状。
- *
- * 只声明本包真正调用的方法 —— 不假装知道 Cordis 的其余部分。
- */
+/** `@taskboard/dsh-agent-guard` provide 的服务名（只读它的一个布尔）。 */
+const AGENT_GUARD_SERVICE = 'taskboard3AgentGuard';
+
+/** `apply` 用到的最小上下文形状。 */
 export interface ApplyContext {
-	/** `@taskboard/dsh-core` 提供的实例。 */
 	readonly taskboard3Core: Taskboard;
-	/** 默认空间策略（由 `@taskboard/dsh-core` 提供）。 */
 	taskboard3DefaultWorkspaceId?: () => Promise<string>;
-	/** `@taskboard/store` 提供的存储端口（借它的 kv 存 agent 侧档位）。 */
-	readonly taskboard3Store: ToolGuardKv;
-	/** DSH 的工具服务：注册 + guard。 */
 	readonly tools: {
 		register(tool: unknown): () => void;
-		guard(fn: (exec: unknown) => unknown): () => void;
 	};
-	/** `ctx.subagents`（可选）—— 取当前 agent 名字当 holder。 */
 	readonly subagents?: unknown;
-	/**
-	 * Cordis 的 `ctx.get(name)` —— 可选访问服务，不触发 inject 检查。
-	 *
-	 * ⚠ 读 `ctx.subagents` 会走 Cordis 属性拦截器，服务不在 `inject` 里就抛
-	 *   `cannot get property "subagents" without inject`。用这个探测。
-	 */
 	get?(name: string): unknown;
 	effect?(effect: () => () => void, label?: string): void;
+}
+
+/** `@taskboard/dsh-agent-guard` 服务的最小面。 */
+interface AgentGuardLike {
+	readonly isManageEdit?: () => boolean;
 }
 
 /**
  * 装工具行。
  *
  * @param ctx 宿主上下文
- * @param config 无（本行目前不接受配置）
+ * @param config 无
  */
 export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	const taskboard = ctx.taskboard3Core;
 
 	/*
-	 * `ctx.subagents` 是**可选**服务 —— 用可选访问读它，**不能**写进 `inject`。
-	 * 没有 subagent 环境的 profile（隔离 profile 就是这样）也该能用。
+	 * `ctx.subagents` 是**可选**服务 —— 用可选访问读它，不能写进 inject。
 	 * 缺席时 holder 回落 `agent.id`（UUID）。
 	 */
 	const subagents =
-		typeof ctx.get === 'function' ? (ctx.get('subagents') as ApplyContext['subagents']) : ctx.subagents;
+		typeof ctx.get === 'function' ? ctx.get('subagents') : (ctx as { subagents?: unknown }).subagents;
 
 	/*
-	 * 权限 guard —— **加装**在 DSH 的工具管线上。
-	 *
-	 * ⚠ 档位不在本包：两条正交轴是任务板的全局状态，`taskboard.judgeToolCall`
-	 *   自己从 core 缓存读。guard 只提供「这个 agent 持有哪些工作卡」这一个事实。
-	 *
-	 * ⚠ **不往 DSH 的权限预设表注册任何东西**（`2026-11-19` 用户裁定：
-	 *   「因为细节问题没必要给 dsh 开一堆权限」）。
+	 * 「能否改策略」的唯一来源是 agent-guard 那一行的三档位。
+	 * 那一行被关掉 ⇒ 服务不存在 ⇒ 一律 false（不允许改策略，符合「关掉就没了」）。
 	 */
-	const permissionGuard = createPermissionGuard({ taskboard, kv: ctx.taskboard3Store, subagents });
-	const disposeGuard = ctx.tools.guard(permissionGuard);
+	const guard =
+		typeof ctx.get === 'function' ? (ctx.get(AGENT_GUARD_SERVICE) as AgentGuardLike | undefined) : undefined;
+	const isManageEdit = (): boolean => guard?.isManageEdit?.() === true;
 
 	const defaultWorkspaceId =
 		ctx.taskboard3DefaultWorkspaceId ?? (async (): Promise<string> => {
@@ -141,39 +111,24 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 			return created.id;
 		});
 
-	/* 工具：定义在 `@taskboard/tools`，本包只做 DSH 适配 + 注册。 */
-	const tools = createTools({ taskboard, defaultWorkspaceId, subagents, kv: ctx.taskboard3Store });
+	const tools = createTools({ taskboard, defaultWorkspaceId, subagents, isManageEdit });
 	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
 
 	const disposeAll = (): void => {
-		/* 先摘 guard，再清工具：卸载过程中不该再有机会按旧档位判定。 */
-		disposeGuard();
 		for (const dispose of disposeTools) {
 			if (typeof dispose === 'function') (dispose as () => void)();
 		}
 	};
 
 	/*
-	 * ⚠ **`ctx.effect(execute)` 的 `execute` 会被立即调用，返回值才被收作 disposer。**
-	 *   写 `ctx.effect(disposeAll)` 会让 `disposeAll` 立刻执行 ——
-	 *   工具刚注册就被删掉（2026-11-23 在隔离 profile 里实测过这个 bug）。
+	 * ⚠ `ctx.effect(execute)` 的 `execute` 会被**立即调用**，返回值才被收作 disposer。
+	 *   写 `ctx.effect(disposeAll)` 会让它立刻执行 —— 工具刚注册就被删掉。
 	 */
-	ctx.effect?.(() => disposeAll, 'taskboard3-tools: AI tools + guard');
+	ctx.effect?.(() => disposeAll, 'taskboard3-tools: AI tools');
 }
 
 export { createTools, describeFailure, describeUnread } from './tools.ts';
 export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
+/* DSH schema 适配器 —— `@taskboard/dsh-agent-guard` 也用它，不复制第二份。 */
+export { adaptDefinitions, toDshParameters, toDshSchema } from './tools.ts';
 export { holderOf, type ExecLike, type SubagentsLike } from './holder.ts';
-export {
-	createPermissionGuard,
-	heldWorkCardsOf,
-	type GuardDeps,
-	type GuardVerdict,
-} from './permission.ts';
-/*
- * agent 侧权限（用户 `2026-11-23`：「完全由 dsh 桥接包提供」）。
- *
- * `@taskboard/dsh` 的 HTTP 路由和 UI 都要读它，所以这一层必须导出；
- * 但**不能**从 `@taskboard/core` 导出 —— core 不知道也不干涉这一侧。
- */
-export * from './tool-guard.ts';
