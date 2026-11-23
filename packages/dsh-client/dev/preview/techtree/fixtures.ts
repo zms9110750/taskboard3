@@ -245,7 +245,7 @@ export const CARDS: readonly Card[] = Object.freeze([
 				label: '目标',
 				payload: {
 					$type: 'text',
-					value: '按 parent 链算层号，同层按「父=min(子)」排行，超 10 行折栏。',
+					value: '按 parent 链算层号，同层按「父=min(子)」排行；一层一列（不折栏）。',
 				},
 			},
 			design: {
@@ -253,7 +253,7 @@ export const CARDS: readonly Card[] = Object.freeze([
 				payload: {
 					$type: 'text',
 					value:
-						'① 从最深列往左逐列排；② 每列两轮：有子卡的先排、叶子后排；③ 同层超 10 行按行数平均折栏。',
+						'① 从最深列往左逐列排；② 每列两轮：有子卡的先排、叶子后排；③ 一层一列，不折栏。',
 				},
 			},
 			record: {

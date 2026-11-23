@@ -8,7 +8,7 @@
  *
  * ```text
  * 输入：TreeCard[]（只要 id + parent）
- * 输出：TreeLayout（坐标 + 折栏 + 警告 + 父子边）
+ * 输出：TreeLayout（坐标 + 警告 + 父子边）
  * ```
  *
  * 旧版把布局和「哪些边、什么颜色」混在一个 500 行文件里；这里只留**坐标**。
@@ -39,11 +39,18 @@
  *
  * 「两轮」是**递归正确**的：子卡所在列先排完，父卡拿到的是**已确定的**行。
  *
- * ## ③ 同一层超过 `maxRowsPerColumn`（默认 10）行 ⇒ 折栏
+ * ## ③ 不折栏：**一个逻辑层 = 一个物理列**
  *
- * 拓扑分层不变，只是同一层内按逻辑行切成多个**物理栏**（`lane`），
- * 栏内视觉行 `row` 从 0 重新计数。按**行数尽量平均**切，避免最后一栏只剩 1 张：
- * 41 张无关系卡 ⇒ 5 栏，`9/8/8/8/8`。
+ * 用户 `2026-11-24`：
+ * > 「取消那个自动换列的功能。有了组和折叠进行排版。应该就不需要那个东西了。」
+ *
+ * ⇒ 删掉旧的「同层超过 `maxRowsPerColumn`（默认 10）行 ⇒ 均分成多栏」。
+ *   现在一层就是一列，`column === layer`，`lane` 字段保留但与 `column` 始终相等
+ *   （列组件的分组键仍用它，语义没变：一个「物理列」）。
+ *
+ * **后果（用户接受，因为用组 / 折叠来收）**：第 0 层有很多根卡时，那一列就是很长，
+ * 纵向滚动靠画布自己；要靠**组**把它们收成横幅，不再自动换列。
+ * 好处是**位置稳定**：可见卡数变化不再改变栏数 ⇒ 不会整图重排。
  *
  * ## ④ 孤儿卡 / 环：落第 0 层 + 警告，**绝不死循环、绝不丢卡**
  *
@@ -56,11 +63,12 @@
  *
  * | 字段 | 含义 | 谁用 |
  * |---|---|---|
- * | `column` / `row` | **物理**坐标（折栏后），渲染直接乘以步长 | 视图 |
- * | `layer` / `logicalRow` | **逻辑**坐标（折栏前），父子对齐看这个 | 测试 / 诊断 |
+ * | `column` / `row` | **物理**坐标，渲染直接乘以步长 | 视图 |
+ * | `layer` / `logicalRow` | **逻辑**坐标，父子对齐看这个 | 测试 / 诊断 |
  *
- * 折栏只改**物理**坐标：同一逻辑行可能落在不同栏、不同视觉行。
- * 所以「父子同行」的不变量断言的是 `logicalRow`，不是 `row`。
+ * 不折栏之后「物理列」= 「逻辑层」`column === layer`，但**两套字段都保留**：
+ * `logicalRow` 仍是「父 = min(子)」那条不变量的载体，测试断言的是它。
+ * （历史上折栏会让同一逻辑行落到不同栏；那段逻辑已在 `2026-11-24` 删除。）
  *
  * ## ⑤ 为什么连线路径也在这个文件
  *
@@ -103,20 +111,20 @@ export interface TreeLayoutWarning {
 /**
  * 一张卡算出来的位置。
  *
- * ⚠ `column` / `row` 是**物理**坐标（折栏后）；`layer` / `logicalRow` 是**逻辑**坐标。
+ * ⚠ column / ow 是**物理**坐标；layer / logicalRow 是**逻辑**坐标（二者现在同值）。
  * 见文件头「输出坐标有两套」。
  */
 export interface TreeLayoutNode {
 	readonly id: string;
-	/** 物理栏号（折栏后，渲染直接用作 x 序号）。 */
+	/** 物理列号（= layer；渲染直接用作 x 序号）。 */
 	readonly column: number;
 	/** 物理行号（**栏内**，从 0 起，渲染直接用作 y 序号）。 */
 	readonly row: number;
 	/** 逻辑层号（拓扑深度，第 0 层最左）。 */
 	readonly layer: number;
-	/** 该层折栏后的第几栏（`0` = 这层的第一栏）。 */
+	/** 物理列号（不折栏后恒等于 `column`；列组件按它分组）。 */
 	readonly lane: number;
-	/** 逻辑行号（折栏前）。**「父=min(子)」对齐看这个。** */
+	/** 逻辑行号。**「父=min(子)」对齐看这个。** */
 	readonly logicalRow: number;
 	/** 这张卡自己的布局警告；没有就是 `undefined`（渲染层据此画 ▲）。 */
 	readonly warning?: TreeLayoutWarning;
@@ -125,7 +133,7 @@ export interface TreeLayoutNode {
 /**
  * 一个**物理栏**。
  *
- * 「逻辑层」和「物理栏」是一对多：一层超过 `maxRowsPerColumn` 行就折成多栏。
+ * 不折栏之后「逻辑层」和「物理栏」是一对一：column === layer。
  * 按 `column` 升序即渲染的自左向右顺序。
  */
 export interface TreeBand {
@@ -166,28 +174,14 @@ export interface TreeLayout {
 	readonly rowCount: number;
 }
 
-/** 布局选项。 */
-export interface TreeLayoutOptions {
-	/**
-	 * 每个物理栏最多多少行。默认 `10`。
-	 *
-	 * 非有限数 / `0` / 负数会被夹到合法值（见 `resolveMaxRows`）——
-	 * 布局是纯函数，参数坏了**不能**算出一堆 `NaN` 坐标。
-	 */
-	readonly maxRowsPerColumn?: number;
-}
-
-/* ══════════════════════════════════════════════════════════════
- * 二、常量
- * ══════════════════════════════════════════════════════════════ */
-
-/**
- * 一个物理栏默认最多多少行。
+/*
+ * ⚠ **已删除**：`TreeLayoutOptions` / `maxRowsPerColumn` / `DEFAULT_MAX_ROWS_PER_COLUMN`。
  *
- * 旧版 `tech-tree.js:241` 的默认值（10 行 ≈ 一屏）。折栏是用户
- * `2026-11-11`「这个的一列写的巨多……怎么解决」的解法。
+ * 折栏（同层超过 N 行就均分成多栏）在 `2026-11-24` 被用户取消：
+ * > 「取消那个自动换列的功能。有了组和折叠进行排版。应该就不需要那个东西了。」
+ *
+ * 现在一个逻辑层就是一列。`layoutTree()` 不再接受任何选项。
  */
-export const DEFAULT_MAX_ROWS_PER_COLUMN = 10;
 
 /* ══════════════════════════════════════════════════════════════
  * 三、布局
@@ -205,24 +199,12 @@ function compareIds(a: string, b: string): number {
 	return 0;
 }
 
-/** `maxRowsPerColumn` 归一化：非法值回落默认，`0` / 负数夹到 1。 */
-function resolveMaxRows(value: number | undefined): number {
-	if (typeof value !== 'number' || !Number.isFinite(value)) {
-		return DEFAULT_MAX_ROWS_PER_COLUMN;
-	}
-	return Math.max(1, Math.floor(value));
-}
-
 /**
  * 算科技树布局。
  *
  * @param cards 本空间要显示的全部卡（孤儿 / 环也在里面，不会丢）
- * @param options 折栏阈值
  */
-export function layoutTree(
-	cards: readonly TreeCard[],
-	options?: TreeLayoutOptions,
-): TreeLayout {
+export function layoutTree(cards: readonly TreeCard[]): TreeLayout {
 	/* ── ⓪ 去重：一个 id 只认第一张（同 id 不可能有两个位置） ── */
 	const byId = new Map<string, TreeCard>();
 	for (const card of cards) {
@@ -402,30 +384,14 @@ export function layoutTree(
 	}
 
 	/* ────────────────────────────────────────────────────────
-	 * ③ 折栏：同层 > maxRows 行 ⇒ 切成多个物理栏
+	 * ③ 一个逻辑层 = 一个物理列（不折栏）
+	 *
+	 * 用户 `2026-11-24`：
+	 * > 「取消那个自动换列的功能。有了组和折叠进行排版。应该就不需要那个东西了。」
+	 *
+	 * ⇒ `column === layer`，`lane === column`（字段保留给列组件分组）。
+	 *   一层不再均分成多栏 ⇒ 可见卡数变化不再改变栏数 ⇒ **不会整图重排**。
 	 * ──────────────────────────────────────────────────────── */
-	const maxRows = resolveMaxRows(options?.maxRowsPerColumn);
-
-	/** 每层每栏的行数（**尽量平均**：先均分，余数给前几栏）。 */
-	const laneSizes = new Map<number, number[]>();
-	/** 每层第一栏的物理列号 = 前面所有层的栏数之和。 */
-	const laneBase = new Map<number, number>();
-	let columnCount = 0;
-	for (let layer = 0; layer < layerCount; layer += 1) {
-		const size = columns.get(layer)?.length ?? 0;
-		const laneCount = Math.max(1, Math.ceil(size / maxRows));
-		const base = Math.floor(size / laneCount);
-		const extra = size % laneCount;
-		const sizes: number[] = [];
-		for (let lane = 0; lane < laneCount; lane += 1) {
-			sizes.push(base + (lane < extra ? 1 : 0));
-		}
-		laneSizes.set(layer, sizes);
-		laneBase.set(layer, columnCount);
-		columnCount += laneCount;
-	}
-
-	/* ── 每层按逻辑行排好，再按 laneSizes 切栏 ── */
 	interface Placed {
 		readonly column: number;
 		readonly row: number;
@@ -444,33 +410,23 @@ export function layoutTree(
 			if (rowA !== rowB) return rowA - rowB;
 			return compareIds(a, b);
 		});
-		const sizes = laneSizes.get(layer) ?? [ids.length];
-		const base = laneBase.get(layer) ?? 0;
-
-		let start = 0;
-		for (let lane = 0; lane < sizes.length; lane += 1) {
-			const size = sizes[lane] ?? 0;
-			const chunk = ids.slice(start, start + size);
-			start += size;
-			if (chunk.length === 0) continue; /* 逻辑上不可达（每层 ≥1 张） */
-			/*
-			 * 栏内视觉行从 0 重新计数 ⇒ 减去**栏内最小逻辑行**。
-			 * ⚠ 逻辑行可能有空洞（父卡为了对齐高行的子卡可以排到很下面，而本层卡少）
-			 *   ⇒ `rowCount` 取**最大视觉行 + 1**，不是卡数 —— 否则画布会裁掉卡。
-			 */
-			const firstId = chunk[0];
-			const minRow = firstId === undefined ? 0 : (rankedOf.get(firstId) ?? 0);
-			let bandRows = 0;
-			for (const id of chunk) {
-				const logicalRow = rankedOf.get(id);
-				if (logicalRow === undefined) continue;
-				const row = logicalRow - minRow;
-				placedOf.set(id, { column: base + lane, row, layer, lane, logicalRow });
-				if (row + 1 > bandRows) bandRows = row + 1;
-			}
-			bands.push({ column: base + lane, rowCount: bandRows, cardCount: chunk.length, layer });
-			if (bandRows > rowCount) rowCount = bandRows;
+		/*
+		 * 列内视觉行从 0 重新计数 ⇒ 减去**列内最小逻辑行**。
+		 * ⚠ 逻辑行可能有空洞（父卡为了对齐高行的子卡可以排到很下面，而本层卡少）
+		 *   ⇒ `rowCount` 取**最大视觉行 + 1**，不是卡数 —— 否则画布会裁掉卡。
+		 */
+		const firstId = ids[0];
+		const minRow = firstId === undefined ? 0 : (rankedOf.get(firstId) ?? 0);
+		let bandRows = 0;
+		for (const id of ids) {
+			const logicalRow = rankedOf.get(id);
+			if (logicalRow === undefined) continue;
+			const row = logicalRow - minRow;
+			placedOf.set(id, { column: layer, row, layer, lane: layer, logicalRow });
+			if (row + 1 > bandRows) bandRows = row + 1;
 		}
+		bands.push({ column: layer, rowCount: bandRows, cardCount: ids.length, layer });
+		if (bandRows > rowCount) rowCount = bandRows;
 	}
 
 	/* ── 汇总（顺序 = 输入顺序，确定性；一张都不丢） ── */
@@ -491,6 +447,9 @@ export function layoutTree(
 		const warning = warningOf.get(card.id);
 		if (warning !== undefined) warnings.push(warning);
 	}
+
+	/* 不折栏 ⇒ 列数就是逻辑层里「有卡」的层数（`bands` 每层恰好一项）。 */
+	const columnCount = bands.length;
 
 	return { nodes, bands, warnings, edges, columnCount, rowCount };
 }
@@ -829,7 +788,7 @@ export interface TreeLane {
  * 现在每列只对自己的 item 序列累加 ⇒ 某一列收起一个组，**只有该列后面的 item 上移**，
  * 别的列纹丝不动。代价：父子卡不再保证同行，`parentCurve` 会画出斜/弧线（这是接受的）。
  *
- * @param layout `layoutTree()` 的结果（分层 / 折栏规则不变）
+ * @param layout `layoutTree()` 的结果
  * @param metrics 渲染尺寸
  * @param slotOf 某个节点的槽位；返回 `undefined` = 按卡槽（78 / 92）
  * @returns `lanes` 每列一项（按 lane 升序）；`boxes` 节点 id → 矩形（画边用）；
