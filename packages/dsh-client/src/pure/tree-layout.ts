@@ -554,13 +554,20 @@ function round(value: number): number {
  *
  * @param node 只需要 `column` / `row`（`TreeLayoutNode` 可以直接传）
  * @param metrics 渲染尺寸
+ * @param rowTops 可选的**每行顶边**（`rowMetricsOf()` 算出来的 `tops`）。
+ *
+ * ⚠ 不传 = 旧行为（每行等高 `cardHeight + rowGap`）。
+ *   传了 = 行高可以不等（收起的分组横幅只占 18px，见 `rowMetricsOf()` 注释）。
+ *   用户 `2026-11-24`：「组收起的时候只有组的高度，而不是组内容的大小还占在那里」。
  */
 export function boxOf(
 	node: Pick<TreeLayoutNode, 'column' | 'row'>,
 	metrics: TreeMetrics,
+	rowTops?: readonly number[],
 ): TreeBox {
 	const left = node.column * (metrics.cardWidth + metrics.columnGap) + metrics.padding;
-	const top = node.row * (metrics.cardHeight + metrics.rowGap) + metrics.padding;
+	const top =
+		rowTops?.[node.row] ?? node.row * (metrics.cardHeight + metrics.rowGap) + metrics.padding;
 	return {
 		left,
 		top,
@@ -569,6 +576,53 @@ export function boxOf(
 		midX: left + metrics.cardWidth / 2,
 		midY: top + metrics.cardHeight / 2,
 	};
+}
+
+/**
+ * 每行的顶边 / 行高 / 画布高度 —— **行高可以不等于卡高**。
+ *
+ * 用户 `2026-11-24`：
+ * > 「组收起的时候只有组的高度。而不是组内容的大小还占在那里并且组在居中位置。
+ * >   组收起了就如果那些组内卡不存在一样。」
+ *
+ * 科技树的物理行本来是等高的（`cardHeight + rowGap`）。但「收起的分组」在那一行里
+ * 只画一条 18px 的横幅 —— 如果行高还是 78px，横幅下面就会空出 60px，看起来像
+ * 组里还有一张看不见的卡在占位。
+ *
+ * ⇒ 由渲染层给「这一行里最矮/最高的实际内容高」：某行只有横幅 ⇒ 该行 18px；
+ *   某行还有真卡 ⇒ 取该行最大值（真卡 78）。行顶边因此要用**前缀和**算。
+ *
+ * @param layout `layoutTree()` 的结果
+ * @param metrics 渲染尺寸（`rowGap` / `padding` / 默认 `cardHeight`）
+ * @param heightOf 某个节点在这一行里实际占多高；返回 `undefined` = 按 `cardHeight`
+ * @returns `tops[r]` 是第 r 行顶边；`heights[r]` 是第 r 行行高；`stageHeight` 含上下留白
+ */
+export function rowMetricsOf(
+	layout: TreeLayout,
+	metrics: TreeMetrics,
+	heightOf: (id: string) => number | undefined = () => undefined,
+): { readonly tops: readonly number[]; readonly heights: readonly number[]; readonly stageHeight: number } {
+	const rowCount = layout.rowCount;
+	if (rowCount === 0) return { tops: [], heights: [], stageHeight: metrics.padding * 2 };
+
+	/* 每行取「该行所有节点里最高的」；空行（理论上不会有）回落卡高。 */
+	const raw: number[] = Array.from({ length: rowCount }, () => 0);
+	for (const node of layout.nodes) {
+		if (node.row < 0 || node.row >= rowCount) continue;
+		const h = heightOf(node.id) ?? metrics.cardHeight;
+		if (h > (raw[node.row] ?? 0)) raw[node.row] = h;
+	}
+	const heights: number[] = raw.map((h) => (h > 0 ? h : metrics.cardHeight));
+
+	const tops: number[] = [];
+	let y = metrics.padding;
+	for (let row = 0; row < rowCount; row += 1) {
+		tops.push(y);
+		y += (heights[row] ?? metrics.cardHeight) + metrics.rowGap;
+	}
+	const last = rowCount - 1;
+	const stageHeight = (tops[last] ?? metrics.padding) + (heights[last] ?? metrics.cardHeight) + metrics.padding;
+	return { tops, heights, stageHeight };
 }
 
 /**
@@ -685,6 +739,7 @@ export function toPathData(curve: TreeCurve): string {
 export function parentEdgePaths(
 	layout: TreeLayout,
 	metrics: TreeMetrics,
+	rowTops?: readonly number[],
 ): readonly TreeEdgePath[] {
 	const byId = new Map(layout.nodes.map((node) => [node.id, node]));
 	const out: TreeEdgePath[] = [];
@@ -695,7 +750,9 @@ export function parentEdgePaths(
 		out.push({
 			from: edge.from,
 			to: edge.to,
-			d: toPathData(parentCurve(boxOf(from, metrics), boxOf(to, metrics))),
+			d: toPathData(
+				parentCurve(boxOf(from, metrics, rowTops), boxOf(to, metrics, rowTops)),
+			),
 		});
 	}
 	return out;
