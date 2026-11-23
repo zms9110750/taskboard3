@@ -20,7 +20,12 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createTaskboard, type Taskboard } from '@taskboard/core';
 import { TaskState } from '@taskboard/protocol';
-import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS } from '@taskboard/core';
+import { CARD_ACTION_OPTIONS } from '@taskboard/core';
+import {
+	TOOL_GUARD_OPTIONS,
+	readToolGuardLevelOf,
+	writeToolGuardLevel,
+} from '@taskboard/dsh-tools';
 
 import { createHandler, ROUTE_PREFIX, type RouteDeps } from '../src/http.ts';
 import type { SseHub } from '../src/sse.ts';
@@ -90,6 +95,11 @@ function makeRes(): OutgoingLike & {
 
 let dataDir = '';
 let taskboard: Taskboard;
+/**
+ * 存储端口 —— 路由要它来读写 **agent 侧档位**（那套权限不归 core，
+ * 用户 2026-11-23：core 不干涉 agent 那一侧的注入权限）。
+ */
+let store: ReturnType<typeof createSqliteStore>;
 
 before(() => {
 	dataDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-'));
@@ -119,13 +129,14 @@ async function closeTaskboard(): Promise<void> {
 beforeEach(async () => {
 	/* 每个用例一个全新实例（内存里；dataDir 共用，用例间用不同空间隔离）。 */
 	await closeTaskboard();
-	taskboard = createTaskboard({ store: createSqliteStore(dataDir) });
+	taskboard = createTaskboard({ store: (store = createSqliteStore(dataDir)) });
 });
 
 /** 造一份路由依赖；默认放行鉴权。 */
 function depsOf(overrides: Partial<RouteDeps> = {}): RouteDeps {
 	return {
 		taskboard,
+		kv: store,
 		connection: { requestRejection: () => undefined },
 		defaultWorkspaceId: async () => {
 			const list = taskboard.listWorkspaces(false);
@@ -1162,7 +1173,7 @@ describe('GET / POST /api/permission', () => {
 	it('GET 返回两个档位 + 选项表（选项就是 core 的那一张）', async () => {
 		/* 共用一个 dataDir ⇒ 前一个用例写过的档位会留在库里；先复位到默认。 */
 		await taskboard.setCardActionLevel('no-claim');
-		await taskboard.setToolGuardLevel('off');
+		await writeToolGuardLevel(store, 'off');
 
 		const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/permission` });
 		assert.equal(out.status, 200, out.raw);
@@ -1190,7 +1201,7 @@ describe('GET / POST /api/permission', () => {
 
 		/* 不是只回了 body —— core 实例真的改了。 */
 		assert.equal(taskboard.getCardActionLevel(), 'adopt');
-		assert.equal(taskboard.getToolGuardLevel(), 'manage-edit');
+		assert.equal(readToolGuardLevelOf(store), 'manage-edit');
 
 		const again = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/permission` });
 		const state = (again.json as { data: PermissionData }).data;
@@ -1200,7 +1211,7 @@ describe('GET / POST /api/permission', () => {
 
 	it('只给一个档位 ⇒ 另一个保持原值', async () => {
 		await taskboard.setCardActionLevel('claim');
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 
 		const out = await call(depsOf(), {
 			method: 'POST',
@@ -1209,12 +1220,12 @@ describe('GET / POST /api/permission', () => {
 		});
 		assert.equal(out.status, 200, out.raw);
 		assert.equal(taskboard.getCardActionLevel(), 'adopt');
-		assert.equal(taskboard.getToolGuardLevel(), 'manage', '没传的档位不该被清掉');
+		assert.equal(readToolGuardLevelOf(store), 'manage', '没传的档位不该被清掉');
 	});
 
 	it('⚠ POST 非法值 ⇒ 400 + Failure 信封，且不写库', async () => {
 		await taskboard.setCardActionLevel('claim');
-		await taskboard.setToolGuardLevel('manage');
+		await writeToolGuardLevel(store, 'manage');
 
 		const bads: readonly unknown[] = [
 			{ cardActionLevel: 'nope' },
@@ -1235,7 +1246,7 @@ describe('GET / POST /api/permission', () => {
 		}
 
 		assert.equal(taskboard.getCardActionLevel(), 'claim', '非法请求不该动档位');
-		assert.equal(taskboard.getToolGuardLevel(), 'manage', '非法请求不该动档位');
+		assert.equal(readToolGuardLevelOf(store), 'manage', '非法请求不该动档位');
 	});
 
 	it('空 body ⇒ 400（没有要改的档位，不静默成功）', async () => {

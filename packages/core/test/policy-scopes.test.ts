@@ -120,18 +120,16 @@ describe('setToolPolicyScope', () => {
 		assert.deepEqual([...tb.getToolPolicies().common], ['bash']);
 	});
 
-	it('未领取档真的影响判定：manage 档下没有卡也能调；生效集含它', async () => {
-		const tb = board();
-		await tb.setToolGuardLevel('manage');
-		assert.equal(
-			tb.judgeToolCall({ toolName: 'bash', heldCards: [] }).ok,
-			false,
-			'没配之前 bash 不该放行',
-		);
-		await tb.setToolPolicyScope({ tier: 'unclaimed', allow: ['bash'] });
-		assert.equal(tb.judgeToolCall({ toolName: 'bash', heldCards: [] }).ok, true);
-		assert.ok(tb.effectiveToolsOf('t-work').includes('bash'));
-	});
+	/*
+	 * 「未领取档真的影响判定」原本在这里 —— 它要 `judgeToolCall` + agent 侧档位，
+	 * 这两样 `2026-11-23` 已搬进 `@taskboard/dsh-tools`（用户：「core 完全不知道
+	 * 也不干涉 agent 的那一侧的注入权限」）。
+	 *
+	 * ⇒ 那条用例**搬到了** `packages/dsh-tools/test/tool-guard.test.ts` 的
+	 *   「三 scope 策略参与判定」段（断言一条没减）。
+	 *   core 不能 import dsh-tools（依赖方向 `dsh-tools → core`，反向会让
+	 *   `tsc -b` 的项目引用成环），所以只能搬家，不能改 import。
+	 */
 
 	it('未领取档只加不减 BASE：生效集永远包含 BASE', async () => {
 		const tb = board();

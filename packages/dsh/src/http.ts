@@ -27,8 +27,15 @@
  * （形状就是 `@taskboard/protocol` 的 `Failure`）。
  */
 
-import type { CardActionLevel, SearchCondition, Taskboard, ToolGuardLevel } from '@taskboard/core';
-import { CARD_ACTION_OPTIONS, TOOL_GUARD_OPTIONS, isAdoptTransition, missingRenderers } from '@taskboard/core';
+import type { CardActionLevel, SearchCondition, Taskboard } from '@taskboard/core';
+import { CARD_ACTION_OPTIONS, isAdoptTransition, missingRenderers } from '@taskboard/core';
+import type { ToolGuardKv, ToolGuardLevel } from '@taskboard/dsh-tools';
+import {
+	TOOL_GUARD_OPTIONS,
+	parseToolGuardLevel,
+	readToolGuardLevelOf,
+	writeToolGuardLevel,
+} from '@taskboard/dsh-tools';
 import type { Failure } from '@taskboard/protocol';
 import { ErrorCode, TaskState, failure, isTaskState, judgeTransition } from '@taskboard/protocol';
 
@@ -199,10 +206,15 @@ interface PermissionState {
 }
 
 /** 读两条轴的当前档位 + 总闸 + 选项表。 */
-function permissionStateOf(taskboard: Taskboard): PermissionState {
+function permissionStateOf(taskboard: Taskboard, kv: ToolGuardKv): PermissionState {
 	return {
 		cardActionLevel: taskboard.getCardActionLevel(),
-		toolGuardLevel: taskboard.getToolGuardLevel(),
+		/*
+		 * ⚠ agent 侧档位**不归 core**（用户 `2026-11-23`）：它由
+		 *   `@taskboard/dsh-tools` 的 `tool-guard.ts` 拥有，这里只借 store 的 kv
+		 *   读出来给 UI 渲染。
+		 */
+		toolGuardLevel: readToolGuardLevelOf(kv),
 		cardActionOptions: CARD_ACTION_OPTIONS,
 		toolGuardOptions: TOOL_GUARD_OPTIONS,
 		aiStateChangeAllowed: taskboard.getAiStateChangeAllowed(),
@@ -224,7 +236,7 @@ function asCardActionLevel(value: unknown): CardActionLevel | undefined {
  * @returns `undefined` = 不是合法档位（判据是 core 的选项表本身）
  */
 function asToolGuardLevel(value: unknown): ToolGuardLevel | undefined {
-	return TOOL_GUARD_OPTIONS.find((one) => one.value === value)?.value;
+	return parseToolGuardLevel(value);
 }
 
 /**
@@ -241,6 +253,8 @@ function asBoolean(value: unknown): boolean | undefined {
 export interface RouteDeps {
 	/** 任务板实例。 */
 	readonly taskboard: Taskboard;
+	/** 存储端口（借 kv 存 agent 侧档位；那套权限不归 core）。 */
+	readonly kv: ToolGuardKv;
 	/** 鉴权服务。 */
 	readonly connection: ConnectionLike;
 	/**
@@ -406,7 +420,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	 */
 	if (tail === '/permission') {
 		if (method === 'GET') {
-			sendOk(res, permissionStateOf(taskboard));
+			sendOk(res, permissionStateOf(taskboard, deps.kv));
 			return;
 		}
 		if (method === 'POST') {
@@ -482,10 +496,10 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			 * 但 HTTP 方法用 POST（与其它写端点一致，且 body 是完整声明）。
 			 */
 			if (cardLevel !== undefined) await taskboard.setCardActionLevel(cardLevel);
-			if (guardLevel !== undefined) await taskboard.setToolGuardLevel(guardLevel);
+			if (guardLevel !== undefined) await writeToolGuardLevel(deps.kv, guardLevel);
 			if (switchValue !== undefined) await taskboard.setAiStateChangeAllowed(switchValue);
 
-			sendOk(res, permissionStateOf(taskboard));
+			sendOk(res, permissionStateOf(taskboard, deps.kv));
 			return;
 		}
 		return sendMethodNotAllowed(res, 'GET, POST');

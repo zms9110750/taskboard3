@@ -65,6 +65,8 @@ import type { Card, Taskboard } from '@taskboard/core';
 import { isHeldBy } from '@taskboard/core';
 import { TaskState } from '@taskboard/protocol';
 
+import { judgeToolCall, readToolGuardLevelOf, type ToolGuardKv } from './tool-guard.ts';
+
 /* ────────────────────────── 身份 ────────────────────────── */
 
 /**
@@ -158,6 +160,13 @@ export function heldWorkCardsOf(
 /** guard 的依赖。 */
 export interface GuardDeps {
 	readonly taskboard: Taskboard;
+	/**
+	 * agent 侧档位的存储端口（`CardStore` 的 kv 两方法）。
+	 *
+	 * ⚠ 档位**不归 core**（用户 `2026-11-23`）：它由本包拥有，
+	 *   借用 store 的 kv 端口落库（键沿用 `taskboard.permission.toolGuardLevel`）。
+	 */
+	readonly kv: ToolGuardKv;
 	/** `ctx.subagents`；可缺席。 */
 	readonly subagents?: unknown;
 }
@@ -192,7 +201,7 @@ export type GuardVerdict = string | undefined;
  *   （语义上的「没权限」），不走这条；只有**代码抛异常**才放行。
  */
 export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => GuardVerdict {
-	const { taskboard, subagents } = deps;
+	const { taskboard, kv, subagents } = deps;
 
 	return (exec: unknown): GuardVerdict => {
 		const agent = agentOf(exec);
@@ -209,7 +218,23 @@ export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => Guard
 			 */
 			const heldCards = cards.map((card) => ({ templateRef: card.template.ref }));
 
-			const verdict = taskboard.judgeToolCall({ toolName, heldCards });
+			/*
+			 * 判定在本包的 `tool-guard.ts`（`2026-11-23` 从 core 搬来）。
+			 *
+			 * 三个输入各来自不同归属：
+			 *   · `cardLevel`  ← core（用户授权 AI 做什么卡动作）—— core 拥有
+			 *   · `toolLevel`  ← 本包的 kv（agent 侧注入权限）—— 本包拥有
+			 *   · `policies`   ← core（任务板自己那几个工具的放行表）
+			 */
+			const verdict = judgeToolCall(
+				{
+					cardLevel: taskboard.getCardActionLevel(),
+					toolLevel: readToolGuardLevelOf(kv),
+					toolName,
+					heldCards,
+				},
+				{ policies: taskboard.getToolPolicies() },
+			);
 			return verdict.ok ? undefined : `[任务板权限] ${verdict.reason}`;
 		} catch (error) {
 			/* 见上面 JSDoc：加装模块坏了不该让用户完全不能用 dsh，但必须看得见。 */

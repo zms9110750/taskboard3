@@ -106,12 +106,23 @@ describe('taskboard_tool_policy', () => {
 		assert.ok(fixture.tb.effectiveToolsOf('t-work').includes('taskboard_transition'));
 	});
 
-	it('未领取档真的影响判定：manage 档下没卡也能调', async () => {
+	it('未领取档写进去之后，生效集包含它', async () => {
+		/*
+		 * ⚠ 原来这里还断言了两条 `judgeToolCall` —— 「manage 档下没卡时 bash 拒 /
+		 *   配了 unclaimed 之后放行」。
+		 *
+		 *   那两条测的是 **agent 侧档位 + 判定**，`2026-11-23` 已随实现搬进
+		 *   `@taskboard/dsh-tools`（用户：「core 完全不知道也不干涉 agent 的那一侧的
+		 *   注入权限」）。本包是**宿主无关层（MCP 共用）**，不能 import dsh-tools
+		 *   （依赖方向 `dsh-tools → tools`）⇒ 那两条**搬到了**
+		 *   `packages/dsh-tools/test/tool-guard.test.ts` 的「三 scope 策略参与判定」段。
+		 *
+		 *   本文件只保留本层能测的：工具真的把增量写进了策略、生效集真的含它。
+		 */
 		const fixture = await makeFixture();
-		await fixture.tb.setToolGuardLevel('manage');
-		assert.equal(fixture.tb.judgeToolCall({ toolName: 'bash', heldCards: [] }).ok, false);
 		await runOk(fixture, 'taskboard_tool_policy', { tier: 'unclaimed', allow: ['bash'] });
-		assert.equal(fixture.tb.judgeToolCall({ toolName: 'bash', heldCards: [] }).ok, true);
+		assert.deepEqual([...fixture.tb.getToolPolicies().unclaimed], ['bash']);
+		assert.ok(fixture.tb.effectiveToolsOf('t-work').includes('bash'));
 	});
 });
 

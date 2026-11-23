@@ -33,16 +33,12 @@ import { createSearch, type SearchCondition } from './search.ts';
 import {
 	BASE_TOOLS,
 	CARD_ACTION_OPTIONS,
-	TOOL_GUARD_OPTIONS,
 	effectiveToolsOf,
 	isBaseTool,
 	judgeCardAction as judgeCardActionPure,
-	judgeToolCall as judgeToolCallPure,
 	type CardActionLevel,
 	type CardActionName,
 	type CardActionVerdict,
-	type ToolCallVerdict,
-	type ToolGuardLevel,
 	type ToolPolicyDelta,
 	type ToolPolicyScopeChange,
 	type ToolPolicyScopeInput,
@@ -229,19 +225,25 @@ function emptyNameFailure(what: string): Failure {
 	});
 }
 
-/* ────────────────────────── 两条轴的档位 ────────────────────────── */
+/* ────────────────────────── UI 权限档位 ────────────────────────── */
 
-/** UI 轴默认档位：**默认最严**（用户没配之前不放开领卡）。 */
+/*
+ * ⚠ **只有 UI 权限这一套在这里**（用户 `2026-11-23`）：
+ *
+ *   用户原话：「权限，一个在core的ui里面。一个在agentui里面，
+ *   core完全不知道也不干涉agent的那一侧的注入权限。」
+ *
+ * ⇒ agent 侧档位（`ToolGuardLevel` `off`/`manage`/`manage-edit`）连同它的
+ *   kv 键、默认值、判定函数**整套搬到了 `@taskboard/dsh-tools`**（`tool-guard.ts`）。
+ *   本文件不再有它的任何常量、缓存或读写方法。
+ */
+
+/** UI 权限默认档位：**默认最严**（用户没配之前不放开领卡）。 */
 const DEFAULT_CARD_ACTION_LEVEL: CardActionLevel = 'no-claim';
 
-/** 宿主轴默认档位：**默认不管工具**（用户没配之前任务板不主动限制）。 */
-const DEFAULT_TOOL_GUARD_LEVEL: ToolGuardLevel = 'off';
-
-/** kv 键：UI 轴档位。 */
+/** kv 键：UI 权限档位。 */
 const CARD_ACTION_LEVEL_KEY = 'taskboard.permission.cardActionLevel';
 
-/** kv 键：宿主轴档位。 */
-const TOOL_GUARD_LEVEL_KEY = 'taskboard.permission.toolGuardLevel';
 
 /* ─────────────────────── 「AI 能不能改卡状态」的总闸 ─────────────────────── */
 
@@ -268,7 +270,6 @@ const AI_STATE_CHANGE_KEY = 'taskboard.permission.aiStateChange';
  *   否则「选项表加一档、读取白名单没加」会让新档位永远读成脏值回落默认（静默）。
  */
 const CARD_ACTION_LEVELS: readonly CardActionLevel[] = CARD_ACTION_OPTIONS.map((one) => one.value);
-const TOOL_GUARD_LEVELS: readonly ToolGuardLevel[] = TOOL_GUARD_OPTIONS.map((one) => one.value);
 
 /**
  * 从不可信的 kv 值里读一个档位。
@@ -418,25 +419,6 @@ export interface Taskboard {
 	removeGroup(groupName: string): Promise<{ readonly ok: true } | Failure>;
 
 	/**
-	 * 判定一次工具调用。
-	 *
-	 * ## ⚠ 调用方**不传档位**
-	 *
-	 * 两个档位（`cardActionLevel` / `toolGuardLevel`）是任务板的全局状态，
-	 * 由实例自己从内存缓存读 —— dsh / MCP 只需要给 `toolName` 和 `heldCards`。
-	 * 档位存在与否是 core 的内部实现，调用方不该知道（否则每个入口都要拼一遍）。
-	 *
-	 * 判定本身在 `permission.ts` 的**纯函数**里（`judgeToolCall`），
-	 * 本方法只做「读缓存档位 + 读四档策略 → 交给纯函数」。
-	 *
-	 * `heldCards` 由 dsh 的 guard 收集后传进来（core 不认识 dsh 的 agent）。
-	 */
-	judgeToolCall(input: {
-		readonly toolName: string;
-		readonly heldCards: readonly { readonly templateRef: string }[];
-	}): ToolCallVerdict;
-
-	/**
 	 * 改**某一个 scope** 的工具权限（tool contract v2，用户 `2026-11-21`）。
 	 *
 	 * ## 三个 scope
@@ -466,25 +448,25 @@ export interface Taskboard {
 	 */
 	setToolPolicyScope(input: ToolPolicyScopeInput): Promise<{ readonly ok: true; readonly change: ToolPolicyScopeChange } | Failure>;
 
-	/* ── 两条轴的档位（持久化在 kv，默认 见 permission.ts） ── */
+	/* ── UI 权限档位（持久化在 kv；默认见 permission.ts） ── */
 
-	/** 读 UI 轴档位（用户授权 AI 能不能领卡 / 采纳草稿）。 */
+	/** 读 UI 权限档位（用户授权 AI 能不能领卡 / 采纳草稿）。 */
 	getCardActionLevel(): CardActionLevel;
-	/** 写 UI 轴档位（落 kv，下次启动仍在）。 */
+	/** 写 UI 权限档位（落 kv，下次启动仍在）。 */
 	setCardActionLevel(level: CardActionLevel): Promise<void>;
 	/**
 	 * 判定一次**领卡类动作**（v2 合并工具后按动作判，不按工具名）。
 	 *
-	 * `adopt` / `claim` / `release` 三个动作必须过 UI 轴（用户第二轮）：
+	 * `adopt` / `claim` / `release` 三个动作必须过 UI 权限（用户第二轮）：
 	 * UI 没打开对应档位 ⇒ 拒绝，并给出「如果用户授意，由用户开哪一档」。
 	 *
 	 * `release` 永远放行（放手，否则 AI 会被卡锁死）——旧裁定不变。
+	 *
+	 * ⚠ **agent 侧的档位与判定不在本接口里**（`2026-11-23`）：那套是
+	 *   `@taskboard/dsh-tools` 的 `ToolGuardLevel` + `judgeToolCall`。
+	 *   core 不知道也不干涉它。
 	 */
 	judgeCardAction(action: CardActionName): CardActionVerdict;
-	/** 读宿主轴档位（任务板管不管工具调用）。 */
-	getToolGuardLevel(): ToolGuardLevel;
-	/** 写宿主轴档位（落 kv，下次启动仍在）。 */
-	setToolGuardLevel(level: ToolGuardLevel): Promise<void>;
 
 	/**
 	 * 读「角色为 `ai` 的改卡状态操作允不允许」这个总闸。
@@ -846,27 +828,21 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	};
 
 	/*
-	 * ── 两条正交轴的档位缓存 ──
+	 * ── UI 权限档位缓存 ──
 	 *
 	 * 与 `toolPolicies` 同一个模式：**初值从 kv 读一次**，写入时同步更新缓存 + 写回。
 	 *
-	 * 缓存理由同上：`judgeToolCall` 每次工具调用都要同步判定，不能每次 `kvGet`。
+	 * 缓存理由：`judgeCardAction` 每次都要同步判定，不能每次 `kvGet`。
 	 *
-	 * ⚠ 与四档策略**分开存两个键** —— 它们是两件正交的事：
-	 *   档位 = 「用户/宿主授权到哪一档」，四档策略 = 「每张卡授予哪些工具」。
-	 *   混在一个 JSON 里，改档位会连带重写策略表，写放大且容易互相踩。
+	 * ⚠ **agent 侧档位不在这里**（用户 `2026-11-23`）：它连同 kv 键、默认值、
+	 *   判定函数整套搬到 `@taskboard/dsh-tools` 的 `tool-guard.ts`。
+	 *   core 不知道也不干涉那一侧。
 	 */
 	let cardActionLevel: CardActionLevel = readLevel(
 		store.kvGet(CARD_ACTION_LEVEL_KEY),
 		CARD_ACTION_LEVELS,
 		DEFAULT_CARD_ACTION_LEVEL,
 		CARD_ACTION_LEVEL_KEY,
-	);
-	let toolGuardLevel: ToolGuardLevel = readLevel(
-		store.kvGet(TOOL_GUARD_LEVEL_KEY),
-		TOOL_GUARD_LEVELS,
-		DEFAULT_TOOL_GUARD_LEVEL,
-		TOOL_GUARD_LEVEL_KEY,
 	);
 
 	/**
@@ -1256,18 +1232,11 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		judgeCardAction(action) {
-			/* 档位从缓存读（与 `judgeToolCall` 同一取舍：调用方不该拼档位）。 */
+			/* 档位从缓存读（调用方不该拼档位）。 */
 			return judgeCardActionPure({ action, cardLevel: cardActionLevel });
 		},
 
-		getToolGuardLevel() {
-			return toolGuardLevel;
-		},
 
-		async setToolGuardLevel(level) {
-			toolGuardLevel = level;
-			await store.kvSet(TOOL_GUARD_LEVEL_KEY, level);
-		},
 
 		/* ── 「AI 能不能改卡状态」总闸 ── */
 
@@ -1280,21 +1249,6 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			await store.kvSet(AI_STATE_CHANGE_KEY, allowed ? 'true' : 'false');
 		},
 
-		judgeToolCall(input) {
-			/*
-			 * 档位从缓存读，不让调用方传 —— 调用方（dsh / MCP）只需要知道
-			 * 工具名和持有卡；档位是任务板的全局状态。
-			 */
-			return judgeToolCallPure(
-				{
-					cardLevel: cardActionLevel,
-					toolLevel: toolGuardLevel,
-					toolName: input.toolName,
-					heldCards: input.heldCards,
-				},
-				{ policies: toolPolicies },
-			);
-		},
 
 		/* ── 写 ── */
 		async create(input) {
@@ -1747,7 +1701,13 @@ export {
 /** 按钮 `method` 判据（「这次转移是不是采纳」；HTTP 用户按钮用，v1 在 dsh/actions.ts）。 */
 export { adoptTargetOf, isAdoptTransition } from './actions.ts';
 
-/** 工具权限（BASE 常量 + 四档增量 + 两条正交轴 + 纯判定）。 */
+/**
+ * 工具权限（BASE 常量 + 四档增量 + UI 权限判定）。
+ *
+ * ⚠ **agent 侧权限不在这里**（用户 `2026-11-23`）：`ToolGuardLevel` /
+ *   `TOOL_GUARD_OPTIONS` / `judgeToolCall` 整套搬到 `@taskboard/dsh-tools`。
+ *   core 只留「任务板自己那几个工具的放行表」+「用户授权 AI 做哪个卡动作」。
+ */
 export {
 	BASE_TOOLS,
 	POLICY_TOOLS,
@@ -1755,9 +1715,7 @@ export {
 	READONLY_TOOLS,
 	EMPTY_POLICY_STORE,
 	CARD_ACTION_OPTIONS,
-	TOOL_GUARD_OPTIONS,
 	judgeCardAction,
-	judgeToolCall,
 	isBaseTool,
 	isPolicyTool,
 	effectiveToolsOf,
@@ -1767,10 +1725,6 @@ export {
 	type CardActionLevel,
 	type CardActionName,
 	type CardActionVerdict,
-	type PermissionFacts,
-	type ToolCallJudgement,
-	type ToolCallVerdict,
-	type ToolGuardLevel,
 	type ToolPolicyDelta,
 	type ToolPolicyGroup,
 	type ToolPolicyScopeChange,

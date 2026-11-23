@@ -65,7 +65,15 @@ export const name = 'taskboard3';
  * ⚠ **声明依赖，不替用户装配。** 五个服务缺任何一个 ⇒ 本插件不激活。
  *   用户会看到「任务板没出现」，然后去补那一行 —— 这是正确的失败方式。
  */
-export const inject = ['webServer', 'connection', 'commands', 'taskboard3Core', 'taskboard3Bus'];
+export const inject = [
+	'webServer',
+	'connection',
+	'commands',
+	'taskboard3Core',
+	'taskboard3Bus',
+	/* agent 侧档位的存储端口（那套权限不归 core，见 @taskboard/dsh-tools）。 */
+	'taskboard3Store',
+];
 
 /**
  * 本插件的配置。
@@ -102,6 +110,17 @@ export type ApplyContext = {
 	readonly taskboard3Core: Taskboard;
 	/** 广播总线（SSE 用）。同由 `@taskboard/dsh-core` 提供。⚠ 原型期脚手架。 */
 	readonly taskboard3Bus: Bus;
+	/**
+	 * 存储端口。由 `@taskboard/store` 提供。
+	 *
+	 * ⚠ 本包只用它的 kv 两方法 —— 存 **agent 侧档位**。
+	 *   那套权限不归 core（用户 `2026-11-23`），归 `@taskboard/dsh-tools`；
+	 *   本包只是替 UI 读写它。
+	 */
+	readonly taskboard3Store: {
+		kvGet(key: string): string | undefined;
+		kvSet(key: string, value: string | undefined): Promise<void>;
+	};
 	effect?(dispose: () => void, label?: string): void;
 };
 
@@ -167,6 +186,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 
 	const disposeRoutes = mountRoutes(ctx.webServer, {
 		taskboard,
+		/* agent 侧档位的存储端口（那套权限不归 core）。 */
+		kv: ctx.taskboard3Store,
 		connection: ctx.connection,
 		defaultWorkspaceId,
 		/* ⚠ 原型期脚手架：与 `core/src/bus.ts` 同生共死。见 `src/sse.ts` 文件头。 */

@@ -40,6 +40,9 @@ importers:
       '@taskboard/dsh-core':
         specifier: workspace:*
         version: link:../dsh-core
+      '@taskboard/dsh-tools':
+        specifier: workspace:*
+        version: link:../dsh-tools
       '@taskboard/protocol':
         specifier: workspace:*
         version: link:../protocol

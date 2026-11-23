@@ -30,7 +30,8 @@
   "dependencies": {
     "@taskboard/core": "workspace:*",
     "@taskboard/protocol": "workspace:*",
-    "@taskboard/dsh-core": "workspace:*"
+    "@taskboard/dsh-core": "workspace:*",
+		"@taskboard/dsh-tools": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",

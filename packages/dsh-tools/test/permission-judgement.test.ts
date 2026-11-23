@@ -20,29 +20,72 @@
  */
 
 import assert from 'node:assert/strict';
-import { createMemoryStore } from './memory-store.ts';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
-import { createTaskboard, type Taskboard } from '../src/index.ts';
 import {
 	BASE_TOOLS,
 	EMPTY_POLICY_STORE,
 	EXECUTION_TOOLS,
 	POLICY_TOOLS,
 	READONLY_TOOLS,
+	createTaskboard,
 	effectiveToolsOf,
-	judgeToolCall,
+	type Card,
 	type CardActionLevel,
+	type CardStore,
+	type Taskboard,
+	type ToolPolicyStore,
+} from '@taskboard/core';
+import {
+	judgeToolCall,
+	readToolGuardLevelOf,
+	writeToolGuardLevel,
 	type PermissionFacts,
 	type ToolGuardLevel,
-	type ToolPolicyStore,
-} from '../src/permission.ts';
-import type { TemplateDef } from '../src/template/types.ts';
+} from '../src/tool-guard.ts';
 
-function makeTemplate(ref: string, kind: string): TemplateDef {
+/**
+ * 最小内存 store。
+ *
+ * ⚠ **不 import core 的 `test/memory-store.ts`**：那是 core 的测试私有文件，没有
+ *   从包入口导出，跨包相对路径会穿过包边界。这里只需要 `CardStore` 那 5 个方法。
+ */
+function createMemoryStore(): CardStore {
+	const tables = new Map<string, Map<string, Card>>();
+	const kv = new Map<string, string>();
+	return {
+		loadAll(workspaceId: string): readonly Card[] {
+			return [...(tables.get(workspaceId)?.values() ?? [])];
+		},
+		async save(workspaceId: string, card: Card): Promise<void> {
+			const table = tables.get(workspaceId) ?? new Map<string, Card>();
+			table.set(card.id, card);
+			tables.set(workspaceId, table);
+		},
+		kvGet(key: string): string | undefined {
+			return kv.get(key);
+		},
+		async kvSet(key: string, value: string | undefined): Promise<void> {
+			if (value === undefined) kv.delete(key);
+			else kv.set(key, value);
+		},
+		async close(): Promise<void> {
+			/* 故意不清 —— 「关掉句柄，磁盘还在」，见 core/test/memory-store.ts 文件头。 */
+		},
+	};
+}
+
+/**
+ * 造一个模板定义。
+ *
+ * ⚠ **不加 `TemplateDef` 返回标注**：core 的公开入口不导出这个类型（它是内部
+ *   类型），从深路径 import 会让测试跑不了源码（规则 6）。不标注时，
+ *   `templates().register()` 的形参类型会做结构化校验 —— 效果一样。
+ */
+function makeTemplate(ref: string, kind: string) {
 	return {
 		ref,
 		displayName: ref,
@@ -102,6 +145,25 @@ function reasonOf(
 ): string {
 	const verdict = judgeToolCall({ cardLevel, toolLevel, toolName, heldCards }, { policies });
 	return verdict.ok ? '' : verdict.reason;
+}
+
+/**
+ * 「按实例判定」的闭包 —— 迁移前 core 的 `tb.judgeToolCall(input)` 就是这个语义。
+ *
+ * 搬家后三样输入各归其主：`cardLevel` / `policies` 从 core 实例读，
+ * `toolLevel` 从本包的 kv 读。保留这个形状让迁过来的断言**一行都不用改**。
+ */
+function judgeOf(tb: Taskboard, store: CardStore) {
+	return (input: { readonly toolName: string; readonly heldCards?: HeldCards }): { readonly ok: boolean } =>
+		judgeToolCall(
+			{
+				cardLevel: tb.getCardActionLevel(),
+				toolLevel: readToolGuardLevelOf(store),
+				toolName: input.toolName,
+				heldCards: input.heldCards ?? [],
+			},
+			{ policies: tb.getToolPolicies() },
+		);
 }
 
 /* ────────────────────────── BASE 清单 ────────────────────────── */
@@ -261,64 +323,39 @@ describe('★ 两条轴正交：第一段不受 toolLevel 影响', () => {
 	});
 });
 
-/* ────────────────────────── release / claim / adopt ────────────────────────── */
+/* ────────────────────────── 第一段：与 core 的一致性对照 ────────────────────────── */
 
-describe('release：三档 cardLevel × 三档 toolLevel 全部放行', () => {
-	it('★ 放手永远允许（带卡 / 无卡 / 多卡都一样）', () => {
-		const heldVariants: readonly HeldCards[] = [
-			[],
-			[{ templateRef: 'writeCode' }],
-			[{ templateRef: 'a' }, { templateRef: 'b' }],
-		];
+/*
+ * 领卡 / 采纳 / 放手这三件事的**语义真值在 core**（判定表 + 拒绝理由文案），
+ * 断言住在 `core/test/card-action-matrix.test.ts`。
+ *
+ * 这里只钉住一件事：`judgeToolCall` 的第一段**确实委托同一套规则**，
+ * 不是搬家时被重写成了另一份真值。
+ *
+ * ⚠ 为什么要这条：搬家时第一段是从 core 手工搬过来的（第二段才真正属于本包）。
+ *   搬错一个档位，上面那些第二段测试全绿也发现不了。
+ */
+
+describe('★ 第一段与 core 的 judgeCardAction 一致（防止搬家搬歪）', () => {
+	it('3 档 × 3 动作：放行/拒绝与 core 逐格相同，且不受 toolLevel 影响', async () => {
+		const store = createMemoryStore();
+		const tb = createTaskboard({ store, builtinTemplates: false });
+
 		for (const cardLevel of ALL_CARD_LEVELS) {
-			for (const toolLevel of ALL_TOOL_LEVELS) {
-				for (const heldCards of heldVariants) {
-					assert.ok(
-						judge(cardLevel, toolLevel, 'taskboard_release', heldCards),
-						`${cardLevel}/${toolLevel} 下 release 必须放行 —— 否则 AI 可能锁死`,
+			await tb.setCardActionLevel(cardLevel);
+
+			for (const action of ['release', 'claim', 'adopt'] as const) {
+				const expected = tb.judgeCardAction(action).ok;
+				const toolName = `taskboard_${action}`;
+
+				for (const toolLevel of ALL_TOOL_LEVELS) {
+					assert.equal(
+						judge(cardLevel, toolLevel, toolName),
+						expected,
+						`${cardLevel} × ${toolLevel} × ${action}：第一段必须与 core 一致`,
 					);
 				}
 			}
-		}
-	});
-});
-
-describe('claim：no-claim 拒，其余两档放行', () => {
-	it('★ cardLevel=no-claim ⇒ 三档 toolLevel 全拒，理由含「不允许领卡」', () => {
-		for (const toolLevel of ALL_TOOL_LEVELS) {
-			assert.equal(judge('no-claim', toolLevel, 'taskboard_claim'), false);
-			assert.ok(reasonOf('no-claim', toolLevel, 'taskboard_claim').includes('不允许领卡'));
-		}
-	});
-
-	it('★ cardLevel=claim / adopt ⇒ 三档 toolLevel 全放行', () => {
-		for (const cardLevel of ['claim', 'adopt'] as const) {
-			for (const toolLevel of ALL_TOOL_LEVELS) {
-				assert.ok(
-					judge(cardLevel, toolLevel, 'taskboard_claim'),
-					`${cardLevel}/${toolLevel} 下 claim 应放行`,
-				);
-			}
-		}
-	});
-});
-
-describe('adopt：只有 cardLevel=adopt 放行', () => {
-	it('★ no-claim / claim ⇒ 三档 toolLevel 全拒，理由含「不允许采纳草稿」', () => {
-		for (const cardLevel of ['no-claim', 'claim'] as const) {
-			for (const toolLevel of ALL_TOOL_LEVELS) {
-				assert.equal(judge(cardLevel, toolLevel, 'taskboard_adopt'), false);
-				assert.ok(
-					reasonOf(cardLevel, toolLevel, 'taskboard_adopt').includes('不允许采纳草稿'),
-					`${cardLevel}/${toolLevel} 的拒绝理由`,
-				);
-			}
-		}
-	});
-
-	it('★ adopt ⇒ 三档 toolLevel 全放行', () => {
-		for (const toolLevel of ALL_TOOL_LEVELS) {
-			assert.ok(judge('adopt', toolLevel, 'taskboard_adopt'), `adopt/${toolLevel} 应放行`);
 		}
 	});
 });
@@ -601,10 +638,11 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 	it('通用档落库 + 生效', async () => {
 		assert.ok((await tb.setCommonPolicy(['commonTool'])).ok);
 		/* 实例判定用实例自己的档位：要吃到四档增量，宿主轴必须是 manage。 */
-		await tb.setToolGuardLevel('manage');
+		await writeToolGuardLevel(shared, 'manage');
+		const judgeInstance = judgeOf(tb, shared);
 		for (const ref of ['writeCode', 'research']) {
 			assert.ok(
-				tb.judgeToolCall({
+				judgeInstance({
 					toolName: 'commonTool',
 					heldCards: [{ templateRef: ref }],
 				}).ok,
@@ -620,15 +658,16 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 		assert.deepEqual(store.groupMembers['代码类'], ['writeCode', 'refactor']);
 		assert.deepEqual(store.groups['代码类'], ['groupTool']);
 
-		await tb.setToolGuardLevel('manage');
+		await writeToolGuardLevel(shared, 'manage');
+		const judgeInstance = judgeOf(tb, shared);
 		assert.ok(
-			tb.judgeToolCall({
+			judgeInstance({
 				toolName: 'groupTool',
 				heldCards: [{ templateRef: 'writeCode' }],
 			}).ok,
 		);
 		assert.equal(
-			tb.judgeToolCall({
+			judgeInstance({
 				toolName: 'groupTool',
 				heldCards: [{ templateRef: 'research' }],
 			}).ok,
@@ -678,45 +717,46 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 		assert.ok((await tb.setTemplatePolicy('writeCode', ['totally_made_up_tool'])).ok);
 	});
 
-	it('★ 实例的 judgeToolCall 自己读两条轴档位（调用方不传）', async () => {
+	it('★ 判定自己读两条轴档位（调用方不传）', async () => {
 		const base = { toolName: 'bash', heldCards: [] as const };
+		const judgeInstance = judgeOf(tb, shared);
 
 		/* 归零：前面的用例可能改过档位，本用例自己从默认档位开始。 */
 		await tb.setCardActionLevel('no-claim');
-		await tb.setToolGuardLevel('off');
+		await writeToolGuardLevel(shared, 'off');
 
 		/* 默认档位：no-claim + off。 */
 		assert.equal(tb.getCardActionLevel(), 'no-claim');
-		assert.equal(tb.getToolGuardLevel(), 'off');
-		assert.ok(tb.judgeToolCall(base).ok, 'off ⇒ 第二段放行 bash');
+		assert.equal(readToolGuardLevelOf(shared), 'off');
+		assert.ok(judgeInstance(base).ok, 'off ⇒ 第二段放行 bash');
 		assert.equal(
-			tb.judgeToolCall({ toolName: 'taskboard_claim', heldCards: [] }).ok,
+			judgeInstance({ toolName: 'taskboard_claim', heldCards: [] }).ok,
 			false,
 			'默认 no-claim ⇒ 第一段拒 claim（与 off 无关）',
 		);
 
-		/* 宿主轴是实例状态：改成 manage 后，无卡的 bash 被拒。 */
-		await tb.setToolGuardLevel('manage');
-		assert.equal(tb.getToolGuardLevel(), 'manage');
-		assert.equal(tb.judgeToolCall(base).ok, false);
+		/* 宿主轴是 kv 状态：改成 manage 后，无卡的 bash 被拒。 */
+		await writeToolGuardLevel(shared, 'manage');
+		assert.equal(readToolGuardLevelOf(shared), 'manage');
+		assert.equal(judgeInstance(base).ok, false);
 
 		/* manage-edit 放开权限管理工具；但第一段的 adopt 仍只看 UI 轴。 */
-		await tb.setToolGuardLevel('manage-edit');
-		assert.ok(tb.judgeToolCall({ toolName: 'taskboard_tool_policy', heldCards: [] }).ok);
+		await writeToolGuardLevel(shared, 'manage-edit');
+		assert.ok(judgeInstance({ toolName: 'taskboard_tool_policy', heldCards: [] }).ok);
 		assert.equal(
-			tb.judgeToolCall({ toolName: 'taskboard_adopt', heldCards: [] }).ok,
+			judgeInstance({ toolName: 'taskboard_adopt', heldCards: [] }).ok,
 			false,
 			'adopt 仍受 UI 轴管（当前 no-claim）',
 		);
 
 		/* 改 UI 轴：adopt ⇒ claim / adopt 都放行。 */
 		await tb.setCardActionLevel('adopt');
-		assert.ok(tb.judgeToolCall({ toolName: 'taskboard_claim', heldCards: [] }).ok);
-		assert.ok(tb.judgeToolCall({ toolName: 'taskboard_adopt', heldCards: [] }).ok);
+		assert.ok(judgeInstance({ toolName: 'taskboard_claim', heldCards: [] }).ok);
+		assert.ok(judgeInstance({ toolName: 'taskboard_adopt', heldCards: [] }).ok);
 
 		/* 恢复默认，别让同一 describe 后面的用例受档位影响。 */
 		await tb.setCardActionLevel('no-claim');
-		await tb.setToolGuardLevel('off');
+		await writeToolGuardLevel(shared, 'off');
 	});
 
 	it('effectiveToolsOf 走实例的策略', async () => {
@@ -726,84 +766,3 @@ describe('Taskboard：四档持久化 + 判定接两条轴', () => {
 		assert.ok(effective.includes('myTool'));
 	});
 });
-
-/* ────────────────────────── adopt：core 域逻辑 ────────────────────────── */
-
-describe('adopt：AI 采纳草稿的域逻辑（与权限判定无关）', () => {
-	let dir: string;
-	let tb: Taskboard;
-	let ws: string;
-
-	before(async () => {
-		dir = mkdtempSync(join(tmpdir(), 'tb3-adopt-'));
-		tb = createTaskboard({ store: createMemoryStore() , builtinTemplates: false });
-		tb.templates().register(makeTemplate('t-goal', 'goal'));
-		tb.templates().register(makeTemplate('t-design', 'design'));
-		tb.templates().register(makeTemplate('t-work', 'work'));
-		const created = await tb.createWorkspace('采纳');
-		assert.ok(created.ok);
-		ws = created.workspace.id;
-	});
-
-	after(async () => {
-		await tb.close();
-		rmSync(dir, { recursive: true, force: true });
-	});
-
-	async function makeCard(kind: 't-goal' | 't-design' | 't-work'): Promise<string> {
-		const result = await tb.create({
-			workspaceId: ws,
-			templateRef: kind,
-			title: `卡-${Math.random().toString(36).slice(2, 7)}`,
-			actor: 'user',
-		});
-		assert.ok(result.ok, JSON.stringify(result));
-		return result.card.id;
-	}
-
-	it('★ AI 采纳 goal：默认拒绝', async () => {
-		const id = await makeCard('t-goal');
-		const result = await tb.adopt(ws, id, 'ai');
-		assert.equal(result.ok, false, 'goal 的采纳按钮只有 user');
-	});
-
-	it('★ AI 采纳 goal：allowAiAdopt: true ⇒ 成功', async () => {
-		const id = await makeCard('t-goal');
-		const result = await tb.adopt(ws, id, 'ai', { allowAiAdopt: true });
-		assert.ok(result.ok, JSON.stringify(result));
-		assert.equal(result.card.status, 'TASK_STATE_SUBMITTED');
-		const adoptEntry = result.card.history.find((one) => one.action === 'adopt');
-		assert.equal(adoptEntry?.actor, 'ai');
-	});
-
-	it('AI 采纳 work：allowAiAdopt: true ⇒ 成功', async () => {
-		const id = await makeCard('t-work');
-		const result = await tb.adopt(ws, id, 'ai', { allowAiAdopt: true });
-		assert.ok(result.ok, JSON.stringify(result));
-	});
-
-	it('AI 采纳 design：本来就在按钮表里对 ai 开放 ⇒ 不需要开关', async () => {
-		const id = await makeCard('t-design');
-		const result = await tb.adopt(ws, id, 'ai');
-		assert.ok(result.ok, JSON.stringify(result));
-	});
-
-	it('user 采纳不受 allowAiAdopt 影响', async () => {
-		const a = await makeCard('t-goal');
-		const r1 = await tb.adopt(ws, a, 'user', { allowAiAdopt: true });
-		assert.ok(r1.ok);
-
-		const b = await makeCard('t-goal');
-		const r2 = await tb.adopt(ws, b, 'user');
-		assert.ok(r2.ok);
-	});
-
-	it('allowAiAdopt 不会让非草稿卡也能采纳', async () => {
-		const id = await makeCard('t-goal');
-		await tb.adopt(ws, id, 'user');
-		const again = await tb.adopt(ws, id, 'ai', { allowAiAdopt: true });
-		assert.equal(again.ok, false, '只有草稿能采纳');
-	});
-});
-
-
