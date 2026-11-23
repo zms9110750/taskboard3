@@ -171,7 +171,7 @@ export const CREATE_CSS = `
  *   左栏 .tb3cc-page__left 是 overflow-y:auto 的滚动容器，会**裁掉**任何溢出的
  *   子元素。absolute 的后果实测：第三列被切掉一半 + 左栏底部冒出横向滚动条。
  */
-.tb3cc-tpick__pop{position:fixed;z-index:6;width:470px;max-width:calc(100vw - 48px);background:var(--dsw-alias-bg-primary,#fff);border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:10px;box-shadow:0 12px 32px rgb(0 0 0 / 16%);overflow:hidden}
+.tb3cc-tpick__pop{position:fixed;z-index:60;width:470px;max-width:calc(100vw - 48px);background:var(--dsw-alias-bg-primary,#fff);border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:10px;box-shadow:0 12px 32px rgb(0 0 0 / 16%);overflow:hidden}
 .tb3cc-tpick__cols{display:grid;grid-template-columns:104px 104px 1fr}
 .tb3cc-tpick__col{padding:6px;display:flex;flex-direction:column;gap:1px;min-width:0}
 .tb3cc-tpick__col + .tb3cc-tpick__col{border-left:1px solid var(--dsw-alias-border-secondary,#eef1f5)}

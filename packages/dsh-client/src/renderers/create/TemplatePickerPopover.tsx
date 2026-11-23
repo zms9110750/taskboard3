@@ -57,6 +57,22 @@
  *   它脱离了滚动容器，不会被裁，也不产生横向滚动。
  *   代价是要在窗口 `resize` / 任何滚动时重新量（否则弹层会和触发器错位）。
  *
+ * ## ⚠ 必须 portal 到 `document.body`（用户 2026-11-24：「新建卡，一个模板都加载不出来」）
+ *
+ * `position: fixed` 的包含块**不是视口**，而是「最近的、建立了包含块的祖先」——
+ * 任何 `transform` / `filter` / `perspective` / `will-change: transform` / `contain` 都会建立它。
+ *
+ * DSH 聊天输入框那层 `.composerSeat` 就带 `will-change:transform` ⇒ 抽屉挂在它下面时，
+ * 弹层的 `top:401px` 会相对**那层盒子**解析，实测渲染到 `y=1173`（视口只有 900）——
+ * **弹层整个跑到屏幕外面**，用户看到的就是「一个模板都加载不出来」。
+ *
+ * ⇒ 用 `createPortal` 挂到 `document.body`，`fixed` 才真的相对视口。
+ *   `body` 往上没有会劫持包含块的祖先。
+ *
+ * ⚠ 代价两条：
+ *   1. 点外面关闭必须同时认 `rootRef` 和 `popRef`（弹层已经不在 root 子树里了）
+ *   2. `z-index` 要抬到抽屉层之上（见 `create-css.ts` 的 `.tb3cc-tpick__pop`）
+ *
  * ## 组件不请求后端
  *
  * `templates` 由调用方给。`usage` / `sectionCount` 在 `TemplateSummary` 里**没有**
@@ -72,6 +88,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
 	EMPTY_BROWSE,
 	browseAfterClick,
@@ -181,13 +198,21 @@ export function TemplatePickerPopover(props: TemplatePickerPopoverProps): ReactN
 		};
 	}, [open]);
 
-	/* 点外面关闭 —— 必须 `composedPath()`，见文件头第 2 条。 */
+	/*
+	 * 点外面关闭 —— 必须 `composedPath()`，见文件头第 2 条。
+	 *
+	 * ⚠ 弹层 portal 到 body 之后**不在 root 子树里**了 ⇒ 必须同时认 `popRef`，
+	 *   否则点弹层自己（选领域 / 类别）会被当成「点外面」而立刻关掉。
+	 */
 	useEffect(() => {
 		if (!open) return;
 		const onDocClick = (event: MouseEvent): void => {
 			const root = rootRef.current;
+			const pop = popRef.current;
 			if (root === null) return;
-			if (event.composedPath().includes(root)) return;
+			const path = event.composedPath();
+			if (path.includes(root)) return;
+			if (pop !== null && path.includes(pop)) return;
 			setOpen(false);
 		};
 		document.addEventListener('click', onDocClick);
@@ -216,22 +241,28 @@ export function TemplatePickerPopover(props: TemplatePickerPopoverProps): ReactN
 				<span className="tb3cc-tpick__caret">⌄</span>
 			</button>
 
+			{/*
+			 * ⚠ portal 到 body —— 理由见文件头「必须 portal」那段。
+			 *   不 portal 的话，DSH 的 .composerSeat（will-change:transform）
+			 *   会成为 fixed 的包含块，弹层被顶到视口外。
+			 */}
 			{open ? (
-				<div
-					ref={popRef}
-					className={`tb3cc-tpick__pop${spot?.flipped === true ? ' is-flipped' : ''}`}
-					data-picker-pop=""
-					style={{
-						left: spot === undefined ? 0 : spot.left,
-						top: spot === undefined ? 0 : spot.top,
-						/* 第一帧还没量完 ⇒ 先藏起来，避免从 (0,0) 跳过去。 */
-						visibility: spot === undefined ? 'hidden' : 'visible',
-					}}
-					/* 第 1 条：吞掉冒泡，否则点第一列就把自己关了。 */
-					onClick={(event) => {
-						event.stopPropagation();
-					}}
-				>
+				createPortal(
+					<div
+						ref={popRef}
+						className={`tb3cc-tpick__pop${spot?.flipped === true ? ' is-flipped' : ''}`}
+						data-picker-pop=""
+						style={{
+							left: spot === undefined ? 0 : spot.left,
+							top: spot === undefined ? 0 : spot.top,
+							/* 第一帧还没量完 ⇒ 先藏起来，避免从 (0,0) 跳过去。 */
+							visibility: spot === undefined ? 'hidden' : 'visible',
+						}}
+						/* 第 1 条：吞掉冒泡，否则点第一列就把自己关了。 */
+						onClick={(event) => {
+							event.stopPropagation();
+						}}
+					>
 					<div className="tb3cc-tpick__cols">
 						{/* ── 第 1 列：领域 ── */}
 						<div className="tb3cc-tpick__col" data-col="domain">
@@ -353,7 +384,9 @@ export function TemplatePickerPopover(props: TemplatePickerPopoverProps): ReactN
 							</>
 						)}
 					</div>
-				</div>
+				</div>,
+					document.body,
+				)
 			) : null}
 		</div>
 	);
