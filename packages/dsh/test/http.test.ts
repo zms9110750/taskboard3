@@ -268,6 +268,71 @@ describe('GET /api/state', () => {
 		const out = await call(depsOf(), { method: 'POST', url: `${ROUTE_PREFIX}/api/state` });
 		assert.equal(out.status, 405);
 		assert.equal(out.headers.allow, 'GET');
+	});
+
+	/*
+	 * 类别注册表 —— 客户端显示「G 目标」要中文名和字母，而那两个只有 core 知道。
+	 * ⚠ 必须是**注册表本身**，不是内置四个常量：第三方可以注册更多类别。
+	 */
+	it('返回类别注册表（kinds）：内置四类，每项有 id / displayName / letter', async () => {
+		const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/state` });
+		const payload = out.json as {
+			data: {
+				kinds: readonly {
+					id: string;
+					displayName: string;
+					letter: string;
+					description: string;
+					reopenable: boolean;
+					needsClaim: boolean;
+				}[];
+			};
+		};
+		const kinds = payload.data.kinds;
+		assert.ok(Array.isArray(kinds), 'kinds 必须是数组');
+		assert.ok(kinds.length >= 4, `内置四类至少有 4 个，实际 ${String(kinds.length)}`);
+
+		const byId = new Map(kinds.map((one) => [one.id, one]));
+		for (const [id, displayName, letter] of [
+			['goal', '目标', 'G'],
+			['design', '设计', 'D'],
+			['work', '工作', 'W'],
+			['record', '记录', 'R'],
+		] as const) {
+			const def = byId.get(id);
+			assert.ok(def !== undefined, `缺类别 ${id}`);
+			assert.equal(def.displayName, displayName);
+			assert.equal(def.letter, letter);
+		}
+
+		/* 只有「工作」需要领取 —— 客户端不靠 id 字面量判断，靠这个字段。 */
+		assert.equal(byId.get('work')?.needsClaim, true);
+		assert.equal(byId.get('goal')?.needsClaim, false);
+	});
+
+	it('kinds 来自注册表：运行期新注册的类别也会出现在 state 里', async () => {
+		/* 名字要唯一 —— 同名空间建不出来（`createWorkspace` 会失败），别让这条挂在无关原因上。 */
+		const created = await taskboard.createWorkspace('类别注册表测试');
+		assert.equal(created.ok, true, '建空间失败 ⇒ 这条测试的前置条件不成立');
+
+		const off = taskboard.kinds().register({
+			id: 'milestone',
+			displayName: '里程碑',
+			letter: 'M',
+			description: '测试用类别',
+			reopenable: true,
+			needsClaim: false,
+		});
+		try {
+			const out = await call(depsOf(), { url: `${ROUTE_PREFIX}/api/state` });
+			const payload = out.json as { data: { kinds: readonly { id: string; displayName: string; letter: string }[] } };
+			const found = payload.data.kinds.find((one) => one.id === 'milestone');
+			assert.ok(found !== undefined, '运行期注册的类别必须出现（证明不是硬编码内置四个）');
+			assert.equal(found.displayName, '里程碑');
+			assert.equal(found.letter, 'M');
+		} finally {
+			off();
+		}
 	});});
 
 describe('POST /api/workspaces', () => {

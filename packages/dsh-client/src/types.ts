@@ -116,6 +116,27 @@ export interface TemplateSummary {
 }
 
 /**
+ * 一个类别（`GET /taskboard3/api/state` 的 `kinds`）。
+ *
+ * ⚠ **真值在 core**（`KindDef` / `KindRegistry`，第三方可注册更多）。
+ *   客户端只是显示：中文名 + 编号字母都从这里来，**不许在前端写一份中文表**。
+ */
+export interface KindSummary {
+	/** 稳定英文标识（卡里存的就是它）。 */
+	readonly id: string;
+	/** 中文显示名。 */
+	readonly displayName: string;
+	/** 编号字母（单个大写字母）。 */
+	readonly letter: string;
+	/** 一句话说明。 */
+	readonly description: string;
+	/** 取消后能否重开。 */
+	readonly reopenable: boolean;
+	/** 这类卡是否需要领取（领取即执行权限凭证）。 */
+	readonly needsClaim: boolean;
+}
+
+/**
  * `GET /taskboard3/api/state` 的 `data` —— **一次拿全量**。
  *
  * 用户裁定：「一旦 ui 查看就是全量加载」。所以没有分页、没有增量。
@@ -129,6 +150,13 @@ export interface StateData {
 	readonly cards: readonly Card[];
 	/** 模板清单（建卡面板用；MVP 只用来显示模板名）。 */
 	readonly templates: readonly TemplateSummary[];
+	/**
+	 * 类别注册表（中文名 + 编号字母）。
+	 *
+	 * ⚠ 老服务端没有这个字段 ⇒ 类型上标成可选，客户端必须能降级
+	 *   （降级到英文 id + 首字母大写，见 `pure/template-picker.ts` 的 defaultKindLabel/Letter）。
+	 */
+	readonly kinds?: readonly KindSummary[];
 }
 
 /** 失败信封。 */
