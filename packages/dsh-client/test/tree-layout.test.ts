@@ -318,7 +318,6 @@ describe('不折栏：一层一列', () => {
 		for (const node of layout.nodes) {
 			assert.equal(node.column, node.layer, `${node.id} column === layer`);
 			assert.equal(node.row, node.logicalRow, `${node.id} row === logicalRow`);
-			assert.equal(node.lane, node.column, `${node.id} lane === column`);
 		}
 		assertBandsConsistent(layout);
 	});

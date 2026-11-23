@@ -111,19 +111,17 @@ export interface TreeLayoutWarning {
 /**
  * 一张卡算出来的位置。
  *
- * ⚠ column / ow 是**物理**坐标；layer / logicalRow 是**逻辑**坐标（二者现在同值）。
+ * ⚠ `column` / `row` 是**物理**坐标；`layer` / `logicalRow` 是**逻辑**坐标（二者现在同值）。
  * 见文件头「输出坐标有两套」。
  */
 export interface TreeLayoutNode {
 	readonly id: string;
 	/** 物理列号（= layer；渲染直接用作 x 序号）。 */
 	readonly column: number;
-	/** 物理行号（**栏内**，从 0 起，渲染直接用作 y 序号）。 */
+	/** 物理行号（**列内**，从 0 起，渲染直接用作 y 序号）。 */
 	readonly row: number;
 	/** 逻辑层号（拓扑深度，第 0 层最左）。 */
 	readonly layer: number;
-	/** 物理列号（不折栏后恒等于 `column`；列组件按它分组）。 */
-	readonly lane: number;
 	/** 逻辑行号。**「父=min(子)」对齐看这个。** */
 	readonly logicalRow: number;
 	/** 这张卡自己的布局警告；没有就是 `undefined`（渲染层据此画 ▲）。 */
@@ -396,7 +394,6 @@ export function layoutTree(cards: readonly TreeCard[]): TreeLayout {
 		readonly column: number;
 		readonly row: number;
 		readonly layer: number;
-		readonly lane: number;
 		readonly logicalRow: number;
 	}
 	const placedOf = new Map<string, Placed>();
@@ -422,7 +419,7 @@ export function layoutTree(cards: readonly TreeCard[]): TreeLayout {
 			const logicalRow = rankedOf.get(id);
 			if (logicalRow === undefined) continue;
 			const row = logicalRow - minRow;
-			placedOf.set(id, { column: layer, row, layer, lane: layer, logicalRow });
+			placedOf.set(id, { column: layer, row, layer, logicalRow });
 			if (row + 1 > bandRows) bandRows = row + 1;
 		}
 		bands.push({ column: layer, rowCount: bandRows, cardCount: ids.length, layer });
@@ -765,9 +762,9 @@ export interface TreeLaneItem {
 	readonly height: number;
 }
 
-/** 一个物理栏（列）的排版结果。**列内独立，不与其他列共享行坐标。** */
+/** 一个物理列（= 一个逻辑层）的排版结果。**列内独立，不与其他列共享行坐标。** */
 export interface TreeLane {
-	/** 物理栏号（= `layoutTree` 里的 `column`，决定 x）。 */
+	/** 列号（= `layoutTree` 里的 `column` = `layer`，决定 x）。 */
 	readonly lane: number;
 	readonly x: number;
 	readonly width: number;
