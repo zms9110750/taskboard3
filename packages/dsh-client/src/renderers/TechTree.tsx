@@ -76,6 +76,7 @@ import {
 	layoutTree,
 	linkCurve,
 	parentEdgePaths,
+	rowMetricsOf,
 	toPathData,
 } from '../pure/tree-layout.ts';
 import type {
@@ -294,12 +295,13 @@ function buildEdges(
 	cards: readonly Card[],
 	layout: TreeLayout,
 	metrics: TreeMetrics,
+	rowTops?: readonly number[],
 ): readonly EdgeGeometry[] {
 	const nodeById = new Map(layout.nodes.map((node) => [node.id, node]));
 	const out: EdgeGeometry[] = [];
 
 	/* ── ① 父子派生边 ── */
-	for (const path of parentEdgePaths(layout, metrics)) {
+	for (const path of parentEdgePaths(layout, metrics, rowTops)) {
 		out.push({
 			key: `parent:${path.from}>${path.to}`,
 			from: path.from,
@@ -331,8 +333,8 @@ function buildEdges(
 				from: card.id,
 				to: link.to,
 				rel: resolveLinkRel(link.label),
-				fromBox: boxOf(fromNode, metrics),
-				toBox: boxOf(toNode, metrics),
+				fromBox: boxOf(fromNode, metrics, rowTops),
+				toBox: boxOf(toNode, metrics, rowTops),
 			});
 		}
 	}
@@ -672,7 +674,34 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		return layoutTree(treeCards, options);
 	}, [treeCards, props.maxRowsPerColumn]);
 
-	const canvas = useMemo(() => canvasSizeOf(layout, metrics), [layout, metrics]);
+	/*
+	 * 收起的分组：它那一行只画一条 18px 横幅 ⇒ **行高也应该是 18**，不是卡高 78。
+	 *
+	 * 用户 `2026-11-24`：「组收起的就如果那些组内卡不存在一样」。
+	 * 不这么算的话，行高仍是 78 ⇒ 横幅下面空 60px（用户截图里那块圆角空白）。
+	 *
+	 * ⚠ 只有「折叠组的锚点」会变矮；真卡永远是卡高。
+	 *   同一行别处若还有真卡，`rowMetricsOf` 取该行最大高 ⇒ 仍是 78。
+	 */
+	const collapsedAnchorIds = useMemo(
+		() => new Set(groupPlan.anchors.values()),
+		[groupPlan.anchors],
+	);
+	const rows = useMemo(
+		() =>
+			rowMetricsOf(layout, metrics, (id) =>
+				collapsedAnchorIds.has(id) ? GROUP_BANNER_HEIGHT : undefined,
+			),
+		[layout, metrics, collapsedAnchorIds],
+	);
+
+	const canvas = useMemo(
+		() => ({
+			width: canvasSizeOf(layout, metrics).width,
+			height: rows.stageHeight,
+		}),
+		[layout, metrics, rows.stageHeight],
+	);
 
 	const cardById = useMemo(
 		() => new Map(props.cards.map((card) => [card.id, card])),
@@ -684,14 +713,14 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		for (const node of layout.nodes) {
 			const card = cardById.get(node.id);
 			if (card === undefined) continue;
-			out.push({ card, node, box: boxOf(node, metrics) });
+			out.push({ card, node, box: boxOf(node, metrics, rows.tops) });
 		}
 		return out;
-	}, [layout, cardById, metrics]);
+	}, [layout, cardById, metrics, rows.tops]);
 
 	const edges = useMemo(
-		() => buildEdges(props.cards, layout, metrics),
-		[props.cards, layout, metrics],
+		() => buildEdges(props.cards, layout, metrics, rows.tops),
+		[props.cards, layout, metrics, rows.tops],
 	);
 
 	/* 组横幅：**折叠态也画、展开态也画** —— 展开后必须还能点回收起（用户 2026-11-24 报的 bug）。 */
@@ -730,7 +759,12 @@ export function TechTree(props: TechTreeProps): ReactNode {
 				const box = anchorItem?.box ?? { left: 0, top: 0 };
 				left = box.left;
 				width = metrics.cardWidth;
-				top = box.top + (metrics.cardHeight - GROUP_BANNER_HEIGHT) / 2;
+				/*
+				 * 这一行的高度已经是 `GROUP_BANNER_HEIGHT`（`rowMetricsOf` 按锚点给的）⇒
+				 * 横幅直接贴行顶，不再「在卡高里居中」（居中会上下各留 30px 空白）。
+				 * 若同一行别处还有真卡，行高仍是卡高，此时贴顶也读得通。
+				 */
+				top = box.top;
 			} else {
 				// 展开：横幅横跨成员区域，画在成员最上方（挤进行距里，尽量不压卡）
 				const lefts = members.map((item) => item.box.left);
@@ -773,12 +807,17 @@ export function TechTree(props: TechTreeProps): ReactNode {
 			seenPerLayer.set(band.layer, lane + 1);
 			laneOf.set(band.column, lane);
 			const x = band.column * (metrics.cardWidth + metrics.columnGap) + metrics.padding;
-			const height =
-				TREE_HEADER_HEIGHT +
-				metrics.padding +
-				(band.rowCount - 1) * (metrics.cardHeight + metrics.rowGap) +
-				metrics.cardHeight +
-				Math.round(metrics.padding / 2);
+			/*
+			 * 栏高按**变高行**算（收起的分组只占 18px）：
+			 * 底边 = 该栏最后一行的行底（`rows.tops[last] + rows.heights[last]`）。
+			 */
+			const lastRow = band.rowCount - 1;
+			const bottom =
+				lastRow < 0
+					? metrics.padding
+					: (rows.tops[lastRow] ?? metrics.padding) +
+						(rows.heights[lastRow] ?? metrics.cardHeight);
+			const height = TREE_HEADER_HEIGHT + bottom + Math.round(metrics.padding / 2);
 			return {
 				column: band.column,
 				layer: band.layer,
@@ -789,7 +828,7 @@ export function TechTree(props: TechTreeProps): ReactNode {
 				label: lane === 0 ? layerLabel(band.layer) : `第 ${String(band.layer)} 层 · 第 ${String(lane + 1)} 栏`,
 			};
 		});
-	}, [layout.bands, metrics]);
+	}, [layout.bands, metrics, rows.tops, rows.heights]);
 
 	/* ── ④ hover / 选中 ⇒ 相连的边高亮，无关的淡到 25% ── */
 	const nodeIds = useMemo(() => new Set(layout.nodes.map((node) => node.id)), [layout]);

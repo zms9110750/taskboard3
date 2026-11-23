@@ -33,9 +33,10 @@ import {
 	linkCurve,
 	parentCurve,
 	parentEdgePaths,
+	rowMetricsOf,
 	toPathData,
 } from '../src/pure/tree-layout.ts';
-import type { TreeCard, TreeLayout, TreeLayoutNode } from '../src/pure/tree-layout.ts';
+import type { TreeCard, TreeLayout, TreeLayoutNode, TreeMetrics } from '../src/pure/tree-layout.ts';
 
 /* ══════════════════════════════════════════════════════════════
  * 夹具与断言辅助
@@ -627,5 +628,97 @@ describe('性能：1000 张卡', () => {
 		assert.equal(layout.warnings.length, 0);
 		assertBandsConsistent(layout);
 		assert.ok(elapsed < 5000, `1000 张无关系卡耗时 ${elapsed}ms，疑似 O(n²) 以上`);
+	});
+});
+
+/* ══════════════════════════════════════════════════════════════
+ * ★ 变高行（收起的分组只占横幅高度）
+ *
+ * 用户 2026-11-24：「组收起的时候只有组的高度。而不是组内容的大小还占在那里
+ * 并且组在居中位置。组收起了就如果那些组内卡不存在一样。」
+ * ══════════════════════════════════════════════════════════════ */
+
+describe('rowMetricsOf：行高可以不等', () => {
+	/** 三张无关系根卡 ⇒ 同列 3 行（行 0 / 1 / 2）。 */
+	const stacked = (): TreeLayout => layoutTree([mk('A'), mk('B'), mk('C')]);
+
+	it('不传 heightOf ⇒ 与旧行为完全一致（行高等 = cardHeight + rowGap）', () => {
+		const layout = stacked();
+		const rows = rowMetricsOf(layout, METRICS);
+		assert.equal(rows.heights.length, layout.rowCount);
+		assert.deepEqual(
+			rows.tops,
+			layout.nodes.map((node) => node.row * (METRICS.cardHeight + METRICS.rowGap) + METRICS.padding),
+		);
+		/* 画布高也必须与 canvasSizeOf 一致 —— 否则改了一处漏一处。 */
+		assert.equal(rows.stageHeight, canvasSizeOf(layout, METRICS).height);
+	});
+
+	it('某行节点声明 18px ⇒ 该行变矮，**后面的行整体上移**', () => {
+		const layout = stacked();
+		const tall = rowMetricsOf(layout, METRICS);
+		const short = rowMetricsOf(layout, METRICS, (id) => (id === 'A' ? 18 : undefined));
+
+		assert.equal(short.heights[0], 18);
+		assert.equal(short.heights[1], METRICS.cardHeight);
+		/* 行 1 上移 = 卡高 − 18 */
+		assert.equal(
+			(short.tops[1] ?? 0) - (tall.tops[1] ?? 0),
+			-(METRICS.cardHeight - 18),
+		);
+		/* 画布也跟着矮一截 */
+		assert.equal(
+			short.stageHeight,
+			tall.stageHeight - (METRICS.cardHeight - 18),
+		);
+	});
+
+	it('同一行别处还有真卡 ⇒ 行高取最大值（仍是卡高）', () => {
+		/* 两张根卡折栏后可能同 row 不同 column：用 11 张触发折栏 ⇒ 两栏，行号从 0 重排。 */
+		const many = Array.from({ length: 11 }, (_one, index) => mk(`R${String(index)}`));
+		const layout = layoutTree(many);
+		const sameRow = layout.nodes.filter((node) => node.row === 0);
+		assert.ok(sameRow.length >= 2, '夹具应该造出「同一行有两张卡」');
+		const first = sameRow[0];
+		assert.ok(first !== undefined);
+
+		const rows = rowMetricsOf(layout, METRICS, (id) => (id === first.id ? 18 : undefined));
+		assert.equal(rows.heights[0], METRICS.cardHeight, '同一行还有真卡 ⇒ 不能被拉矮');
+	});
+
+	it('空布局 ⇒ 只有上下留白', () => {
+		const rows = rowMetricsOf(layoutTree([]), METRICS);
+		assert.deepEqual(rows.tops, []);
+		assert.deepEqual(rows.heights, []);
+		assert.equal(rows.stageHeight, METRICS.padding * 2);
+	});
+});
+
+describe('boxOf 支持传入行顶边', () => {
+	it('不传 rowTops ⇒ 与旧公式逐项相同', () => {
+		const node = { column: 2, row: 3 } as const;
+		const box = boxOf(node, METRICS);
+		assert.equal(box.top, 3 * (METRICS.cardHeight + METRICS.rowGap) + METRICS.padding);
+		assert.equal(box.bottom, box.top + METRICS.cardHeight);
+	});
+
+	it('传 rowTops ⇒ top 用行顶边，**bottom 仍是卡高**（卡的框不变高矮）', () => {
+		const node = { column: 0, row: 1 } as const;
+		const box = boxOf(node, METRICS, [24, 56, 134]);
+		assert.equal(box.top, 56);
+		assert.equal(box.bottom, 56 + METRICS.cardHeight);
+		assert.equal(box.midY, 56 + METRICS.cardHeight / 2);
+	});
+
+	it('parentEdgePaths 传 rowTops ⇒ 线的端点跟着行移动', () => {
+		const layout = layoutTree([mk('P'), mk('C1', 'P')]);
+		const plain = parentEdgePaths(layout, METRICS);
+		/* 两端都在 row 0 ⇒ 让 row 0 的顶边整体下移 16px 才看得出差别。 */
+		const shifted = parentEdgePaths(layout, METRICS, [40, 110]);
+		assert.equal(plain.length, 1);
+		assert.equal(shifted.length, 1);
+		const plainPath = plain[0]?.d ?? '';
+		const shiftedPath = shifted[0]?.d ?? '';
+		assert.notEqual(plainPath, shiftedPath, '行顶边变了，路径必须变');
 	});
 });
