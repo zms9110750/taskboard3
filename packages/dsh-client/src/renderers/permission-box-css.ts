@@ -46,23 +46,34 @@ export const PERMISSION_BOX_CSS = `
 .tb3pbox-entry__summary{overflow:hidden;text-overflow:ellipsis;max-width:200px}
 
 /* ══════════════════════════════════════════════════════════
-   2. 全屏页容器（用户 2026-11-22：「权限选择只能在全屏下开一个页面」）
+   2. 浮层容器（用户 2026-11-23：「他还是全屏的」）
    ══════════════════════════════════════════════════════════ */
-.tb3pbox-page{
-  position:fixed;inset:0;z-index:900;
-  display:flex;flex-direction:column;
+
+/* 锚点：正好裹住入口按钮，给浮层当定位基准。 */
+.tb3pbox-anchor{position:relative;display:inline-flex;align-items:center}
+
+/*
+ * 浮层：贴按钮**上方**弹出（composer 在视口底部，向下弹会出界）。
+ *
+ * 宽度 340 —— 足够一行放「任务板限制工具调用」这种档位名 + 右侧单选圈，
+ * 又不至于把 composer 上方盖掉一大片。高度按内容，最多 70vh 后可滚。
+ */
+.tb3pbox-pop{
+  position:absolute;left:0;bottom:calc(100% + 8px);z-index:900;
+  width:340px;max-height:min(70vh,520px);overflow-y:auto;
+  border:1px solid #d5dae1;border-radius:12px;
   background:#fff;color:#16181d;
+  box-shadow:0 12px 32px rgb(15 23 42 / 16%),0 2px 8px rgb(15 23 42 / 8%);
   font-family:inherit;
+  animation:tb3pbox-pop-in .12s ease-out;
 }
-.tb3pbox-page__head{
-  flex:0 0 auto;display:flex;align-items:center;gap:10px;
-  height:48px;padding:0 16px;
-  border-bottom:1px solid #e7e9ee;background:#fbfcfd;
+@keyframes tb3pbox-pop-in{
+  from{opacity:0;transform:translateY(4px)}
+  to{opacity:1;transform:translateY(0)}
 }
-.tb3pbox-page__title{font-size:13.5px;font-weight:600}
-.tb3pbox-page__hint{flex:1 1 auto;min-width:0;font-size:11.5px;color:#9aa1ad;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tb3pbox-page__close{
+/* 关闭按钮压在面板标题右侧（面板自带 h2，浮层不再重复渲染标题）。 */
+.tb3pbox-pop__close{
+  position:absolute;top:8px;right:8px;
   display:inline-flex;align-items:center;justify-content:center;
   width:26px;height:26px;padding:0;
   border:1px solid transparent;border-radius:7px;
@@ -70,11 +81,19 @@ export const PERMISSION_BOX_CSS = `
   font-family:inherit;font-size:16px;line-height:1;
   cursor:pointer;transition:background .12s,color .12s;
 }
-.tb3pbox-page__close:hover{background:#f1f3f6;color:#16181d}
-.tb3pbox-page__body{
-  flex:1 1 auto;min-height:0;overflow-y:auto;
-  padding:20px 16px 28px;
-}
-/* 内容居中、最大宽 760（和 permission-page 候选 A 一致） */
-.tb3pbox-page__inner{max-width:760px;margin:0 auto}
+.tb3pbox-pop__close:hover{background:#f1f3f6;color:#16181d}
+
+/*
+ * 面板进浮层后要**收紧**：全屏版的 20px 段距 + 大标题在 340px 宽的浮层里太占地方。
+ * ⚠ 只覆盖间距/字号，不动 PermissionPanel 自己的结构（那份是全屏与预览共用的）。
+ * ⚠ 本段在模板字符串里 —— 注释中**不能出现反引号**，会提前结束字符串（踩过一次）。
+ */
+.tb3pbox-pop .tb3perm{padding:14px 14px 12px}
+.tb3pbox-pop .tb3perm__head{padding-right:26px;margin-bottom:10px}
+.tb3pbox-pop .tb3perm__title{font-size:13px}
+.tb3pbox-pop .tb3perm__intro{font-size:11px;margin-top:4px}
+.tb3pbox-pop .tb3perm__foot{font-size:11px;padding-top:8px}
 `;
+
+
+

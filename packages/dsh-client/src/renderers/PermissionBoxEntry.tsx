@@ -22,14 +22,24 @@
  * 按钮本身就在 composer 里，上下文足够；写全会让按钮比旁边的
  * `完全权限 ▾` 长太多，把工具行撑变形。
  *
- * ⚠ 这个组件**不自己拉数据** —— 状态在 `pure/permission-box-state.ts`（模块级），
- *   因为入口和全屏页是两个独立槽条目，靠 props 传不了。
+ * ## 浮层就长在这个组件里（`2026-11-23` 之后）
+ *
+ * 用户：
+ *
+ * > 「他还是全屏的。」
+ *
+ * ⇒ 从「portal 铺满视口的全屏页」改成「贴在按钮旁边的浮层」。
+ *   浮层必须锚在按钮上，所以**和按钮放在同一个 DOM 子树**里
+ *   （`.tb3pbox-anchor{position:relative}`），不再走 `conversation.input.overlay` 槽。
+ *
+ * ⚠ 这个组件**不自己拉数据** —— 状态在 `pure/permission-box-state.ts`（模块级）。
  */
 
 import type { ReactNode } from 'react';
 
 import { isToolNonDefault, toolSummaryOf } from '../pure/permission-box.ts';
-import { openPermissionBox, usePermissionBox } from '../pure/permission-box-state.ts';
+import { togglePermissionBox, usePermissionBox } from '../pure/permission-box-state.ts';
+import { PermissionBoxPopover } from './PermissionBoxPopover.tsx';
 
 /** 盾牌图标（20×20，和 DSH 其它图标同 stroke 风格）。 */
 function ShieldIcon(): ReactNode {
@@ -57,7 +67,7 @@ function ShieldIcon(): ReactNode {
  * @returns 按钮（加载中 / 加载失败时显示简写，不显示假档位）
  */
 export function PermissionBoxEntry(): ReactNode {
-	const { state } = usePermissionBox();
+	const { open, state } = usePermissionBox();
 
 	/*
 	 * ⚠ 只有 ready 才显示真实档位摘要。
@@ -71,21 +81,30 @@ export function PermissionBoxEntry(): ReactNode {
 	const nonDefault = ready && isToolNonDefault(state.snapshot);
 
 	return (
-		<button
-			type="button"
-			className="tb3pbox-entry"
-			data-permission-entry="1"
-			data-phase={state.phase}
-			data-non-default={String(nonDefault)}
-			aria-haspopup="dialog"
-			aria-label={`任务板权限：${summary}`}
-			title={`任务板权限：${summary}（点击修改）`}
-			onClick={openPermissionBox}
-		>
-			<ShieldIcon />
-			<span className="tb3pbox-entry__summary" data-permission-summary="1">
-				{summary}
-			</span>
-		</button>
+		/*
+		 * ⚠ 锚点容器：浮层用 `position:absolute;bottom:calc(100% + 8px)` 相对它定位。
+		 *   `display:inline-flex` 让容器正好裹住按钮，不占额外高度。
+		 */
+		<span className="tb3pbox-anchor" data-permission-anchor="1">
+			<button
+				type="button"
+				className="tb3pbox-entry"
+				data-permission-entry="1"
+				data-phase={state.phase}
+				data-non-default={String(nonDefault)}
+				data-open={String(open)}
+				aria-haspopup="dialog"
+				aria-expanded={open}
+				aria-label={`任务板权限：${summary}`}
+				title={`任务板权限：${summary}（点击修改）`}
+				onClick={togglePermissionBox}
+			>
+				<ShieldIcon />
+				<span className="tb3pbox-entry__summary" data-permission-summary="1">
+					{summary}
+				</span>
+			</button>
+			<PermissionBoxPopover />
+		</span>
 	);
 }

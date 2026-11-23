@@ -373,15 +373,20 @@ export function PermissionPanel(props: PermissionPanelProps): ReactNode {
 	const state = props.state;
 	/* 只画调用方要的那几条轴（省略 = 两轴都画）。 */
 	const visibleAxes = props.axes === undefined ? AXES : AXES.filter((meta) => props.axes?.includes(meta.key));
+	/*
+	 * 单轴时的那一条轴 —— `noUncheckedIndexedAccess` 下 `visibleAxes[0]` 是
+	 * `AxisMeta | undefined`，所以先收成显式的 `undefined`，不要在 JSX 里裸取下标。
+	 */
+	const onlyAxis: AxisMeta | undefined = visibleAxes.length === 1 ? visibleAxes[0] : undefined;
 
 	return (
 		<section className="tb3perm" data-panel="permission" data-phase={state.phase} aria-label="任务板权限">
 			<header className="tb3perm__head">
 				<h2 className="tb3perm__title">任务板权限</h2>
 				<p className="tb3perm__intro">
-					{visibleAxes.length === 1
-						? '选一档，点哪一档就立刻保存，没有「保存」按钮。'
-						: '两条互相独立的轴，各选一档。点哪一档就立刻保存，没有「保存」按钮。'}
+					{onlyAxis === undefined
+						? '两条互相独立的轴，各选一档。点哪一档就立刻保存，没有「保存」按钮。'
+						: '选一档，点哪一档就立刻保存，没有「保存」按钮。'}
 				</p>
 			</header>
 
@@ -404,21 +409,27 @@ export function PermissionPanel(props: PermissionPanelProps): ReactNode {
 						<AxisBlock key={meta.key} meta={meta} state={state} onSelect={props.onSelect} />
 					))}
 
-					<footer className="tb3perm__foot" data-foot="1">
-						{visibleAxes.length === 1 ? (
-							<div>这一档管「AI 能不能领工作卡 / 能不能自己采纳草稿」。任何宿主都生效（MCP 也管它）。</div>
-						) : (
-							<>
-								<div>
-									两条轴互不覆盖：<b>卡片动作档位</b>管「AI 能不能领卡 / 采纳草稿」，
-									<b>工具管控档位</b>管「任务板要不要拦工具调用」。任意组合都有效（3 × 3 = 9 种结果）。
-								</div>
-								<div className="tb3perm__foot-sub">
-									宿主把工具管控关掉时，领卡仍然受卡片动作档位管 —— 两条轴分开判定，谁都不替代谁。
-								</div>
-							</>
-						)}
-					</footer>
+					{/*
+					 * 页脚**只在两轴同屏时需要**：它的内容是「两条轴互不覆盖」。
+					 *
+					 * ⚠ 单轴时**不渲染页脚**。这里曾经写死 card 轴的说明
+					 *   （「这一档管 AI 能不能领工作卡 / 采纳草稿」）—— card 轴搬去任务板
+					 *   工具栏之后，它变成「描述一个本页已经不管的东西」的残留
+					 *   （用户 2026-11-23 截图里直接看到）。
+					 *   改成读单轴 hint 也会**和轴头那句重复**（实测：同一句话出现两次）。
+					 *   ⇒ 直接不画：轴头的 hint 已经说清这条轴是什么。
+					 */}
+					{onlyAxis === undefined ? (
+						<footer className="tb3perm__foot" data-foot="1">
+							<div>
+								两条轴互不覆盖：<b>卡片动作档位</b>管「AI 能不能领卡 / 采纳草稿」，
+								<b>工具管控档位</b>管「任务板要不要拦工具调用」。任意组合都有效（3 × 3 = 9 种结果）。
+							</div>
+							<div className="tb3perm__foot-sub">
+								宿主把工具管控关掉时，领卡仍然受卡片动作档位管 —— 两条轴分开判定，谁都不替代谁。
+							</div>
+						</footer>
+					) : null}
 				</>
 			) : null}
 		</section>
