@@ -11,8 +11,14 @@ import { describe, it } from 'node:test';
 import {
 	effectiveCounts,
 	effectiveToolsFor,
+	GLOBAL_TIERS,
+	globalContributionOf,
+	globalTierSourceOf,
+	globalTierSources,
+	isGlobalTierKey,
 	parseToolPolicy,
 	sourcesFor,
+	templateOwnSourcesFor,
 	unionOfSources,
 	type ToolPolicySnapshot,
 } from '../src/pure/tool-policy.ts';
@@ -184,5 +190,67 @@ describe('unionOfSources / effectiveToolsFor / effectiveCounts', () => {
 		const counts = effectiveCounts(snapshot);
 		assert.equal(counts.get('architecture'), 6);
 		assert.equal(counts.get('missing'), undefined);
+	});
+});
+
+/*
+ * 全局档位（用户 `2026-11-24`）：
+ * 「这个领卡通用和未领卡的，要放在跟模板的同级别。而不是右边。因为这两个档位不归属某一个模板。」
+ *
+ * ⇒ 左栏「档位」一节列这两档；模板详情里不再把它们当成模板自己的段。
+ */
+describe('全局档位：未领卡档 / 通用档', () => {
+	const snapshot = parseToolPolicy(valid());
+	if (snapshot === undefined) throw new Error('valid() 必须能解析');
+
+	it('左栏档位两项，顺序 = 未领卡 → 通用，且带各自工具数', () => {
+		const tiers = globalTierSources(snapshot);
+		assert.deepEqual(
+			tiers.map((one) => [one.key, one.label, one.tools.length]),
+			[
+				['unclaimed', '未领卡档', 1],
+				['common', '通用档（领了卡就有）', 1],
+			],
+		);
+	});
+
+	it('档位即使没配也照样列出（档位本身存在，只是 0 个工具）', () => {
+		const empty = parseToolPolicy({ ...valid(), unclaimed: [], common: [] });
+		assert.ok(empty !== undefined);
+		const tiers = globalTierSources(empty);
+		assert.deepEqual(
+			tiers.map((one) => one.tools.length),
+			[0, 0],
+		);
+	});
+
+	it('isGlobalTierKey 只认这两档', () => {
+		assert.equal(isGlobalTierKey('unclaimed'), true);
+		assert.equal(isGlobalTierKey('common'), true);
+		assert.equal(isGlobalTierKey('base'), false);
+		assert.equal(isGlobalTierKey('group:代码类'), false);
+		assert.equal(isGlobalTierKey('template'), false);
+	});
+
+	it('模板详情只列自己的段：BASE + 组 + 模板独立（不再有未领卡 / 通用）', () => {
+		const own = templateOwnSourcesFor(snapshot, 'architecture');
+		assert.deepEqual(
+			own.map((one) => one.key),
+			['base', 'group:代码类', 'template'],
+		);
+	});
+
+	it('模板详情 + 全局档位 = 服务端生效集（分段不丢东西）', () => {
+		const union = unionOfSources([...templateOwnSourcesFor(snapshot, 'architecture'), ...globalTierSources(snapshot)]);
+		assert.deepEqual([...union].sort(), [...effectiveToolsFor(snapshot, 'architecture')].sort());
+	});
+
+	it('globalContributionOf 给「其中 N 个来自全局档位」那行', () => {
+		assert.deepEqual(globalContributionOf(snapshot), { unclaimed: 1, common: 1, total: 2 });
+	});
+
+	it('globalTierSourceOf 取单档（右栏选中档位时用）', () => {
+		assert.deepEqual(globalTierSourceOf(snapshot, 'unclaimed').tools, ['bash']);
+		assert.deepEqual(globalTierSourceOf(snapshot, 'common').tools, ['read']);
 	});
 });

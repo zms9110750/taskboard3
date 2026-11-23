@@ -22,6 +22,11 @@ export const TEMPLATE_AUTH_CSS = `
 .tb3ta-tpl__count{flex:0 0 auto;min-width:20px;padding:0 5px;border-radius:9px;background:#f1f3f7;color:#6b7280;font-size:10.5px;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
 .tb3ta-tpl.is-picked .tb3ta-tpl__count{background:#dbeafe;color:#1d4ed8}
 
+/* ── 左栏：全局档位（跟模板同一层级，用户 2026-11-24） ── */
+.tb3ta-tiers{flex:0 0 auto;padding:4px 0 6px;border-bottom:1px solid #eef1f5}
+.tb3ta-tpl--tier{font-weight:600}
+.tb3ta-tpl--tier .tb3ta-tpl__name::before{content:'';display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:2px;background:#a78bfa;vertical-align:middle}
+
 /* ── 右栏头部 ── */
 .tb3ta-head{flex:0 0 auto;padding:9px 12px;border-bottom:1px solid #eef1f5}
 .tb3ta-head__title{display:flex;align-items:baseline;gap:8px;min-width:0}
@@ -30,6 +35,9 @@ export const TEMPLATE_AUTH_CSS = `
 .tb3ta-head__ref{flex:0 0 auto;color:#9ca3af;font-size:10.5px}
 .tb3ta-head__sum{margin:5px 0 0;color:#6b7280;font-size:11.5px}
 .tb3ta-head__sum b{color:#111827;font-variant-numeric:tabular-nums}
+/* 模板详情里「其中 N 个来自全局档位」那一行（全局档位不在这里逐段列） */
+.tb3ta-head__global{margin:3px 0 0;color:#7c6bb0;font-size:11px;line-height:1.6}
+.tb3ta-head__global b{color:#5b21b6;font-variant-numeric:tabular-nums}
 
 /* ── 来源分段 ── */
 .tb3ta-sec{padding:8px 12px;border-bottom:1px solid #f3f5f8}

@@ -22,12 +22,28 @@ import { buildPath } from '../../api.ts';
 import {
 	effectiveCounts,
 	effectiveToolsFor,
+	GLOBAL_TIERS,
+	globalContributionOf,
+	globalTierSourceOf,
+	globalTierSources,
 	parseToolPolicy,
 	sourcesFor,
+	templateOwnSourcesFor,
 	unionOfSources,
 } from '../../pure/tool-policy.ts';
-import type { PolicySource, ToolPolicySnapshot } from '../../pure/tool-policy.ts';
+import type { GlobalTierKey, PolicySource, ToolPolicySnapshot } from '../../pure/tool-policy.ts';
 import type { TemplateSummary } from '../../types.ts';
+
+/**
+ * 左栏选中了什么。
+ *
+ * 用户 `2026-11-24`：「这个领卡通用和未领卡的，要放在跟模板的同级别。而不是右边。
+ * 因为这两个档位不归属某一个模板。」
+ * ⇒ 左栏有两类可选项：全局档位、模板。**互斥**。
+ */
+type Selection =
+	| { readonly kind: 'template'; readonly ref: string }
+	| { readonly kind: 'tier'; readonly key: GlobalTierKey };
 
 /** 取数结局。 */
 type LoadState =
@@ -125,7 +141,13 @@ function SourceSection(props: { readonly source: PolicySource }): ReactNode {
 /** 页面本体。 */
 export function TemplateAuthPanel(): ReactNode {
 	const [state, setState] = useState<LoadState>({ kind: 'loading' });
-	const [pickedRef, setPickedRef] = useState<string>('');
+	/**
+	 * 左栏选中项。`undefined` = 还没选过（等价于「选第一个模板」）。
+	 *
+	 * ⚠ 用 `undefined` 而不是直接拿 `templates[0].ref` 初始化：模板是异步来的，
+	 *   初始值不能依赖它（否则第一次渲染是「空选中」，闪一下）。
+	 */
+	const [selection, setSelection] = useState<Selection | undefined>(undefined);
 
 	useEffect(() => {
 		const controller = new AbortController();
@@ -170,12 +192,51 @@ export function TemplateAuthPanel(): ReactNode {
 
 	const { policy, templates } = state;
 	const counts = effectiveCounts(policy);
-	const picked = templates.find((one) => one.ref === pickedRef) ?? templates[0];
+	/*
+	 * 选中项归一化：没选过 ⇒ 第一个模板（没有模板才算「什么都没选」）。
+	 * 档位可以被选（左栏「档位」那一节），此时右栏显示该档自己的工具。
+	 */
+	const active: Selection | undefined =
+		selection ??
+		(templates[0] === undefined ? undefined : { kind: 'template', ref: templates[0].ref });
+	const pickedTemplate =
+		active?.kind === 'template' ? templates.find((one) => one.ref === active.ref) : undefined;
+	const tiers = globalTierSources(policy);
 
 	return (
 		<section className="tb3ta-page" data-testid="tab-templates" data-state="ok">
-			{/* 左栏：模板清单（按领域分组） */}
+			{/*
+			 * 左栏：**档位**（全局，跟模板同一层级）+ 模板清单（按领域分组）
+			 *
+			 * 用户 `2026-11-24`：「这个领卡通用和未领卡的，要放在跟模板的同级别。而不是右边。
+			 * 因为这两个档位不归属某一个模板。」
+			 */}
 			<aside className="tb3ta-side" data-testid="template-list">
+				<div className="tb3ta-side__head">
+					<span>档位</span>
+					<span className="tb3ta-side__hint">全局</span>
+				</div>
+				<div className="tb3ta-tiers" data-testid="tier-list">
+					{tiers.map((tier) => {
+						const key = tier.key as GlobalTierKey;
+						const isPicked = active?.kind === 'tier' && active.key === key;
+						return (
+							<button
+								key={key}
+								type="button"
+								data-tier-key={key}
+								data-picked={isPicked ? '1' : '0'}
+								className={`tb3ta-tpl tb3ta-tpl--tier${isPicked ? ' is-picked' : ''}`}
+								onClick={() => {
+									setSelection({ kind: 'tier', key });
+								}}
+							>
+								<span className="tb3ta-tpl__name">{tier.label}</span>
+								<span className="tb3ta-tpl__count">{String(tier.tools.length)}</span>
+							</button>
+						);
+					})}
+				</div>
 				<div className="tb3ta-side__head">
 					<span>模板</span>
 					<span className="tb3ta-side__hint">{String(templates.length)} 个</span>
@@ -188,7 +249,7 @@ export function TemplateAuthPanel(): ReactNode {
 							<div className="tb3ta-domain" key={group.domain}>
 								<div className="tb3ta-domain__title">{group.domain}</div>
 								{group.items.map((one) => {
-									const isPicked = picked !== undefined && one.ref === picked.ref;
+									const isPicked = pickedTemplate !== undefined && one.ref === pickedTemplate.ref;
 									return (
 										<button
 											key={one.ref}
@@ -197,7 +258,7 @@ export function TemplateAuthPanel(): ReactNode {
 											data-picked={isPicked ? '1' : '0'}
 											className={`tb3ta-tpl${isPicked ? ' is-picked' : ''}`}
 											onClick={() => {
-												setPickedRef(one.ref);
+												setSelection({ kind: 'template', ref: one.ref });
 											}}
 										>
 											<span className="tb3ta-tpl__name">{one.displayName}</span>
@@ -211,36 +272,87 @@ export function TemplateAuthPanel(): ReactNode {
 				</div>
 			</aside>
 
-			{/* 右栏：选中模板的生效工具，按来源分组 */}
+			{/* 右栏：选中的档位 / 模板 */}
 			<div className="tb3ta-main" data-testid="template-detail">
-				{picked === undefined ? (
+				{active === undefined ? (
 					<p className="tb3ta-empty">左边还没有可选模板。</p>
+				) : active.kind === 'tier' ? (
+					<TierDetail policy={policy} tierKey={active.key} />
 				) : (
-					<>
-						<header className="tb3ta-head" data-picked-ref={picked.ref}>
-							<div className="tb3ta-head__title">
-								<span className="tb3ta-head__domain">{picked.domain}</span>
-								<span className="tb3ta-head__name">{picked.displayName}</span>
-								<code className="tb3ta-head__ref">{picked.ref}</code>
-							</div>
-							<p className="tb3ta-head__sum" data-testid="effective-summary">
-								这个模板共可用 <b>{String(effectiveToolsFor(policy, picked.ref).length)}</b> 个工具
-								（服务端按三档并集算好；分段只解释来源，重叠时各段之和会大于总数）
-							</p>
-						</header>
-						<div className="tb3ta-scroll">
-							{sourcesFor(policy, picked.ref).map((source) => (
-								<SourceSection key={source.key} source={source} />
-							))}
-							<MismatchNote policy={policy} templateRef={picked.ref} />
-							<p className="tb3ta-foot">
-								只读视图 —— 改权限走 AI 工具 <code>taskboard_tool_policy</code>，或等后端写入接口。
-							</p>
-						</div>
-					</>
+					pickedTemplate !== undefined && <TemplateDetail policy={policy} picked={pickedTemplate} />
 				)}
 			</div>
 		</section>
+	);
+}
+
+/** 右栏：选中**全局档位**时的内容（它不属于任何模板）。 */
+function TierDetail(props: { readonly policy: ToolPolicySnapshot; readonly tierKey: GlobalTierKey }): ReactNode {
+	const source = globalTierSourceOf(props.policy, props.tierKey);
+	return (
+		<>
+			<header className="tb3ta-head" data-picked-ref={source.key} data-picked-kind="tier">
+				<div className="tb3ta-head__title">
+					<span className="tb3ta-head__domain">全局档位</span>
+					<span className="tb3ta-head__name">{source.label}</span>
+					<code className="tb3ta-head__ref">{source.key}</code>
+				</div>
+				<p className="tb3ta-head__sum" data-testid="tier-summary">
+					这一档贡献 <b>{String(source.tools.length)}</b> 个工具
+					（不归属任何模板；对所有模板都生效，见三档并集）
+				</p>
+			</header>
+			<div className="tb3ta-scroll">
+				{source.tools.length === 0 ? (
+					<p className="tb3ta-empty">这一档还没有配置任何工具。</p>
+				) : (
+					<SourceSection source={source} />
+				)}
+				<p className="tb3ta-foot">
+					只读视图 —— 改权限走 AI 工具 <code>taskboard_tool_policy</code>，或等后端写入接口。
+				</p>
+			</div>
+		</>
+	);
+}
+
+/** 右栏：选中**模板**时的内容（全局档位不在这里逐段列，只给一行归属说明）。 */
+function TemplateDetail(props: {
+	readonly policy: ToolPolicySnapshot;
+	readonly picked: TemplateSummary;
+}): ReactNode {
+	const { policy, picked } = props;
+	const contribution = globalContributionOf(policy);
+	return (
+		<>
+			<header className="tb3ta-head" data-picked-ref={picked.ref} data-picked-kind="template">
+				<div className="tb3ta-head__title">
+					<span className="tb3ta-head__domain">{picked.domain}</span>
+					<span className="tb3ta-head__name">{picked.displayName}</span>
+					<code className="tb3ta-head__ref">{picked.ref}</code>
+				</div>
+				<p className="tb3ta-head__sum" data-testid="effective-summary">
+					这个模板共可用 <b>{String(effectiveToolsFor(policy, picked.ref).length)}</b> 个工具
+					（服务端按三档并集算好；分段只解释来源，重叠时各段之和会大于总数）
+				</p>
+				{contribution.total === 0 ? null : (
+					<p className="tb3ta-head__global" data-testid="global-contribution">
+						其中 <b>{String(contribution.total)}</b> 个来自<b>全局档位</b>（未领卡{' '}
+						{String(contribution.unclaimed)} + 通用 {String(contribution.common)}）——
+						这两档不归属本模板，在左栏「档位」里单独看。
+					</p>
+				)}
+			</header>
+			<div className="tb3ta-scroll">
+				{templateOwnSourcesFor(policy, picked.ref).map((source) => (
+					<SourceSection key={source.key} source={source} />
+				))}
+				<MismatchNote policy={policy} templateRef={picked.ref} />
+				<p className="tb3ta-foot">
+					只读视图 —— 改权限走 AI 工具 <code>taskboard_tool_policy</code>，或等后端写入接口。
+				</p>
+			</div>
+		</>
 	);
 }
 

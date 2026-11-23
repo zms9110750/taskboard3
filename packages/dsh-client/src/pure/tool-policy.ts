@@ -182,3 +182,114 @@ export function effectiveCounts(snapshot: ToolPolicySnapshot): ReadonlyMap<strin
 	for (const one of snapshot.effective) out.set(one.templateRef, one.tools.length);
 	return out;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 全局档位（用户 `2026-11-24`）
+ *
+ * 「这个领卡通用和未领卡的，要放在跟模板的同级别。而不是右边。
+ *   因为这两个档位不归属某一个模板。」
+ *
+ * ⇒ 未领卡档 / 通用档是**全局**的，左栏跟模板同一层级展示；模板详情里不再把它们
+ *   当成「这个模板自己的段」来列。
+ *
+ * ⚠ 这里**仍然不算并集** —— `effective` 只从服务端拿；下面只是「哪些段是全局的」
+ *   这一条展示规则。
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * 全局档位的稳定顺序：未领卡在前（它是最低一档），通用档在后。
+ *
+ * ⚠ 裸字面量元组 + widen 导出（AGENTS 3.5）：`GlobalTierKey` 由它派生，
+ *   `GLOBAL_TIER_LABELS` 用 `satisfies`（AGENTS 3.7）—— 少一个键 / 多一个键都会红。
+ */
+const GLOBAL_TIER_KEYS = ['unclaimed', 'common'] as const;
+
+/** 全局档位的 key（左栏「档位」那一节的两项）。 */
+export type GlobalTierKey = (typeof GLOBAL_TIER_KEYS)[number];
+
+export const GLOBAL_TIERS: readonly GlobalTierKey[] = Object.freeze(GLOBAL_TIER_KEYS);
+
+/** 展示名（左栏按钮 / 右栏标题共用一份，避免两处漂移）。 */
+const GLOBAL_TIER_LABELS = Object.freeze({
+	unclaimed: '未领卡档',
+	common: '通用档（领了卡就有）',
+} satisfies Record<GlobalTierKey, string>);
+
+/**
+ * 这个 key 是不是全局档位。
+ *
+ * @param key 来源 key（`PolicySource.key`）
+ */
+export function isGlobalTierKey(key: string): key is GlobalTierKey {
+	return (GLOBAL_TIERS as readonly string[]).includes(key);
+}
+
+/** 全局档位的展示名。 */
+export function globalTierLabel(key: GlobalTierKey): string {
+	return GLOBAL_TIER_LABELS[key];
+}
+
+/** 全局档位 → 它贡献的工具（原始增量）。 */
+function globalTierTools(snapshot: ToolPolicySnapshot, key: GlobalTierKey): readonly string[] {
+	return key === 'unclaimed' ? snapshot.unclaimed : snapshot.common;
+}
+
+/**
+ * 左栏「档位」那一节的两项（**总是两项**，哪怕工具数为 0 —— 档位本身存在）。
+ *
+ * @param snapshot 端点的干净结构
+ */
+export function globalTierSources(snapshot: ToolPolicySnapshot): readonly PolicySource[] {
+	return GLOBAL_TIERS.map((key) => ({
+		key,
+		label: globalTierLabel(key),
+		tools: globalTierTools(snapshot, key),
+		locked: false,
+	}));
+}
+
+/**
+ * 单个全局档位（右栏在选中档位时用）。
+ *
+ * @param snapshot 端点的干净结构
+ * @param key 档位
+ */
+export function globalTierSourceOf(snapshot: ToolPolicySnapshot, key: GlobalTierKey): PolicySource {
+	return { key, label: globalTierLabel(key), tools: globalTierTools(snapshot, key), locked: false };
+}
+
+/**
+ * 模板详情里**该列**的来源：BASE + 命中的组 + 模板独立档。
+ *
+ * 全局档位（未领卡 / 通用）不算「这个模板的段」⇒ 不在右栏列。
+ * 但它们**确实参与生效集**，所以模板详情要写一行「另有 N 个来自全局档位」。
+ *
+ * ⚠ 两者的和（本函数结果 ∪ 全局档位）必须仍等于服务端 `effective` ——
+ *   核对用的 `unionOfSources(sourcesFor(...))` 仍然用**全量**来源，不要改成这个。
+ *
+ * @param snapshot 端点的干净结构
+ * @param templateRef 模板 ref
+ */
+export function templateOwnSourcesFor(
+	snapshot: ToolPolicySnapshot,
+	templateRef: string,
+): readonly PolicySource[] {
+	return sourcesFor(snapshot, templateRef).filter((one) => !isGlobalTierKey(one.key));
+}
+
+/**
+ * 全局档位给「所有模板」贡献的数量（模板详情顶部那行说明用）。
+ *
+ * @param snapshot 端点的干净结构
+ * @returns 两档各多少 + 合计（合计是**两档之和**，不去重 —— 它只是「有几条来自全局」的说法）
+ */
+export function globalContributionOf(snapshot: ToolPolicySnapshot): {
+	readonly unclaimed: number;
+	readonly common: number;
+	readonly total: number;
+} {
+	const unclaimed = snapshot.unclaimed.length;
+	const common = snapshot.common.length;
+	return { unclaimed, common, total: unclaimed + common };
+}
+
