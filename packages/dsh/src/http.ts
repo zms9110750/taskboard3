@@ -94,6 +94,11 @@ function statusOf(code: Failure['code']): number {
 		case ErrorCode.TRANSITION_REJECTED:
 		case ErrorCode.CLAIM_REJECTED:
 		case ErrorCode.RELATION_TARGET_INVALID:
+		/*
+		 * 完结态不可改内容 = 「请求与资源当前状态冲突」，不是「参数写错了」。
+		 * 409 让客户端能区分「改请求」（400）和「换一张卡 / 先转移状态」（409）。
+		 */
+		case ErrorCode.CARD_ENDED_IMMUTABLE:
 			return 409;
 		case ErrorCode.TEMPLATES_UNAVAILABLE:
 		case ErrorCode.PORT_UNAVAILABLE:

@@ -10,6 +10,26 @@
  *
  * 用户裁定：「整个激活都只对 dsh 会话有效。mcp 是没法提供的。」
  * ⇒ 命令从注入的 `defaultWorkspaceId` 拿默认空间，core 不知道这件事。
+ *
+ * ## ⚠ 改内容的命令：错误原因来自 core，本层只负责原样输出
+ *
+ * 用户 `2026-11-23`：
+ * > 「处于完结态的卡，action 内容不可再改变。在 core 里面设置。
+ * >   并对 tool 和 dsh 指令这两处调用打错误原因」
+ *
+ * **今天没有任何命令会改卡内容**（`/taskboard`、`/task-card` 只读，
+ * `/task-create` 只建新卡），所以本层没有「完结态」分支 —— 也不该有：
+ * 那条规则在 core 的写方法里判（`update({content})` / `replaceContentAt`），
+ * core 返回的 `Failure.message` 已经带**卡 id + 状态中文名**。
+ *
+ * ⇒ 将来加写命令时，**照 `/task-create` 的失败分支写**即可：
+ *
+ * ```ts
+ * if (!changed.ok) return { kind: 'error', text: `改内容失败：${changed.message}` };
+ * ```
+ *
+ * 不要在这一层再判一次「是不是完结态」—— 那样会造出第二份真值，
+ * 两处不一致时不会报错，只会让某条入口悄悄放行。
  */
 
 import type { Card, Taskboard } from '@taskboard/core';

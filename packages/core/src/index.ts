@@ -20,10 +20,10 @@
  */
 
 import type { Failure } from '@taskboard/protocol';
-import { DRAFT, ErrorCode, failure, type Actor, type TaskState } from '@taskboard/protocol';
+import { DRAFT, ErrorCode, failure, labelOf, type Actor, type TaskState } from '@taskboard/protocol';
 
 import type { Card, CardSection, CardUnread, WorkspaceId } from './card.ts';
-import { findCard, withHistory, withoutDeleted } from './card.ts';
+import { findCard, isEndedCard, withHistory, withoutDeleted } from './card.ts';
 /* ⚠ 原型期脚手架，整个文件可删 —— 见 `bus.ts` 顶部的拆解步骤。 */
 import type { Bus } from './bus.ts';
 import { contentOfCard, parseContentPointer, replaceInContent } from './content-path.ts';
@@ -647,6 +647,32 @@ export interface Taskboard {
 }
 
 /**
+ * 完结态的卡**不许改内容** —— 统一拒绝理由。
+ *
+ * 用户 `2026-11-23`：
+ * > 「还有一个权限设置。处于完结态的卡，action 内容不可再改变。在 core 里面设置。
+ * >   并对 tool 和 dsh 指令这两处调用打错误原因」
+ *
+ * ## 为什么理由里要带 id + 状态
+ *
+ * 「打错误原因」的判据是**调用方能据此决定下一步**：只回一句
+ * 「不允许修改」时，AI 只能重试或放弃；带上「哪张卡 / 哪个状态」，它才能
+ * 判断是该换一张卡、还是该先转移状态。
+ *
+ * ## 为什么在 core 判、不在工具层判
+ *
+ * 改内容的入口不止一条（`update` 的 `content` 分支、`replaceContentAt`、
+ * 以及将来的命令 / 导入）。**在 core 的写方法里判 ⇒ 所有入口天然都拦**；
+ * 在每条上层各写一遍，漏一条就等于没拦，而且漏了不会报错。
+ */
+function endedImmutable(card: Card): Failure {
+	return failure(
+		ErrorCode.CARD_ENDED_IMMUTABLE,
+		`卡「${card.id}」已处于「${labelOf(card.status)}」状态（完结态），action 内容不可再修改。`,
+	);
+}
+
+/**
  * 建一个任务板实例。
  *
  * @throws 存储打不开（这是装配错误，不该静默降级）
@@ -1201,6 +1227,17 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
 			}
 
+			/*
+			 * 完结态 ⇒ **内容**不可再改（用户 2026-11-23）。
+			 *
+			 * ⚠ 只拦 `content` 这一个字段：
+			 *   · `title` 有自己的规则（只在草稿期可改，工具层 `update-note.ts` 判）；
+			 *   · `note` 是备注，不是 action 内容，不受完结态限制；
+			 *   · 状态转移也不在这里 —— 那是 `transition()`，完结态下仍有合法转移
+			 *     （用户没说要冻结状态机）。
+			 */
+			if (patch.content !== undefined && isEndedCard(existing)) return endedImmutable(existing);
+
 			const title = patch.title === undefined ? existing.title : patch.title.trim();
 			if (title === '') {
 				return failure(ErrorCode.FIELD_REQUIRED, '卡标题不能为空。', {
@@ -1245,6 +1282,14 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			if (existing.deleted) {
 				return failure(ErrorCode.CARD_NOT_FOUND, `卡「${cardId}」已被删除。`);
 			}
+
+			/*
+			 * 完结态 ⇒ 内容不可再改（用户 2026-11-23）。
+			 *
+			 * 这是**唯一能写内容**的按路径入口，所以必须在这里拦：
+			 * 放在工具层拦的话，`dsh` 的 PATCH 路由、将来的导入器都会绕过去。
+			 */
+			if (isEndedCard(existing)) return endedImmutable(existing);
 
 			/* ── 1. 解析路径（JSON Pointer；允许省略开头 `/`） ── */
 			const parsed = parseContentPointer(pointer);

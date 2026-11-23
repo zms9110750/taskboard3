@@ -133,6 +133,8 @@ function nextForUpdateFailure(code: string): string {
 			return 'path 不是合法 JSON Pointer（检查 ~ 转义）；空串表示替换整个内容对象。';
 		case 'CARD_NOT_FOUND':
 			return '先用 taskboard_cards 确认编号（按 id 直查可见墓碑，但墓碑不能更新）。';
+		case 'CARD_ENDED_IMMUTABLE':
+			return '这张卡已完结，内容已定稿。要接着做就新建一张卡（taskboard_create）；只想看内容用 taskboard_raw_card。';
 		default:
 			return '先看当前 JSON（taskboard_raw_card）再重试。';
 	}
