@@ -52,7 +52,7 @@ type LoadState =
 	| { readonly kind: 'failed'; readonly reason: string };
 
 /** 一次取数（失败返回原因字符串，不抛）。 */
-async function fetchJson(path: string, signal: AbortSignal): Promise<unknown | string> {
+export async function fetchJson(path: string, signal: AbortSignal): Promise<unknown | string> {
 	let response: Response;
 	try {
 		response = await fetch(buildPath(path), { signal, headers: { accept: 'application/json' } });
@@ -69,13 +69,13 @@ async function fetchJson(path: string, signal: AbortSignal): Promise<unknown | s
 }
 
 /** 从标准信封里取 data（`{ ok, data }`）。 */
-function dataOf(raw: unknown): unknown {
+export function dataOf(raw: unknown): unknown {
 	if (typeof raw !== 'object' || raw === null) return undefined;
 	return (raw as Record<string, unknown>)['data'];
 }
 
 /** 从 `{ templates: [...] }` 里取模板清单（只认形状对的条目）。 */
-function templatesOf(raw: unknown): readonly TemplateSummary[] {
+export function templatesOf(raw: unknown): readonly TemplateSummary[] {
 	const data = dataOf(raw);
 	if (typeof data !== 'object' || data === null) return [];
 	const list = (data as Record<string, unknown>)['templates'];

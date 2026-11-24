@@ -123,9 +123,9 @@ export const TECHTREE_CSS = `
 .tb3t-fold{
   position:absolute;z-index:4;
   display:inline-flex;align-items:center;justify-content:center;gap:0;
-  min-width:18px;height:18px;padding:0 5px;
-  border:1px solid #d7dbe2;border-radius:9px;background:#fff;color:#4b5563;
-  font-family:inherit;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;
+  min-width:22px;height:24px;padding:0 6px;
+  border:1px solid #d7dbe2;border-radius:12px;background:#fff;color:#4b5563;
+  font-family:inherit;font-size:12px;line-height:22px;font-variant-numeric:tabular-nums;
   cursor:pointer;transition:border-color .12s,color .12s,background .12s;
 }
 .tb3t-fold:hover{border-color:#9aa4b2;background:#f8fafc;color:#111827}
@@ -135,6 +135,6 @@ export const TECHTREE_CSS = `
 .tb3t-fold.is-folded:hover .tb3t-fold__count{display:none}
 .tb3t-fold.is-folded:hover .tb3t-fold__plus{display:inline}
 /* 展开时只显示减号 */
-.tb3t-fold .tb3t-fold__minus{display:inline;font-size:13px;line-height:14px}
+.tb3t-fold .tb3t-fold__minus{display:inline;font-size:15px;line-height:18px}
 `;
 
