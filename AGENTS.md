@@ -11,7 +11,12 @@
 
 `taskboard3` 是一个 **Cordis 插件 bundle**，实现「任务板」：任务卡有类型 / 有 9 个状态 / 有 6 种关系，不是 todo 树。
 
-**先读 `docs/设计.md`** —— 那里是边界与契约的当前状态。
+**先读 `docs/交付.md`** —— 交接说明：插件本体、构建/验证入口，以及**所有非插件文件**
+（隔离环境、启动 web、演示数据、散落的探针脚本与截图、遗留 worktree）。
+
+⚠ **`docs/设计.md` 是 2026-11-23 之前的契约**，之后的功能（折叠 / 归组 / 列组件化 / 取消折栏 /
+工具清单全量 / 模板授权页 / 档位提到左栏）**都没有写进去** ⇒ 它可能出错，也可能不符合用户期望。
+判断依据的顺序见本文第六节：**用户原话 > 代码+测试 > `docs/交付.md` > 旧 docs**。
 
 ---
 
@@ -371,19 +376,29 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
 开发/taskboard3/
 ├─ AGENTS.md              本文
 ├─ docs/
-│  ├─ 设计.md              ⭐ 边界与契约（先读这个）
+│  ├─ 交付.md              ⭐ 交接说明（插件本体 + 构建/验证 + 所有非插件文件）；**先读这个**
+│  ├─ 设计.md              ⚠ 11-23 之前的契约，之后的功能没写进去（见 §一）
 │  ├─ 通道方案.md          Host↔Client 通道选型的调研（HTTP 路由 vs Typert Remote）
+│  ├─ 权限两轴.md          工具权限的两个轴（core 的 UI 权限 / dsh 的 agent 权限）
+│  ├─ 渲染注册表.md        渲染器注册表的设计
+│  ├─ 组件清单.md          客户端组件清单
 │  └─ agent身份.md         dsh 里能拿到什么 agent 身份（holder 用）
 ├─ package.json            根 scripts
 ├─ pnpm-workspace.yaml
 ├─ tsconfig.base.json      ⭐ 全局编译选项（唯一的配置来源）
+├─ scripts/link-worktree.mjs  ⭐ 把 profile 的 @taskboard/* 指向某个 worktree
 └─ packages/
    ├─ protocol/            九状态 / 六关系 / 错误码 / 转移判定
-   ├─ core/                卡 / 模板 / 搜索 / 状态转移 / 存储端口 / bus(临时)
+   ├─ core/                卡 / 模板 / 搜索 / 状态转移 / 存储端口 / 工具档位策略 / bus(临时)
    ├─ tools/               AI 工具定义层（MCP / DSH 通用，只调 core）
+   ├─ io/                  SQLite 封装（kv + 卡）
    ├─ store/               存储的默认实现（Cordis 插件行，可替换）
-   ├─ dsh/                 Host 半边（HTTP + AI 工具 + 命令 + SSE(临时)）
-   └─ dsh-client/          客户端 UI（右侧工作区标签页，MVP）
+   ├─ dsh-core/            Host 侧公共设施
+   ├─ dsh-tools/           AI 工具的 DSH 适配（`ctx.tools.register`）
+   ├─ dsh-agent-guard/     DSH 专属：agent 工具档位守卫 + `GET /api/tools`
+   ├─ dsh/                 Host 半边（HTTP + 命令 + SSE(临时)）
+   ├─ dsh-client/          客户端 UI（右侧工作区 + 侧栏 + 输入框 + 悬停浮层）
+   └─ bundle/              ⭐ bundle 壳：`cordis.patch.yml` 里 6 行 insert
 ```
 
 ### 各包一句话
@@ -391,17 +406,33 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
 | 包 | 一句话 | 可替换 |
 |---|---|---|
 | `protocol` | 词汇与判决：9 状态、4 组、6 关系、错误码 | 包级 |
-| `core` | 领域逻辑 + 唯一的 `CardStore` 端口 | ❌ |
-| `tools` | AI 工具定义层（v2：9 条用户定义 + 原始卡 = 10 个 `taskboard_*`，纯 JSON Schema，MCP / DSH 通用） | ❌ |
+| `core` | 领域逻辑 + `CardStore` 端口 + `ToolPolicyStore`（工具档位策略） | ❌ |
+| `tools` | AI 工具定义层（v2：9 条用户定义 + 原始卡，纯 JSON Schema，MCP / DSH 通用） | ❌ |
+| `io` | SQLite 封装（卡 + kv） | ✅ 可换 |
 | `store` | `provide('taskboard3Store', …)` 的薄插件 | ✅ **插件行** |
-| `dsh` | 12 条 HTTP 路由 + `@taskboard/tools` v2 的**薄适配层**（10 个 AI 工具）+ 3 个命令 | ❌ |
-| `dsh-client` | 右侧工作区标签页（列表 / 详情 / 状态按钮 / 空间切换） | ✅ 插件行 |
+| `dsh-core` | Host 侧公共设施（HTTP 应答、错误映射等） | ❌ |
+| `dsh-tools` | `@taskboard/tools` 的 DSH 适配（`ctx.tools.register`） | ❌ |
+| `dsh-agent-guard` | **DSH 专属**：agent 工具档位守卫 + `GET /api/tools`（MCP 不提供这一层） | ❌ |
+| `dsh` | HTTP 路由 + 命令 + SSE(临时) + `GET /api/tool-policy` | ❌ |
+| `dsh-client` | 客户端 UI（右侧工作区 / 侧栏 / 输入框浮层） | ✅ 插件行 |
+| `bundle` | bundle 壳：`cordis.patch.yml` 里 6 行 insert | ✅ 插件行 |
 
 ### 构建与测试
 
 ```powershell
-# 构建（按依赖顺序）
-tsc -b packages/protocol packages/core packages/tools packages/store packages/dsh packages/dsh-client
+# 构建（按依赖顺序；共 10 个包）
+node node_modules/typescript/bin/tsc -b `
+  packages/protocol packages/core packages/tools packages/io packages/store `
+  packages/dsh-core packages/dsh-tools packages/dsh-agent-guard packages/dsh packages/dsh-client
+
+# dev/ 暂存区单独检查（规则 7）
+node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
+
+# 测试的 tsconfig
+node node_modules/typescript/bin/tsc -p tsconfig.test.json
+
+# 客户端 bundle（改 UI 必须重跑，否则 profile 里还是旧界面）
+cd packages/dsh-client; node node_modules/tsdown/dist/run.mjs; cd ..\..
 
 # 测试（从任意 cwd 都可以；node 需支持 .ts 直接运行）
 node --test "packages/*/test/**/*.test.ts"
