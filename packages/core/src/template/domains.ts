@@ -21,6 +21,7 @@ export const BUILTIN_DOMAINS: readonly DomainDef[] = Object.freeze([
 ]);
 
 /** 领域注册表。 */
+// TODO(审查): 与 KindRegistry 同构（注册/注销 + onChange 通知、幂等退订）⇒ 应共用通用 `Registry<T>`，见 kinds.ts 同一 TODO，可直接改。
 export class DomainRegistry {
 	readonly #domains = new Map<string, DomainDef>();
 	readonly #onChange: () => void;

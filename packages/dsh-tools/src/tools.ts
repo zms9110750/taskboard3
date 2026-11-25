@@ -36,6 +36,13 @@
  * 且 v1 的失败也是「正常返回一段文字」。失败文案本身已带原因码/下一步。
  */
 
+// TODO(审查): 本文件 TODO 中标注的行号以 2026-11-25 加注释前的源码为基线（注释本身会移动行号），按符号名/上下文定位。
+// TODO(审查): 本文件头 12-15、23-30 行的「ctx 事实」表已过期：resolveDefaultWorkspace/activeWorkspaceId 不再注入（见 237-238），
+//   canManageToolPolicies 来自 deps.isManageEdit() 而不是 core 的 getToolGuardLevel()。可直接改文档，别按表格改代码。
+// TODO(审查): 108 行「v2 的 10 个，其中 taskboard_tool_policy 仅 DSH」与 14 行「hosts 过滤 taskboard_tool_policy」都过期：
+//   策略工具已搬去 dsh-agent-guard，本行只剩 9 个。可直接改数字/删句。
+// TODO(审查): 这是 static import，但 package.json 把 @deepseek-ai/dsh-tools 标成 optional peer ⇒ 标「可选」而实际缺了就模块加载失败。
+//   需用户决定：peer 改非可选（本行本来就只能跑在 DSH 上），或改动态 import + 明确降级。
 import { defineTool as dshDefineTool } from '@deepseek-ai/dsh-tools';
 import type { Taskboard } from '@taskboard/core';
 import { ERROR_HINTS, type Failure } from '@taskboard/protocol';
@@ -54,6 +61,8 @@ import { holderOf } from './holder.ts';
 
 /* ────────────────────────── 形状（与 v1 公开面兼容） ────────────────────────── */
 
+// TODO(审查): ToolLike/DefineTool 与 src/dsh-tools.d.ts 的 ToolDefinition/DefineToolOptions 是同一形状的两份拷贝，会漂。
+//   可直接改：从 @deepseek-ai/dsh-tools 的类型（垫片）复用，删掉这两份手写形状。
 /** 一个已定义工具的最小形状（对齐 DSH `ToolDefinition` 的字段子集）。 */
 export interface ToolLike {
 	readonly name: string;
@@ -78,6 +87,10 @@ export type DefineTool = (options: {
 	execute(args: never, exec: never): Promise<unknown>;
 }) => ToolLike;
 
+// TODO(审查): defaultWorkspaceId（87）是死接线：contextOf（240-246）从不读它，工具拿不到默认空间；测试也靠 withWorkspace 补参掩盖。
+//   若 @taskboard/tools 仍读 ctx.resolveDefaultWorkspace，则这里不传是真 bug（需跨包确认）；否则删字段与 index.ts 的传参。
+// TODO(审查): isManageEdit（102）疑似死接线：只有 agent-guard 的两个策略工具消费 canManageToolPolicies，9 个宿主无关工具都不读。
+//   若确认，本包不该强制要它：拆 ToolDeps，createTools 不需要 isManageEdit，adaptDefinitions 的调用方才需要。
 /** 工具依赖（入口策略，不是 core 概念）。 */
 export interface ToolDeps {
 	readonly taskboard: Taskboard;
@@ -115,6 +128,10 @@ export function createTools(deps: ToolDeps): readonly ToolLike[] {
 	return adaptDefinitions(visible, deps);
 }
 
+// TODO(审查): 这个导出让「插件行」兼作「库」：dsh-agent-guard 的 2 个工具注册依赖本行 ⇒ 用户关掉本行会连带 agent-guard。
+//   更好的归属是 @taskboard/dsh-core（Host 公共设施）或开 "./adapter" 子路径；需用户/lead 定。
+// TODO(审查): 入参用 ToolDeps 快照 ⇒ 可选服务（agent-guard/subagents）在 apply 后出现也拿不到；可直接改成「每次 execute 调 ctx 工厂」。
+// TODO(审查): 137 行所有工具共用同一 output schema，却在 map 里逐个重算 toDshSchema；提到 map 外一次算好即可（零行为变化）。
 /**
  * 把**任意**宿主无关工具定义适配成 DSH 工具。
  *
@@ -191,6 +208,11 @@ export function toDshParameters(schema: JsonObjectSchema): Record<string, unknow
  * 一律不读它们 ⇒ 静默丢弃。
  * 故意开放的对象（`content`）在 v2 里已显式写 `true`，这里不动。
  */
+// TODO(审查): 先确认 @deepseek-ai/dsh-tools 是否已导出 JSON Schema → ParameterSchemaSpec 的辅助函数（本包不能读 DSH 包）；
+//   若有，直接用它替掉下面这套手写转换，别维护两份契约。
+// TODO(审查): 只搬运白名单字段，oneOf/anyOf/const/default/minimum 等关键字被静默丢弃 ⇒ 将来 v2 schema 用了任一，模型看到的契约悄悄变宽/变窄且测试不会红。
+//   可直接改：遇未知键 throw，或对 9 个 schema 做键集快照测试。
+// TODO(审查): 只有 type==='object' 才补 additionalProperties:false（201-207）；「有 properties 无 type」的合法 JSON Schema 会漏补，撞 DSH 的硬约束（见 169-175）。
 export function toDshSchema(node: JsonSchema): Record<string, unknown> {
 	const spec: Record<string, unknown> = {};
 
@@ -229,8 +251,12 @@ function renderText(_args: unknown, value: unknown): readonly unknown[] {
 }
 
 /* ────────────────────────── ② 宿主上下文 ────────────────────────── */
+// TODO(审查): 上面这行分节注释重复了两遍，删一行即可（纯注释清理）。
 /* ────────────────────────── ② 宿主上下文 ────────────────────────── */
 
+// TODO(审查): 这里不注入默认空间（符合用户 11-22 取消激活空间的决定），但 ToolDeps 仍收着 defaultWorkspaceId（87）⇒ 死接线。
+//   canManageToolPolicies 也只有 agent-guard 的策略工具消费，9 个工具都不读——跨包确认后删 isManageEdit 依赖。
+//   另：243 行注释说「档位由本包 tool-guard.ts 拥有」，该文件已不在本包（搬去 dsh-agent-guard），一并改。
 /**
  * 一次执行的宿主事实。
  *
@@ -244,6 +270,8 @@ function contextOf(deps: ToolDeps, exec: unknown): TaskboardToolContext {
 		canManageToolPolicies: deps.isManageEdit(),
 	};
 }
+// TODO(审查): describeFailure/describeUnread 是本包内零调用者的 v1 兼容导出（注释自己说「新代码不要用它」）；确认无外部 importer 后
+//   直接删函数 + index.ts 导出 + 两条测试（test/tools.test.ts:538-555）。
 /* ────────────────────────── 公开面兼容（v1 导出） ────────────────────────── */
 
 /**

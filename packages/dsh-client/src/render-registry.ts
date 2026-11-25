@@ -69,6 +69,7 @@ import type { CardSection } from './types.ts';
  * 「用户现在在不在只读视图」由父层决定（卡状态 + 权限 + 视图模式），
  * `core` 不知道。所以它是 prop，不是 payload 字段。
  */
+// TODO(审查): `view?: unknown` 是下面所有断言的根因——builtin-renderers.tsx:56/76/97 被迫 `as never`，Section.tsx:194/202 被迫 `as unknown as`。可在本文件定义 `SectionView` 可辨识联合（text/markdown/ask），类型即可收窄；属可直接改的类型改进，但会动公共接口，需确认第三方注册契约。
 export interface RendererProps {
 	/** 章节 id（`Card.sections` 的 key）—— 回调原样带回它。 */
 	readonly sectionId: string;

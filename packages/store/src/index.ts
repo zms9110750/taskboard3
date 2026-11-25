@@ -52,14 +52,47 @@
  * **这是正确的失败方式。**
  */
 
+// TODO(审查): 上面「dsh 那边的 inject」实际消费者是 dsh-core（lead 确认）—— 引用漂移；
+// 按 AGENTS 3.10 改成准确包名。可直接改注释。
+
+// TODO(审查) 汇总 —— 本文件代码行之外的问题（package.json / tsconfig / patch / locale / test / 架构）；
+// 每条：问题 + 为什么 + 可直接改 / 需用户决定。本次只加注释，未改任何逻辑/类型/测试/配置，未构建未测试。
+// TODO(审查): [tsconfig] tsconfig.json:11 只 reference ../core，漏了 ../io；干净树上 tsc -b packages/store 解析不到
+//   @taskboard/io/lib/types，靠根 package.json:11 的全仓构建顺序掩盖。可直接改：加 {"path":"../io"}。
+// TODO(审查): [package.json] 若本包要独立安装：缺 dsh.bundle.patch、exports["./cordis.patch.yml"]、./icon；
+//   files 里的 cordis.patch.yml 没有 dsh.bundle.patch 时不会被 Plugin Manager 读取，可能是死文件。需 lead/用户确认是否独立安装。
+// TODO(审查): [显示] 无 README、locale 无 meta.detail → 详情页为空；无 ./icon → 默认图。可直接改：README + meta.detail + icon（仅独立安装时需要）。
+// TODO(审查): [patch] cordis.patch.yml:18-23 的 !!js dshHomePath('taskboard3') 自认未实测；DSH 文档（composition-reference.md:17）形式合法，
+//   但本仓从未验证。可直接改：装一次确认并删「未验证」注释；失败则回落显式路径（默认值需用户决定）。
+// TODO(审查): [patch] 若 @taskboard/bundle 的 patch 已含本行，本包 cordis.patch.yml 是死文件。需 lead 确认装配归属。
+// TODO(审查): [test] plugin.test.ts:101-131 依赖上一个 it 写入的 ws1（node:test 顺序执行才成立）。可直接改：每个用例独立 workspace id。
+// TODO(审查): [test] plugin.test.ts:54-58 用 status: string + as Card['status']，非法状态字符串也能编译（AGENTS 3.1）。可直接改：参数类型 Card['status']。
+// TODO(审查): [test] plugin.test.ts:133-137 cleanup 断言只检查「是函数」，没证明 close 生效。可直接改：cleanup 后断言 store 操作失败或库可删。
+// TODO(审查): [test] plugin.test.ts:88-91 after 调完 fire-and-forget close 立刻 rmSync；Windows 上 EBUSY 窗口（推断，建议实跑 3 遍）。
+//   可直接改：rmSync 加 maxRetries/retryDelay，或让 fake ctx await disposer。
+// TODO(审查): [test] plugin.test.ts:35-51 假 ctx 复制「provide 同步 / effect 立即执行 / disposer 同步」假设，与真 Cordis 的偏差抓不到。
+//   可直接改：加 type-only Plugin 契约断言，或一个真 Cordis 冒烟测试。
+// TODO(审查): [test] 无重复激活/HMR 测试：apply 两次会开两个 SQLite 连接、provide 两次；框架是否 dispose-before-apply 未验证。
+// TODO(审查): [架构建议] 若只服务 DSH：评估 ctx.storageDomain（open/get/closeAll）托管 SQLite，替代 @taskboard/io + 自管 close；
+//   需用户裁定是否放弃 MCP/独立可跑。
+// TODO(审查): [文档] 给第三方实现者写 README（CardStore 方法、close 语义、kv 键空间、dataDir 约定）。可直接做。
+
 import type { CardStore } from '@taskboard/core';
 import { createSqliteStore } from '@taskboard/io';
 
 /** Cordis 插件名。 */
 export const name = 'taskboard3-store';
 
+// TODO(审查): inject 声明为 readonly string[]（接真 Cordis Plugin 类型时可能不可赋值，未核实）；空数组本身只是文档，可留可删。
+// 现在 apply 不接 Context，框架签名漂移不会被 tsc 发现。可直接改：Pick<Context, 'provide' | 'effect'> + type-only Plugin 契约断言。
+
 /** 前置服务：无。SQLite 是 Node 内置模块。 */
 export const inject: readonly string[] = [];
+
+// TODO(审查): 这里只有类型、没有运行时校验；DSH 要求 export const Config schema（host-plugin.md:62-67），
+// 否则 {} / dataDir:123 能过编译、激活时才在 io 深处炸。可直接改：schemastery Schema.object({ dataDir: Schema.string().required() })。
+// TODO(审查): 下面注释说「没有合理的默认值、路径由入口显式给出」，但唯一入口 patch 用 !!js dshHomePath('taskboard3') 给了值；
+// 表述与装配脱节，且该表达式本仓未实测（DSH 文档 composition-reference.md:17 形式合法）。可直接改注释。
 
 /** 本插件行的配置。 */
 export interface Config {
@@ -72,6 +105,10 @@ export interface Config {
 	 */
 	readonly dataDir: string;
 }
+
+// TODO(审查): 自造最小 ctx 并导出 ApplyContext，绕开 import type { Context }，provide/effect/Config 约定全无编译期检查；
+// type-only 导入运行时零成本，「可测」理由不成立；导出的 ApplyContext 实际也只有测试用。
+// 可直接改：真 Context 类型 + 测试侧 Pick/mock，或 Cordis service class。
 
 /**
  * `apply` 用到的最小 Cordis 上下文形状。
@@ -89,8 +126,14 @@ export interface ApplyContext {
 	effect(effect: () => () => void, label?: string): void;
 }
 
+// TODO(审查): 外部无人 import STORE_SERVICE（dsh-core 硬编码 'taskboard3Store'，lead 确认），只有本包测试用；
+// 两个真相改字符串不会编译失败，只会让上层安静不激活。可直接改：常量挪到 core/ports.ts 供两边共用。
+
 /** 提供的存储服务名。换实现必须提供同名服务。 */
 export const STORE_SERVICE = 'taskboard3Store' as const;
+
+// TODO(审查): config 未运行时校验，dataDir 缺失/空串会穿透到 io 的 mkdir 抛 TypeError，看不出是 patch 配置错；
+// 且 io 不 resolve 相对路径（依赖进程 cwd，AGENTS 规则 4 精神）。可直接改：先校验 typeof dataDir === 'string' && dataDir.trim()，再 path.resolve。
 
 /**
  * 装一行：造实现并 provide。
@@ -101,6 +144,8 @@ export const STORE_SERVICE = 'taskboard3Store' as const;
 export function apply(ctx: ApplyContext, config: Config): void {
 	const store: CardStore = createSqliteStore(config.dataDir);
 
+	// TODO(审查): provide 在 effect 之前；若 provide 抛错，库句柄已建但清理未登记 ⇒ 泄漏。可直接改：先 ctx.effect(...) 再 provide。
+	// TODO(审查): api 参数是 unknown，丢了 CardStore 类型；可直接改：泛型或 CardStore（行为不变）。
 	ctx.provide(STORE_SERVICE, store);
 
 	/*
@@ -109,6 +154,8 @@ export function apply(ctx: ApplyContext, config: Config): void {
 	 * 为什么用 `effect` 而不是让调用方自己管：库句柄是**这一行**打开的，
 	 * 就该由这一行关。换实现时，新实现自己登记自己的清理 —— 上层不用改。
 	 */
+	// TODO(审查): close(): Promise<void> 被 void 丢弃 —— 未处理拒绝可让进程退出，上层又不 await（lead 确认），卸载时旧库可能没关完；
+	// Windows 测试 after 紧接 rmSync 会 EBUSY（推断，建议实跑 3 遍）。可直接改：close().catch(...) 并让 disposer 返回 Promise（需框架确认是否 await）。
 	ctx.effect(() => () => {
 		void store.close();
 	}, 'taskboard3-store: close database');

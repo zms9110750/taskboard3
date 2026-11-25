@@ -18,6 +18,12 @@
  * | 9 | `taskboard_tool_policy` | 仅 DSH：三 scope 工具权限（需 agent 侧开关） |
  */
 
+/*
+ * TODO(审查): 本文件头部两处已过期：第 2 行写「10 个工具」、上面表格仍列 #9 taskboard_tool_policy，
+ * 但 createTaskboardTools() 只返回 9 个（那两个工具已按用户裁决搬到 dsh-agent-guard，见 index.ts:66-85）。
+ * ⇒ 删掉表格里的 #9 并把「10 个」改成「9 个」。可直接改。
+ */
+
 import type { Taskboard } from '@taskboard/core';
 
 import type { TaskboardTool } from './types.ts';

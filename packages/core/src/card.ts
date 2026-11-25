@@ -267,6 +267,7 @@ export function withHistory(card: Card, entry: HistoryEntry): Card {
 }
 
 /** 改任意字段（纯函数）。用于编辑路径，调用方保证不改 `id`。 */
+// TODO(审查): `withPatch` 在 core 内零使用、index 也未导出（transition.ts 注释还把它当「用不到」的例子）⇒ 死代码，可直接删。
 export function withPatch(card: Card, patch: Partial<Omit<Card, 'id'>>): Card {
 	return { ...card, ...patch, id: card.id };
 }

@@ -105,12 +105,18 @@ export function handleToolsRequest(
 	if (rejected(connection, req, res)) return true;
 
 	/* ② 只支持 GET。 */
+	// TODO(审查): 缺 method 时按 GET 放行；HEAD/OPTIONS 一律 405；下面 403 也回 code UNAUTHORIZED。
+	// 可直接改（低优先级）：HEAD 按 GET 处理、403 用 FORBIDDEN（若与 dsh 同源则两边一起改）。
 	if ((req.method ?? 'GET').toUpperCase() !== 'GET') {
 		sendJson(res, 405, { ok: false, code: 'METHOD_NOT_ALLOWED', message: '只支持 GET。' });
 		return true;
 	}
 
 	/* ③ 返回清单（只保留白名单三字段）。同步返回的直接写，异步的等它写完。 */
+	// TODO(审查): fire-and-forget 写响应：成功回调里 normalize()/sendJson() 抛错时 .then 的 rejection 无人
+	// catch（void 不 catch）⇒ unhandled rejection 且响应永不写出，请求挂到超时。
+	// 可直接改：成功回调包 try/catch 或补 .catch；长期可把契约改成 Promise<boolean>（需 @taskboard/dsh
+	// 配合，需用户决定）。
 	const result = listTools();
 	if (isPromiseLike(result)) {
 		void result.then(
@@ -148,6 +154,9 @@ function isPromiseLike(value: readonly unknown[] | Promise<readonly unknown[]>):
  *
  * @returns `true` = 已经写了响应，调用方应立即 return
  */
+// TODO(审查): rejected()/sendJson 与 ConnectionLike/IncomingLike/OutgoingLike（:49-67）是对
+//   @taskboard/dsh 的照抄副本，而仓库已有 dsh-core（Host 公共设施）。需用户决定：抽到 dsh-core，
+//   否则两边 401/403 文案或类型漂移时静默过期。
 function rejected(connection: ConnectionLike, req: IncomingLike, res: OutgoingLike): boolean {
 	const rejection = connection.requestRejection(req);
 	if (rejection === undefined) return false;
@@ -172,6 +181,8 @@ function sendJson(res: OutgoingLike, status: number, body: unknown): void {
  * ⚠ 只保留白名单三字段 —— DSH 的 `ToolSchema` 可能带更多字段，但清单不需要，
  *   也不该把内部元数据漏到 UI。
  */
+// TODO(审查): normalize 直接 for...of，没有 Array.isArray 兜底，而同层 tool-inventory.ts:237 的
+//   safeSchemas 有 ⇒ 两处防护不一致。可直接改：首行 `if (!Array.isArray(raw)) return [];`。
 function normalize(raw: readonly unknown[]): readonly ToolSummary[] {
 	const out: ToolSummary[] = [];
 	for (const item of raw) {

@@ -60,6 +60,7 @@ export interface TemplateValidator {
 	/** key（label 或 id）→ 章节定义。 */
 	readonly sectionByKey: ReadonlyMap<string, SectionDef>;
 	/** sectionId → 章节定义。 */
+	// TODO(审查): `sectionById` 建好并暴露，但 core 与测试都无人读（`validateSection` 走的是内部 `schemaById`）⇒ 死字段，可直接删。
 	readonly sectionById: ReadonlyMap<string, SectionDef>;
 	/**
 	 * 校验一个章节的 payload。
@@ -88,6 +89,7 @@ export type ValidatedContent =
 			readonly ok: true;
 			readonly payloads: ReadonlyMap<string, unknown>;
 			/** 调用方给的原始 key（label 或 id），按 sectionId 索引 —— 用于错误路径。 */
+			// TODO(审查): `keys` 算好后放进返回值，但 create/update 只读 `payloads`，全 core 无人读 `.keys` ⇒ 死字段；要么接进错误路径、要么删，可直接改。
 			readonly keys: ReadonlyMap<string, string>;
 	  }
 	| Failure;
@@ -115,6 +117,7 @@ export class ContentSchemaCache {
 	 * 两个注册表任一变更都清空缓存，下次校验时惰性重建。
 	 */
 	start(): void {
+		// TODO(审查): start/stop 是手动生命周期，没有反注册保护 ⇒ 宿主用 Cordis 时应包进 `ctx.effect(() => { start(); return stop; })` 保证卸载清理；core 保持现状可，需在宿主接线处补。
 		if (this.#dispose !== undefined) return;
 		const invalidate = (): void => {
 			this.#cache.clear();

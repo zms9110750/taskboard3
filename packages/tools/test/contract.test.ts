@@ -5,6 +5,7 @@
  * · 依赖只有 core / protocol；
  * · `src/` 不出现宿主模块（dsh-tools / cordis / express / zod / node:）；
  * · 11 个工具的名字与顺序稳定；
+ * TODO(审查): 上面「11 个」已过期 —— 实际 9 个（下面 EXPECTED_NAMES 也是 9 个，两个权限工具搬去 dsh-agent-guard）。可直接改。
  * · `hosts` 元数据表达「仅 DSH」；
  * · schema 是静态纯 JSON Schema 且冻结。
  */
@@ -62,6 +63,8 @@ describe('包边界', () => {
 		const specifiers = new Set<string>();
 		for (const file of files) {
 			const text = readFileSync(file, 'utf8');
+			// TODO(审查): 这个正则只抓 `from '…'`，漏掉副作用导入 `import 'x'`、`export * from '…'`、动态 import()
+			// —— 而「src/ 只 import 两个包」是硬边界，守卫有口子。可直接改：把 import/export/from 三种形式都扫一遍。
 			for (const match of text.matchAll(/\bfrom\s*['"]([^'"]+)['"]/g)) {
 				if (match[1] !== undefined) specifiers.add(match[1]);
 			}
@@ -76,6 +79,9 @@ describe('包边界', () => {
 		}
 	});
 
+	// TODO(审查): 这条**永不失败**：listTsFiles() 只收集 .ts（见文件尾），所以 `!(/\.(js|mjs|cjs)$/)` 恒真；
+	// 后面 `assert.equal(new Set(...).size > 0, true)` 也恒真。等于没有守卫（AGENTS 3.5 的「静默失效」）。
+	// 可直接改：先列全目录再按扩展名筛，断言「没有 .js/.mjs/.cjs」。
 	it('源码里没有手写 .js 文件', () => {
 		for (const file of listTsFiles(join(PACKAGE_DIR, 'src'))) {
 			assert.ok(!/\.(?:js|mjs|cjs)$/u.test(file), `${file} 是手写 JS`);
@@ -167,6 +173,8 @@ describe('注册表 + 宿主过滤', () => {
 		const duplicated = [fixture.tools[0], fixture.tools[0]] as readonly TaskboardTool[];
 		assert.throws(() => createTaskboardToolRegistry(duplicated), /重复的工具名/);
 		const registry = createTaskboardToolRegistry(fixture.tools, { host: 'mcp' });
+		// TODO(审查): 这条断言在固化一句**已不成立**的错误文案：taskboard_tool_policy 不是「别的宿主才有」，
+		// 而是搬到了 dsh-agent-guard（hosts 机制已空转，见 registry.ts / types.ts 的 TODO）。可直接改：只断言 /未知工具/ 足够。
 		await assert.rejects(() => registry.invoke('taskboard_tool_policy'), /未知工具/);
 	});
 });

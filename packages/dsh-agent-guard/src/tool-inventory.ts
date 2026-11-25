@@ -98,6 +98,8 @@ export interface InventoryDeps {
 export type ToolInventory = () => Promise<readonly unknown[]>;
 
 /** 默认 TTL：10 秒。 */
+// TODO(审查): 10s / 1s 两个 TTL 是硬编码常量，而 DSH 实践建议可调值进插件 Config
+//   （dsh-doc references/practices.md:22）。需用户决定：是否暴露为配置项（Config 现在是空的，见 index.ts）。
 export const DEFAULT_TOOLS_TTL_MS = 10_000;
 
 /**
@@ -232,6 +234,8 @@ async function collectTools(
  * @param scope 省略 = 全局视图
  * @returns 工具数组（调不通 ⇒ 空数组）
  */
+// TODO(审查): schemas 方法缺失时（旧 DSH）上层静默返回空清单（index.ts 里 `schemas?.() ?? []`），
+//   /api/tools 显示 0 个工具却不留痕。可直接改：缺 schemas 时 warn 一次，便于区分「没工具」与「没接上」。
 function safeSchemas(deps: InventoryDeps, scope?: unknown): readonly unknown[] {
 	const raw = scope === undefined ? deps.schemas() : deps.schemas(scope);
 	return Array.isArray(raw) ? raw : [];
@@ -291,6 +295,10 @@ function nameOf(item: unknown): string | undefined {
  * @param lease 租约
  * @param id preset id（告警用）
  */
+// TODO(审查): 用 `Symbol.asyncDispose` 的运行时双强转拿类型（lib 是 ES2023）；运行时已确认
+//   agentPresets.acquireScope() 返回 { key: ScopeKey } & AsyncDisposable（cordis_inspect_query）。
+//   可直接改：tsconfig 加 "lib": ["ESNext.Disposable"]，直写 lease[Symbol.asyncDispose]?.()
+//   （AGENTS 3.1 要求这类断言注明移除条件，此处没注）。
 async function disposeLease(deps: InventoryDeps, lease: ScopeLeaseLike, id: string): Promise<void> {
 	const symbol = (Symbol as unknown as { asyncDispose?: symbol }).asyncDispose;
 	if (symbol === undefined) return;

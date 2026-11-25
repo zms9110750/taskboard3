@@ -180,6 +180,7 @@ export interface WorkspaceProps {
 	readonly defaultView?: 'list' | 'tree';
 	/** 分类中文名。不传就显示英文 id（`card-view.ts` 的口径：不编中文）。 */
 	readonly kindLabelOf?: (kind: string) => string;
+	// TODO(审查): aiUnreadCount/aiUpdatedCount 两个 prop 声明后从不读取（下面 :352-353 用同名局部常量覆盖）；dev 预览仍在传它们，等于没测到。可直接删 prop，或改成用传入值（是否让外部控制计数需用户决定）。
 	/** AI 未读条数（P4 未接，只显示计数）。`0` / 不传 = 不显示这颗 chip。 */
 	readonly aiUnreadCount?: number;
 	/** AI 更新过的条数（同上）。 */
@@ -209,6 +210,7 @@ export interface WorkspaceProps {
 	 */
 	readonly onDerive?: (cardId: string, anchor: HTMLElement) => void;
 	readonly onNoteChange?: (cardId: string, text: string) => void;
+	// TODO(审查): 这个 prop 声明后在本组件从不使用（也没传给 WorkspaceToolbar），而 WorkspaceToolbar.tsx:81,155-163 的「权限与约定」按钮依赖它 ⇒ 按钮在产品里不可达。要么接上（setCreating/openPermission 由 WorkspaceBody 传），要么删 prop+按钮；需用户决定。
 	/** 工具栏「权限与约定」。不传 = 不显示这个按钮（V2 还没做）。 */
 	readonly onOpenPermission?: () => void;
 	/** 详情右上角 ⧉（放大成抽屉，V4）。不传 = 不画这个按钮。 */
@@ -244,6 +246,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 * 「状态属于容器，不属于文件」。这里负责把它指到正在看的那个空间；
 	 * 没这一步，store 的 workspaceId 永远是空串，折叠态读写全是空。
 	 */
+	// TODO(审查): 三个入口（右栏 tab / main / 抽屉）各是独立 WorkspaceBody，各自把模块级单例 store 指到自己的 viewingId；两个入口同时看不同空间时会互相覆盖折叠/组数据。可把快照改成按空间分片（store 已有 cache Map），或让读取方带 workspaceId；属可直接改，但会动 store 接口。
 	useEffect(() => {
 		if (props.viewingId !== '') uiStateStore.setWorkspace(props.viewingId);
 	}, [props.viewingId]);
@@ -412,6 +415,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 * 层次来自模板清单本身（`TemplateSummary` 有 domain / kind / ref），
 	 * 不在这里维护第二份词表。
 	 */
+	// TODO(审查): 领域树的 kind 层用写死的 KIND_ORDER（card-view.ts:137 四个内置 kind），自定义 kind 的模板不会出现（见 card-view.ts 的 TODO）。可改为从 props.templates / state.kinds 派生，KIND_ORDER 只做已知四类排序。
 	const domainNodes = useMemo<readonly FilterNode[]>(() => {
 		const labelOf = (kind: string): string => props.kindLabelOf?.(kind) ?? kind;
 		const domains: string[] = [];
@@ -523,6 +527,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					 *   详情区一次只画一张卡 ⇒ `[data-action-kind="derive"]`
 					 *   全屏唯一 ⇒ 查它拿锚点。
 					 */
+					// TODO(审查): 全局 querySelector 假设全页只有一个派生按钮；但 WorkspaceBody 被注册到 tab/main/抽屉三处、可同时挂载 ⇒ 可能拿到别的实例的按钮，浮窗锚错位置。可改用 ref 或 event.currentTarget（对比同文件 :463-470 用 event.target.closest 的作用域写法）。
 					const anchor = document.querySelector<HTMLElement>(
 						'[data-action-kind="derive"]',
 					);
@@ -574,6 +579,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 					{/*
 					 * 行 1：工具栏 + 空间开关。
+					 * TODO(审查): 下面的 compact/full 密度说法已过时（用户 2026-11-23 取消密度档，Workspace 也不再渲染 SpaceBar）；可直接删改本段注释，避免下一个人按旧架构改代码。
 					 *
 					 * 空间选择器在 **compact** 密度下作为 `space` 传给工具栏（放在视图切换左边）——
 					 * 用户 2026-11-21：「工作空间放在科技树的左边」。

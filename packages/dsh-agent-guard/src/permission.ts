@@ -78,6 +78,9 @@ import { judgeToolCall, readToolGuardLevelOf, type ToolGuardKv } from './tool-gu
  *
  * ⚠ `namesOf` 会**抛错**（agent 不在任何 subagent 树里）⇒ 调用方必须 try/catch。
  */
+// TODO(审查): 这条「与 holder.ts 的 SubagentsLike 故意不合并」的理由已被推翻：@taskboard/dsh-tools 的
+//   holder.ts 存在且导出 holderOf，本包应直接复用而不是维护第二份。需用户决定：删掉本接口并 import
+//   dsh-tools 的类型（依赖方向本来就允许）。
 export interface PermissionSubagentsLike {
 	namesOf(agent: unknown): { readonly self: string };
 }
@@ -106,6 +109,10 @@ function hasSubagents(value: unknown): value is PermissionSubagentsLike {
  * @param subagents `ctx.subagents`；可缺席（无 subagent 的 profile）
  * @param exec 工具执行上下文
  */
+// TODO(审查): 与 @taskboard/dsh-tools holder.ts 的 holderOf 有一处行为分歧：namesOf 返回空 self 时，
+//   本函数回落 agent.id，而 dsh-tools 版直接返回 ''。claim 用 dsh-tools 写、guard 用本函数读 ⇒ 空 self
+//   的 agent 领卡后 holder 对不上，权限静默不生效（推断 root 的 self 为空，未核实）。需用户决定语义后
+//   两边只留一份（建议直接复用 dsh-tools 的 holderOf）。
 export function holderOf(subagents: unknown, exec: unknown): string {
 	const agent = agentOf(exec);
 	if (agent === undefined) return 'unknown';
@@ -138,6 +145,10 @@ export function holderOf(subagents: unknown, exec: unknown): string {
  *
  * @returns core 的 `judgeToolCall` 要的形状（**只有 `templateRef`**，不是完整 Card）
  */
+// TODO(审查): 上面 JSDoc 说返回「core 要的窄形状（只有 templateRef）」，但签名返回完整 Card[]（映射在
+//   createPermissionGuard 里才做）。可直接改：改注释，或在这里就映射成 { templateRef }。
+// TODO(审查): 返回的 workspaceId 只被测试断言用，生产调用方（:214）直接丢弃。可直接改：去掉它或注明
+//   仅供测试。
 export function heldWorkCardsOf(
 	taskboard: Taskboard,
 	holder: string,
@@ -205,6 +216,8 @@ export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => Guard
 
 	return (exec: unknown): GuardVerdict => {
 		const agent = agentOf(exec);
+		// TODO(审查): agentOf(exec) 在 createPermissionGuard 与 holderOf 内各解析一次。可直接改：把已
+		// 解析的 agent 传进 holderOf（低优先级）。
 		if (agent === undefined) return undefined;
 
 		const toolName = nameOf(exec);
@@ -238,6 +251,9 @@ export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => Guard
 			return verdict.ok ? undefined : `[任务板权限] ${verdict.reason}`;
 		} catch (error) {
 			/* 见上面 JSDoc：加装模块坏了不该让用户完全不能用 dsh，但必须看得见。 */
+			// TODO(审查): 本包有 3 套日志前缀（此处 taskboard3-permission、tool-guard.ts:104 的
+			// taskboard3-tool-guard、其余 taskboard3-agent-guard），且这里在 guard 热路径上每次失败都打。
+			// 可直接改：统一一个 logger + 按错误去重。
 			console.error('[taskboard3-permission] 权限判定失败，本次放行：', error);
 			return undefined;
 		}

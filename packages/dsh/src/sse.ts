@@ -161,6 +161,8 @@ export function createSseHub(
 	};
 
 	/** 往一条连接写一帧；写失败 ⇒ 认为断开，清理。 */
+	// TODO(审查): [⑦] 只 try/catch，忽略 `res.write()` 的返回值（背压）⇒ 慢客户端会让 socket 缓冲无限增长；也没有心跳/`retry` 帧，过代理会被静默断。
+	//   本文件是原型脚手架（文件头自己写了「不加能力」）⇒ 只补一行注释记录已知上限，不加能力。
 	const writeTo = (connection: Connection, payload: SsePayload): void => {
 		if (!connections.has(connection)) return;
 		try {

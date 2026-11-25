@@ -8,6 +8,10 @@ import type { TaskboardToolContext, TaskboardToolResult } from './types.ts';
 import { inputFailure } from './failure.ts';
 
 /** 读字符串参数。 */
+// TODO(审查): 需要「允许空串」的读取器时（update 的 path、update_note 的 note、transition 的 to），
+// 四个工具各自抄了一份 stringField/readString（tools/update.ts:115、tools/update-note.ts:113、
+// tools/transition.ts:256、render.ts:90），且 update.ts 的 strArg 就是本函数的复制品。
+// ⇒ 在这里加一个 strAllowEmpty()，其余四份删掉。可直接改。
 export function str(args: unknown, key: string): string | undefined {
 	if (typeof args !== 'object' || args === null) return undefined;
 	const value = (args as Record<string, unknown>)[key];
@@ -69,6 +73,8 @@ export type WorkspaceResolution =
  * ⚠ 不猜「第一个空间」：那会让写操作静默落到一个 AI 没确认的空间。
  */
 export async function resolveWorkspace(
+	// TODO(审查): `_ctx` 已完全不读（激活空间取消后没有任何宿主事实参与解析）—— 保留它只为和其它 handler 同形。
+	// 可直接改：删参数并同步 8 个调用点；或注明「签名占位」。
 	args: unknown,
 	_ctx: TaskboardToolContext,
 ): Promise<WorkspaceResolution> {

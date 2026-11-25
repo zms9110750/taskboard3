@@ -1,3 +1,13 @@
+/*
+ * TODO(审查): 包级遗留（非本文件代码，均为审查发现，未改行为）——
+ * 1) package.json:21-26 的 `files:["lib"]` 会把 lib 里 11 个源文件已删除的旧 .d.ts（BoardBody、views/*、SectionFrame 等）发上 npm；可直接 `rm -rf lib && tsc -b` 修。
+ * 2) tsconfig 的 emitDeclarationOnly 不拷贝 src/host-types.d.ts，而 lib/index.d.ts:15 / lib/client.d.ts:23 依赖 @deepseek-ai/cordis ⇒ 消费者 TS2307；需把垫片纳入 files 或声明 peerDependency（发布方式需用户定）。
+ * 3) README.md:72-84 仍写已删的 BoardBody/views，README.md:133-142 写「57 条/4 文件」（实测 46 文件、约 1100 条）；可直接改文档。
+ * 4) tsdown.config.ts:66-68 硬编码 id '@taskboard/dsh-client'，与 TAB_ID 和 package.name 三份重复；可从 package.json 读入。
+ * 5) locale/*.json 只在 Plugin Manager meta 层被读，运行时未 inject 'locale'；是否接运行时 i18n 需用户决定。
+ * 6) dev/components/create/* 是 dev/README.md:67-74 明示的冻结展厅副本，不算死代码；但 18 个与 src/renderers/create/ 同名不同实现，建议加 `@deprecated 展厅副本` 标记防改错地方（可直接改）。
+ */
+
 /**
  * 客户端插件入口 —— 注册右侧工作区的一个标签类型。
  *
@@ -46,6 +56,7 @@ export const TAB_ID = '@taskboard/dsh-client';
  * ⚠ 两处必须**同一个值**：点左侧栏图标 → 主区域按这个 key 找页面。
  *   抄 `taskboard2` 的 `PANEL_ID = 'taskboard2'`（`packages/ui/client.js:16`）。
  */
+// TODO(审查): PANEL_ID / TOOLS_PANEL_ID 各自在 `sidebar.panellist.id` 与 `main.key` 出现两次、label 也写两遍（:240/:250、:268/:278），靠手抄常量对齐。可抽一个 `panelEntry(id, order, label, Icon, Body)` 工厂把三处注册表化，避免改一处漏一处。
 export const PANEL_ID = 'taskboard3';
 
 /** 左侧栏图标在 panellist 里的排序（taskboard2 用 30）。 */
@@ -152,6 +163,7 @@ export function apply(ctx: Context): void {
 	 * 没有调用方会等这个检查。`void` 明说「我故意丢弃这个 promise」，
 	 * 比留着未处理的 promise 更清楚（后者会被 lint 当成漏处理）。
 	 */
+	// TODO(审查): 这里又 new 一个 `createApi()`（另见 :330、store.ts:110、WorkspaceBody.tsx:200），一个包 4 个客户端实例；建议收敛为 `src/api-client.ts` 的单例（测试显式传 fake）。另此检查每次 apply 都发一次 POST，可加一次性标记（是否值得取决于 Cordis 重装频率）。
 	void createApi()
 		.renderCheck(registeredTypes())
 		.then((result) => {
@@ -327,6 +339,7 @@ export function apply(ctx: Context): void {
 	 * 浮层要 `GET/POST /permission`。store 是模块级的、拿不到 React 上下文，
 	 * 所以在注册时把 `createApi()` 的结果喂给它一次。
 	 */
+	// TODO(审查): ① `attachPermissionApi(createApi())` 又造一个客户端实例（见 :155 / store.ts:110 / WorkspaceBody.tsx:200），建议统一成单例；② 下面这条 `ctx.slots.inject(...)` 裸调并丢掉 disposer，与 :184-253 的 `ctx.effect(...)` 写法不一致 ⇒ 可能是卸载/重装时条目泄漏（`inject` 清理语义未核实，需先确认）。
 	attachPermissionApi(createApi());
 	ctx.slots.inject('conversation.input.left', () =>
 		ctx.slots.register(

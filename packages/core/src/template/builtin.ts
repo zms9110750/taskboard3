@@ -65,6 +65,8 @@ const TEMPLATES_SUBDIR = 'templates';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+// TODO(审查): 手拼 `dirname + join` 可用 `new URL('../..', import.meta.url)` 一步得到包根 ⇒ 少一层路径推断，可直接改。
+
 /** 包根目录（绝对路径）。 */
 const PACKAGE_ROOT = join(here, '..', '..');
 
@@ -169,6 +171,7 @@ function readBuiltinTemplates(): BuiltinTemplates {
  * 之后的每一次 `builtinTemplates()` / `builtinTemplateErrors()` 都是读这份常量，
  * **不再碰磁盘**。
  */
+// TODO(审查): 模块求值即读盘（import 副作用），而 package.json 声明 `"sideEffects": false` ⇒ 打包器可能误裁/顺序问题；改成首次调用时惰性 memo，行为等价，可直接改。
 const BUILTIN: BuiltinTemplates = readBuiltinTemplates();
 
 /**

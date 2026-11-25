@@ -100,6 +100,7 @@ export const BUILTIN_KINDS: readonly KindDef[] = Object.freeze([
 ]);
 
 /** 类别注册表。 */
+// TODO(审查): Kind/Domain/Template/Action 四个注册表各自重复 listeners + #notify + 幂等退订 ⇒ 可抽通用 `Registry<T>`，避免四份代码漂移，可直接改（中等重构）。
 export class KindRegistry {
 	readonly #kinds = new Map<string, KindDef>();
 	readonly #onChange: () => void;

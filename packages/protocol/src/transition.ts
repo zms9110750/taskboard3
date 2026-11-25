@@ -64,6 +64,8 @@ import { type TaskState, TaskState as S, isTaskState, statesInGroup } from './st
  */
 export type Actor = 'user' | 'ai' | 'system';
 
+// TODO(审查): `KindId = string` ⇒ BUTTON_TABLE/AUTO_TARGETS_BY_KIND 里 40+ 处 kind 拼错只能靠运行时测试抓
+// （transition.test.ts 的表驱动测试恰好能抓）。可直接改：加 `BUILTIN_KINDS`/`BuiltinKind` 收窄表内行，公开参数仍留 `KindId = string`。
 /**
  * 类别 id。
  *
@@ -112,6 +114,8 @@ export interface TransitionRejection {
 
 /* ────────────────────────── 自动计算的可达集 ────────────────────────── */
 
+// TODO(审查): 注释称这是规则 1 的“唯一实现”，但判定只用 AUTO_TARGETS_BY_KIND（见本文件下方），AUTO_STATES 仅被导出/测试读 ⇒ 双表。
+// 可直接改：表用 `satisfies Record<BuiltinKind, readonly (typeof AUTO_STATES)[number][]>` 收窄，并补“表的并集 == AUTO_STATES”断言。
 /**
  * 自动计算**允许产出**的全部状态。
  *
@@ -126,6 +130,8 @@ export const AUTO_STATES = [
 	S.AUTH_REQUIRED,
 ] as const;
 
+// TODO(审查): 类型手写四个终结态，endedStates() 却从 STATUS_GROUP_OF 派生（见 endedStates），注释说“不写死”但类型是写死的。
+// 可直接改：加双向断言 `{[K in TaskState]: (typeof STATUS_GROUP_OF)[K] extends 'ended' ? K : never}[TaskState] === EndedTaskState`。
 /** 终结态（成功 / 失败 / 取消 / 拒绝）。 */
 export type EndedTaskState =
 	| typeof S.COMPLETED
@@ -170,9 +176,13 @@ export interface ButtonAction {
 	readonly label: string;
 	/** 谁能触发。`user` 一定在；只有设计 / 记录的采纳、工作的领取与取消等对 AI 放开。 */
 	readonly actors: readonly Actor[];
+	// TODO(审查): `readonly Actor[]` 允许写 'system'，但 system 只能走 autoTargetsOf 通路（注释也说“不进按钮表”）⇒ 写进去是永远不生效的死行。
+	// 可直接改：定义 `ButtonActor = 'user'|'ai'`，actors 用它收窄。
 	readonly method: ButtonMethod;
 }
 
+// TODO(审查): 返回类型 24 行手写，与 ButtonAction 重复维护（加字段要改两处，虽会编译报错）。
+// 可直接改：const 泛型下 `return { ... } as const` 即可保留字面量，删掉整段返回类型。
 /** 造一条按钮定义。 */
 function btn<
 	const K extends KindId,
@@ -207,6 +217,9 @@ function btn<
 const BOTH = ['user', 'ai'] as const satisfies readonly Actor[];
 const USER = ['user'] as const satisfies readonly Actor[];
 
+// TODO(审查): 四类 kind 硬编码在这里，core 另有内置模板清单（packages/core/templates，lead 转述）⇒ 双真值风险。
+// 可直接改：protocol 导出 BUILTIN_KINDS，core 加一条测试断言其模板 kind 集合 == 该清单（跨包测试走包名）；漂移即变红，protocol 仍零依赖。
+// 由 core 还是 protocol 持有该清单需用户定。
 /**
  * 全部按钮。**UI 渲染按钮的唯一来源**，也是判定按钮类转移的唯一依据。
  *
@@ -248,6 +261,8 @@ const BUTTON_TABLE = [
 	btn('design', S.CANCELED, S.AUTH_REQUIRED, '重开', USER, 'transition'),
 
 	/* ── 工作（work） ── */
+	/* TODO(审查): 工作类写作“否绝”（本段 5 处），设计段写作“否决”—— 疑似错字/措辞不一致。
+	 * 改文案属产品行为，需用户决定；这里不改。 */
 	btn('work', S.UNSPECIFIED, S.SUBMITTED, '采纳', USER, 'adopt'),
 	btn('work', S.UNSPECIFIED, S.REJECTED, '否绝', USER, 'transition'),
 	/* ⚠ 取消进终结态 ⇒ 只有 user（规则 3 含 CANCELED）。 */
@@ -275,6 +290,11 @@ const BUTTON_TABLE = [
 	btn('record', S.AUTH_REQUIRED, S.FAILED, '否认', USER, 'transition'),
 ] as const;
 
+// TODO(审查): 表内 (kind,from,to) 重复时 `.find` 只取第一条、UI 会渲染两个按钮，目前无任何断言/测试。
+// 可直接改：加运行时测试（拼 kind|from|to 的 Set 长度 == 表长），或编译期唯一性断言。
+
+// TODO(审查): Object.freeze 只冻外层数组，元素对象仍可被 JS 消费方改（BUTTON_ACTIONS[0].to = …）。
+// 可直接改：逐项 Object.freeze（或 deepFreeze），行为不变。
 /**
  * 全部按钮（对外，已冻结）。
  *
@@ -325,6 +345,8 @@ export function autoTargetsOf(kind: KindId, from: TaskState): readonly TaskState
 	return allowed.filter((state) => state !== from);
 }
 
+// TODO(审查): 标注 `Readonly<Record<string,…>>` 抹掉字面量键；isKnownKind 只认这张表，与 BUTTON_TABLE 的 kind 无交叉断言
+// ⇒ 两表漂移时会出现“已注册但没按钮”或“有按钮但全 UNKNOWN_KIND”。可直接改：字面量 satisfies 保留键，并断言 keyof 该表 == BUTTON_TABLE 的 kind 集。
 /** 各类别的自动可达集。 */
 const AUTO_TARGETS_BY_KIND: Readonly<Record<string, readonly TaskState[]>> = Object.freeze({
 	goal: Object.freeze([S.SUBMITTED, S.WORKING, S.INPUT_REQUIRED, S.AUTH_REQUIRED]),
@@ -332,6 +354,9 @@ const AUTO_TARGETS_BY_KIND: Readonly<Record<string, readonly TaskState[]>> = Obj
 	design: Object.freeze([S.INPUT_REQUIRED, S.AUTH_REQUIRED]),
 	record: Object.freeze([]),
 });
+
+// TODO(审查): 可选重构（⑦）：抽 `BUILTIN_RULES`（kind → { buttons, autoTargets }）单一数据结构，让
+// BUTTON_TABLE/AUTO_TARGETS_BY_KIND/AUTO_STATES 全部从它派生、judge 读默认规则，外部类别将来可注入 —— 三张表同源、少一类“补了一处忘另一处”。
 
 /* ────────────────────────────── 判定 ────────────────────────────── */
 
@@ -363,6 +388,8 @@ export function judgeTransition(input: {
 }): TransitionVerdict | TransitionRejection {
 	const { kind, from, to, trigger } = input;
 
+	// TODO(审查): TS 调用方（core 传 TaskState，lead 已确认）下 isTaskState 不可达，只防 JS 调用方；这不是缺陷。
+	// 可直接改：注释写清“给无类型调用方的兜底”；若 HTTP/SSE 边界有脏字符串，校验应在 dsh 边界做（推断）。
 	/* 1. 状态合法性 */
 	if (!isTaskState(from) || !isTaskState(to)) return reject('UNKNOWN_STATE');
 
@@ -382,6 +409,8 @@ export function judgeTransition(input: {
 	if (trigger === 'ai' && isEndedState(to)) return reject('AI_CANNOT_END');
 
 	/* 6. 按钮表：这是规则 2 的实现 —— 只有表里的转移，人才点得出来。 */
+	// TODO(审查): `trigger === 'ai' ? 'ai' : 'user'` 对未来新增 trigger 会静默当 user ⇒ 可能放过终结态按钮。
+	// 可直接改：switch + `const _never: never = trigger`，新增 trigger 变编译错误。
 	const actor: Actor = trigger === 'ai' ? 'ai' : 'user';
 	const action = BUTTON_ACTIONS.find(
 		(one) => one.kind === kind && one.from === from && one.to === to,
@@ -461,6 +490,8 @@ type _AUTO_NEVER_ENDED = [Extract<EndedTaskState, (typeof AUTO_STATES)[number]>]
 	? true
 	: false;
 
+// TODO(审查): 只断言“非终结状态 ⊆ AUTO_STATES”，没断言长度/无重复 ⇒ AUTO_STATES 出现重复仍过编译（运行时测试会抓到）。
+// 可直接改：加 `(typeof AUTO_STATES)['length'] extends 4 ? true : false` 断言。
 /** `AUTO_STATES` 覆盖了全部非终结状态（不多不少：四个组里除了 draft 与 ended）。 */
 type _AUTO_COVERS_NON_ENDED = [
 	Exclude<TaskState, typeof S.UNSPECIFIED | EndedTaskState>,
@@ -468,6 +499,8 @@ type _AUTO_COVERS_NON_ENDED = [
 	? true
 	: false;
 
+// TODO(审查): 恒真断言 —— btn 的泛型已限制 `to: T extends TaskState`，此断言不可能失败。
+// 可直接改：删掉，或改成对表格内实际字面量的检查。
 /** 每条按钮的 `to` 都是合法状态（由字面量类型保证，这里显式收口一次）。 */
 type _BUTTON_TARGETS_VALID = (typeof BUTTON_TABLE)[number]['to'] extends TaskState ? true : false;
 

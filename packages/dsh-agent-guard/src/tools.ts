@@ -56,6 +56,8 @@ export function createAgentGuardTools(deps: AgentGuardToolDeps): readonly ToolLi
 
 	return adaptDefinitions(definitions, {
 		taskboard: deps.taskboard,
+		// TODO(审查): 与 src/index.ts:190 的 service.isManageEdit 是同一事实的两份重算。可直接改：把
+		// isManageEdit 作为 AgentGuardToolDeps 的依赖传入，与 index 共用一处实现。
 		isManageEdit: () => readToolGuardLevelOf(deps.kv) === 'manage-edit',
 		...(deps.subagents === undefined ? {} : { subagents: deps.subagents }),
 		...(deps.defineTool === undefined ? {} : { defineTool: deps.defineTool }),

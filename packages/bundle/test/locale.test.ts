@@ -39,15 +39,25 @@
  * import 一份 JSON 会绕过打包路径，测的就不是发布形态。
  */
 
+// TODO(审查): 文件头与 describe 里仍写「四个包」，但参与装配的是 6 行 + 壳（7 个包）。
+//   dsh-core / dsh-tools / dsh-agent-guard 未纳入（lead 答复：core/guard 没有 locale，系推断、未逐一验证 ⇒
+//   设置页只有包名/默认图回退）；可直接改注释与 PACKAGES。
+
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
+// TODO(审查): 本测试替 store / dsh / dsh-client 立 locale 契约（跨包耦合）：那三个包改文案或搬目录
+//   会让 bundle 的测试变红，而 bundle 自己没坏。建议 bundle 只测自己的 locale，跨包标题唯一性等规则
+//   移到仓库根 test/。可直接改，属测试归属调整。
 /** 仓库根 —— 从本测试文件位置反推（`packages/bundle/test/` → 根）。 */
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
+// TODO(审查): PACKAGES 只列 4 个，实际 6 行里的 dsh-core / dsh-tools / dsh-agent-guard 未覆盖。
+//   建议改成从 bundle 的 cordis.patch.yml 读取行（用 yaml 解析），只对有 locale 的包断言 —— 单一事实源。
+//   直接改测试即可，但「无 locale 的包是否该有 locale」需产品决定。
 /** 四个带 locale 的包。 */
 const PACKAGES = ['bundle', 'store', 'dsh', 'dsh-client'] as const;
 
@@ -127,6 +137,9 @@ describe('locale 契约（设置页里给用户看的名字和描述）', () => 
 		);
 	});
 
+	// TODO(审查): 150/400 字符阈值无测量依据（AGENTS 3.8），断言的是「字数」而不是「说清职责」，会逼人灌水；
+	//   建议改成必须出现具体事实（入口 / 关掉后果 / 不负责的边界），只保留「不是一句话」的下限。
+	//   可直接改测试；改判据属设计决定。
 	it('⭐ description 有实质内容（不是一句话糊弄）', () => {
 		for (const pkg of PACKAGES) {
 			const zh = descriptionOf(pkg).length;
@@ -139,6 +152,8 @@ describe('locale 契约（设置页里给用户看的名字和描述）', () => 
 		}
 	});
 
+	// TODO(审查): 强制 zh/en title 不同断言的是手段不是行为：品牌词/专有名词本不该翻译，这条会逼人制造
+	//   错误翻译；DSH 只要求英文 sentence case、专有名词保留（host-plugin.md:33）。是否保留需用户决定。
 	it('zh 和 en 的 title 不同（防漏翻）', () => {
 		for (const pkg of PACKAGES) {
 			assert.notEqual(
@@ -155,6 +170,9 @@ describe('locale 契约（设置页里给用户看的名字和描述）', () => 
 		 * 允许出现「搜索」—— 但要是否定式（「搜索不在这里」）。
 		 * 禁止的是「存储与搜索默认实现」这种把搜索算成自己活的说法。
 		 */
+		// TODO(审查): 该正则在否定句上误报 ——「存储与搜索不在这里」里「存储/与/搜索」间隔 0 字符会命中
+		//   claimsSearch，而上面的注释说否定式是允许的。应收窄成只匹配肯定句式（如「提供/负责…搜索」），
+		//   或改人工评审；可直接改测试。
 		const claimsSearch =
 			/(存储|持久化)[^。]{0,12}(与|和|及)[^。]{0,6}搜索/.test(zh) ||
 			/搜索[^。]{0,8}(默认实现|由本包|在这里提供)/.test(zh);
@@ -166,6 +184,8 @@ describe('locale 契约（设置页里给用户看的名字和描述）', () => 
 		);
 	});
 
+	// TODO(审查): 钉死「左侧栏 / 抽屉 / 右侧工作区」三个词：UI 形态会变（AGENTS 记录过折叠/取消折栏等），
+	//   届时仍正确的描述会误红。建议改成「至少提到一个真实入口」，或把这条契约交给 dsh-client 自己。
 	it('⭐ dsh-client 的描述必须提到三处入口', () => {
 		const zh = descriptionOf('dsh-client');
 		assert.ok(zh.includes('左侧栏'), '没提左侧栏入口');
@@ -184,6 +204,8 @@ describe('locale 契约（设置页里给用户看的名字和描述）', () => 
 	it('⭐ 每个描述都说了「关掉它会怎样」', () => {
 		for (const pkg of PACKAGES) {
 			const zh = descriptionOf(pkg);
+			// TODO(审查): 只认「关掉|卸载|不激活|消失|还在」—— 更标准的「关闭」不命中，正确文案会红；
+			//   可直接扩词，或改成对「关掉后果」的语义断言。
 			assert.ok(
 				/关掉|卸载|不激活|消失|还在/.test(zh),
 				`${pkg} 的描述没说关掉它会怎样 —— 四行都是可独立开关的，用户关心这个`,

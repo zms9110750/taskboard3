@@ -128,6 +128,8 @@ export async function makeFixture(
 export function context(fixture: Fixture, over: TaskboardToolContext = {}): TaskboardToolContext {
 	return {
 		holder: 'lead',
+		// TODO(审查): 这个字段在 tools 里已零读取（权限工具搬去 dsh-agent-guard，见 types.ts 的 TODO）；
+		// transition-tool.test.ts:113 也还在填它。可直接删（含那条测试里的同名字段）。
 		canManageToolPolicies: true,
 		...over,
 	};
@@ -137,6 +139,8 @@ export function context(fixture: Fixture, over: TaskboardToolContext = {}): Task
 const NO_WORKSPACE_TOOLS: ReadonlySet<string> = new Set([
 	'taskboard_workspaces',
 	'taskboard_definitions',
+	// TODO(审查): 'taskboard_tool_policy_read' 已不在本包（createTaskboardTools 只返回 9 个，两个权限工具在 dsh-agent-guard）——
+	// 这个白名单项是死条目。可直接删。
 	'taskboard_tool_policy_read',
 ]);
 

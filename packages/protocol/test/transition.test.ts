@@ -20,6 +20,13 @@
  * · 规则 3：AI 到任一终结态（含取消）一律 `AI_CANNOT_END`
  */
 
+/*
+ * TODO(审查) 汇总（测试面）：
+ * ① 全包只有本文件 —— status/relation/error 的导出零直接测试（labelOf 回落、statesInGroup 分组、ErrorCode↔ERROR_HINTS、
+ *    RELATION_KINDS↔LINK_KINDS 的 id/displayName、isFailure 拒脏 code）；可直接补，不需改产品。
+ * ② 缺“按钮表 (kind,from,to) 唯一性”测试（重复行会让 .find 取第一条、UI 渲染两个按钮），也缺 index.ts 文件头承诺的 no-node-imports 守卫。
+ * ③ judge() 的 `as never` 三连掩盖了签名与脏输入的关系；lead 已确认 core 调用处传 TaskState ⇒ 不是消费方缺陷，优先级低。
+ */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 

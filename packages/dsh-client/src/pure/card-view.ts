@@ -133,6 +133,7 @@ export function isEndedStatus(status: string): boolean {
    分类
    ══════════════════════════════════════════════════════════ */
 
+// TODO(审查): 这里写死四个内置 kind，而 types.ts:121 说 kind 注册表「第三方可注册更多」；Workspace.tsx:404-432 的领域筛选树直接用 KIND_ORDER ⇒ 自定义 kind 的模板不出现在筛选里（卡片本身能显示）。可改成从 state.kinds/templates 派生 kind 列表，KIND_ORDER 只负责已知四类排序；是否支持自定义 kind 需用户决定。
 /** 四个已知分类，顺序固定（目标 → 设计 → 工作 → 记录）。 */
 export const KIND_ORDER = ['goal', 'design', 'work', 'record'] as const;
 

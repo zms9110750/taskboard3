@@ -272,6 +272,7 @@ function cardLevelDenied(
 }
 
 /** 把卡 id 解析成「id + 标题 + 状态」。 */
+// TODO(审查): 找不到卡时用 `?? ('TASK_STATE_UNSPECIFIED' as TaskState)` 编造状态（且是断言）⇒ 建议 `TransitionBlocker.status?` 可选或给 opaque 分支，可直接改。
 function blockersOf(ids: readonly CardId[], cards: readonly Card[]): readonly TransitionBlocker[] {
 	return ids.map((id) => {
 		const found = cards.find((one) => one.id === id);
@@ -280,6 +281,7 @@ function blockersOf(ids: readonly CardId[], cards: readonly Card[]): readonly Tr
 }
 
 /** `judgeTransition` 的拒绝原因 → 给 AI 的人话。 */
+// TODO(审查): 这张 reason→文案表与 transition.ts 的 `rejectFailure` 是第二份真值 ⇒ 协议加一个 reason 时两处都要改、漏一处就回落默认文案；建议抽出共用映射，可直接改。
 function rejectMessage(reason: string): string {
 	switch (reason) {
 		case 'AI_CANNOT_END':
@@ -298,4 +300,5 @@ function rejectMessage(reason: string): string {
 }
 
 /** 编译期留痕：`Failure` 类型与 advice 的失败形态同源，避免未知原因映射时静默。 */
+// TODO(审查): `TransitionAdviceFailure = Failure` 全仓无人使用，`Failure` 也只被这一行 import ⇒ 死代码，可直接删本行与 import。
 export type TransitionAdviceFailure = Failure;

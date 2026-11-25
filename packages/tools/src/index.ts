@@ -23,6 +23,33 @@
  *   本包不判断「现在是什么宿主」。
  */
 
+/*
+ * TODO(审查) —— 非源码 / 跨文件问题汇总（只加注释，未改逻辑）。
+ *
+ * · README.md 大面积过期，而它会随包发布（package.json 的 files 含 README）：
+ *   README:15 说「v2 的工具（10 个）」、README:31 仍列 #9 taskboard_tool_policy、
+ *   README:41 仍写 hosts?: ('dsh'|'mcp')[]、README:44-46 说 DSH 10 个 / MCP 9 个、
+ *   README:54-56 仍写「激活空间」ctx 三字段。实际见 tools.ts（9 个、无 hosts、无激活空间）。
+ *   ⇒ 可直接改文档。此外 README:24 把 action 拼成 acton；README:17 说「参数都定义在 src/tools.ts」，
+ *   实际在 src/tools/*.ts。可见「本地看着正常、发出去文档是假的」（AGENTS 3.4）。
+ *
+ * · lib/ 里有源文件已删的陈旧产物：lib/adopt.js、lib/format.js、lib/tools/tool-policy.js、
+ *   lib/tools/tool-policy-read.js（src/ 下无对应 .ts），是 tsc 不删旧产物的典型症状。
+ *   ⇒ 按 AGENTS 规则 2：rm -rf packages/tools/lib && tsc -b。可直接执行（不在本次只读范围内）。
+ *
+ * · 曾评估「用 ajv 按 inputSchema 校验入参」以替代手写读取器（见 tools/cards.ts 的 page）：
+ *   结论是**不要** —— 会把 dependencies 从 2 个变 3 个，直接违反本文件钉死的零依赖边界。
+ *   ⇒ 要治就手写「给了但非法 ⇒ 失败」，不要引入库。需用户决定是否治。
+ *
+ * · 本文件 66-85 行「只把零件借给 dsh-agent-guard」的做法是对的：将来 MCP 要这套工具，
+ *   应从 dsh-agent-guard 迁回，别让本包重新导出工具本体（否则「仅 DSH」的裁决又会漂）。
+ *
+ * · 跨包待确认（需 lead 处理）：① 请 core 导出 DomainDef/KindDef/TemplateDef 等形状，好删掉
+ *   definitions.ts 的 5 个镜像接口 + 3 处 as 断言；② 请 core 的 transitionAdvice 带判别字段、holder 收 `string | undefined`，
+ *   好去掉 3 处 `'targets' in advice` 与 2 处 `holder ?? ''`；③ 若 dsh-agent-guard 复制了 readString/boolOf 之类的读取器，
+ *   本包应公开一个 readers 子面（现在只借出 str/strs），否则跨包又要长第二份真值。
+ */
+
 export type {
 	JsonObjectSchema,
 	JsonSchema,

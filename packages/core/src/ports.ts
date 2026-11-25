@@ -55,6 +55,8 @@ import type { Card } from './card.ts';
  * 「按 id 直查要能看到墓碑」和「列表不列墓碑」是两条不同的读路径。
  */
 export interface CardStore {
+	// TODO(审查): 端口是「同步读 + 异步写」（loadAll/kvGet 同步、save/kvSet 异步）⇒ 远程/异步后端无法实现，与文件头「存储可替换」的初衷相抵；要改成全异步需把 list/get/search 也变 async，属大改，需用户决定。
+	// TODO(审查): 「可替换」目前只有接口没有契约验证 ⇒ 建议补一套端口 conformance 测试供各实现共用，可直接改。
 	/** 一个工作空间的全部卡（含墓碑）。 */
 	loadAll(workspaceId: string): readonly Card[];
 	/** 写一张卡（新增或整体覆盖）。 */

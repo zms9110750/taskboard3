@@ -162,6 +162,7 @@ export function Section(props: SectionProps): ReactNode {
 	);
 }
 
+// TODO(审查): 这里连续两段 JSDoc（`/** 按 pure 判出来的形态选渲染器。 */` 与下一段）指向同一个 SectionContent，是重复注释；可直接合并（不改行为）。
 /** 按 pure 判出来的形态选渲染器。 */
 
 /** 按 pure 判出来的形态**查表**选渲染器（不是 switch）。 */
@@ -188,6 +189,7 @@ interface SectionContentProps {
 	readonly onAsk?: (sectionId: string, groupIndex: number, action: AskAction) => void;
 }
 
+// TODO(审查): 这里两处断言（:194 的 `as unknown as {title,json}`、:202 的 `props as unknown as RendererProps`）都是 render-registry.ts:91 `view?: unknown` 的连带成本，不是语言固有摩擦；把 view/onAsk 收紧成具体类型后应能删掉，需先定注册表公共类型。
 function SectionContent(props: SectionContentProps): ReactNode {
 	const Content = rendererOf(props.view.kind);
 	if (Content === undefined) {

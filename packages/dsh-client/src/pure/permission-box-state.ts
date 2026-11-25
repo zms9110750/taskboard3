@@ -157,6 +157,7 @@ export async function ensurePermissionLoaded(): Promise<void> {
  * ⚠ 打开时才 `loadPermission()` —— 不是启动就拉。
  *   大多数会话从不改权限，启动就拉是白花一次请求。
  */
+// TODO(审查): `openPermissionBox()` 直接调 `loadPermission()`，绕过了 :144-152 `ensurePermissionLoaded()` 的 `inFlight` 闸；反复开关会叠请求、旧响应可能覆盖新状态。可直接改走 `ensurePermissionLoaded()`（或在 loadPermission 内部加在飞标记）。
 export function openPermissionBox(): void {
 	setOpen(true);
 	void loadPermission();

@@ -68,6 +68,7 @@ describe('taskboard_cards', () => {
 		const withDraftChinese = await runOk(fixture, 'taskboard_cards', { status: ['未指定'] });
 		assert.ok(withDraftChinese.includes('草稿卡'), withDraftChinese);
 		assert.ok(draft.length > 0);
+		// TODO(审查): 同款填充断言（只为让 draft 不「未使用」），不验证行为。可直接改成 void draft。
 	});
 
 	it('标题模糊搜索', async () => {
@@ -97,6 +98,8 @@ describe('taskboard_cards', () => {
 		assert.ok(!both.includes('AI 改的卡') && !both.includes('用户改的卡'), `AND 语义下没有卡该命中：${both}`);
 		assert.ok(both.includes('没有符合条件的卡'), both);
 		assert.ok(aiCard.length > 0 && userCard.length > 0);
+		// TODO(审查): 这类 `assert.ok(x.length > 0)` 只是为了让变量“被使用”，不验证任何行为（同款另有本文件第 70 行）。
+		// 可直接改：用 `void aiCard` 或干脆去掉未使用的解构。
 	});
 
 	it('分页：每页 100；≤100 不说页数，>100 说「当前第 x 页，共 x 页」', async () => {
@@ -136,6 +139,8 @@ describe('taskboard_cards', () => {
 		assert.ok(result.text.includes('TASK_STATE_SUBMITTED'), result.text);
 	});
 
+	// TODO(审查): 下面两条用例是 describe('taskboard_workspaces') 里前两条的**逐字复制**（本文件上部同款），
+	// 跑在错误的 describe 里、也没增加覆盖。可直接删。
 	it('列出空间、卡数（不再有激活空间 —— 用户 2026-11-22 取消）', async () => {
 		const fixture = await makeFixture();
 		await seedCard(fixture, 't-work', '一张卡');

@@ -26,6 +26,11 @@
  *    合并进 10 个新工具），对应用例按 v2 语义重写而不是删除行为覆盖。
  */
 
+// TODO(审查): 本文件 TODO 中标注的行号以 2026-11-25 加注释前的源码为基线（注释本身会移动行号），按用例名/符号定位。
+// TODO(审查): 头部 10-15 行宣称的四类覆盖（注册面/顺序/hosts 过滤、schema 转换、激活空间、权限开关）在本文件一条都没有；
+//   「删了 6 个工具」后列了 10 个名字（23-26），「合并进 10 个」实际 9 个 ⇒ 文档与用例一起过期。可直接改文案并补用例。
+// TODO(审查): 缺的用例：toDshSchema/toDshParameters（required 内联/additionalProperties/type:'json'）、toolsForHost 过滤、注册数量与顺序、
+//   apply 的注册↔dispose 与 ctx.effect 立即调用陷阱、用真 defineTool 编译一遍 9 个 schema（现在全程假 defineTool，DSH 校验从没跑到）。
 import assert from 'node:assert/strict';
 import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -72,6 +77,7 @@ let workspaceId = '';
 /** 每个用例一个独立数据目录（避免上一个用例的空间/卡漏到下一个）。 */
 const createdDirs: string[] = [];
 
+// TODO(审查): 这个 10×100ms 的手写重试可直接用 fs.rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100})（Node 内置），少一层 sleep。
 after(async () => {
 	await closeTaskboard();
 	for (const dir of createdDirs) {
@@ -86,6 +92,7 @@ after(async () => {
 	}
 });
 
+// TODO(审查): 用 `undefined as unknown as Taskboard` 骗过类型；可直接改 let taskboard: Taskboard | undefined + 取用处的非空收窄，删掉这个 cast。
 async function closeTaskboard(): Promise<void> {
 	if (taskboard === undefined) return;
 	const closing = taskboard;
@@ -93,6 +100,7 @@ async function closeTaskboard(): Promise<void> {
 	await closing.close();
 }
 
+// TODO(审查): store 变量只写不读（68 行声明）；62-67 行注释说「复位档位要直接写 store 的 kv」也已不符（isManageEdit 是注入的 false）。可直接删变量 + 改注释。
 beforeEach(async () => {
 	await closeTaskboard();
 	const dataDir = mkdtempSync(join(tmpdir(), 'tb3-dsh-tools-'));
@@ -128,8 +136,11 @@ function tool(name: string): ToolLike {
 }
 
 /** 不需要 workspaceId 的工具。 */
+// TODO(审查): 'taskboard_tool_policy_read' 不在本包工具面（已搬去 dsh-agent-guard）⇒ 死条目，删它。
 const NO_WORKSPACE_TOOLS: ReadonlySet<string> = new Set(['taskboard_workspaces', 'taskboard_definitions', 'taskboard_tool_policy_read']);
 
+// TODO(审查): 这个夹具给每个调用都补 workspaceId，把「没有默认空间解析」整类行为掩盖了——包括 200 行那条「用 defaultWorkspaceId 解析」的假测试。
+//   修测试时保留一个不补参的入口，专门钉「不传 workspaceId」的真实行为（成功回落 or 明确失败，由产品决定）。
 /**
  * 给参数补 workspaceId（用户 2026-11-22 取消了「激活空间」）。
  *
@@ -143,6 +154,7 @@ function withWorkspace(name: string, args: unknown): unknown {
 	return { workspaceId, ...(args as Record<string, unknown>) };
 }
 
+// TODO(审查): run 就是 runRaw 取 .text，重复一份执行+断言代码；可让 run 直接复用 runRaw（纯重构）。
 /** 跑一个工具，取回文本。 */
 async function run(name: string, args: unknown, exec: unknown = { agent: { id: 'agent-uuid' } }): Promise<string> {
 	const value = (await tool(name).execute(withWorkspace(name, args), exec)) as { text: string };
@@ -173,6 +185,7 @@ async function seedCard(templateRef: string, title: string, options: { readonly 
 	return created.card.id;
 }
 
+// TODO(审查): 参数化是假的——只被 workRef() 调用且永远传 'work'；要么删参数，要么真有第二个 kind 再用。
 /** 取某类别的第一个模板 ref（内置模板的 ref 是文件名，如 writeCode）。 */
 function templateRefOfKind(kind: string): string {
 	const found = taskboard.listTemplates().find((one) => one.kind === kind);
@@ -191,11 +204,16 @@ async function submit(cardId: string): Promise<void> {
 }
 
 /* ────────────────────────────── 注册面 ────────────────────────────── */
+// TODO(审查): 「注册面」下没有任何用例：工具数量/顺序/hosts 过滤都没断言 ⇒ @taskboard/tools 删/加工具时这里不会红。可直接补名字集合快照。
 
 /* ────────────────────────── ① schema 转换 ────────────────────────── */
+// TODO(审查): 「schema 转换」下没有任何用例；toDshSchema/toDshParameters 甚至没被 import——这是本适配层最易坏的部分，必须补。
 
 /* ────────────────────────── ②① ctx：默认空间 / 激活空间 ────────────────────────── */
+// TODO(审查): 标题里的「激活空间」已被用户 11-22 取消（tools.ts:237-238）⇒ 改名；下面用例见 200 行 TODO。
 
+// TODO(审查): 本 describe 里「不传 workspaceId ⇒ 用 defaultWorkspaceId 解析」是假测试：run() 经 withWorkspace 已补参，defaultWorkspaceId 从未被调用。
+//   要真测就走不补参的路径；若产品决定「必须显式传 workspaceId」，删这条与 ToolDeps 的该字段（另见 withWorkspace 处 TODO）。
 describe('ctx：默认空间与激活空间', () => {
 	it('不传 workspaceId ⇒ 用 defaultWorkspaceId 解析（与 v1 入口策略一致）', async () => {
 		const text = await run('taskboard_cards', { status: ['draft'] });
@@ -250,9 +268,12 @@ describe('ctx：holder（领取/释放的持有者）', () => {
 });
 
 /* ────────────────────────── ②③ ctx：权限开关 ────────────────────────── */
+// TODO(审查): 「权限开关」下没有用例；isManageEdit 目前没有任何工具消费（见 tools.ts:244 的 TODO），先确认产品语义再决定补测试还是删接线。
 
 /* ────────────────────────── 各工具经适配层 ────────────────────────── */
 
+// TODO(审查): 本文件多处断言 @taskboard/tools 的渲染文案（这里 257-262、378/488/511 的「已建卡/已采纳/已领取」、430/449 的分节标题）——
+//   适配层的契约只是「调到了 handler、拿到 {text}」；文案在 tools 包改一次要连带修这里。建议只留一处端到端文案断言，其余断状态/字段。
 describe('taskboard_workspaces', () => {
 	it('列出空间并带卡数', async () => {
 		await seedCard(workRef(), '一张卡');
@@ -416,6 +437,7 @@ describe('taskboard_create', () => {
 	});
 });
 
+// TODO(审查): 427 行三元两支完全相同（'$type' in payload 分支是复制粘贴残留），直接写 { ...payload, value: '新内容' }。
 describe('taskboard_update', () => {
 	it('按 JSON 路径替换；返回 JSON + 当前状态与下一步', async () => {
 		const id = await seedCard(workRef(), '更新卡');

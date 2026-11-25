@@ -76,6 +76,7 @@ export interface CardUnread {
 	readonly user: boolean;
 }
 
+// TODO(审查): 本文件与 core 的 Card/Workspace/StateData 逐字段复制，注释两处（:13、:83）声称由 `test/schema-parity.test.ts` 钉住，但该测试文件不存在（全包 grep 只有引用文本）⇒ 漂移完全静默。可补真正的 parity 测试（test 里 `import type` core 做双向 assignability），或把 wire DTO 收进 protocol；选哪条需用户定架构。
 /**
  * 一张任务卡。
  *
@@ -176,6 +177,7 @@ export interface OkEnvelope<T> {
 /** 服务端返回的两种信封。 */
 export type Envelope<T> = OkEnvelope<T> | FailEnvelope;
 
+// TODO(审查): `transition.to` 是 `string`，导致 pure/card-action.ts:79 只能 `as TaskState`；源头 ButtonAction.to 本就是 TaskState、actions.ts:33 也原样传递。把这里改成 `TaskState` 即可删断言，并让非法状态在编译期进不来（可直接改）。
 /** 一次转移请求的动作。 */
 export type CardAction =
 	/** 采纳草稿。 */

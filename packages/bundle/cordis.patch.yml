@@ -1,5 +1,8 @@
 # 任务板 —— **一个 bundle，五个插件条目**。
 #
+# TODO(审查): 本行与「## 五个行各自负责什么」都写「五个」，但下面 insert 实际是 6 行
+#   （store/core/host/tools/client/guard），表格也缺 ⑥ guard 一行。可直接改成 6 / 不写数字。
+#
 # 设置页看到的是一张「任务板」卡片，点进去能看到全部组件，各自独立开关。
 #
 # ## 这个结构是用户 `2026-11-23` 要的
@@ -17,6 +20,10 @@
 # | ④ AI 工具 + guard | `@taskboard/dsh-tools` | 数据和界面都还在，**agent 用不了任务板** |
 # | ⑤ 浏览器 UI | `@taskboard/dsh-client` | 数据还在、AI 还能用，**人看不到** |
 #
+# TODO(审查): 表格缺 ⑥ taskboard3-agent-guard（下面 insert 段末尾才出现）；且 ④ 行写「AI 工具 + guard」、
+#   ④ 的注释块也写「+ 权限 guard」，与 ⑥ 的「guard + 2 个权限工具 + GET /api/tools」矛盾 ——
+#   读的人无法判断关哪一行会失去 guard。可直接改注释；guard 实际归属需确认后再写。
+#
 # ## 为什么 ② 和 ③ 要分成两行
 #
 # `Taskboard` 是**内存状态**（卡缓存 / 权限档位 / 模板注册表）。
@@ -28,6 +35,10 @@
 # ## ⚠ 子包各自的 `cordis.patch.yml` 都保留着
 #
 # 它们不再被 profile 装配（本文件统一承载），但单测/预览/将来拆回独立 bundle 都用得上。
+#
+# TODO(审查): 「单测/预览」实际没有任何测试或预览引用这些子包 patch ⇒ 同一份 id/行定义存在两处，
+#   将来把子包装成独立 bundle 可能与 taskboard3-store 等 id 重复。删掉或加「子包 id 必须与本 patch 一致」
+#   的守护测试；去留需 lead 决定。
 
 - insert:
     # ① 持久化：内存内容 → 磁盘
@@ -44,6 +55,9 @@
     #      · `taskboard3Core`              ← ③④ inject 它
     #      · `taskboard3DefaultWorkspaceId` ← 入口默认空间策略
     #      · `taskboard3Bus`               ← ⚠ 原型期脚手架，SSE 用
+    #
+    # TODO(审查): taskboard3Bus 属于 AGENTS §五 要拆的临时脚手架（core/src/bus.ts + dsh/src/sse.ts）；
+    #   拆的时候必须回来改本 patch（删这行/换 provide），否则 patch 会继续引用已删服务。注释提示，无行为影响。
     - id: taskboard3-core
       name: '@taskboard/dsh-core'
 
@@ -51,6 +65,9 @@
     #
     #    给**人**用的通道：14 条 HTTP 端点（浏览器 UI 读写）+ 3 个斜杠命令。
     #    关掉它 ⇒ 数据和 AI 工具都在，但界面拉不到东西、命令没了。
+    #
+    # TODO(审查): 「14 条 HTTP 端点」「11 个 taskboard_*」（④ 行）都是易漂数字 —— AGENTS 记录过 9 条用户
+    #   定义工具；本次未复核。建议改成不写数字，或由测试对真实注册数做守护。
     - id: taskboard3-host
       name: '@taskboard/dsh'
 
@@ -59,6 +76,9 @@
     #    给**模型**用的通道。定义在 `@taskboard/tools`（纯库，MCP 也吃同一份），
     #    本行只做 DSH 侧的 schema 适配 + 注册。
     #    关掉它 ⇒ 数据和界面都在，agent 调不到任务板。
+    #
+    # TODO(审查): ④ 标题里的「11 个 taskboard_*」与 AGENTS 的「9 条用户定义」不一致（可能有 2 个权限工具），
+    #   未复核。另：本行「+ 权限 guard」与 ⑥ 的 guard 归属重复，确认后删其中一处描述。
     - id: taskboard3-tools
       name: '@taskboard/dsh-tools'
 

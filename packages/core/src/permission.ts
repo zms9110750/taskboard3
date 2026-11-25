@@ -278,6 +278,7 @@ export interface ToolPolicyStore {
 	 */
 	readonly unclaimed: ToolPolicyDelta;
 	/** **通用档**：所有工作卡都生效。 */
+	// TODO(审查): 本字段现在承载 v2 的「claimed 档」语义（index.ts 的 setToolPolicyScope 写入此处），但 wire 名 `common` 被 dsh/client 按名解析 ⇒ 不能直接改名；建议内部加 `claimed` 别名或注释，需跨包确认后再动。
 	readonly common: ToolPolicyDelta;
 	/** **组档**：组名 → 增量。 */
 	readonly groups: Readonly<Record<string, ToolPolicyDelta>>;

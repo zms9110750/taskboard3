@@ -45,6 +45,7 @@ const WORKSPACES_KEY = 'workspaces';
 const NEXT_SEQ_KEY = 'workspaceSeq';
 
 /** 读全部空间（内部用；含归档）。 */
+// TODO(审查): `JSON.parse(...) as Workspace[]` 不校验元素形状（对比 index.ts 对策略 kv 有 readDelta/readFlag）⇒ 坏记录会让 `Workspace` 字段变 undefined；建议用 zod 统一清洗，可直接改。
 function readAll(store: CardStore): readonly Workspace[] {
 	const raw = store.kvGet(WORKSPACES_KEY);
 	if (raw === undefined) return [];
@@ -57,6 +58,7 @@ function readAll(store: CardStore): readonly Workspace[] {
 }
 
 /** 写全部空间。 */
+// TODO(审查): 所有空间改动都是 `readAll → 改数组 → writeAll` 整体覆盖（create/rename/archive）⇒ 多实例并发会丢更新；将来多进程需 kv 版本号或按空间分键，属架构改动，需用户决定。
 async function writeAll(store: CardStore, list: readonly Workspace[]): Promise<void> {
 	await store.kvSet(WORKSPACES_KEY, JSON.stringify(list));
 }
@@ -105,6 +107,7 @@ export async function createWorkspace(
 	if (all.some((one) => one.displayName === displayName)) return { error: 'NAME_TAKEN' };
 
 	const rawSeq = store.kvGet(NEXT_SEQ_KEY);
+	// TODO(审查): 坏值（如 'abc'）经 `Number()+1` 得 NaN ⇒ 生成 `wsNaN` 且之后永久 NaN；建议 Number.isSafeInteger 校验后重置/报错，可直接改。
 	const seq = rawSeq === undefined ? 1 : Number(rawSeq) + 1;
 	const id = `ws${seq}`;
 
@@ -124,6 +127,7 @@ export async function setArchived(
 	const index = all.findIndex((one) => one.id === id);
 	if (index < 0) return { error: 'NOT_FOUND' };
 	const current = all[index] as Workspace;
+	// TODO(审查): 本文件三处 `as Workspace`（此处、renameWorkspace 的 current 与返回值）都是 `noUncheckedIndexedAccess` 下的断言 ⇒ 可用已取到的对象拼返回免掉，可直接改。
 	if (current.archived === archived) return { changed: false };
 
 	const next = [...all];

@@ -48,6 +48,9 @@ export function createCardTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 		const card = found.card;
 
 		/* 关系目标标题（同空间的卡；墓碑不在列表里时只显示编号）。 */
+		// TODO(审查): 为了给关系目标配标题，把整个空间的卡全量 list() 一遍（O(全库) 拿全部卡对象），
+		// 而被引用的 id 通常只有几个。可改成先收集 parent/links 的 id 再逐个 get() —— 但那样墓碑标题会显示出来，
+		// 与现在「墓碑不在列表里时只显示编号」不一致 ⇒ 行为变化，需用户决定。
 		const titles = new Map<string, string>();
 		for (const one of taskboard.list(workspaceId)) titles.set(one.id, one.title);
 		const titleOf = (id: string): string => {
@@ -82,6 +85,9 @@ export function createCardTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 		} else {
 			for (const [sectionId, section] of sections) {
 				const action =
+					// TODO(审查): 这里的 `String((payload as {$type: string}).$type)` 是为了兜住「断言没收窄类型」：
+					// 先 `const t = (payload as {$type?: unknown}).$type;` 再 `typeof t === 'string'`，就能自然收窄、不必 String()。
+					// （AGENTS 3.1 的微型版：断言让编译器闭嘴，代价是多一次无意义转换。）可直接改。
 					template?.sections.find((one) => one.id === sectionId)?.action ??
 					(typeof section.payload === 'object' &&
 					section.payload !== null &&
@@ -112,6 +118,8 @@ export function createCardTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 		}
 		lines.push('（注：本工具按编号强制查看，不受草稿/筛选限制。）');
 
+		// TODO(审查): 这个 `\n{3,}` 归一会作用在**整段输出**上，包括各章节 payload 的正文 ——
+		// markdown / code 块里的连续空行会被压掉（内容变形）。可直接改：只在拼装层用空行控制，别事后正则洗全文。
 		return okText(lines.join('\n').replace(/\n{3,}/gu, '\n\n'));
 	};
 
@@ -127,6 +135,7 @@ export function createCardTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 			properties: {
 				workspaceId: {
 					type: 'string',
+					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
 					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },

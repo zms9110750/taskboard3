@@ -71,6 +71,8 @@ export function createToolPolicyTool(deps: ToolDeps): ReturnType<typeof defineTo
 		const remove = strs(args, 'remove') ?? [];
 
 		const result = await taskboard.setToolPolicyScope({
+			// TODO(审查): 这个 `as` 可删：把 :66 的校验移进 `if (hasTier) {...}` 内（hasTier 是 const，TS 能收窄
+			// 到 'unclaimed' | 'claimed'）。可直接改：删断言 + 重排分支（AGENTS 3.1：可删的断言只是难看）。
 			...(hasTier ? { tier: tier as 'unclaimed' | 'claimed' } : {}),
 			...(hasTemplate ? { templateRef } : {}),
 			allow,
@@ -148,6 +150,9 @@ export function createToolPolicyTool(deps: ToolDeps): ReturnType<typeof defineTo
 				},
 			},
 		},
+		// TODO(审查): 这里 inputSchema 没有 additionalProperties，而 tool-policy-read.ts:101 有；tools.ts:5-6
+		// 注释说 DSH 要求 additionalProperties 必须显式。可直接改：补 additionalProperties:false；若
+		// adaptDefinitions 已补默认值则不成立，需先确认（未核实）。
 		hosts: ['dsh'],
 		handler,
 	});

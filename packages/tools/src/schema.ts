@@ -8,6 +8,8 @@
 
 import type { JsonObjectSchema, JsonSchema } from './types.ts';
 
+// TODO(审查): TEXT_OUTPUT_SCHEMA 在本包内除测试外零消费（只有 contract.test.ts 引用），
+// TaskboardTool 也没有 outputSchema 字段。若适配层同样不用，这就是死导出。需 lead / 适配层确认。
 /** 所有工具共用的 output schema。 */
 export const TEXT_OUTPUT_SCHEMA: JsonObjectSchema = Object.freeze({
 	type: 'object',
@@ -43,6 +45,8 @@ export function freezeSchema<T extends JsonSchema>(schema: T): T {
 function deepFreeze(value: unknown): void {
 	if (typeof value !== 'object' || value === null) return;
 	if (Object.isFrozen(value)) return;
+	// TODO(审查): 这里「已冻结就整棵子树跳过」是浅冻结泄漏 —— 外层被冻结、内层仍有可变节点时，
+	// 深冻结实际没发生（宿主可偷偷改 schema 击穿 prompt 前缀的 KV cache）。可直接改：冻结后继续递归子节点。
 	Object.freeze(value);
 	if (Array.isArray(value)) {
 		for (const item of value) deepFreeze(item);

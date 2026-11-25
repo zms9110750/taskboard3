@@ -49,11 +49,30 @@
  * ⚠ **没有全局默认值。** 用户明确否掉了「全局默认的垃圾堆」。
  */
 
+/*
+ * TODO(审查) 汇总 —— 本包审查发现的问题（只记录，不改逻辑；每条写清「问题 + 为什么 + 谁来改」）
+ *
+ * TODO(审查): [package.json] 遗留依赖：`@taskboard/dsh-tools` 的 dependency(:34) / peerDependency(:39) / devDependency(:50) 在 src 里**零 import**，
+ *   `src/dsh-tools.d.ts` 垫片也已不存在 ⇒ 工具面搬走后没清理。可直接改（删），但会动依赖图，建议 lead 一次改完。
+ *   （`@taskboard/dsh-core` 也零 import，但它的服务名是契约、按 lead 裁定属正常，不动。）
+ * TODO(审查): [lib/] `lib/actions.js / holder.js / permission.js / tools.js` 及其 `.d.ts` 没有对应 `src` 下的 `.ts` 且无人 import ⇒ `tsc` 不删孤儿产物（AGENTS 规则 2），
+ *   而 package.json 的 `files` 含 `lib`，发布会把死文件打出去。可直接改：`rm -rf lib && tsc -b`。
+ * TODO(审查): [tsconfig.json] `references` 只有 protocol/core/dsh-core，但 `src/http.ts` 顶部 import 了 `@taskboard/dsh-agent-guard`
+ *   ⇒ `tsc -b packages/dsh` 不会先重建它，会拿旧 `.d.ts` 编译（AGENTS 规则 6 的假绿）。可直接改（补 reference）。
+ * TODO(审查): [README.md] 失真：:91-111 十工具表与 `src/tools.ts`、:115 `src/holder.ts`、:210 `packages/search`、:216 `src/dsh-tools.d.ts` 都不存在；
+ *   :51-62 路由表缺 ui-state/permission/tool-policy/render-check/events/updates/tools/seen/archive。README 在 `files` 里会发布 ⇒ 可直接改文档。
+ * TODO(审查): [文档口径] `test/apply-lifecycle.test.ts:32` 写「11 个 AI 工具」、README:91 写「10 个」、locale 写「十一个」——三处都已过时。可直接改（口径要用户定）。
+ * TODO(审查): [locale/zh.json:4, locale/en.json:4] 插件描述仍写「十一个工具 / 本包挂工具守卫 / 判定逻辑在 core」——那是 dsh-tools + dsh-agent-guard 的职责，
+ *   而用户装插件时看到的就是这段。可直接改文案（工具数量属产品口径，需用户点头）。
+ * TODO(审查): [本文件头部两节] 「三件事，不多做」与「为什么 `defineTool` 只出现在 `tools.ts`」仍写「`src/tools.ts` 用 defineTool」「编译期用 `src/dsh-tools.d.ts` 垫片」——**两个文件都不存在**（AGENTS 3.10：引用要能被找到）。可直接改。
+ */
+
 import type { Bus, Taskboard } from '@taskboard/core';
 
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
 import { createSseHub } from './sse.ts';
+// TODO(审查): [③] `ToolsLike` 在这里 import 了却全文未用；`src/types.ts` 的 `ToolsLike` 接口因此是死的（工具面已搬去 dsh-tools）。可直接删这两处。
 import type { CommandsLike, ConnectionLike, IncomingLike, OutgoingLike, ToolsLike, WebServerLike } from './types.ts';
 
 /** Cordis 插件名。 */
@@ -65,6 +84,9 @@ export const name = 'taskboard3';
  * ⚠ **声明依赖，不替用户装配。** 五个服务缺任何一个 ⇒ 本插件不激活。
  *   用户会看到「任务板没出现」，然后去补那一行 —— 这是正确的失败方式。
  */
+// TODO(审查): [⑤] 三个服务名是**硬编码字符串**，而 `@taskboard/dsh-core` 已公开导出服务名常量（CORE_SERVICE / BUS_SERVICE / DEFAULT_WORKSPACE_SERVICE）
+//   ⇒ 字符串漂移时 inject 静默失配、插件静默不激活。需 lead 给出常量与字符串的确切对应后可直接改；`taskboard3AgentGuard` 若有常量同理。
+// TODO(审查): [⑤] 服务表口径三处不一致：本文件头部的服务表说「五个」且列了 `tools`，`README.md:9-13` 说「四个」，实际这里是 **6 个且没有 `tools`**。可直接改文档。
 export const inject = [
 	'webServer',
 	'connection',
@@ -102,6 +124,8 @@ export interface Config {}
  *
  * Cordis 的 `Context` 结构上满足本接口 ⇒ 运行时能直接传进来。
  */
+// TODO(审查): [⑥] 这里的 `ApplyContext` 与 `@taskboard/dsh-core` 公开导出的 `ApplyContext` 是否同义**未确认**：
+//   同义 = 第二份真值，不同义 = 名字撞车。需 lead 确认后再决定是否复用（本次不动）。
 export type ApplyContext = {
 	readonly webServer: WebServerLike;
 	readonly connection: ConnectionLike;
@@ -155,6 +179,7 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	 *
 	 * 依据：`core/src/bus.ts` 文件头的拆解步骤 **第 4 条**（「dsh：删 SSE 端点」）。
 	 */
+	// TODO(审查): [③] 上面注释写「本段的 `createBus()` 与 `bus`」，但代码里 bus 来自 `ctx.taskboard3Bus`、根本没有 createBus —— 注释是旧的。可直接改。
 	const bus = ctx.taskboard3Bus;
 	const hub = createSseHub(bus);
 
@@ -195,6 +220,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	 * `@taskboard/dsh-agent-guard` 那一行 provide 的服务（可选）。
 	 * 缺席 ⇒ 三档位 / guard / 两个 policy 工具 / `/api/tools` 全都没有 —— 那是它的开关。
 	 */
+	// TODO(审查): [②] 这段「运行时探测另一个包的服务」**没有任何测试**（test/ 下 `taskboard3AgentGuard|ctx.get` 零命中），handler 形状还靠 `as` 断言
+	//   ⇒ 两个包唯一边界恰好没测。可直接改：补一条 apply 级测试（本次禁止改测试）。
 	const guardService =
 		typeof ctx.get === 'function'
 			? (ctx.get('taskboard3AgentGuard') as
@@ -210,6 +237,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		defaultWorkspaceId,
 		/* ⚠ 原型期脚手架：与 `core/src/bus.ts` 同生共死。见 `src/sse.ts` 文件头。 */
 		events: hub,
+		// TODO(审查): [②] 与 `src/http.ts` 顶部的 import 矛盾：那边**静态 import** 了 dsh-agent-guard 的公开导出，这里却写「不 import 那个包，否则关掉那一行会让本行一起崩」。
+		//   实际是「编译期硬依赖 + 运行时探测」并存。可直接改注释为准确描述；是否改成纯运行时依赖需 lead 定。
 		/*
 		 * `GET /api/tools` 的处理器由 `@taskboard/dsh-agent-guard` 那一行提供。
 		 * 那一行被关掉 ⇒ 服务不存在 ⇒ `undefined` ⇒ 请求落到 404。
@@ -237,6 +266,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		 */
 	};
 
+	// TODO(审查): [②] 没有 `ctx.effect` 时**静默不注册 disposer** ⇒ 路由/SSE 泄漏且无日志；真实 Cordis 永远有 effect，但假 ctx 可绕过。
+	//   可直接加一行 `console.warn`（只在测试/异常 profile 可见）。
 	if (typeof ctx.effect === 'function') {
 		ctx.effect(() => disposeAll, 'taskboard3: routes / tools / commands');
 	}
@@ -244,6 +275,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 
 export { createHandler, mountRoutes, ROUTE_PREFIX } from './http.ts';
 export type { RouteDeps } from './http.ts';
+// TODO(审查): [③] `adoptTargetOf` 在本包零使用（内部只用 `isAdoptTransition` 且直接来自 core）；这条转发导出没有消费者就是死面。
+//   我禁读其它包，无法核实是否有包从 `@taskboard/dsh` 拿它 ⇒ 需 lead 确认后删（`createHandler/mountRoutes/ROUTE_PREFIX` 是给测试的，保留）。
 export { adoptTargetOf, isAdoptTransition } from '@taskboard/core';
 /* ⚠ 原型期脚手架导出 —— 与 `core/src/bus.ts` 同生共死。 */
 export {

@@ -41,6 +41,8 @@ import type { TaskState } from '@taskboard/protocol';
 /**
  * 某个类别、某个状态下的**采纳目标状态**。
  *
+ * TODO(审查): 与 transition.ts:66 的 `adoptTargetOf(kind)` 同名不同参（那边只按 kind、隐含 from=DRAFT）⇒ 两份真值易漂；建议保留本函数为唯一实现，那边改为 `(kind, DRAFT)`，可直接改。
+ *
  * v1 的 `taskboard_adopt` 工具（AI 侧）只需要「我在草稿态，采纳会去哪」；
  * 它不接收目标状态参数 —— 目标由类别定。v2 的 `taskboard_transition` 不再
  * 需要它（core 的 `transitionAdvice` 已把 `action: 'adopt'` 算好），但 HTTP 的

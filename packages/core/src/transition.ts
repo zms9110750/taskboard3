@@ -52,6 +52,7 @@ import {
 
 /* ────────────────────────────── 采纳 ────────────────────────────── */
 
+// TODO(审查): 本文件另有一份 `adoptTargetOf(kind)`（只按 kind 建表），与 actions.ts:54 的 `(kind, from)` 同名不同参 ⇒ 两份真值易漂；改为调 `adoptTargetOf(kind, DRAFT)` 并删 `ADOPT_TARGETS`，可直接改。
 /**
  * 采纳后的目标状态 —— 按类别定。
  *
@@ -240,6 +241,7 @@ export function judgeClaim(
 	}
 
 	/* ② 必须是「提交」 */
+	// TODO(审查): 代码允许 `WORKING`（含**另一个** holder 加入在途卡），但下面拒绝文案写「只有「提交」能领」⇒ 代码与文案必有一处不对；按用户本意收紧准入或改文案，需用户决定。
 	if (card.status !== TaskState.SUBMITTED && card.status !== TaskState.WORKING) {
 		return {
 			ok: false,
@@ -612,6 +614,7 @@ type _AutoStatesAreFour = (typeof AUTO_STATES)['length'] extends 4 ? true : fals
 
 export type _RECOMPUTE_ONLY_AUTO = AssertTrue<_AutoStatesAreFour>;
 
+// TODO(审查): 这条注释已过时（import 列表已裁干净，withPatch 也已无人用）⇒ 可直接删掉本注释块。
 /*
  * `groupOf` / `withPatch` 在本文件暂时用不到；显式标注「故意不用的 import」
  * 不如直接不 import —— 已按实际使用裁剪，见文件顶部的 import 列表。

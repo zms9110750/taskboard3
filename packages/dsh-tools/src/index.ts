@@ -36,6 +36,14 @@
  * 任务板的 9 个通用工具了**。
  */
 
+// TODO(审查): 本文件 TODO 中标注的行号以 2026-11-25 加注释前的源码为基线（注释本身会移动行号），按符号名/上下文定位。
+// TODO(审查): lib/ 里还留着 src 已删除的 permission.js / tool-guard.js（含 .d.ts/.map，时间戳 11-23 11:05）与 92KB 的 .tsbuildinfo。
+//   package.json 的 files:["lib"] 会把它们一起发布，exports 又指不到 ⇒ 纯发布垃圾。可直接改：rm -rf lib && tsc -b，并把 tsBuildInfoFile 移出 lib/。
+// TODO(审查): package.json 的 build 只有 `tsc -b`，不会删「源已不存在」的旧产物（AGENTS 规则 2）——这次的残留就是证据。
+//   可直接改：build/prepack 先删 lib 再编译（tsc -b --clean 也删不掉已移出 program 的文件，必须真删目录）。
+// TODO(审查): package.json:4 描述「11 个 taskboard_* 工具 + 权限 guard」已过期：本行现在注册 9 个宿主无关工具，guard 与两个策略工具在 dsh-agent-guard。可直接改文案。
+// TODO(审查): engines >=22.13.0 与 test 脚本直接 `node --test test/*.test.ts`（无 flag）不匹配——免 flag 的 TS 类型剥离是 22.18+（推断，需按实际 node 版本核实）。
+//   需用户决定：抬 engines，还是给脚本加 --experimental-strip-types。
 import type { Taskboard } from '@taskboard/core';
 
 import { createTools } from './tools.ts';
@@ -54,6 +62,8 @@ export const name = 'taskboard3-tools';
  *   第一次读 `ctx.<服务>` 时才抛 `cannot get property … without inject`。
  *   症状：profile 启动报 `dsh: warning: 1 entry did not activate`。
  */
+// TODO(审查): inject 列了 taskboard3DefaultWorkspaceId，但它的值传到 createTools 后没有任何工具读（见 106-114 与 tools.ts:240-246）；
+//   缺它会让整行不激活，而实际能力并不需要它。需跨包确认后二选一：删出 inject，或确认 tools 包仍消费 ctx.resolveDefaultWorkspace。
 export const inject = ['taskboard3Core', 'taskboard3DefaultWorkspaceId', 'tools'] as const;
 
 /** 本插件行的配置。 */
@@ -62,6 +72,9 @@ export interface Config {}
 /** `@taskboard/dsh-agent-guard` provide 的服务名（只读它的一个布尔）。 */
 const AGENT_GUARD_SERVICE = 'taskboard3AgentGuard';
 
+// TODO(审查): 这里手写 ctx 形状（Cordis 实际有 Context/Plugin 类型），还带 get?/effect? 可选探测与 subagents 字段；
+//   后者在真实 ctx 下永远走 ctx.get 分支（95-96）⇒ 死字段。可直接改用 cordis 的 Context 类型（依赖版本需确认），
+//   至少删掉 get/effect 的可选探测——它们让「Cordis 缺 API」这类错变静默。
 /** `apply` 用到的最小上下文形状。 */
 export interface ApplyContext {
 	readonly taskboard3Core: Taskboard;
@@ -85,6 +98,13 @@ interface AgentGuardLike {
  * @param ctx 宿主上下文
  * @param config 无
  */
+// TODO(审查): 两个可选服务（subagents / taskboard3AgentGuard）都只在 apply 时读一次缓存；Cordis 服务可以晚于本插件出现
+//   ⇒ 晚到就永久拿不到：holder 永久回落 UUID、isManageEdit 永久 false。可直接改：ctx.inject([...]) 可选注入，或每次 execute 时 ctx.get。
+// TODO(审查): AgentGuardLike.isManageEdit 已是可选（79），104 行又 ?. 一次 ⇒「服务在但方法不在」也静默 false；二选一即可。
+// TODO(审查): 默认空间策略在这里有第三份实现（inject 一份、dsh-core 一份、106-112 fallback 一份），违反「单一真值」；
+//   inject 已要求该服务 ⇒ 这段 fallback 生产不可达、测试也没覆盖。确认 dsh-core 必供后可直接删，并把 ApplyContext 该字段改必填。
+// TODO(审查): 115 行逐个 register 没有回滚：第 N 个抛错时前 N-1 个已注册、插件激活失败却没人 dispose（泄漏到 reload）。
+//   可直接改：try/catch 里先 disposeAll 再 rethrow（需要把 disposeAll 提到 register 之前定义）。
 export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	const taskboard = ctx.taskboard3Core;
 
@@ -127,6 +147,11 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	ctx.effect?.(() => disposeAll, 'taskboard3-tools: AI tools');
 }
 
+// TODO(审查): 下面四条 re-export 在产物里是 lib/types/index.d.ts:74-77 的 './tools.ts' / './holder.ts'，而 lib/types/ 没有这些 .ts 文件
+//   ⇒ 消费方在 skipLibCheck 下会把 createTools/adaptDefinitions 等类型静默降级成 any。需 lead 做跨包类型验证（本包禁止构建）。
+//   不能靠「源码改 .js」绕（违反 AGENTS 规则 1）；方向：查 tsc declaration emit 改写，或把适配器下沉 dsh-core 并单独发类型。
+// TODO(审查): 本行同时被当库用（agent-guard import adaptDefinitions/toDshSchema），关掉本行会破坏 agent-guard 的工具注册；
+//   与文件头「关掉只是少 9 个工具」的承诺冲突。更好的归属：适配器 + holder + 垫片下沉 @taskboard/dsh-core。
 export { createTools, describeFailure, describeUnread } from './tools.ts';
 export type { ToolDeps, ToolLike, DefineTool } from './tools.ts';
 /* DSH schema 适配器 —— `@taskboard/dsh-agent-guard` 也用它，不复制第二份。 */

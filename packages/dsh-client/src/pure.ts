@@ -75,6 +75,7 @@ export function chooseInitialWorkspace(
 	return workspaces[0]?.id ?? '';
 }
 
+// TODO(审查): `activeWorkspaces` / `findWorkspace` / 下面的 `templateLabelOf` 在 src 和 dev 都零调用，仅 test/store.test.ts:16-21 使用；是测试专用导出。可直接从产品模块移除（测试内联）或标 @internal。
 /** 未归档的空间（保持原顺序）。 */
 export function activeWorkspaces(workspaces: readonly Workspace[]): readonly Workspace[] {
 	return workspaces.filter((one) => !one.archived);
@@ -93,6 +94,7 @@ export function templateLabelOf(templates: readonly TemplateSummary[], ref: stri
 	return templates.find((one) => one.ref === ref)?.displayName ?? ref;
 }
 
+// TODO(审查): `messageOf()` 的三元两个分支都返回 `cause.message`（`withCode` 取了 code 却只用来选同一个值），是恒等死判断。可直接删判断，或按本意把 code 拼进文案（会改变错误文案，需用户定）。
 /** 从异常里取人话（hook 也用，所以在这里）。 */
 export function messageOf(cause: unknown): string {
 	if (cause instanceof Error) {

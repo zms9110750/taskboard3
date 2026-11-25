@@ -107,6 +107,7 @@ const EMPTY: BoardState = Object.freeze({
  * @param apiImpl 可选注入（测试 / 未来换通道）；省略则用 `createApi()`
  */
 export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
+	// TODO(审查): `useRef(apiImpl ?? createApi())` 的实参每次渲染都会执行 `createApi()`（只采用首值），是纯浪费；改成惰性初始化或模块级单例即可，不改行为。
 	const apiRef = useRef<TaskboardApi>(apiImpl ?? createApi());
 	const [state, setState] = useState<BoardState>(EMPTY);
 	/** 当前空间 id 的镜像 —— 避免把 `reload` 绑到 state 上导致闭包过期。 */
@@ -126,6 +127,7 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 	const cardsRef = useRef<readonly Card[]>([]);
 	cardsRef.current = state.cards;
 
+	// TODO(审查): 这里手写竞态序号/去重/loading/error（:119-215 整段）正是 swr 或 @tanstack/react-query 的标准能力；若接受依赖可整体替换，否则至少用 AbortController + 统一 useAsync。属架构选择，需用户决定是否加依赖。
 	const load = useCallback(async (workspaceId?: string): Promise<void> => {
 		const seq = ++loadSeq.current;
 		setState((prev) => ({ ...prev, loading: prev.cards.length === 0, error: undefined }));
@@ -142,6 +144,7 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 				/* 老服务端不带 `kinds` ⇒ 空数组 ⇒ 客户端降级显示英文 id（不编中文）。 */
 				kinds: data.kinds ?? [],
 				loading: false,
+				// TODO(审查): `load()` 成功时把 pending 直接归零，若并发有写操作在飞，会短暂把「还有请求」显示成空闲并提前启用按钮。可改成按请求 id 的 Set（也可顺带让 pending 与实际请求数一致）。
 				error: undefined,
 				pending: 0,
 			});
@@ -155,6 +158,7 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 		void load();
 	}, [load]);
 
+	// TODO(审查): `switchWorkspace` 先把 workspaceRef 改成新 id 再 load；若 load 失败，state 还停在旧空间，但再点同一个 chip 会被 `workspaceId === workspaceRef.current` 直接 return ⇒ 无法用点击重试（只能刷新）。可在失败时把 ref 回滚，或失败后允许同 id 重试；属可直接改。
 	const switchWorkspace = useCallback(
 		(workspaceId: string): void => {
 			if (workspaceId === workspaceRef.current) return;

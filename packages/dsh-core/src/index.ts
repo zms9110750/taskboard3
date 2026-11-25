@@ -42,6 +42,19 @@
  * **没有全局默认值** —— 用户明确否掉了「全局默认的垃圾堆」。
  */
 
+/*
+ * TODO(审查) 非源码问题汇总（package.json / tsconfig / lib 产物）：
+ * 1. `lib/policy-store.js`、`lib/policy-store.js.map`、`lib/types/policy-store.d.ts(.map)` 是删掉
+ *    `src/policy-store.ts` 后的陈旧产物，src 已无对应文件；`files: ["lib"]` 会把它打进 npm。
+ *    可直接改：`rm -rf lib && tsc -b`（AGENTS 规则 2）。
+ * 2. `package.json` 的 test 脚本指向不存在的 `test/`，本包测试数为 0，而它是「全仓唯一实例」的关键包。
+ *    可直接改：加 `test/apply.test.ts`（import '../src/index.ts'，规则 6），至少覆盖 provide 三个服务名 / close effect / 默认空间两条分支。
+ * 3. `package.json` 依赖 `@taskboard/protocol` 与 `tsconfig.json` 的 `references: ["../protocol"]` 均无直接使用
+ *    （src 只 import core，`lib/types/index.d.ts` 也只有 CardStore）。推断可删，但需 `tsc -b` 实跑确认 declaration 解析不依赖它。
+ * 4. `tsconfig.json` 的 `tsBuildInfoFile` 指向 `lib/.tsbuildinfo`，会被 `files: ["lib"]` 一起发布；`"types": ["node"]`
+ *    也无 node API 使用者。可直接改：tsBuildInfoFile 移到包根、删掉 `"types": ["node"]`（若 base 已提供）。
+ */
+
 import { createBus, createTaskboard, type Bus, type CardStore, type Taskboard } from '@taskboard/core';
 
 /** Cordis 插件名。 */
@@ -55,12 +68,26 @@ export const name = 'taskboard3-core';
  */
 export const inject = ['taskboard3Store'] as const;
 
+/*
+ * TODO(审查) 空 interface 是 TS 类型，编译后擦除；Cordis 只校验 `runtime.Config` 这个 standard-schema
+ *   值（cordis fiber.ts:50-62），所以本导出运行期不校验任何 config，却让人以为校验过了。
+ *   可直接改：删掉本 interface 与 `apply` 的 `_config` 参数；需用户决定：真要校验就用 schemastery/standard-schema。
+ */
 /** 本插件行的配置。 */
 export interface Config {}
 
+/*
+ * TODO(审查) CORE_SERVICE / DEFAULT_WORKSPACE_SERVICE / BUS_SERVICE 三个导出无外部使用者
+ *   （其它插件行硬编码 'taskboard3Core' 等字符串，lead 已确认）；改名会让消费方 inject 解析不到并静默不激活（无报错）。
+ *   可直接改：让消费方 import 这些常量（inject 接受运行期字符串），或改回不导出；跨包需一起改。
+ */
 /** 提供的核心实例服务名。其余插件行 `inject` 它。 */
 export const CORE_SERVICE = 'taskboard3Core' as const;
 
+/*
+ * TODO(审查) 服务名以 `...Id` 结尾，但服务值是 `() => Promise<string>` 函数（见 `ctx.provide(DEFAULT_WORKSPACE_SERVICE, defaultWorkspaceId)`），
+ *   消费方容易当成字符串直接拼。可直接改：重命名为 taskboard3ResolveDefaultWorkspace；跨包需一起改。
+ */
 /** 提供的默认空间策略服务名。 */
 export const DEFAULT_WORKSPACE_SERVICE = 'taskboard3DefaultWorkspaceId' as const;
 
@@ -74,6 +101,14 @@ export const DEFAULT_WORKSPACE_SERVICE = 'taskboard3DefaultWorkspaceId' as const
  */
 export const BUS_SERVICE = 'taskboard3Bus' as const;
 
+/*
+ * TODO(审查) 手写垫片只单向声明，没有与真实 Cordis `Context` 做过任何编译期核对；`ctx` 由 loader 动态
+ *   import 传入，签名漂移只会在运行时炸。本机 Cordis 4.1.0 核实：effect(execute, label?) 的 label 是真的、
+ *   provide 返回 disposer（这里写成 void 把返回值丢了）。可直接改：type-only import '@deepseek-ai/cordis' 的 Context，或加一条编译期兼容断言。
+ * TODO(审查) `effect?` 可选 + 调用处 `ctx.effect?.()`：真实 ctx 上 effect 必然存在（cordis reflect.ts:234），
+ *   可选化只会在假 ctx 下静默跳过清理（与 AGENTS §3.6「绕行必须能被编译失败或测试变红找到」相反）。可直接改：改必选，测试里补 no-op effect。
+ * TODO(审查) 下面注释说「只声明本包真正调用的两个方法」，实际是 3 个成员（provide / taskboard3Store / effect）。可直接改：改注释。
+ */
 /**
  * `apply` 用到的最小上下文。
  *
@@ -100,6 +135,10 @@ export interface ApplyContext {
  * @param config 无（本行目前不接受配置）
  */
 export function apply(ctx: ApplyContext, _config: Config = {}): void {
+	/*
+	 * TODO(审查) 总线脚手架放在「只建实例」的核心行里，拆 SSE 时要同时改 dsh-core 与 dsh 两处；
+	 *   更可拆的做法是单独一行 taskboard3-bus + 本包可选 inject（需 core 确认 createTaskboard 的 bus 可否省略）。需 lead/用户决定。
+	 */
 	/* ⚠ 原型期脚手架：广播总线。SSE 端点（在 `@taskboard/dsh` 里）需要它。 */
 	const bus: Bus = createBus();
 	const taskboard: Taskboard = createTaskboard({ store: ctx.taskboard3Store, bus });
@@ -107,12 +146,21 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	ctx.provide(CORE_SERVICE, taskboard);
 	ctx.provide(BUS_SERVICE, bus);
 
+	/*
+	 * TODO(审查) 本文件头声明「默认空间是入口策略，不是 core 概念」，但策略住在核心实例包里；
+	 *   第二入口（MCP / 命令行）复用它就得依赖 dsh-core，改策略也要改核心包。建议移到入口行或独立一行。需 lead/用户决定。
+	 */
 	/**
 	 * 入口的默认空间策略。
 	 *
 	 * 用户否掉了全局默认值 ⇒ 只做「第一个；没有就建一个」。
 	 */
 	const defaultWorkspaceId = async (): Promise<string> => {
+		/*
+		 * TODO(审查) core 的 ensureAnyWorkspace() 本身就是「取第一个未归档，没有就建默认」（lead 已确认）；
+		 *   这里先 list 再 ensure 是同一策略的第二份实现：core 改排序/筛选规则时两处会分叉。可直接改：`return (await taskboard.ensureAnyWorkspace()).id`。
+		 * TODO(审查) 并发首次调用可能都看到空并各建一个「默认」空间；缓存 in-flight promise 可消除。需用户决定（产品行为）。
+		 */
 		const list = taskboard.listWorkspaces(false);
 		const first = list[0];
 		if (first !== undefined) return first.id;
@@ -122,6 +170,11 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 
 	ctx.provide(DEFAULT_WORKSPACE_SERVICE, defaultWorkspaceId);
 
+	/*
+	 * TODO(审查) 异步 close() 被 `void` 丢弃：Cordis 只在 disposer **返回** Promise 时才 await 并 catch 记录
+	 *   （cordis fiber.ts:720-730）；现在卸载不等 close 完成，close 若 reject 会变成未处理 rejection（Node 可能终止进程）。
+	 *   可直接改：`() => taskboard.close()`（先用 core 确认 close 为 async）；可选：把本 effect 提前到 createTaskboard 之后，避免后续 provide 抛错时实例无人关（会改变 dispose 顺序）。
+	 */
 	/*
 	 * 关实例是**本行的副作用**：Cordis 卸载本行时调 `taskboard.close()`。
 	 *

@@ -26,6 +26,7 @@
 export const STYLE_ID = 'taskboard3-styles';
 
 
+// TODO(审查): 本文件的 import/export 夹在文件中间（:36-40、:640-671），可收到文件头/尾部（纯整理、不改行为）。另 WORKSPACE_CSS（:74-632，560 行）仍留在拼装文件里，其它 CSS 都已按「CSS 跟着组件走」搬走；是否也搬成 workspace-css.ts 需用户决定。
 /*
  * 降级块的样式（`.missing-renderer` / `.json-fallback`）。
  *
@@ -71,6 +72,7 @@ import { CREATE_SHELL_CSS } from './renderers/create/create-shell-css.ts';
  *
  * ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**（会提前结束字符串）。
  */
+// TODO(审查): WORKSPACE_CSS 560 行仍留在拼装文件里，其它 CSS 已按「CSS 跟着组件走」搬走（见上方 import）；建议同样搬成 renderers/workspace-css.ts（纯整理，不改行为），是否搬需用户确认文件布局。
 export const WORKSPACE_CSS = `
 /* ══════════════════════════════════════════════════════════
    0. 令牌 + 盒模型
@@ -698,6 +700,7 @@ export function injectStyles(): void {
 	 *   `.tb3w-root .badge` **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
 	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
 	 */
+	// TODO(审查): 这里手工拼 15 段 CSS，漏注入一段（如 TOOL_PERMISSION_CSS）不会报错；test/inject-styles.test.ts:156-163 只断言长度>1000 且含 `.tb3w-root`，拦不住。另 test/css-ownership.test.ts:41-56 只覆盖 7 个 CSS，缺 CARD_ACTION/TOOL_PERMISSION/SIBLING_GROUPS/TEMPLATE_AUTH/PERMISSION/PERMISSION_BOX。可改成表驱动 + 逐段哨兵断言。
 	element.textContent = `${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}\n${DERIVE_MENU_CSS}\n${PERMISSION_CSS}\n${PERMISSION_BOX_CSS}\n${CARD_ACTION_CSS}\n${TOOL_PERMISSION_CSS}\n${SIBLING_GROUPS_CSS}\n${TEMPLATE_AUTH_CSS}`;
 	/*
 	 * ⚠ **必须挂上去**。`createElement` + 设 `textContent` 只是造了一个游离节点，

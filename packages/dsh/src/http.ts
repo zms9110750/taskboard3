@@ -27,6 +27,17 @@
  * （形状就是 `@taskboard/protocol` 的 `Failure`）。
  */
 
+/*
+ * TODO(审查) 汇总 —— 本包审查发现的问题（只记录，不改逻辑）
+ *
+ * TODO(审查): [测试] `test/http.test.ts:497-528` 两处 `status >= 400 && < 500` 松断言（未知 templateRef / 缺 title）；core 错误码是确定的，
+ *   可钉 400/404——今天退化成 500 也会绿。测试本次禁止改，故记录于此。
+ * TODO(审查): [决定记录] 本文件手写 body 读取 / URL 解析是**刻意零依赖**（不用 raw-body）；`zod` 也不引入（会把运行时依赖拉进 dsh）。
+ *   唯一该换的是 `readBody` 里的字节计数（用 `Buffer.byteLength`）。这些是决定，不是待办。
+ * TODO(审查): [⑦] `@taskboard/dsh-core` 目前不导出 HTTP 应答 / 错误码→status（lead 确认）⇒ 本文件自持 `sendJson/sendOk/sendFailure/statusOf` 合理；
+ *   将来它提供了再抽，**现在不要**在 dsh 里再造一层抽象。
+ */
+
 import type { CardActionLevel, SearchCondition, Taskboard } from '@taskboard/core';
 import { BASE_TOOLS, CARD_ACTION_OPTIONS, isAdoptTransition, missingRenderers } from '@taskboard/core';
 import type { ToolGuardKv, ToolGuardLevel } from '@taskboard/dsh-agent-guard';
@@ -68,6 +79,8 @@ const MAX_BODY_BYTES = 4 * 1024 * 1024;
 function rejected(connection: ConnectionLike, req: IncomingLike, res: OutgoingLike): boolean {
 	const rejection = connection.requestRejection(req);
 	if (rejection === undefined) return false;
+	// TODO(审查): [⑤] 401/403 拒绝用 `ErrorCode.INTERNAL_ERROR` 表达 ⇒ 客户端拿到 code=INTERNAL_ERROR + status=401/403，错误码语义与 HTTP 状态互相打架。
+	//   协议里若无专门的认证/路由码，至少别复用 INTERNAL_ERROR；改码属于契约变化，需 lead 定。
 	sendJson(res, rejection, {
 		ok: false,
 		code: ErrorCode.INTERNAL_ERROR,
@@ -128,6 +141,7 @@ function statusOf(code: Failure['code']): number {
 }
 
 /** 405。 */
+// TODO(审查): [⑦] `Allow` 头是每个端点手写的字符串，漏一个就 405 头不对；改成端点表后由表推导即可。
 function sendMethodNotAllowed(res: OutgoingLike, allow: string): void {
 	res.statusCode = 405;
 	res.setHeader('allow', allow);
@@ -145,6 +159,8 @@ async function readBody(req: ReadableIncoming): Promise<string> {
 	let size = 0;
 	for await (const chunk of req) {
 		const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+		// TODO(审查): [②] 常量名是 `MAX_BODY_BYTES`（见文件头附近常量）但这里按 UTF-16 码元累加 ⇒ 中文/emoji 的实际上限是 3~4 倍。
+		//   改 `Buffer.byteLength(text)` 即可（会真正收紧上限，属行为变化）。
 		size += text.length;
 		if (size > MAX_BODY_BYTES) throw new Error('BODY_TOO_LARGE');
 		chunks.push(text);
@@ -322,6 +338,8 @@ export function createHandler(deps: RouteDeps): (req: ReadableIncoming, res: Out
 }
 
 /** 真正的路由分派。 */
+// TODO(审查): [⑥] 本函数（约 660 行）用一条 if 链装 18 个端点；建议按域拆 `routes/cards.ts / workspaces.ts / ui-state.ts / permission.ts`，
+//   各暴露 `(deps) => handler | null`，这里只做派发。**不改任何 HTTP 行为**。
 async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps): Promise<void> {
 	const { taskboard, connection } = deps;
 
@@ -332,6 +350,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	const { path, query } = parseUrl(req.url);
 	const prefix = `${ROUTE_PREFIX}/api`;
 
+	// TODO(审查): [⑤] 未知路径也用 `INTERNAL_ERROR` 报 404（此处与文件末尾的兜底两处）⇒ 与鉴权拒绝那处同一个问题：错误码在撒谎。
 	if (path !== prefix && !path.startsWith(`${prefix}/`)) {
 		sendFailure(res, failure(ErrorCode.INTERNAL_ERROR, `未知路径：${path}`), 404);
 		return;
@@ -339,6 +358,9 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	const tail = path.slice(prefix.length);
 
 	/* ── GET /api/tools —— 交给 `@taskboard/dsh-agent-guard` 那一行 ── */
+	// TODO(审查): [②] `agentGuardTools(...)` **没 await、也没看返回值**（签名声明 `=> boolean`）：handler 若 async 抛错会成 unhandled rejection，
+	//   返回 false（未处理）会被静默当成已处理。这是两个包唯一边界，且 test/ 下 `agentGuardTools|api/tools` 零命中（零覆盖）。
+	//   可直接改：`await` 并检查返回值，未处理则落 404；补测试需另行批准。
 	if (tail === '/tools' && deps.agentGuardTools !== undefined) {
 		deps.agentGuardTools(connection, req, res);
 		return;
@@ -403,6 +425,8 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 				);
 				return;
 			}
+			// TODO(审查): [②] groups / folded / expanded 写三个 kv 键（紧接着的三行），**非原子**：第三个失败时前两个已落库，GET 会读到半套状态。
+			//   要原子就得合成单键存一份 JSON（数据迁移，需用户点头）；否则请在文档里写明「允许半写」。
 			await deps.kv.kvSet(uiGroupsKeyOf(checked.value.workspace), serializeUiGroups(checked.value.groups));
 			await deps.kv.kvSet(uiFoldedKeyOf(checked.value.workspace), serializeFolded(checked.value.folded));
 			await deps.kv.kvSet(uiExpandedKeyOf(checked.value.workspace), serializeExpanded(checked.value.expanded));
@@ -510,6 +534,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		/* 鉴权已经在 `route()` 开头统一做过（`rejected()` 先于任何路径判断）。 */
 		const store = taskboard.getToolPolicies();
 		const templates = taskboard.listTemplates();
+		// TODO(审查): [①] 下面 5 处 `[...x]` 展开只是为了把 readonly 集合变成数组，可提一个 `toArrays(store)`；纯可读性。
 		sendOk(res, {
 			baseTools: [...BASE_TOOLS],
 			unclaimed: [...store.unclaimed],
@@ -760,6 +785,9 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
 		const cardId = decodeURIComponent(seenMatch[1] ?? '');
 		const body = await readJson(req);
+		// TODO(审查): [②] `workspaceId` 的传法前后不一：/cards 建卡、PATCH、action 从 body 取，
+		//   而 GET /state、GET cards/:id、DELETE 从 query 取；同一个值两种传法，客户端只能靠背。
+		//   本处起的 `str(body,'workspaceId') ?? await defaultWorkspaceId()` 也重复了 5 遍 ⇒ 可抽 `resolveWorkspace(body)`。
 		const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
 		/*
 		 * ⚠ **`reader` 固定 `'user'`，不从 body 取。**
@@ -797,6 +825,8 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		const note = str(body, 'note');
 		const kind = str(body, 'kind');
 		const domain = str(body, 'domain');
+		// TODO(审查): [①] 调用末尾 `} as Parameters<typeof taskboard.create>[0]` 是 AGENTS 3.1 要拆的断言：
+		//   `relations` 来自 `rawField()`(unknown) 所以不 cast 编不过。可直接改：给取值器加泛型 `fieldOf<T>()`，断言即可删。
 		const created = await taskboard.create({
 			workspaceId,
 			templateRef: str(body, 'templateRef') ?? '',

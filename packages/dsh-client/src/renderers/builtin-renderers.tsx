@@ -47,6 +47,7 @@ import type { BuiltinType } from './builtin-types.ts';
    三个内容组件（薄适配：把 RegistryProps 的字段铺给内容组件）
    ══════════════════════════════════════════════════════════ */
 
+// TODO(审查): `view={view as never}`（下面还有 :76、:97 两处）是 render-registry.ts:91 `view?: unknown` 导致的断言，不是真实类型关系；view 收窄成 SectionView 后三处都能删。
 /** `text` 内容。 */
 export function TextContent(props: RendererProps): ReactNode {
 	const view = props.view;
