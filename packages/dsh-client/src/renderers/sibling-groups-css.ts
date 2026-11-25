@@ -25,7 +25,7 @@ export const SIBLING_GROUPS_CSS = `
 .tb3t-groupbanner{
   position:absolute;display:flex;align-items:center;gap:8px;
   height:32px;padding:0 10px;
-  border:1px dashed #7c3aed;border-radius:16px;
+  border:1px solid #a78bfa;border-radius:16px;
   background:#ede9fe;color:#4c1d95;
   font-family:inherit;font-size:11.5px;font-weight:600;line-height:32px;
   cursor:pointer;z-index:5;text-align:left;overflow:hidden;
@@ -34,13 +34,13 @@ export const SIBLING_GROUPS_CSS = `
 }
 .tb3t-groupbanner:hover{background:#e4ddfd;border-color:#5b21b6}
 .tb3t-groupbanner:focus-visible{outline:2px solid #2563eb;outline-offset:1px}
-.tb3t-groupbanner.is-collapsed{border-style:solid;background:#ede9fe}
+.tb3t-groupbanner.is-collapsed{border:1px dashed #7c3aed;background:#ede9fe}
 .tb3t-groupbanner__caret{font-size:17px;font-weight:700;line-height:1;color:#6d28d9;flex:0 0 auto}
 .tb3t-groupbanner__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .tb3t-groupbanner__count{font-size:10.5px;color:#7c3aed;flex:0 0 auto;margin-left:auto}
 /* 展开组：整块（横幅 + 成员卡）的虚线底色容器 */
 .tb3t-groupbox{
-  position:absolute;z-index:0;border:1px dashed #c4b5fd;border-radius:12px;
+  position:absolute;z-index:1;border:1px dashed #c4b5fd;border-radius:12px;
   background:#f5f3ff;pointer-events:none;
 }
 
