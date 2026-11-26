@@ -1,0 +1,50 @@
+name: archive-discussion
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - docs/ARCHIVE.md
+
+permissions:
+  contents: read
+  discussions: write
+
+concurrency:
+  group: archive-discussion
+  cancel-in-progress: true
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TITLE: taskboard3 会话存档
+      CATEGORY: General
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish docs/ARCHIVE.md to Discussions
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY%%/*}"
+          repo="${GITHUB_REPOSITORY##*/}"
+          repo_id=$(gh api "repos/$GITHUB_REPOSITORY" --jq .node_id)
+          category_id=$(gh api graphql \
+            -f query='query($o:String!,$r:String!){repository(owner:$o,name:$r){discussionCategories(first:50){nodes{id name}}}}' \
+            -f o="$owner" -f r="$repo" \
+            --jq ".data.repository.discussionCategories.nodes[] | select(.name==\"$CATEGORY\") | .id")
+          existing=$(gh api graphql \
+            -f query='query($o:String!,$r:String!){repository(owner:$o,name:$r){discussions(first:100){nodes{id title}}}}' \
+            -f o="$owner" -f r="$repo" \
+            --jq ".data.repository.discussions.nodes[] | select(.title==\"$TITLE\") | .id" | head -n1)
+          body=$(cat docs/ARCHIVE.md)
+          if [ -n "$existing" ]; then
+            gh api graphql \
+              -f query='mutation($id:ID!,$body:String!){updateDiscussion(input:{discussionId:$id,body:$body}){discussion{url}}}' \
+              -f id="$existing" -f body="$body"
+          else
+            gh api graphql \
+              -f query='mutation($repo:ID!,$cat:ID!,$title:String!,$body:String!){createDiscussion(input:{repositoryId:$repo,categoryId:$cat,title:$title,body:$body}){discussion{url}}}' \
+              -f repo="$repo_id" -f cat="$category_id" -f title="$TITLE" -f body="$body"
+          fi

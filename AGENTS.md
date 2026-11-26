@@ -482,9 +482,40 @@ pnpm install
 | **目录结构变了** | §四 |
 | **脚手架拆了** | §五 删掉对应行 |
 | **清单里某条不再适用** | 删掉它（**别留「以前的规则」**） |
+| **GitHub 流程变了** | §八 |
 
 **⚠ 不要在这里写「当前状态」**（比如「现在有 149 个测试」）—— 那是事实，会漂。
 **状态在 `docs/设计.md`。**
+
+---
+
+## 八、GitHub：讨论存档与 CI
+
+**仓库私有，远端 `origin` 是 GitHub。测试与讨论都在 GitHub 上，不在本机。**
+
+### 8.1 讨论存档（防会话压缩丢失）
+
+- 源文件：`docs/ARCHIVE.md`
+- 工作流：`.github/workflows/archive-discussion.yml`
+- 触发：push 修改 `docs/ARCHIVE.md`，或手动 `workflow_dispatch`
+- 行为：按标题 `taskboard3 会话存档` 创建或更新 Discussion（分类 `General`）
+- **需要留档的指令先写进 `docs/ARCHIVE.md` 再 push；只写在聊天里不算**
+- 会话被压缩后：先读这个 Discussion / 文件，再动手
+
+### 8.2 CI
+
+- 工作流：`.github/workflows/ci.yml`
+- 触发：push / pull_request
+- 步骤：`pnpm install --frozen-lockfile` → `pnpm run build` → `pnpm run check:dev` → `pnpm run check:test-types` → `pnpm run test`
+- **测试以 CI 结果为准，不在用户机器上跑全量**
+- 本地只做编译和单文件验证；要全量回归就 push 触发 CI
+- 规则 5 的「自己跑」改为：**以 CI 绿为准**；CI 不可用时才本地补跑
+
+### 8.3 GitHub MCP
+
+- 读仓库 / 工作流 / 讨论走 GitHub MCP
+- 写代码优先本地 + push；不要用 MCP 直接改源码
+- 工作流失败先看 `actions_list` / `get_job_logs`，不要靠猜
 
 
 
