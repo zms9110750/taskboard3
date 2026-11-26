@@ -526,6 +526,21 @@ pnpm install
   - Issue 评论：`docs/BOT-COMMENT.md` → `bot-issue-comment.yml`
 - 发完看 `author`：必须是 `github-actions`，不是 `zms9110750`
 
+### 8.5 讨论必须带版本与来源
+
+- **每个讨论正文第一段必须 link 一个 tag**：写明「这是对哪个版本的评审」
+- **由 issue 创建的讨论，必须 link 该 issue**（父 issue 也一并 link）
+- 格式：
+
+```md
+> 基线：tag [`<tag>`](https://github.com/<owner>/<repo>/tree/<tag>)
+>
+> 来源：Issue [#N](https://github.com/<owner>/<repo>/issues/N)
+```
+
+- tag 必须指向正文所述版本对应的 commit，并在 discussion 创建前推上去
+- 光有 commit hash 不够：**没有 tag 的讨论视为不合规**
+
 
 
 
