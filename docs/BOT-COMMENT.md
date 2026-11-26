@@ -6,3 +6,5 @@
 - 发布工作流：`.github/workflows/packages-discussion.yml`（push 修改 `docs/PACKAGES.md` 即更新）
 
 讨论内含：分包总览、每包对外依赖、纯契约包的影响、依赖图、C# 对照、本项目一般方法。文件引用均指向 tag 下的 blob 链接。
+
+> 本文由 docs/BOT-COMMENT.md 经工作流发布；重复触发会先清掉旧 bot 评论。

@@ -3,6 +3,7 @@ name: split-review-discussion
 on:
   workflow_dispatch:
   push:
+    branches: [main, review/todo-audit]
     paths:
       - docs/SPLIT-REVIEW.md
 

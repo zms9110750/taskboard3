@@ -3,6 +3,7 @@ name: bot-issue-comment
 on:
   workflow_dispatch:
   push:
+    branches: [main, review/todo-audit]
     paths:
       - docs/BOT-COMMENT.md
 
@@ -16,11 +17,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 删除用用户账号发的那条评论
+      - name: 删除旧评论（用户账号 + 之前的 bot 评论）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/comments/7203501268" || true
+          gh api "repos/$GITHUB_REPOSITORY/issues/4/comments" --paginate \
+            --jq '.[] | select(.user.login=="github-actions[bot]") | .id' \
+            | while read -r id; do
+                [ -n "$id" ] && gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" || true
+              done
 
       - name: 以 github-actions[bot] 发评论
         env:
