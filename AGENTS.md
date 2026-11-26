@@ -517,6 +517,15 @@ pnpm install
 - 写代码优先本地 + push；不要用 MCP 直接改源码
 - 工作流失败先看 `actions_list` / `get_job_logs`，不要靠猜
 
+### 8.4 发帖身份
+
+- **禁止用 MCP（用户账号）发 Discussion / Issue 评论**
+- 要发东西就落地成文件，再走 `github-actions[bot]` 工作流：
+  - 讨论：`docs/ARCHIVE.md` → `archive-discussion.yml`
+  - 分包讨论：`docs/PACKAGES.md` → `packages-discussion.yml`
+  - Issue 评论：`docs/BOT-COMMENT.md` → `bot-issue-comment.yml`
+- 发完看 `author`：必须是 `github-actions`，不是 `zms9110750`
+
 
 
 

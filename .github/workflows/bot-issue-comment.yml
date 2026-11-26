@@ -1,0 +1,31 @@
+name: bot-issue-comment
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - docs/BOT-COMMENT.md
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 删除用用户账号发的那条评论
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/comments/7203501268" || true
+
+      - name: 以 github-actions[bot] 发评论
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          jq -Rs '{body: .}' docs/BOT-COMMENT.md \
+            | gh api -X POST "repos/$GITHUB_REPOSITORY/issues/4/comments" --input -
