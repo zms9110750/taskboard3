@@ -261,28 +261,26 @@ const BUTTON_TABLE = [
 	btn('design', S.CANCELED, S.AUTH_REQUIRED, '重开', USER, 'transition'),
 
 	/* ── 工作（work） ── */
-	/* TODO(审查): 工作类写作“否绝”（本段 5 处），设计段写作“否决”—— 疑似错字/措辞不一致。
-	 * 改文案属产品行为，需用户决定；这里不改。 */
 	btn('work', S.UNSPECIFIED, S.SUBMITTED, '采纳', USER, 'adopt'),
-	btn('work', S.UNSPECIFIED, S.REJECTED, '否绝', USER, 'transition'),
+	btn('work', S.UNSPECIFIED, S.REJECTED, '否决', USER, 'transition'),
 	/* ⚠ 取消进终结态 ⇒ 只有 user（规则 3 含 CANCELED）。 */
 	btn('work', S.UNSPECIFIED, S.CANCELED, '取消', USER, 'transition'),
 	btn('work', S.SUBMITTED, S.WORKING, '领取', BOTH, 'claim'),
 	btn('work', S.SUBMITTED, S.COMPLETED, '成功', USER, 'transition'),
 	btn('work', S.SUBMITTED, S.FAILED, '失败', USER, 'transition'),
 	btn('work', S.SUBMITTED, S.CANCELED, '取消', USER, 'transition'),
-	btn('work', S.SUBMITTED, S.REJECTED, '否绝', USER, 'transition'),
+	btn('work', S.SUBMITTED, S.REJECTED, '否决', USER, 'transition'),
 	btn('work', S.WORKING, S.COMPLETED, '成功', USER, 'transition'),
 	btn('work', S.WORKING, S.FAILED, '失败', USER, 'transition'),
 	btn('work', S.WORKING, S.CANCELED, '取消', USER, 'transition'),
-	btn('work', S.WORKING, S.REJECTED, '否绝', USER, 'transition'),
+	btn('work', S.WORKING, S.REJECTED, '否决', USER, 'transition'),
 	btn('work', S.WORKING, S.SUBMITTED, '搁置', BOTH, 'release'),
 	btn('work', S.INPUT_REQUIRED, S.CANCELED, '取消', USER, 'transition'),
 	btn('work', S.INPUT_REQUIRED, S.FAILED, '失败', USER, 'transition'),
-	btn('work', S.INPUT_REQUIRED, S.REJECTED, '否绝', USER, 'transition'),
+	btn('work', S.INPUT_REQUIRED, S.REJECTED, '否决', USER, 'transition'),
 	btn('work', S.AUTH_REQUIRED, S.CANCELED, '取消', USER, 'transition'),
 	btn('work', S.AUTH_REQUIRED, S.FAILED, '失败', USER, 'transition'),
-	btn('work', S.AUTH_REQUIRED, S.REJECTED, '否绝', USER, 'transition'),
+	btn('work', S.AUTH_REQUIRED, S.REJECTED, '否决', USER, 'transition'),
 
 	/* ── 记录（record） ── */
 	btn('record', S.UNSPECIFIED, S.AUTH_REQUIRED, '采纳', BOTH, 'adopt'),
@@ -490,8 +488,6 @@ type _AUTO_NEVER_ENDED = [Extract<EndedTaskState, (typeof AUTO_STATES)[number]>]
 	? true
 	: false;
 
-// TODO(审查): 只断言“非终结状态 ⊆ AUTO_STATES”，没断言长度/无重复 ⇒ AUTO_STATES 出现重复仍过编译（运行时测试会抓到）。
-// 可直接改：加 `(typeof AUTO_STATES)['length'] extends 4 ? true : false` 断言。
 /** `AUTO_STATES` 覆盖了全部非终结状态（不多不少：四个组里除了 draft 与 ended）。 */
 type _AUTO_COVERS_NON_ENDED = [
 	Exclude<TaskState, typeof S.UNSPECIFIED | EndedTaskState>,

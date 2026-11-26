@@ -366,3 +366,19 @@ describe('边界', () => {
 		}
 	});
 });
+
+describe('拒绝按钮的文案', () => {
+	it('只有 record 用「否认」；其余拒绝按钮统一用「否决」；全表不再出现「否绝」', () => {
+		const deny = BUTTON_ACTIONS.filter((one) => one.label === '否认');
+		assert.equal(deny.length, 1);
+		assert.equal(deny[0]?.kind, 'record');
+		assert.equal(deny[0]?.to, S.FAILED);
+
+		for (const button of BUTTON_ACTIONS) {
+			if (button.to === S.REJECTED) {
+				assert.equal(button.label, '否决', `${button.kind} ${button.from} → rejected`);
+			}
+		}
+		assert.equal(BUTTON_ACTIONS.some((one) => one.label === '否绝'), false);
+	});
+});

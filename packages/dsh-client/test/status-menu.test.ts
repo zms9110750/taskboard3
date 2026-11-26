@@ -157,8 +157,8 @@ describe('② 图标：装饰，查不到给 ·', () => {
 
 	it('取消 ⇒ ⊘', () => assert.equal(iconOf(btn('取消', S.submitted, S.canceled)), '⊘'));
 
-	it('否绝 / 否决 / 否认（都进拒绝态）⇒ ✕', () => {
-		for (const label of ['否绝', '否决', '否认']) {
+	it('否决 / 否认（都进拒绝态）⇒ ✕', () => {
+		for (const label of ['否决', '否认']) {
 			assert.equal(iconOf(btn(label, S.submitted, S.rejected)), '✕');
 		}
 	});
@@ -203,8 +203,8 @@ describe('③ 灰字：目标状态名，与按钮文案撞了留空', () => {
 		assert.equal(hintOf(btn('取消', S.submitted, S.canceled)), '');
 	});
 
-	it('⭐ 否绝 ⇒ 灰字「拒绝」（旧版三处措辞不同：否绝 / 否决 / 否认）', () => {
-		assert.equal(hintOf(btn('否绝', S.submitted, S.rejected)), '拒绝');
+	it('⭐ 否决 ⇒ 灰字「拒绝」（旧版措辞：否决 / 否认）', () => {
+		assert.equal(hintOf(btn('否决', S.submitted, S.rejected)), '拒绝');
 		assert.equal(hintOf(btn('否认', S.authRequired, S.failed)), '失败');
 	});
 });
@@ -227,8 +227,8 @@ describe('④ 着色：按目标状态的色相，不再「危险/不危险」�
 		assert.equal(toneOf(btn('取消', S.submitted, S.canceled)), 'canceled');
 	});
 
-	it('⭐ 否绝 ⇒ rejected（橙），不是红', () => {
-		assert.equal(toneOf(btn('否绝', S.submitted, S.rejected)), 'rejected');
+	it('⭐ 否决 ⇒ rejected（橙），不是红', () => {
+		assert.equal(toneOf(btn('否决', S.submitted, S.rejected)), 'rejected');
 	});
 
 	it('成功 ⇒ completed（绿）', () => {
@@ -246,7 +246,7 @@ describe('④ 着色：按目标状态的色相，不再「危险/不危险」�
 		const tones = [
 			toneOf(btn('失败', S.submitted, S.failed)),
 			toneOf(btn('取消', S.submitted, S.canceled)),
-			toneOf(btn('否绝', S.submitted, S.rejected)),
+			toneOf(btn('否决', S.submitted, S.rejected)),
 		];
 		assert.equal(new Set(tones).size, 3);
 	});
@@ -297,10 +297,10 @@ describe('⑤ menuModelOf：整份渲染决定', () => {
 
 /* ══════════════════════════════════════════════════════════ */
 describe('⑥ 真实按钮表：菜单文案 = protocol 的文案，一个字不改', () => {
-	it('⭐ work / 提交 ⇒ 五段项：领取 · 成功 · 失败 · 取消 · 否绝', () => {
+	it('⭐ work / 提交 ⇒ 五段项：领取 · 成功 · 失败 · 取消 · 否决', () => {
 		const actions = buttonsOf('work', S.submitted, 'user');
 		const labels = sectionsOf(actions).flatMap((one) => one.items.map((item) => item.action.label));
-		assert.deepEqual(labels, ['领取', '成功', '失败', '取消', '否绝']);
+		assert.deepEqual(labels, ['领取', '成功', '失败', '取消', '否决']);
 	});
 
 	it('⭐ 菜单标签**原样**等于按钮表标签（视图不写第二份文案）', () => {
@@ -362,13 +362,13 @@ describe('⑥ 真实按钮表：菜单文案 = protocol 的文案，一个字不
 		);
 	});
 
-	it('⭐ 真实表上：红色只给失败，取消是褐、否绝是橙（在真实表上再验一次）', () => {
+	it('⭐ 真实表上：红色只给失败，取消是褐、否决是橙（在真实表上再验一次）', () => {
 		const items = sectionsOf(buttonsOf('work', S.submitted, 'user')).flatMap((one) => one.items);
 		const byLabel = new Map(items.map((one) => [one.action.label, one.tone]));
 		assert.equal(byLabel.get('成功'), 'completed');
 		assert.equal(byLabel.get('失败'), 'failed');
 		assert.equal(byLabel.get('取消'), 'canceled');
-		assert.equal(byLabel.get('否绝'), 'rejected');
+		assert.equal(byLabel.get('否决'), 'rejected');
 	});
 
 	it('⭐ 真实表里「取消」的灰字一律留空（三处取消按钮都撞名）', () => {

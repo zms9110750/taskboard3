@@ -157,7 +157,7 @@ export function hintOf(action: ButtonAction): string {
  *
  * ## 为什么删掉 `isDangerAction()`
  *
- * 旧版 `danger: true` 标在 失败 / 取消 / 拒绝（否绝、否决、否认）/ 删除 上，
+ * 旧版 `danger: true` 标在 失败 / 取消 / 拒绝（否决、否认）/ 删除 上，
  * 用同一个红色。用户 `2026-11-18` 否了这个：
  *
  * > 「他们目前的红色看起来像个错误。可能有不正确的视觉引导」
