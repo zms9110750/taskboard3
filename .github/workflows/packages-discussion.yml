@@ -41,7 +41,7 @@ jobs:
           body=$(cat docs/PACKAGES.md)
           if [ -n "$existing" ]; then
             gh api graphql \
-              -f query='mutation($id:ID!,$body:String!){updateDiscussion(input:{discussionId:$id,body:$body}){discussion{url}}}' \
+              -f query='mutation($id:ID!,$body:String!){addDiscussionComment(input:{discussionId:$id,body:$body}){comment{url}}}' \
               -f id="$existing" -f body="$body"
           else
             gh api graphql \
