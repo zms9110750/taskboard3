@@ -1,0 +1,67 @@
+name: bot-write
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: 'discussion 或 comment'
+        required: true
+        default: discussion
+      title:
+        description: '讨论标题（kind=discussion 时必填）'
+        required: false
+        default: ''
+      body:
+        description: '正文（Markdown）'
+        required: true
+      category:
+        description: '讨论分类名'
+        required: false
+        default: Announcements
+      discussion:
+        description: '评论目标讨论编号（kind=comment 时必填）'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  discussions: write
+
+jobs:
+  write:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 创建讨论
+        if: inputs.kind == 'discussion'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          TITLE: ${{ inputs.title }}
+          BODY: ${{ inputs.body }}
+          CATEGORY: ${{ inputs.category }}
+        run: |
+          set -euo pipefail
+          meta=$(gh api graphql -f query='query($o:String!,$r:String!){repository(owner:$o,name:$r){id discussionCategories(first:50){nodes{id name}}}}' -f o="$OWNER" -f r="$REPO")
+          repo_id=$(jq -r '.data.repository.id' <<<"$meta")
+          cat_id=$(jq -r --arg c "$CATEGORY" '.data.repository.discussionCategories.nodes[] | select(.name==$c) | .id' <<<"$meta")
+          if [ -z "$cat_id" ] || [ "$cat_id" = "null" ]; then
+            echo "找不到分类：$CATEGORY，现有分类："
+            jq -r '.data.repository.discussionCategories.nodes[].name' <<<"$meta"
+            exit 1
+          fi
+          jq -n --arg repo "$repo_id" --arg cat "$cat_id" --arg t "$TITLE" --arg b "$BODY" \
+            '{query:"mutation($repo:ID!,$cat:ID!,$t:String!,$b:String!){createDiscussion(input:{repositoryId:$repo,categoryId:$cat,title:$t,body:$b}){discussion{number url}}}",variables:{repo:$repo,cat:$cat,t:$t,b:$b}}' \
+            | gh api graphql --input -
+
+      - name: 发表评论
+        if: inputs.kind == 'comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ inputs.discussion }}
+          BODY: ${{ inputs.body }}
+        run: |
+          set -euo pipefail
+          jq -n --arg n "$N" --arg b "$BODY" \
+            '{query:"mutation($n:Int!,$b:String!){addDiscussionComment(input:{discussionNumber:$n,body:$b}){comment{url}}}",variables:{n:($n|tonumber),b:$b}}' \
+            | gh api graphql --input -
