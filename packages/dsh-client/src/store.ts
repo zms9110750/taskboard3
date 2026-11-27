@@ -19,9 +19,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { createApi, type TaskboardApi } from './api.ts';
+import type { TaskboardApi } from './api.ts';
+import { getApi } from './api-client.ts';
 import {
 	chooseInitialWorkspace,
+	isLatestWrite,
 	mergeActionResult,
 	messageOf,
 	replaceCards,
@@ -129,11 +131,17 @@ const EMPTY: BoardState = Object.freeze({
 /**
  * 任务板状态 hook。
  *
- * @param apiImpl 可选注入（测试 / 未来换通道）；省略则用 `createApi()`
+ * @param apiImpl 可选注入（测试 / 预览 / 未来换通道）；省略则用包内单例 `getApi()`
  */
 export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
-	// TODO(审查): `useRef(apiImpl ?? createApi())` 的实参每次渲染都会执行 `createApi()`（只采用首值），是纯浪费；改成惰性初始化或模块级单例即可，不改行为。
-	const apiRef = useRef<TaskboardApi>(apiImpl ?? createApi());
+	/*
+	 * 惰性取 API 客户端：`useState` 的初始化函数**只跑一次**。
+	 *
+	 * 之前是 `useRef(apiImpl ?? createApi())` —— 实参每次渲染都会求值（只采用首值），
+	 * 纯浪费；而且每个 hook 实例各建一个客户端，和包内其它调用点不共享。
+	 * ⇒ 产品路径统一走 `getApi()` 单例；传了 `apiImpl` 的测试 / 预览仍用注入值。
+	 */
+	const [api] = useState<TaskboardApi>(() => apiImpl ?? getApi());
 	const [state, setState] = useState<BoardState>(EMPTY);
 	/** 当前空间 id 的镜像 —— 避免把 `reload` 绑到 state 上导致闭包过期。 */
 	const workspaceRef = useRef('');
@@ -176,7 +184,7 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 		const seq = ++loadSeq.current;
 		setState((prev) => ({ ...prev, loading: prev.cards.length === 0, error: undefined }));
 		try {
-			const data: StateData = await apiRef.current.getState(workspaceId);
+			const data: StateData = await api.getState(workspaceId);
 			if (seq !== loadSeq.current) return;
 			const nextId = chooseInitialWorkspace(data.workspaces, data.workspaceId);
 			workspaceRef.current = nextId;
@@ -245,7 +253,7 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 
 		setState((prev) => ({ ...prev, pending: prev.pending + 1, error: undefined }));
 		try {
-			const result = await apiRef.current.act({ workspaceId, cardId: request.cardId, to });
+			const result = await api.act({ workspaceId, cardId: request.cardId, to });
 			setState((prev) => ({
 				...prev,
 				cards: mergeActionResult(prev.cards, result),
@@ -318,8 +326,8 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 			let savedOk = false;
 			const task: Promise<void> = previous.then(async () => {
 				try {
-					const saved = await apiRef.current.patchCard({ workspaceId, cardId, content });
-					if (sectionSeq.current.get(key) === seq) {
+					const saved = await api.patchCard({ workspaceId, cardId, content });
+					if (isLatestWrite(sectionSeq.current.get(key), seq)) {
 						cardsRef.current = replaceCards(cardsRef.current, [saved]);
 						setState((prev) => ({
 							...prev,
@@ -332,7 +340,7 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 					}
 					savedOk = true;
 				} catch (cause) {
-					if (sectionSeq.current.get(key) === seq) {
+					if (isLatestWrite(sectionSeq.current.get(key), seq)) {
 						cardsRef.current = replaceCards(cardsRef.current, [card]);
 						setState((prev) => ({
 							...prev,
@@ -357,7 +365,7 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 		async (name: string): Promise<boolean> => {
 			setState((prev) => ({ ...prev, pending: prev.pending + 1, error: undefined }));
 			try {
-				const created = await apiRef.current.createWorkspace(name);
+				const created = await api.createWorkspace(name);
 				await load(created.id);
 				return true;
 			} catch (cause) {
@@ -381,8 +389,8 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 			setState((prev) => ({ ...prev, pending: prev.pending + 1, error: undefined }));
 			try {
 				const result = archived
-					? await apiRef.current.archiveWorkspace(id)
-					: await apiRef.current.unarchiveWorkspace(id);
+					? await api.archiveWorkspace(id)
+					: await api.unarchiveWorkspace(id);
 
 				/*
 				 * 归档掉的是**正在看的那个空间** ⇒ 必须换一个，不能停在
