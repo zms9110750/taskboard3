@@ -24,13 +24,13 @@
  * ⇒ 这里对 `adopt` 一律 `aiAllowed: true`，其余动作仍按按钮表的 `actors` 判。
  */
 
-import type { ButtonAction, Failure, TaskState } from '@taskboard/protocol';
+import type { ButtonAction, TaskState } from '@taskboard/protocol';
 import { BUTTON_ACTIONS, judgeTransition, labelOf } from '@taskboard/protocol';
 
 import type { Card, CardId } from './card.ts';
 import { holderIdsOf, isHeldBy } from './card.ts';
 import type { CardActionLevel } from './permission.ts';
-import { judgeClaim, type ClaimContext } from './transition.ts';
+import { judgeClaim, rejectionMessageOf, type ClaimContext } from './transition.ts';
 
 /** 这个目标背后要调哪个 core 门面方法。 */
 export type TransitionAction = 'adopt' | 'claim' | 'release' | 'transition';
@@ -39,7 +39,14 @@ export type TransitionAction = 'adopt' | 'claim' | 'release' | 'transition';
 export interface TransitionBlocker {
 	readonly id: CardId;
 	readonly title: string;
-	readonly status: TaskState;
+	/**
+	 * 阻塞卡的状态。
+	 *
+	 * ⚠ **可选**：`blockers` 的 id 来自调用方给的事实（可能指向一张已不在
+	 * `cards` 里的卡）。找不到时**不编造状态**，省略即可 —— 编造会把
+	 * 「不知道」伪装成「草稿」。
+	 */
+	readonly status?: TaskState;
 }
 
 /** 一条「条件」—— 目标现在不可执行的原因。 */
@@ -229,7 +236,8 @@ function targetOf(
 		conditions: [
 			{
 				code: verdict.reason,
-				message: rejectMessage(verdict.reason),
+				/* 与 `transition.ts` 的 `rejectFailure` 共用**同一张** reason→文案表。 */
+				message: rejectionMessageOf(verdict.reason),
 				retryable: false,
 			},
 		],
@@ -282,34 +290,17 @@ function cardLevelDenied(
 	};
 }
 
-/** 把卡 id 解析成「id + 标题 + 状态」。 */
-// TODO(审查): 找不到卡时用 `?? ('TASK_STATE_UNSPECIFIED' as TaskState)` 编造状态（且是断言）⇒ 建议 `TransitionBlocker.status?` 可选或给 opaque 分支，可直接改。
+/**
+ * 把卡 id 解析成「id + 标题 + 状态」。
+ *
+ * ⚠ 找不到卡时**不编造状态**（旧代码回落 `TASK_STATE_UNSPECIFIED`）：
+ *   那会把「查不到」伪装成「草稿」，AI 拿到的条件是假的。`status` 省略即可。
+ */
 function blockersOf(ids: readonly CardId[], cards: readonly Card[]): readonly TransitionBlocker[] {
 	return ids.map((id) => {
 		const found = cards.find((one) => one.id === id);
-		return { id, title: found?.title ?? '', status: found?.status ?? ('TASK_STATE_UNSPECIFIED' as TaskState) };
+		return found === undefined
+			? { id, title: '' }
+			: { id, title: found.title, status: found.status };
 	});
 }
-
-/** `judgeTransition` 的拒绝原因 → 给 AI 的人话。 */
-// TODO(审查): 这张 reason→文案表与 transition.ts 的 `rejectFailure` 是第二份真值 ⇒ 协议加一个 reason 时两处都要改、漏一处就回落默认文案；建议抽出共用映射，可直接改。
-function rejectMessage(reason: string): string {
-	switch (reason) {
-		case 'AI_CANNOT_END':
-			return '这是终结态；AI 不能把卡推进终结态；如果用户授意，由用户推进。';
-		case 'NOT_A_BUTTON':
-			return '当前状态到目标状态在按钮表里没有合法动作。';
-		case 'SAME_STATE':
-			return '目标状态就是当前状态，无需转移。';
-		case 'UNKNOWN_KIND':
-			return '这张卡的分类未注册，状态机不认它。';
-		case 'UNKNOWN_STATE':
-			return '状态值不合法。';
-		default:
-			return `转移被拒：${reason}。`;
-	}
-}
-
-/** 编译期留痕：`Failure` 类型与 advice 的失败形态同源，避免未知原因映射时静默。 */
-// TODO(审查): `TransitionAdviceFailure = Failure` 全仓无人使用，`Failure` 也只被这一行 import ⇒ 死代码，可直接删本行与 import。
-export type TransitionAdviceFailure = Failure;

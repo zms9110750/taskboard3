@@ -21,13 +21,11 @@
  * ## 零运行时依赖
  *
  * 本包不 import 任何东西，包括 `node:` 内置模块 ⇒ **既能进 Node 也能进浏览器**。
- * 由 `test/no-node-imports.test.ts` 守着。
+ * 由 `test/no-node-imports.test.ts` 守着（扫 `src/**` 的 import 说明符；不依赖 cwd）。
  *
- * TODO(审查): 这个测试文件不存在（test/ 下只有 transition.test.ts）⇒ 零 node 依赖无人守。
- * 可直接改：补测试（node:fs 扫 src/** 的 import 说明符，零新依赖），或删掉这句承诺。
- *
- * TODO(审查): package.json `files:["lib"]` + tsconfig.base 的 declarationMap/sourceMap ⇒ 产物 map 的 sources 指向 ../../src/*.ts，
- * 而 src 不随包发布，点“跳到源码”会断。可直接改：files 加 "src"，或本包关掉 declarationMap/sourceMap（非源码问题，故记在文件头）。
+ * ⚠ 发布配置：`package.json` 的 `files` 带 `lib` **和 `src`** ——
+ *   `tsconfig.base.json` 开了 `declarationMap` / `sourceMap`，产物 map 的
+ *   `sources` 指向 `../../src/*.ts`；只发 `lib` 的话「跳到源码」会断。
  *
  * ## 谁依赖它
  *
@@ -55,11 +53,6 @@ export {
 
 export {
 	LINK_KINDS,
-	// TODO(审查): LINKS 是死别名 —— lead 核实四个包 src 零命中（外部 MCP 未知），包内也零引用。
-	// 可直接改：删掉这行别名导出；本包尚未给外部发布，删除成本最低。
-	LINK_KINDS as LINKS,
-	BEHAVIOR_LINK,
-	UNDIRECTED_LINK,
 	RELATION_KINDS,
 	linkKindOf,
 	isLinkKindId,
@@ -90,6 +83,7 @@ export {
 	AUTO_STATES,
 	BUTTON_ACTIONS,
 	type Actor,
+	type ButtonActor,
 	type KindId,
 	type TransitionTrigger,
 	type TransitionVerdict,

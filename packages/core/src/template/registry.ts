@@ -138,12 +138,20 @@ export class TemplateRegistry {
 	 * **不是**「给我一个 YAML 目录」—— 那条路已删（见文件头）。
 	 *
 	 * @param templates 模板清单
-	 * @throws 有任何一个 ref 已注册（装配错误）
+	 * @throws 有任何一个 ref 已注册，或**同一批**里出现重复 ref（装配错误）
 	 */
 	registerAll(templates: readonly TemplateDef[]): void {
-		// TODO(审查): 只查已有注册表，不查入参数组自身 ⇒ 同一批里两个同 ref 会后者静默覆盖前者；写前先对 `templates.map(t => t.ref)` 判重，可直接改。
-		/* 先整体校验再写入 —— 半途抛错会让注册表停在「一半」的状态。 */
+		/*
+		 * 先整体校验再写入 —— 半途抛错会让注册表停在「一半」的状态。
+		 * ⚠ 既要查**已有表**，也要查**入参自身**：同一批里两个同 ref 会让后者
+		 *   静默覆盖前者（`#templates.set` 不报错）。
+		 */
+		const seen = new Set<string>();
 		for (const template of templates) {
+			if (seen.has(template.ref)) {
+				throw new TypeError(`taskboard3-core: 模板「${template.ref}」在同一批里重复`);
+			}
+			seen.add(template.ref);
 			if (this.#templates.has(template.ref)) {
 				throw new TypeError(`taskboard3-core: 模板「${template.ref}」已注册`);
 			}

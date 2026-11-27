@@ -30,6 +30,8 @@
  *   · `related` 的「双向」是 `direction`，不是行为。
  */
 
+import { deepFreeze } from './freeze.ts';
+
 /** 一条边的定义。 */
 export interface LinkKind {
 	/** 稳定英文标识。存进卡里、参与判断的就是它。 */
@@ -50,17 +52,15 @@ export interface LinkKind {
  * 五条边的词汇表。**单源** —— 任何地方要写边的标识，一律从这里派生。
  *
  * ⚠ 顺序有语义：UI 的关系选择器按这个顺序排列。
+ * ⚠ `deepFreeze` 冻运行期（`as const` 只冻类型层）；词表是单源真值。
  */
-export const LINK_KINDS = [
+export const LINK_KINDS = deepFreeze([
 	{ id: 'dependsOn', displayName: '依赖', direction: 'forward', hasBehavior: true },
 	{ id: 'supersedes', displayName: '取代', direction: 'forward', hasBehavior: false },
 	{ id: 'constrains', displayName: '约束', direction: 'forward', hasBehavior: false },
 	{ id: 'related', displayName: '相关', direction: 'both', hasBehavior: false },
 	{ id: 'references', displayName: '参考', direction: 'forward', hasBehavior: false },
-] as const;
-
-// TODO(审查): `as const` 只冻结类型层；LINK_KINDS/RELATION_KINDS 运行期可变，被 JS 消费方改一处会污染全局词表。
-// 可直接改：导出前 deepFreeze（同 status.ts 的 TaskState/TASK_STATES），行为不变。
+] as const);
 
 /** 五条边中的任一标识。 */
 export type LinkKindId = (typeof LINK_KINDS)[number]['id'];
@@ -72,18 +72,16 @@ export type BehaviorLinkKind = Extract<(typeof LINK_KINDS)[number], { hasBehavio
 export type UndirectedLinkKind = Extract<(typeof LINK_KINDS)[number], { direction: 'both' }>['id'];
 
 /**
- * 唯一「有行为」的边。
+ * 类型见证：唯一「有行为」的边（= `dependsOn`）。
  *
- * 写的是字面量，但标注成 `BehaviorLinkKind` ⇒ 词汇表里把 `hasBehavior`
- * 挪走（或改 id）时，**这行直接编译失败**，而不是静默指向一条没行为的边。
+ * **不导出** —— 它的唯一作用是「词汇表里把 `hasBehavior` 挪走（或改 id）时，
+ * 这行直接编译失败」，而不是静默指向一条没行为的边。
+ * 外部要判断某条边有没有行为，读 `LINK_KINDS` 的 `hasBehavior` 字段。
  */
-export const BEHAVIOR_LINK: BehaviorLinkKind = 'dependsOn';
+const BEHAVIOR_LINK: BehaviorLinkKind = 'dependsOn';
 
-/** 唯一「无向」的边。 */
-export const UNDIRECTED_LINK: UndirectedLinkKind = 'related';
-
-// TODO(审查): BEHAVIOR_LINK/UNDIRECTED_LINK 是死导出 —— lead 核实四个包 src 零命中（外部 MCP 未知）。
-// 它们的唯一作用是“表改 id 时编译失败”。可直接改：改成非导出的类型见证（保留守护、缩小公开面）；要留外部 API 需用户定。
+/** 类型见证：唯一「无向」的边（= `related`）。不导出，理由同上。 */
+const UNDIRECTED_LINK: UndirectedLinkKind = 'related';
 
 /** 某条边的定义（未命中返回 `undefined`）。 */
 export function linkKindOf(id: string): LinkKind | undefined {
@@ -105,15 +103,16 @@ export function isLinkKindId(value: unknown): value is LinkKindId {
  * 长度退化成 `number`，下面「恰好六条」的编译期断言会静默失效。
  * 手工列表的代价是重复一次 `id`；收益是「少了一种关系」直接编译失败。
  * 由 `_RelationKindsMatchLinks` 断言这份 id 清单与 `LINK_KINDS` 一致。
+ * ⚠ `deepFreeze` 同 `LINK_KINDS`：这是展示清单，也是单源真值。
  */
-export const RELATION_KINDS = [
+export const RELATION_KINDS = deepFreeze([
 	{ id: 'derives', displayName: '派生', via: 'parent' },
 	{ id: 'dependsOn', displayName: '依赖', via: 'link' },
 	{ id: 'supersedes', displayName: '取代', via: 'link' },
 	{ id: 'constrains', displayName: '约束', via: 'link' },
 	{ id: 'related', displayName: '相关', via: 'link' },
 	{ id: 'references', displayName: '参考', via: 'link' },
-] as const;
+] as const);
 
 /** 六种关系里哪几种由卡片字段承载（不走边表）。 */
 export type ParentRelationKind = Extract<(typeof RELATION_KINDS)[number], { via: 'parent' }>['id'];
@@ -142,8 +141,6 @@ type _SomeBehaviorLink = [BehaviorLinkKind] extends [never] ? false : true;
 /** 六种关系 = 五种边 + 派生。 */
 type _SixRelationKinds = (typeof RELATION_KINDS)['length'] extends 6 ? true : false;
 
-// TODO(审查): 与 LINK_KINDS 只断言了 id 相等，displayName 漂移（中文名只改一处）不会被发现。
-// 可直接改：加 id→displayName 一致的类型断言，或 link 行从 LINK_KINDS 派生（需保留元组长度断言）。
 /**
  * `RELATION_KINDS` 里的五条边与 `LINK_KINDS` 完全一致（id 逐个相等）。
  *
@@ -156,6 +153,29 @@ type _RelationKindsMatchLinks = [_LinksInRelationKinds] extends [LinkKindId]
 		: false
 	: false;
 
+/**
+ * id → 中文名，两边各一份。
+ *
+ * id 相等还不够：中文名只改一处（例如把「取代」改成「替换」）同样是人能看到的
+ * 契约漂移，但 id 断言发现不了 ⇒ 用这两张映射互相赋值来比对 displayName。
+ */
+type _LinkDisplayNames = {
+	readonly [K in LinkKindId]: Extract<(typeof LINK_KINDS)[number], { id: K }>['displayName'];
+};
+type _RelationLinkDisplayNames = {
+	readonly [K in LinkKindId]: Extract<
+		Extract<(typeof RELATION_KINDS)[number], { via: 'link' }>,
+		{ id: K }
+	>['displayName'];
+};
+
+/** 五个 id 的中文名两边逐项一致。 */
+type _RelationKindsMatchDisplayNames = [_LinkDisplayNames] extends [_RelationLinkDisplayNames]
+	? [_RelationLinkDisplayNames] extends [_LinkDisplayNames]
+		? true
+		: false
+	: false;
+
 export type _RELATION_VOCABULARY_CONSISTENT = AssertTrue<
 	[
 		_AtLeastTwo,
@@ -164,7 +184,8 @@ export type _RELATION_VOCABULARY_CONSISTENT = AssertTrue<
 		_SomeBehaviorLink,
 		_SixRelationKinds,
 		_RelationKindsMatchLinks,
-	] extends [true, true, true, true, true, true]
+		_RelationKindsMatchDisplayNames,
+	] extends [true, true, true, true, true, true, true]
 		? true
 		: false
 >;

@@ -23,10 +23,9 @@
  *   ② **终结态只能靠按钮进**，由 `judgeTransition` 的按钮表保证。
  */
 
-import type { Failure } from '@taskboard/protocol';
+import type { Failure, TransitionRejectReason } from '@taskboard/protocol';
 import {
 	AUTO_STATES,
-	BUTTON_ACTIONS,
 	DRAFT,
 	ErrorCode,
 	TaskState,
@@ -38,6 +37,7 @@ import {
 	type TransitionTrigger,
 } from '@taskboard/protocol';
 
+import { adoptTargetOf as adoptTargetInButtons } from './actions.ts';
 import type { Card, CardId } from './card.ts';
 import {
 	childIdsOf,
@@ -52,7 +52,6 @@ import {
 
 /* ────────────────────────────── 采纳 ────────────────────────────── */
 
-// TODO(审查): 本文件另有一份 `adoptTargetOf(kind)`（只按 kind 建表），与 actions.ts:54 的 `(kind, from)` 同名不同参 ⇒ 两份真值易漂；改为调 `adoptTargetOf(kind, DRAFT)` 并删 `ADOPT_TARGETS`，可直接改。
 /**
  * 采纳后的目标状态 —— 按类别定。
  *
@@ -61,17 +60,13 @@ import {
  * | `goal` / `work` | 提交 |
  * | `design` / `record` | 需要授权 |
  *
- * 依据是 `BUTTON_ACTIONS` 里 `method === 'adopt'` 的 `to` —— **不在这里抄一份表**。
- * 类别不在表里 ⇒ 返回 `undefined`（调用方报 `NOT_A_BUTTON`）。
+ * ⚠ **唯一实现是 `actions.ts` 的 `adoptTargetOf(kind, from)`**（查 `BUTTON_ACTIONS` 的
+ *   `method === 'adopt'` 行）—— 本函数只补上「采纳一定从草稿出发」这个前提到参数里，
+ *   不在这里再抄一份 `kind → to` 表（第二份真值会漂）。
  */
 export function adoptTargetOf(kind: string): TaskState | undefined {
-	return ADOPT_TARGETS.get(kind);
+	return adoptTargetInButtons(kind, DRAFT);
 }
-
-/** `kind` → 采纳目标状态。**从协议按钮表派生**，不手写第二份映射。 */
-const ADOPT_TARGETS: ReadonlyMap<string, TaskState> = new Map(
-	BUTTON_ACTIONS.filter((action) => action.method === 'adopt').map((action) => [action.kind, action.to]),
-);
 
 /**
  * 采纳一张卡（纯函数）。
@@ -427,18 +422,48 @@ export function transitionCard(
 	};
 }
 
+/**
+ * 拒绝原因 → 给人看的一句话 —— **唯一映射**。
+ *
+ * 两处消费：
+ *   · 本文件的 `rejectFailure`（给得出卡 / 目标状态，所以 `NOT_A_BUTTON` /
+ *     `UNKNOWN_KIND` 用带名字的版本）；
+ *   · `advice.ts` 的目标建议（只有原因，没有卡上下文 ⇒ 用通用版本）。
+ *
+ * ⚠ `Record<TransitionRejectReason, string>` 让「协议新增一个 reason」变成编译失败，
+ *   而不是在两处各漏一份、静默回落成 `转移被拒：…` 的兜底文案。
+ *
+ * @param context 可选的卡 / 目标状态；给了就用更具体的文案
+ */
+export function rejectionMessageOf(
+	reason: TransitionRejectReason,
+	context: { readonly card?: Card; readonly to?: TaskState } = {},
+): string {
+	const card = context.card;
+	const to = context.to;
+	if (reason === 'NOT_A_BUTTON' && card !== undefined && to !== undefined) {
+		return `没有「${labelOf(card.status)}」→「${labelOf(to)}」的按钮。`;
+	}
+	if (reason === 'UNKNOWN_KIND' && card !== undefined) {
+		return `类别「${card.template.kind}」未注册。`;
+	}
+	return REJECT_MESSAGES[reason];
+}
+
+/** 七条拒绝原因 → 通用文案（键集被 `Record` 钉死）。 */
+const REJECT_MESSAGES = {
+	AUTO_CANNOT_END: '自动计算不能把卡推到终结态；那要人来点按钮。',
+	AUTO_TARGET_INVALID: '自动计算不能产生这个状态。',
+	AI_CANNOT_END: 'AI 不能把卡推到终结态；请让用户点按钮。',
+	NOT_A_BUTTON: '当前状态到目标状态在按钮表里没有合法动作。',
+	UNKNOWN_KIND: '这张卡的分类未注册，状态机不认它。',
+	UNKNOWN_STATE: '状态不合法。',
+	SAME_STATE: '源与目标是同一个状态。',
+} satisfies Record<TransitionRejectReason, string>;
+
 /** 把判定拒绝翻成 `Failure`。 */
-function rejectFailure(card: Card, to: TaskState, reason: string): Failure {
-	const messages: Readonly<Record<string, string>> = {
-		AUTO_CANNOT_END: '自动计算不能把卡推到终结态；那要人来点按钮。',
-		AUTO_TARGET_INVALID: '自动计算不能产生这个状态。',
-		AI_CANNOT_END: 'AI 不能把卡推到终结态；请让用户点按钮。',
-		NOT_A_BUTTON: `没有「${labelOf(card.status)}」→「${labelOf(to)}」的按钮。`,
-		UNKNOWN_KIND: `类别「${card.template.kind}」未注册。`,
-		UNKNOWN_STATE: '状态不合法。',
-		SAME_STATE: '源与目标是同一个状态。',
-	};
-	return failure(ErrorCode.TRANSITION_REJECTED, messages[reason] ?? `转移被拒：${reason}`, {
+function rejectFailure(card: Card, to: TaskState, reason: TransitionRejectReason): Failure {
+	return failure(ErrorCode.TRANSITION_REJECTED, rejectionMessageOf(reason, { card, to }), {
 		detail: { from: card.status, to, reason },
 	});
 }
@@ -613,10 +638,4 @@ type AssertTrue<T extends true> = T;
 type _AutoStatesAreFour = (typeof AUTO_STATES)['length'] extends 4 ? true : false;
 
 export type _RECOMPUTE_ONLY_AUTO = AssertTrue<_AutoStatesAreFour>;
-
-// TODO(审查): 这条注释已过时（import 列表已裁干净，withPatch 也已无人用）⇒ 可直接删掉本注释块。
-/*
- * `groupOf` / `withPatch` 在本文件暂时用不到；显式标注「故意不用的 import」
- * 不如直接不 import —— 已按实际使用裁剪，见文件顶部的 import 列表。
- */
 

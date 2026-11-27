@@ -134,7 +134,9 @@ export function renderAdvice(advice: TransitionAdvice, holder: string | undefine
 						`（code=${condition.code}；${condition.retryable ? '修正后可重试' : '不可重试'}）`,
 				);
 				for (const blocker of condition.blockers ?? []) {
-					lines.push(`      阻塞卡：${blocker.id}「${blocker.title}」（状态：${blocker.status}）`);
+					/* `status` 可选：查不到阻塞卡时不编造状态，也就不打印「状态：undefined」。 */
+					const status = blocker.status === undefined ? '' : `（状态：${blocker.status}）`;
+					lines.push(`      阻塞卡：${blocker.id}「${blocker.title}」${status}`);
 				}
 			}
 		}

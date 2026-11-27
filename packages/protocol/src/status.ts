@@ -40,10 +40,15 @@
  * 转移规则在 `transition.ts`，由用户裁定。
  */
 
-// TODO(审查): `as const` 只冻结类型层，TaskState/TASK_STATES 运行期仍可被改（relation.ts 的 LINK_KINDS 同理）。
-// 这些是单源词表，被 JS 消费方改一处会污染全局；可直接改：导出前 deepFreeze（3 行手写，不必引包）。
-/** 九个状态。键是短名，值是 A2A 协议全名。 */
-export const TaskState = {
+import { deepFreeze } from './freeze.ts';
+
+/**
+ * 九个状态。键是短名，值是 A2A 协议全名。
+ *
+ * ⚠ 用 `deepFreeze` 而不是只写 `as const`：后者只冻结**类型层**，
+ *   JS 消费方运行期仍能改这张单源词表、污染全局。
+ */
+export const TaskState = deepFreeze({
 	UNSPECIFIED: 'TASK_STATE_UNSPECIFIED',
 	SUBMITTED: 'TASK_STATE_SUBMITTED',
 	WORKING: 'TASK_STATE_WORKING',
@@ -53,22 +58,23 @@ export const TaskState = {
 	FAILED: 'TASK_STATE_FAILED',
 	CANCELED: 'TASK_STATE_CANCELED',
 	REJECTED: 'TASK_STATE_REJECTED',
-} as const;
+} as const);
 
 /** 九个状态中的任一。 */
 export type TaskState = (typeof TaskState)[keyof typeof TaskState];
 
 /**
- * 九个状态的清单，顺序同 A2A 枚举。
+ * 九个状态的清单，顺序按**状态组**（草稿 → 进行 → 搁置 → 完成），
+ * **不是** A2A 枚举的数值顺序 —— A2A 把 INPUT_REQUIRED / AUTH_REQUIRED 放在最后。
  *
- * TODO(审查): 实际顺序把 INPUT_REQUIRED/AUTH_REQUIRED 提到 COMPLETED 之前（按 草稿/进行/搁置/完成 分组），
- * 与 A2A v1.0 枚举不一致 ⇒ 本行注释是错的。改注释可直接做；改数组顺序会动 UI 菜单，需用户定。
+ * ⚠ 这个顺序有消费方（UI 菜单、契约表）⇒ 改顺序是行为变更，需要用户裁定；
+ *   只改注释不需要。
  *
  * ⚠ 手工列出，不用 `Object.values(TaskState)` —— 那样顺序依赖对象字面量的
  * 书写顺序，而这份顺序要用于契约表（状态机、UI 菜单）。显式写出，
  * 且下面有编译期断言保证它与 `TaskState` 一一对应。
  */
-export const TASK_STATES = [
+export const TASK_STATES = deepFreeze([
 	TaskState.UNSPECIFIED,
 	TaskState.SUBMITTED,
 	TaskState.WORKING,
@@ -78,17 +84,18 @@ export const TASK_STATES = [
 	TaskState.FAILED,
 	TaskState.CANCELED,
 	TaskState.REJECTED,
-] as const;
+] as const);
 
-// TODO(审查): 标注 `: TaskState` 把字面量 widen 成整个联合，比较/收窄时丢掉精确性。
-// 可直接改：去掉标注写成 `export const DRAFT = TaskState.UNSPECIFIED`，无行为变化。
 /**
  * 「草稿」= 未指定。
  *
  * 用户 `2026-11-01 00:57`：「他的实际名字是未指定。而我在里面的术语都会用草稿。」
  * ⇒ 代码里用本常量，不写字面量；它**不是**新状态。
+ *
+ * ⚠ 不标注 `: TaskState` —— 标注会把字面量 widen 成整个联合，
+ *   比较 / 收窄时丢掉「它只能是 UNSPECIFIED」这个精确性（`TaskState.UNSPECIFIED` 本身是字面量类型）。
  */
-export const DRAFT: TaskState = TaskState.UNSPECIFIED;
+export const DRAFT = TaskState.UNSPECIFIED;
 
 /**
  * 状态组 —— **四个值**。
@@ -107,26 +114,28 @@ export const DRAFT: TaskState = TaskState.UNSPECIFIED;
  */
 export type StatusGroup = 'draft' | 'active' | 'shelved' | 'ended';
 
-// TODO(审查): 类型标注 + Object.freeze ⇒ 少键会报、多键/拼错键不报（AGENTS 3.7）。
-// 可直接改：字面量先 `satisfies Record<StatusGroup,string>` 再转 Readonly。
-/** 四个组的中文名。 */
-export const GROUP_LABELS: Readonly<Record<StatusGroup, string>> = Object.freeze({
+/**
+ * 四个组的中文名。
+ *
+ * ⚠ 用 `satisfies` 而不是类型标注（AGENTS 3.7）：`Object.freeze({…})` 的实参位置
+ *   不触发多余属性检查 ⇒ 多一个键 / 拼错键都不会报错；`satisfies` 会。
+ */
+export const GROUP_LABELS = Object.freeze({
 	draft: '草稿',
 	active: '进行',
 	shelved: '搁置',
 	ended: '完成',
-});
+} satisfies Record<StatusGroup, string>);
 
-// TODO(审查): 同 GROUP_LABELS：标注 + Object.freeze 关掉了多余键检查（AGENTS 3.7）。
-// 注意：正因为这里带了 Record 标注，下面的 _EveryStateGrouped 断言恒真（见本文件后半的断言块）。
 /**
  * 每个状态属于哪个组。
  *
- * ⚠ 类型是 `Record<TaskState, StatusGroup>` ⇒ 九个状态**每个都必须有归属**，
- * 漏一个就编译失败。这比「用四个 `is*Status` 函数各判断一次」更硬：
+ * ⚠ `satisfies Record<TaskState, StatusGroup>` ⇒ 九个状态**每个都必须有归属**，
+ * 漏一个就编译失败；多一个 / 拼错键同样编译失败（AGENTS 3.7）。
+ * 这比「用四个 `is*Status` 函数各判断一次」更硬：
  * 那种写法漏一个只会落到假分支，不会报错。
  */
-export const STATUS_GROUP_OF: Readonly<Record<TaskState, StatusGroup>> = Object.freeze({
+export const STATUS_GROUP_OF = Object.freeze({
 	[TaskState.UNSPECIFIED]: 'draft',
 	[TaskState.SUBMITTED]: 'active',
 	[TaskState.WORKING]: 'active',
@@ -136,7 +145,7 @@ export const STATUS_GROUP_OF: Readonly<Record<TaskState, StatusGroup>> = Object.
 	[TaskState.FAILED]: 'ended',
 	[TaskState.CANCELED]: 'ended',
 	[TaskState.REJECTED]: 'ended',
-});
+} satisfies Record<TaskState, StatusGroup>);
 
 /*
  * ⚠ 2026-11-27 验真：原 TODO(审查) 说这是「死导出」——**不实**（todo-audit 核实）。
@@ -149,11 +158,27 @@ export function groupOf(state: TaskState): StatusGroup {
 	return STATUS_GROUP_OF[state];
 }
 
-// TODO(审查): 每次调用都 filter 出新数组，而 isEndedState/endedStates（transition.ts）在每次状态转移判定里都调它。
-// 可直接改：模块加载时按组预计算并冻结，这里返回缓存（顺序与 API 不变）。
+/** 按组过滤 `TASK_STATES`（只在模块加载时跑一次）。 */
+function groupStates(group: StatusGroup): readonly TaskState[] {
+	return Object.freeze(TASK_STATES.filter((state) => STATUS_GROUP_OF[state] === group));
+}
+
+/**
+ * 按组预计算并冻结的缓存。
+ *
+ * ⚠ 不用每次调用都 `filter` 新数组 —— `isEndedState` / `endedStates` 在每次
+ *   状态转移判定里都会走到这里。返回的是**同一个冻结数组**（调用方只读）。
+ */
+const STATES_BY_GROUP = Object.freeze({
+	draft: groupStates('draft'),
+	active: groupStates('active'),
+	shelved: groupStates('shelved'),
+	ended: groupStates('ended'),
+} satisfies Record<StatusGroup, readonly TaskState[]>);
+
 /** 某个组包含哪些状态（顺序同 `TASK_STATES`）。 */
 export function statesInGroup(group: StatusGroup): readonly TaskState[] {
-	return TASK_STATES.filter((state) => STATUS_GROUP_OF[state] === group);
+	return STATES_BY_GROUP[group];
 }
 
 /** 是否是已知状态（用于校验外部输入）。 */
@@ -161,7 +186,6 @@ export function isTaskState(value: unknown): value is TaskState {
 	return typeof value === 'string' && (TASK_STATES as readonly string[]).includes(value);
 }
 
-// TODO(审查): 同 GROUP_LABELS：标注 + Object.freeze 关掉了多余键检查（AGENTS 3.7）。
 /**
  * 状态的中文名。
  *
@@ -173,8 +197,10 @@ export function isTaskState(value: unknown): value is TaskState {
  * ⚠ 措辞来自用户矩阵原话，不是我们造的：
  *   · `SUBMITTED` 是「提交」不是「已提交」（用户原话：「用户点击`采纳`，变成`提交`」）；
  *   · `ended` 是「完成」不是「结束」（用户原话：「"完成"，是一个状态组」）。
+ *
+ * ⚠ 同 `GROUP_LABELS`：`satisfies` 才检查键集（AGENTS 3.7）。
  */
-export const STATE_LABELS: Readonly<Record<TaskState, string>> = Object.freeze({
+export const STATE_LABELS = Object.freeze({
 	[TaskState.UNSPECIFIED]: '未指定',
 	[TaskState.SUBMITTED]: '提交',
 	[TaskState.WORKING]: '处理中',
@@ -184,7 +210,7 @@ export const STATE_LABELS: Readonly<Record<TaskState, string>> = Object.freeze({
 	[TaskState.FAILED]: '失败',
 	[TaskState.CANCELED]: '取消',
 	[TaskState.REJECTED]: '拒绝',
-});
+} satisfies Record<TaskState, string>);
 
 /** 状态的中文名；未知状态回落原值（不抛，便于展示脏数据）。 */
 export function labelOf(state: string): string {
@@ -206,8 +232,12 @@ type _ExactlyNine = (typeof TASK_STATES)['length'] extends 9 ? true : false;
 /** `TASK_STATES` 覆盖 `TaskState` 的每个值（不多不少）。 */
 type _CoversAll = [TaskState] extends [(typeof TASK_STATES)[number]] ? true : false;
 
-// TODO(审查): 恒真断言 —— typeof STATUS_GROUP_OF 带 Readonly<Record<TaskState,…>> 标注 ⇒ keyof 恒等于 TaskState；_EveryStateLabeled 同理。
-// 删掉类型标注它们才会生效，但完整性又靠标注兜。可直接改：改成对裸字面量断言（配合 satisfies），或删掉。
+/*
+ * 两张表都改成 `satisfies` 之后（不再带 `Record<…>` 类型标注），
+ * `keyof typeof …` 拿到的是**字面量键集** ⇒ 下面两条断言是真的检查，
+ * 不再是对宽类型 `Record<TaskState,…>` 的同义反复。
+ */
+
 /** 每个状态都有组归属。 */
 type _EveryStateGrouped = [TaskState] extends [keyof typeof STATUS_GROUP_OF] ? true : false;
 
