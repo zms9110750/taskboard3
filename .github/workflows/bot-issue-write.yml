@@ -7,6 +7,9 @@ on:
         description: '目标 issue 编号'
         required: true
         default: '4'
+      body:
+        description: '正文（Markdown）'
+        required: true
 
 permissions:
   contents: read
