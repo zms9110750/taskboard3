@@ -29,7 +29,7 @@
 
 import { useSyncExternalStore } from 'react';
 
-import type { TaskboardApi } from '../api.ts';
+import type { PermissionsApi } from '../api.ts';
 import {
 	beginSave,
 	commitSave,
@@ -56,7 +56,7 @@ let store: BoxStore = {
 };
 
 /** 注入的 API（`client.tsx` 注册时给；测试可换成假的）。 */
-let api: TaskboardApi | null = null;
+let api: PermissionsApi | null = null;
 
 /** 订阅者（入口按钮 + 全屏页各一个 React 实例）。 */
 const listeners = new Set<() => void>();
@@ -81,7 +81,7 @@ function setOpen(open: boolean): void {
  *
  * @param impl 任务板 API
  */
-export function attachPermissionApi(impl: TaskboardApi): void {
+export function attachPermissionApi(impl: PermissionsApi): void {
 	api = impl;
 }
 

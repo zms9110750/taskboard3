@@ -1,0 +1,50 @@
+{
+  "name": "@taskboard/dsh-permissions",
+  "version": "0.1.0-3.a.1",
+  "type": "module",
+  "description": "任务板：DSH 权限 UI（agent 工具档位 + 模板授权 + 组图）。只有 agent 守卫行激活时本行才激活。",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/client.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "tsc -b && tsdown",
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "rolldown": "^1.3.2",
+    "tsdown": "^0.23.7"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

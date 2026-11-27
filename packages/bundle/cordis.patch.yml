@@ -1,7 +1,4 @@
-# 任务板 —— **一个 bundle，五个插件条目**。
-#
-# TODO(审查): 本行与「## 五个行各自负责什么」都写「五个」，但下面 insert 实际是 6 行
-#   （store/core/host/tools/client/guard），表格也缺 ⑥ guard 一行。可直接改成 6 / 不写数字。
+# 任务板 —— **一个 bundle，若干插件条目**（行数以下方 insert 为准，别在注释里写数字）。
 #
 # 设置页看到的是一张「任务板」卡片，点进去能看到全部组件，各自独立开关。
 #
@@ -10,19 +7,24 @@
 # > 「为什么这里有3个包？任务板1是只有一个入口，然后入口里面有各自的包。」
 # > 「怎么接入dsh的那几个包没了？ui也是一个包也可以关掉的啊。」
 #
-# ## 五个行各自负责什么
+# ## 行各自负责什么
 #
 # | 行 | 包 | 关掉它会怎样 |
 # |---|---|---|
-# | ① 存储 | `@taskboard/store` | 任务板整个不激活（其余行都依赖它） |
-# | ② 核心实例 | `@taskboard/dsh-core` | 其余行全不激活（它们 inject `taskboard3Core`） |
-# | ③ Host HTTP + 命令 | `@taskboard/dsh` | 界面拉不到数据、斜杠命令没了；**AI 工具还在** |
-# | ④ AI 工具 + guard | `@taskboard/dsh-tools` | 数据和界面都还在，**agent 用不了任务板** |
-# | ⑤ 浏览器 UI | `@taskboard/dsh-client` | 数据还在、AI 还能用，**人看不到** |
+# | 存储 | `@taskboard/store` | 任务板整个不激活（其余行都依赖它） |
+# | 核心实例 | `@taskboard/dsh-core` | 其余行全不激活（它们 inject `taskboard3Core`） |
+# | Host HTTP + 命令 | `@taskboard/dsh` | 界面拉不到数据、斜杠命令没了；**AI 工具还在** |
+# | AI 工具 | `@taskboard/dsh-tools` | 数据和界面都还在，**agent 用不了任务板** |
+# | 浏览器 UI（通用） | `@taskboard/dsh-client` | 任务板界面消失；**权限 UI 不受影响** |
+# | agent 守卫 | `@taskboard/dsh-agent-guard` | 三档位消失、guard 不挂、/api/tools 404；**权限 UI（下一行）也跟着不激活** |
+# | 权限 UI | `@taskboard/dsh-permissions` | 工具权限页 / composer 权限框 / 模板授权消失；任务板其它功能不受影响 |
 #
-# TODO(审查): 表格缺 ⑥ taskboard3-agent-guard（下面 insert 段末尾才出现）；且 ④ 行写「AI 工具 + guard」、
-#   ④ 的注释块也写「+ 权限 guard」，与 ⑥ 的「guard + 2 个权限工具 + GET /api/tools」矛盾 ——
-#   读的人无法判断关哪一行会失去 guard。可直接改注释；guard 实际归属需确认后再写。
+# ## ⑦ 权限 UI 行的激活闸门（2026-11-27，#4 分包裁定）
+#
+# `@taskboard/dsh-permissions` 的 Host 半声明 `inject: ['taskboard3AgentGuard']`。
+# ⇒ 守卫行（⑥）不在时⑦**整行不激活**（不是降级、不是报错）——
+# 这就是「只有权限守卫出来了才工作」。⚠ 用户会看到权限入口无声消失，
+# 这是设计意图；patch 注释在此留痕。
 #
 # ## 为什么 ② 和 ③ 要分成两行
 #
@@ -35,10 +37,6 @@
 # ## ⚠ 子包各自的 `cordis.patch.yml` 都保留着
 #
 # 它们不再被 profile 装配（本文件统一承载），但单测/预览/将来拆回独立 bundle 都用得上。
-#
-# TODO(审查): 「单测/预览」实际没有任何测试或预览引用这些子包 patch ⇒ 同一份 id/行定义存在两处，
-#   将来把子包装成独立 bundle 可能与 taskboard3-store 等 id 重复。删掉或加「子包 id 必须与本 patch 一致」
-#   的守护测试；去留需 lead 决定。
 
 - insert:
     # ① 持久化：内存内容 → 磁盘
@@ -92,6 +90,13 @@
     #
     #    **DSH 私人专属**（用户 2026-11-23：「这是对于dsh私人的专属功能」「mcp不提供这个工具和ui」）。
     #    关掉它 ⇒ 三档位消失、guard 不挂、两个 policy 工具没了、/api/tools 404；
-    #    任务板其它功能不受影响。
+    #    任务板其它功能不受影响。**下一行（权限 UI）会跟着整行不激活。**
     - id: taskboard3-agent-guard
       name: '@taskboard/dsh-agent-guard'
+
+    # ⑦ 权限 UI：工具权限页 / 模板授权 / 组图 / composer 权限框（由 dsh-client 拆出）
+    #
+    #    激活闸门 = Host 半 `inject: ['taskboard3AgentGuard']`（见文件头说明）。
+    #    关掉它 ⇒ 权限入口消失；任务板其它功能不受影响。
+    - id: taskboard3-permissions
+      name: '@taskboard/dsh-permissions'

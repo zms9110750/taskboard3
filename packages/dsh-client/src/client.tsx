@@ -36,12 +36,8 @@ import { createElement } from 'react';
 import type { ReactNode } from 'react';
 
 import { createApi } from './api.ts';
-import { attachPermissionApi } from './pure/permission-box-state.ts';
 import { registerDrawerSlots } from './register-drawer.tsx';
-import { PermissionBoxEntry } from './renderers/PermissionBoxEntry.tsx';
 import { TaskboardIcon } from './renderers/TaskboardIcon.tsx';
-import { ToolPermissionPage } from './renderers/tool-permission/ToolPermissionPage.tsx';
-import { ToolsPermissionIcon } from './renderers/ToolsPermissionIcon.tsx';
 import { WorkspaceBody } from './WorkspaceBody.tsx';
 import { initRenderers } from './init-renderers.ts';
 import { registeredTypes } from './render-registry.ts';
@@ -56,38 +52,23 @@ export const TAB_ID = '@taskboard/dsh-client';
  * ⚠ 两处必须**同一个值**：点左侧栏图标 → 主区域按这个 key 找页面。
  *   抄 `taskboard2` 的 `PANEL_ID = 'taskboard2'`（`packages/ui/client.js:16`）。
  */
-// TODO(审查): PANEL_ID / TOOLS_PANEL_ID 各自在 `sidebar.panellist.id` 与 `main.key` 出现两次、label 也写两遍（:240/:250、:268/:278），靠手抄常量对齐。可抽一个 `panelEntry(id, order, label, Icon, Body)` 工厂把三处注册表化，避免改一处漏一处。
+// TODO(审查): PANEL_ID 在 `sidebar.panellist.id` 与 `main.key` 出现两次、label 也写两遍，靠手抄常量对齐。可抽一个 `panelEntry(id, order, label, Icon, Body)` 工厂把注册表化，避免改一处漏一处。
 export const PANEL_ID = 'taskboard3';
 
 /** 左侧栏图标在 panellist 里的排序（taskboard2 用 30）。 */
 export const PANEL_ORDER = 30;
 
 /**
- * 第二个左侧入口：「工具权限」的 id。
- *
- * ## 为什么是独立入口而不是「任务板」里的一个页签
- *
- * 用户 `2026-11-23`：
- * > 「左边也只有任务板。没有任务板权限。」
- * > 「单独的包单独的一行的形式来开关它的功能。然后给个左侧的入口。」
- *
- * ⇒ 「工具权限」是一套**独立的权限面**（tag 组图 + 工具清单 + 模板授权），
- *   和「任务板」不是同一层的东西，所以它有自己的侧栏条目、自己的主区域页面。
- *
- * ⚠ 和 `PANEL_ID` 一样：`panellist.id` = `main.key` = 本常量。
+ * tab 类型判别符（`ctx.sidebarRight.openTab('taskboard')` 用它）。
  */
-export const TOOLS_PANEL_ID = 'taskboard3-tools';
-
-/**
- * 「工具权限」在 panellist 里的排序 —— **排在「任务板」后面**。
- *
- * 取 40（不是 31）：留出一段空隙给将来可能插在两者之间的入口，
- * 避免以后每加一个都要改别人的 order。
- */
-export const TOOLS_PANEL_ORDER = 40;
-
-/** tab 类型判别符（`ctx.sidebarRight.openTab('taskboard')` 用它）。 */
 export const TAB_KIND = 'taskboard';
+
+/*
+ * ⚠ 「工具权限」入口（`TOOLS_PANEL_ID`）与 composer 权限框已随 #4 分包裁定
+ *   （2026-11-27）搬去 `@taskboard/dsh-permissions` 独立一行 —— 本行不再注册它们。
+ *   那一行的激活闸门是 `inject: ['taskboard3AgentGuard']`：守卫行不在 ⇒ 权限入口
+ *   整个不出现，本行照常工作。
+ */
 
 /* ══════════════════════════════════════════════════════════
    三处入口：同一套 DOM，只有视口不同
@@ -108,11 +89,7 @@ export const TAB_KIND = 'taskboard';
      长成三种样子。用户否掉：「为什么三个入口的样子不一样。为什么不统一一样」。
 */
 
-/** 权限框入口在 `conversation.input.left` 里的条目 id（同槽唯一）。 */
-export const PERMISSION_ENTRY_REGISTRATION_ID = 'taskboard3-permission-entry';
-
-/** 权限框入口的排序 —— 抽屉入口是 100，这里排在它右边。 */
-export const PERMISSION_ENTRY_ORDER = 110;
+/** 权限框入口的常量已随权限面一起搬到 `@taskboard/dsh-permissions`。 */
 
 /** 插件名（Cordis 用）。 */
 export const name = 'taskboard3-dsh-client';
@@ -265,34 +242,6 @@ export function apply(ctx: Context): void {
 	);
 
 	/*
-	 * ── 第二个左侧入口：「工具权限」────────────────────────────────
-	 *
-	 * 和上面那对完全同构：`sidebar.panellist` 出图标按钮，`main` 出页面，
-	 * 两边的 id / key 都用 `TOOLS_PANEL_ID`，label 都是「工具权限」。
-	 *
-	 * 页面是 `ToolPermissionPage`（自己取 `/api/tools` + 挂组图编辑器），
-	 * **不依赖宿主喂数据** —— 和 `WorkspaceBody` 一样是自取的。
-	 */
-	ctx.effect(
-		() =>
-			ctx.slots.inject('sidebar.panellist', () =>
-				ctx.slots.register(
-					{ name: 'sidebar.panellist', id: TOOLS_PANEL_ID, order: TOOLS_PANEL_ORDER, label: '工具权限' },
-					ToolsPermissionIcon,
-				),
-			),
-		'taskboard3: register tools-permission panellist entry',
-	);
-
-	ctx.effect(
-		() =>
-			ctx.slots.inject('main', () =>
-				ctx.slots.register({ name: 'main', key: TOOLS_PANEL_ID, label: '工具权限' }, ToolPermissionPage),
-			),
-		'taskboard3: register tools-permission main body',
-	);
-
-	/*
 	 * ══════════════════════════════════════════════════════════
 	 * ③ 抽屉入口（composer 输入框旁）
 	 * ══════════════════════════════════════════════════════════
@@ -311,41 +260,7 @@ export function apply(ctx: Context): void {
 	registerDrawerSlots(ctx, { content: createElement(WorkspaceBody) });
 
 	/*
-	 * ══════════════════════════════════════════════════════════
-	 * ④ 权限框入口（composer 工具行内，`完全权限 ▾` 右边）
-	 * ══════════════════════════════════════════════════════════
-	 *
-	 * 用户 `2026-11-23`：
-	 * > 「这里要有一个权限框。任务板干涉工具。任务板限制工具。
-	 * >   ai可改任务板工作权限。之前说的权限正交问题。」
-	 *
-	 * ## 槽
-	 *
-	 * 和抽屉入口**同一个槽**（`conversation.input.left` = composer 工具行左侧），
-	 * 靠 `order` 排在它右边。槽名依据见 `pure/drawer-view.ts` 文件头（从 asar 核过原文）。
-	 *
-	 * ## 只有一个槽条目
-	 *
-	 * | 部件 | 槽 | 组件 |
-	 * |---|---|---|
-	 * | 入口按钮 + 浮层 | `conversation.input.left` | `PermissionBoxEntry` |
-	 *
-	 * 浮层（`2026-11-23` 用户「他还是全屏的」之后）**长在入口按钮的子树里**，
-	 * 因为「贴按钮弹出」要求锚点就是按钮的 DOM。所以这里只剩一条注册 ——
-	 * `conversation.input.overlay` 那条已删除。
-	 *
-	 * ## 为什么把 API 注入进 store
-	 *
-	 * 浮层要 `GET/POST /permission`。store 是模块级的、拿不到 React 上下文，
-	 * 所以在注册时把 `createApi()` 的结果喂给它一次。
+	 * ④ 权限框入口（composer 工具行内）已随 #4 分包裁定（2026-11-27）搬到
+	 *    `@taskboard/dsh-permissions` 独立一行 —— 本行不再注册它。
 	 */
-	// TODO(审查): ① `attachPermissionApi(createApi())` 又造一个客户端实例（见 :155 / store.ts:110 / WorkspaceBody.tsx:200），建议统一成单例；② 下面这条 `ctx.slots.inject(...)` 裸调并丢掉 disposer，与 :184-253 的 `ctx.effect(...)` 写法不一致 ⇒ 可能是卸载/重装时条目泄漏（`inject` 清理语义未核实，需先确认）。
-	attachPermissionApi(createApi());
-	ctx.slots.inject('conversation.input.left', () =>
-		ctx.slots.register(
-			{ name: 'conversation.input.left', id: PERMISSION_ENTRY_REGISTRATION_ID, order: PERMISSION_ENTRY_ORDER },
-			PermissionBoxEntry,
-		),
-	);
-
 }

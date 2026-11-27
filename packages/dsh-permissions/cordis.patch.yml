@@ -1,0 +1,3 @@
+- insert:
+    - id: taskboard3-permissions
+      name: '@taskboard/dsh-permissions'
