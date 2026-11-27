@@ -494,7 +494,7 @@ describe('POST /api/cards', () => {
 		assert.notEqual(payload.data.card.id, '');
 	});
 
-	it('未知 templateRef ⇒ 4xx + Failure', async () => {
+	it('未知 templateRef ⇒ 404 + TEMPLATE_NOT_FOUND', async () => {
 		const created = await taskboard.createWorkspace('坏模板');
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
@@ -506,12 +506,14 @@ describe('POST /api/cards', () => {
 			body: { templateRef: '不存在的模板', title: 'x' },
 		});
 
-		assert.ok(out.status >= 400 && out.status < 500, `应是 4xx；实际 ${out.status} ${out.raw}`);
+		/* 契约是确定的：core 返回 `TEMPLATE_NOT_FOUND` ⇒ `statusOf()` 映射 404（不是笼统的 4xx）。 */
+		assert.equal(out.status, 404, `模板不存在应 404；实际 ${out.status} ${out.raw}`);
 		const payload = out.json as { ok: boolean; code: string };
 		assert.equal(payload.ok, false);
+		assert.equal(payload.code, 'TEMPLATE_NOT_FOUND');
 	});
 
-	it('缺 title ⇒ 4xx + FIELD_REQUIRED', async () => {
+	it('缺 title ⇒ 400 + FIELD_REQUIRED', async () => {
 		const created = await taskboard.createWorkspace('缺标题');
 		assert.equal(created.ok, true);
 		if (!created.ok) return;
@@ -525,7 +527,8 @@ describe('POST /api/cards', () => {
 			body: { templateRef: template.ref },
 		});
 
-		assert.ok(out.status >= 400 && out.status < 500);
+		/* 空标题走 core 的 `FIELD_REQUIRED` ⇒ 400（不是 404，也不是 409）。 */
+		assert.equal(out.status, 400, `空标题应 400；实际 ${out.status} ${out.raw}`);
 		const payload = out.json as { ok: boolean; code: string };
 		assert.equal(payload.ok, false);
 		assert.equal(payload.code, 'FIELD_REQUIRED');

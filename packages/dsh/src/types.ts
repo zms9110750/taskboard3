@@ -4,8 +4,12 @@
  * ## 为什么不 import `@deepseek-ai/cordis` 的类型
  *
  * Cordis 的 `Context` 是一个合并了上百个包的巨大接口。直接用它会让本包
- * 编译期依赖整个 DSH 服务图，而本包实际只碰四个服务：
- * `webServer` / `connection` / `tools` / `commands`。
+ * 编译期依赖整个 DSH 服务图，而这里只需要 DSH 侧**三个**服务的面：
+ * `webServer` / `connection` / `commands`。
+ *
+ * ⚠ 任务板侧的服务（`taskboard3Core` / `taskboard3Bus` / `taskboard3Store`）
+ *   **不在这里声明类型** —— 它们的形状来自 `@taskboard/core` 与
+ *   `@taskboard/store` 的公开面，在本文件再写一份就是第二份真值。
  *
  * ⇒ 声明窄接口。Cordis 的 `Context` 结构上满足它们，所以运行时能传进来；
  *   而测试可以传一个假对象，不需要起真的 Cordis。
@@ -18,9 +22,6 @@
  *
  * ⇒ 本包只声明「我从卡上读哪两个字段」。core 的 `Card` 结构上满足它。
  */
-
-// TODO(审查): [⑤] 文件头 doc 说「本包实际只碰四个服务：webServer / connection / tools / commands」——实际 inject 是 6 个，且**没有 `tools`**。
-//   窄接口的说明本身过时了。可直接改。
 
 import type { TaskState } from '@taskboard/protocol';
 
@@ -56,27 +57,13 @@ export interface ConnectionLike {
 	requestRejection(request: { readonly headers: IncomingLike['headers'] }): 401 | 403 | undefined;
 }
 
-/** `ctx.tools` 的最小面。 */
-// TODO(审查): [③] 本接口已死：唯一引用是 `src/index.ts` 的 import，而那里也没用；工具面已搬去 `@taskboard/dsh-tools`。
-//   注释里的 `dsh-tools/src/index.ts:384` 行号我无法核对（禁读别的包）。可直接删（连同 index.ts 的 import）。
-export interface ToolsLike {
-	register(definition: unknown): unknown;
-	/**
-	 * 注册一个**单调拒绝** guard（`dsh-tools/src/index.ts:384`）。
-	 *
-	 * 返回的拒绝理由无法被后续监听器翻回允许 —— 这是权限判定的正确位置。
-	 */
-	guard(guard: (execution: unknown) => string | undefined): () => void;
-}
-
-/** `ctx.commands` 的最小面。 */
-// TODO(审查): [⑥] 与 `src/commands.ts` 的 `CommandRegistryLike` 重复，且这里少了 `input`/`recordInput`；
-//   能赋值是靠方法参数双变。可直接改：保留一份（建议放到 commands.ts 旁边）。
-export interface CommandsLike {
-	register(command: {
-		name: string;
-		description: string;
-		handler(invocation: unknown): unknown;
-	}): unknown;
-}
+/**
+ * `ctx.commands` 的最小面。
+ *
+ * ⚠ **形状只有一份** —— 在 `src/commands.ts` 的 `CommandRegistryLike`（含
+ *   `input` / `recordInput`）。本文件只按「DSH 服务」的口径重命名导出：
+ *   两份声明靠方法参数双变（bivariance）也能编过，但那不是设计保证
+ *   （AGENTS 3.7 的同一类：看着像约束，实际把检查关掉了）。
+ */
+export type { CommandRegistryLike as CommandsLike } from './commands.ts';
 

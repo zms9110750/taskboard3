@@ -16,6 +16,7 @@ import {
 	activeWorkspaces,
 	chooseInitialWorkspace,
 	findWorkspace,
+	isLatestWrite,
 	mergeActionResult,
 	replaceCards,
 	templateLabelOf,
@@ -147,6 +148,21 @@ describe('templateLabelOf', () => {
 
 	it('找不到时回落到 ref（不显示空白）', () => {
 		assert.equal(templateLabelOf(templates, 'research'), 'research');
+	});
+});
+
+describe('isLatestWrite —— 只有最新代次能写 UI', () => {
+	it('代次相同 ⇒ 可以写（这笔仍是最新意图）', () => {
+		assert.equal(isLatestWrite(3, 3), true);
+	});
+
+	it('⭐ 旧代次 ⇒ 丢弃（晚到的旧响应不能把新答案盖回去）', () => {
+		assert.equal(isLatestWrite(3, 2), false);
+		assert.equal(isLatestWrite(5, 1), false);
+	});
+
+	it('还没有保存过（undefined）⇒ 不写', () => {
+		assert.equal(isLatestWrite(undefined, 1), false);
 	});
 });
 

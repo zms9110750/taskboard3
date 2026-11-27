@@ -42,9 +42,12 @@
 import type { Card, Taskboard } from '@taskboard/core';
 import { labelOf } from '@taskboard/protocol';
 
-/** 命令注册器的窄形状。 */
-// TODO(审查): [⑥] 本接口与 `src/types.ts` 的 `CommandsLike` 是同一形状的两份声明，且那一份**少了 `input`/`recordInput`**；
-//   `registerCommands(ctx.commands, …)` 编得过是靠方法参数双变（bivariance），不是设计保证。可直接改：合并成一份。
+/**
+ * 命令注册器的窄形状。**唯一一份** ——
+ * `src/types.ts` 的 `CommandsLike` 只是把它按「DSH 服务」的口径重命名导出。
+ *
+ * ⚠ 不要在这里之外再声明同形接口：靠方法参数双变编得过，但那是巧合不是约束。
+ */
 export interface CommandRegistryLike {
 	register(command: {
 		name: string;

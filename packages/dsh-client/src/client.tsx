@@ -1,11 +1,7 @@
 /*
  * TODO(审查): 包级遗留（非本文件代码，均为审查发现，未改行为）——
- * 1) package.json:21-26 的 `files:["lib"]` 会把 lib 里源文件已删除的旧 .d.ts 发上 npm（BoardBody、views/、SectionFrame 等 11 个 + 2026-11-27 拆包后 PermissionBox 系 / tool-permission / permission 系列孤儿）；可直接 `rm -rf lib && tsc -b` 修。
- * 2) tsconfig 的 emitDeclarationOnly 不拷贝 src/host-types.d.ts，而 lib/index.d.ts:15 / lib/client.d.ts:23 依赖 @deepseek-ai/cordis ⇒ 消费者 TS2307；需把垫片纳入 files 或声明 peerDependency（发布方式需用户定）。
- * 3) README.md:72-84 仍写已删的 BoardBody/views，README.md:133-142 写「57 条/4 文件」（实测 46 文件、约 1100 条）；可直接改文档。
- * 4) tsdown.config.ts:66-68 硬编码 id '@taskboard/dsh-client'，与 TAB_ID 和 package.name 三份重复；可从 package.json 读入。
- * 5) locale/*.json 只在 Plugin Manager meta 层被读，运行时未 inject 'locale'；是否接运行时 i18n 需用户决定。
- * 6) dev/components/create/* 是 dev/README.md:67-74 明示的冻结展厅副本，不算死代码；但 18 个与 src/renderers/create/ 同名不同实现，建议加 `@deprecated 展厅副本` 标记防改错地方（可直接改）。
+ * 1) tsconfig 的 emitDeclarationOnly 不拷贝 src/host-types.d.ts，而 lib/index.d.ts / lib/client.d.ts 依赖 @deepseek-ai/cordis ⇒ 消费者 TS2307；需把垫片纳入 files 或声明 peerDependency（发布方式需用户定）。详见 host-types.d.ts 顶部。
+ * 2) locale/*.json 只在 Plugin Manager meta 层被读，运行时未 inject 'locale'；是否接运行时 i18n 需用户决定。
  */
 
 /**
@@ -35,7 +31,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { createElement } from 'react';
 import type { ReactNode } from 'react';
 
-import { createApi } from './api.ts';
+import { getApi } from './api-client.ts';
 import { registerDrawerSlots } from './register-drawer.tsx';
 import { TaskboardIcon } from './renderers/TaskboardIcon.tsx';
 import { WorkspaceBody } from './WorkspaceBody.tsx';
@@ -52,11 +48,62 @@ export const TAB_ID = '@taskboard/dsh-client';
  * ⚠ 两处必须**同一个值**：点左侧栏图标 → 主区域按这个 key 找页面。
  *   抄 `taskboard2` 的 `PANEL_ID = 'taskboard2'`（`packages/ui/client.js:16`）。
  */
-// TODO(审查): PANEL_ID 在 `sidebar.panellist.id` 与 `main.key` 出现两次、label 也写两遍，靠手抄常量对齐。可抽一个 `panelEntry(id, order, label, Icon, Body)` 工厂把注册表化，避免改一处漏一处。
 export const PANEL_ID = 'taskboard3';
 
 /** 左侧栏图标在 panellist 里的排序（taskboard2 用 30）。 */
 export const PANEL_ORDER = 30;
+
+/**
+ * 左侧栏入口的**两个槽条目**（一次生成，id / order / label 只有一个来源）。
+ *
+ * `sidebar.panellist` 与 `main` 是一对：前者的 `id` 必须等于后者的 `key`，
+ * 两处 `label` 也必须一致，否则图标和页面对不上（或页签文字漂移）。
+ * 依赖手抄两份常量时，改一处漏一处**不会报错**，只会静默错位 ——
+ * 所以由这个工厂同时产出两份描述，调用处只负责 `register`。
+ */
+interface PanelEntry<Icon, Body> {
+	readonly panellist: {
+		readonly name: 'sidebar.panellist';
+		readonly id: string;
+		readonly order: number;
+		readonly label: string;
+	};
+	readonly main: {
+		readonly name: 'main';
+		readonly key: string;
+		readonly label: string;
+	};
+	readonly Icon: Icon;
+	readonly Body: Body;
+}
+
+/**
+ * 造左侧栏入口的两个槽条目。
+ *
+ * @param id 面板 id（panellist 的 `id` = main 的 `key`）
+ * @param order panellist 内的排序
+ * @param label 两侧共用的显示名
+ * @param Icon 左侧栏图标组件
+ * @param Body 主区域页面组件
+ * @returns 两个槽描述 + 各自组件
+ */
+function panelEntry<Icon, Body>(
+	id: string,
+	order: number,
+	label: string,
+	Icon: Icon,
+	Body: Body,
+): PanelEntry<Icon, Body> {
+	return {
+		panellist: { name: 'sidebar.panellist', id, order, label },
+		main: { name: 'main', key: id, label },
+		Icon,
+		Body,
+	};
+}
+
+/** 左侧栏入口（标签页 / 主区域共用同一份 id + label）。 */
+const PANEL_ENTRY = panelEntry(PANEL_ID, PANEL_ORDER, '任务板', TaskboardIcon, WorkspaceBody);
 
 /**
  * tab 类型判别符（`ctx.sidebarRight.openTab('taskboard')` 用它）。
@@ -140,8 +187,7 @@ export function apply(ctx: Context): void {
 	 * 没有调用方会等这个检查。`void` 明说「我故意丢弃这个 promise」，
 	 * 比留着未处理的 promise 更清楚（后者会被 lint 当成漏处理）。
 	 */
-	// TODO(审查): 这里又 new 一个 `createApi()`（权限面已拆走，包内剩 store.ts:110、WorkspaceBody.tsx:200、CreateFlow.tsx:170 三处同类；本文件拆分前共 5 处），建议收敛为 `src/api-client.ts` 的单例（测试显式传 fake）。另此检查每次 apply 都发一次 POST，可加一次性标记（是否值得取决于 Cordis 重装频率）。
-	void createApi()
+	void getApi()
 		.renderCheck(registeredTypes())
 		.then((result) => {
 			if (result.missing.length === 0) return;
@@ -225,19 +271,14 @@ export function apply(ctx: Context): void {
 	ctx.effect(
 		() =>
 			ctx.slots.inject('sidebar.panellist', () =>
-				ctx.slots.register(
-					{ name: 'sidebar.panellist', id: PANEL_ID, order: PANEL_ORDER, label: '任务板' },
-					TaskboardIcon,
-				),
+				ctx.slots.register(PANEL_ENTRY.panellist, PANEL_ENTRY.Icon),
 			),
 		'taskboard3: register sidebar panellist entry',
 	);
 
 	ctx.effect(
 		() =>
-			ctx.slots.inject('main', () =>
-				ctx.slots.register({ name: 'main', key: PANEL_ID, label: '任务板' }, WorkspaceBody),
-			),
+			ctx.slots.inject('main', () => ctx.slots.register(PANEL_ENTRY.main, PANEL_ENTRY.Body)),
 		'taskboard3: register main panel body',
 	);
 

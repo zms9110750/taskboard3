@@ -63,11 +63,11 @@ export interface FailureLike {
 /**
  * 一个未知异常是不是「带业务错误码的 API 失败」。
  *
- * ## ⚠ 为什么不是 `instanceof`
+ * ## ⚠ 为什么不用 `instanceof ApiError`
  *
- * `api.ts` 的 `ApiError` 是 **interface**（不是 class）—— 它的实例是
- * `Object.assign(new Error(msg), { code, issues })`。interface 在运行时不存在
- * ⇒ **不能 `instanceof`**。只能按形状判定。
+ * `api.ts` 的 `ApiError` 现在是 class（`instanceof` 可用），但**本模块是纯逻辑、
+ * 不 import 网络层**（`api.ts` 会拖进 `fetch` 语义，且它不该是表单层的依赖）。
+ * 按形状判定还能兼容未来其它来源的同形错误（如 Host 侧注入的 `Failure`）。
  *
  * 判据两条：`code` 是非空字符串、`message` 是字符串。
  * 不用「有没有 `issues`」—— 失败可以没有字段级问题（比如业务规则拒绝）。

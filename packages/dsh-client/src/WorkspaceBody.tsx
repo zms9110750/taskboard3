@@ -65,7 +65,8 @@ import { useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { toCardAction } from './actions.ts';
-import { createApi, type TaskboardApi, type TemplateDerive } from './api.ts';
+import type { TaskboardApi, TemplateDerive } from './api.ts';
+import { getApi } from './api-client.ts';
 import { CreateFlow, type CreateInitial } from './CreateFlow.tsx';
 import { deriveMenuItemsOf, derivePrefillOf, deriveSourceOf, type DeriveMenuItem } from './pure/derive-menu.ts';
 import { kindLabelsOf } from './pure/kind-labels.ts';
@@ -77,11 +78,11 @@ import { Workspace } from './renderers/Workspace.tsx';
 /** 组件属性。 */
 export interface WorkspaceBodyProps {
 	/**
-	 * 注入 API 实现（**只给预览 / 测试**）。省略 = `createApi()` 走真 `fetch`。
+	 * 注入 API 实现（**只给预览 / 测试**）。省略 = 包内单例 `getApi()` 走真 `fetch`。
 	 *
 	 * ⚠ 产品里必须省略 —— 浏览器里没有服务端可达的其他入口。
 	 *   存在的理由：`useBoardState(apiImpl)` 本来就支持注入（见 `store.ts` 文件头），
-	 *   但产品入口一旦写死 `createApi()`，就**没有任何办法在不启服务端的情况下
+	 *   但产品入口一旦写死单例，就**没有任何办法在不启服务端的情况下
 	 *   验证这个 body 真的画得出来**（预览页是 `file://`，fetch 必失败）。
 	 */
 	readonly api?: TaskboardApi;
@@ -199,8 +200,8 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 				return;
 			}
 
-			// TODO(审查): 回调里现造 `createApi()`，与 useBoardState(:129) / client.tsx:155,330 的实例互不共享；虽当前无状态、无 bug，但建议收敛为一个模块级 api 单例（可直接改）。另 `props.api` 注入路径只服务预览/测试。
-			const api = props.api ?? createApi();
+			/* 与 `useBoardState()` 共用包内单例（`api-client.ts`），不再现造一个。 */
+			const api = props.api ?? getApi();
 			/*
 			 * 只取 `derives`。`getTemplate` 还会带回 sections（建卡页要），
 			 * 这里不用 —— 多取的那部分不花钱（同一个请求）。

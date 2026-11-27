@@ -8,8 +8,8 @@
  *
  * | 块 | 谁画 | 本文件的责任 |
  * |---|---|---|
- * | 空间 chip 行 | `SpaceBar`（full）/ `SpacePicker`（compact）| 把 workspaces / current / viewing 原样传进去 |
- * | 工具栏 | `WorkspaceToolbar` | 传计数 / 视图 / 回调；权限按钮和空间选择器**按密度给不给** |
+ * | 空间折叠栏 | `SpaceFoldToggle` + `SpaceFoldBody` | 传 workspaces / current / viewing / 归档开关 |
+ * | 工具栏 | `WorkspaceToolbar` | 传计数 / 视图 / 回调；空间选择器由 `SpaceFoldToggle` 提供 |
  * | 筛选行 | `FilterRow` + `FilterBox` | 建三棵树（状态 / 类别 / 领域）+ 尾部搜索框（定稿的 `SearchBox`）|
  * | 列表头 | `ListHeader` | 传「显示中条数」 |
  * | 空态 | `ListEmpty` | 传「为什么空」的判决（`emptyReasonOf()`）|
@@ -36,8 +36,7 @@
  * ```
  * 宽（> 700px）                    窄（≤ 700px，570×920 的真实 tab）
  * ┌───────────────────────────┐    ┌───────────────────────────┐
- * │ SpaceBar                  │    │ SpaceBar（折 3 行）        │
- * │ 工具栏（一行）             │    │ 工具栏（条数 / 切换 / 新建）│
+ * │ 工具栏（含空间开关）        │    │ 工具栏（含空间开关，折行）  │
  * │ FilterRow（一行）          │    │ 图例（第二行）             │
  * ├──────────────┬────────────┤    │ FilterRow（折 2 行）       │
  * │ 列表 flex:2  │ 详情 flex:1.2│   ├───────────────────────────┤
@@ -65,7 +64,7 @@
  * 全仓规则：`./x.ts` / `./x.tsx`（见 AGENTS.md 规则 1）。
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 
 import { GROUP_LABELS, TASK_STATES, buttonsOf, isTaskState, statesInGroup } from '@taskboard/protocol';
@@ -305,6 +304,15 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 * ⇒ 它和「选中一张卡」共用详情位，互斥：开它就把卡选中清掉。
 	 */
 	const [rootsOpen, setRootsOpen] = useState(false);
+
+	/**
+	 * 本实例的根 DOM —— 派生按钮的锚点查询**限定在这里**。
+	 *
+	 * `WorkspaceBody` 会被注册到 tab / main / 抽屉三处、可能同时挂载；
+	 * 用 `document.querySelector('[data-action-kind="derive"]')` 会拿到**别的实例**
+	 * 的按钮（浮窗锚错位置）。ref 把查询作用域收回到本组件自己的树。
+	 */
+	const rootRef = useRef<HTMLDivElement>(null);
 
 	/* ── 派生数据 ── */
 
@@ -546,12 +554,11 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					 *
 					 * ⇒ 照 `onDetailClick` 查 `[data-meta="status"]` 的同一套路：
 					 *   详情区一次只画一张卡 ⇒ `[data-action-kind="derive"]`
-					 *   全屏唯一 ⇒ 查它拿锚点。
+					 *   在本实例内唯一 ⇒ 查它拿锚点（**限定在 rootRef 内**，见上）。
 					 */
-					// TODO(审查): 全局 querySelector 假设全页只有一个派生按钮；但 WorkspaceBody 被注册到 tab/main/抽屉三处、可同时挂载 ⇒ 可能拿到别的实例的按钮，浮窗锚错位置。可改用 ref 或 event.currentTarget（对比同文件 :463-470 用 event.target.closest 的作用域写法）。
-					const anchor = document.querySelector<HTMLElement>(
-						'[data-action-kind="derive"]',
-					);
+					const anchor =
+						rootRef.current?.querySelector<HTMLElement>('[data-action-kind="derive"]') ??
+						null;
 					if (anchor !== null) props.onDerive?.(card.id, anchor);
 				}}
 				/*
@@ -601,6 +608,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 
 	return (
 		<div
+			ref={rootRef}
 			className="tb3w-root"
 			data-view={view}
 			data-detail={detailOpen ? 'open' : 'closed'}
@@ -608,14 +616,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 			<div className="tb3w-page">
 				<div className="tb3w-chrome">
 
-					{/*
-					 * 行 1：工具栏 + 空间开关。
-					 * TODO(审查): 下面的 compact/full 密度说法已过时（用户 2026-11-23 取消密度档，Workspace 也不再渲染 SpaceBar）；可直接删改本段注释，避免下一个人按旧架构改代码。
-					 *
-					 * 空间选择器在 **compact** 密度下作为 `space` 传给工具栏（放在视图切换左边）——
-					 * 用户 2026-11-21：「工作空间放在科技树的左边」。
-					 * full 密度用常驻的 `SpaceBar` chips 行（见上）。
-					 */}
+					{/* 行 1：工具栏 + 空间开关（空间开关见下面 `WorkspaceToolbar` 的 `space`）。 */}
 					<div className="tb3w-chrome__bar">
 						<WorkspaceToolbar
 							shownCount={shownCount}
@@ -653,7 +654,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 									 * 两个未读筛选按钮 —— 用户 2026-11-21：
 									 * 「UI上面要有两个筛选按钮，AI未读，用户未读。」
 									 *
-									 * ⚠ 这里**不受 compact 限制**（旧实现 compact 下收起，用户现在要它常驻）。
+									 * ⚠ 这里**不受视图密度限制**（旧实现按密度收起，用户现在要它常驻）。
 									 *   计数用**当前列表**算（`sortedCards`），不是 props 里的旧口径。
 									 */}
 									<button

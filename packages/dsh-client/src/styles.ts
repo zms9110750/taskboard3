@@ -661,9 +661,48 @@ import { SIBLING_GROUPS_CSS } from './renderers/sibling-groups-css.ts';
 export { TECHTREE_CSS };
 export { SEARCHBOX_CSS, SECTION_CSS };
 
-export { CARD_ACTION_CSS, CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS };
+export { CARD_ACTION_CSS, CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS, SIBLING_GROUPS_CSS };
 
 
+
+/** 注入表的一段：CSS 真值 + 一个**必须出现**的特征串（哨兵）。 */
+export interface StyleSegment {
+	/** 常量名（测试 / 诊断用）。 */
+	readonly name: string;
+	/** CSS 真值（与组件目录里那份是同一个对象）。 */
+	readonly css: string;
+	/** 这段 CSS 必含的特征串 —— 漏注入 / 空串 / 拼错时测试会红。 */
+	readonly sentinel: string;
+}
+
+/**
+ * **注入顺序表** —— `injectStyles()` 的唯一真值。
+ *
+ * 之前是手写模板字符串 `${A}\n${B}\n…`：漏写一段不会报错，只会在运行时
+ * 少一截样式（而且往往只在某个入口/某种状态下才看得出来）。
+ * ⇒ 改成表驱动；测试逐段断言 `sentinel` 真的出现在注入结果里。
+ *
+ * ⚠ **顺序有约束**：`TECHTREE_CSS` 必须靠后。它里面 `.tb3t-card .card-id` /
+ *   `.tb3t-card .badge` 与 `WORKSPACE_CSS` 的 `.tb3w-root .card-id` /
+ *   `.tb3w-root .badge` **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
+ *   科技树自己的规格（颜色仍是 `WORKSPACE_CSS` 那一份真值）。
+ *
+ * ⚠ 旧 MVP 的 `.tb3-*` 那套（`STYLES`）已随 `BoardBody` / `views/` 一起删掉，
+ *   不在这张表里。
+ */
+export const STYLE_SEGMENTS = [
+	{ name: 'CREATE_CSS', css: CREATE_CSS, sentinel: '.tb3cc-page' },
+	{ name: 'WORKSPACE_CSS', css: WORKSPACE_CSS, sentinel: '.tb3w-root' },
+	{ name: 'SECTION_CSS', css: SECTION_CSS, sentinel: '.section-block' },
+	{ name: 'SEARCHBOX_CSS', css: SEARCHBOX_CSS, sentinel: '.search-box' },
+	{ name: 'DRAWER_CSS', css: DRAWER_CSS, sentinel: '.tb3d-panel' },
+	{ name: 'CREATE_SHELL_CSS', css: CREATE_SHELL_CSS, sentinel: '.tb3w-create' },
+	{ name: 'TECHTREE_CSS', css: TECHTREE_CSS, sentinel: '.tb3t-root' },
+	{ name: 'FALLBACK_CSS', css: FALLBACK_CSS, sentinel: '.missing-renderer' },
+	{ name: 'DERIVE_MENU_CSS', css: DERIVE_MENU_CSS, sentinel: '[data-menu="derive"]' },
+	{ name: 'CARD_ACTION_CSS', css: CARD_ACTION_CSS, sentinel: '.tb3w-cardact' },
+	{ name: 'SIBLING_GROUPS_CSS', css: SIBLING_GROUPS_CSS, sentinel: '.tb3t-rootcol' },
+] as const satisfies readonly StyleSegment[];
 
 /**
  * 把样式插进文档（幂等）。
@@ -679,20 +718,8 @@ export function injectStyles(): void {
 	if (document.getElementById(STYLE_ID) !== null) return;
 	const element = document.createElement('style');
 	element.id = STYLE_ID;
-	/*
-	 * ⚠ 八段都注入（**没有 `STYLES`** —— 旧 MVP 的 `.tb3-*` 那套已随
-	 *   `BoardBody` / `views/` 一起删掉，那几个组件是产品里唯一用它的地方）：
-	 *
-	 *   CREATE_CSS / WORKSPACE_CSS / SECTION_CSS / SEARCHBOX_CSS /
-	 *   DRAWER_CSS / CREATE_SHELL_CSS / TECHTREE_CSS / FALLBACK_CSS
-	 *
-	 * ⚠ 顺序有约束：TECHTREE_CSS 靠后。它里面 `.tb3t-card .card-id` /
-	 *   `.tb3t-card .badge` 与 WORKSPACE_CSS 的 `.tb3w-root .card-id` /
-	 *   `.tb3w-root .badge` **特异度相同** ⇒ 靠「后写赢」把卡片内的尺寸收到
-	 *   科技树自己的规格（颜色仍是 WORKSPACE_CSS 那一份真值）。
-	 */
-	// TODO(审查): 这里手工拼段，漏注入一段（如 CARD_ACTION_CSS）不会报错；test/inject-styles.test.ts 只断言长度>1000 且含 `.tb3w-root`，拦不住。另 test/css-ownership.test.ts 只覆盖 7 个 CSS，缺 CARD_ACTION/SIBLING_GROUPS。可改成表驱动 + 逐段哨兵断言。
-	element.textContent = `${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${CREATE_SHELL_CSS}\n${TECHTREE_CSS}\n${FALLBACK_CSS}\n${DERIVE_MENU_CSS}\n${CARD_ACTION_CSS}\n${SIBLING_GROUPS_CSS}`;
+	/* 表驱动拼段：新增一段只改 `STYLE_SEGMENTS`，不会再漏。 */
+	element.textContent = STYLE_SEGMENTS.map((segment) => segment.css).join('\n');
 	/*
 	 * ⚠ **必须挂上去**。`createElement` + 设 `textContent` 只是造了一个游离节点，
 	 *   不 `appendChild` 的话样式表根本不存在于文档里 ⇒ 面板渲染出来但**一点样式都没有**

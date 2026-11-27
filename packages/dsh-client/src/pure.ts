@@ -75,13 +75,21 @@ export function chooseInitialWorkspace(
 	return workspaces[0]?.id ?? '';
 }
 
-// TODO(审查): `activeWorkspaces` / `findWorkspace` / 下面的 `templateLabelOf` 在 src 和 dev 都零调用，仅 test/store.test.ts:16-21 使用；是测试专用导出。可直接从产品模块移除（测试内联）或标 @internal。
-/** 未归档的空间（保持原顺序）。 */
+/**
+ * 未归档的空间（保持原顺序）。
+ *
+ * @internal 仅测试使用（`test/store.test.ts`）；产品代码零调用 ——
+ *   `chooseInitialWorkspace()` 内部只用 `find`，不需要整份过滤结果。
+ */
 export function activeWorkspaces(workspaces: readonly Workspace[]): readonly Workspace[] {
 	return workspaces.filter((one) => !one.archived);
 }
 
-/** 按 id 找空间（找不到返回 `undefined`）。 */
+/**
+ * 按 id 找空间（找不到返回 `undefined`）。
+ *
+ * @internal 仅测试使用（`test/store.test.ts`）；产品代码零调用。
+ */
 export function findWorkspace(
 	workspaces: readonly Workspace[],
 	id: string,
@@ -89,21 +97,39 @@ export function findWorkspace(
 	return workspaces.find((one) => one.id === id);
 }
 
-/** 模板 ref → 显示名（找不到回落 ref 本身）。 */
+/**
+ * 模板 ref → 显示名（找不到回落 ref 本身）。
+ *
+ * @internal 仅测试使用（`test/store.test.ts`）；产品代码零调用 ——
+ *   `Workspace.tsx` 自己用 `Map` 查（`templateLabels`），不走这里。
+ */
 export function templateLabelOf(templates: readonly TemplateSummary[], ref: string): string {
 	return templates.find((one) => one.ref === ref)?.displayName ?? ref;
 }
 
-// TODO(审查): `messageOf()` 的三元两个分支都返回 `cause.message`（`withCode` 取了 code 却只用来选同一个值），是恒等死判断。可直接删判断，或按本意把 code 拼进文案（会改变错误文案，需用户定）。
+/**
+ * 这一代写入的响应是否还该落 UI —— **只有最新一代能写**。
+ *
+ * ## 为什么需要
+ *
+ * 同一张卡的章节保存可能连点两次（两次 `PATCH`），而网络不保证按发起顺序
+ * 返回。若旧响应晚到就写 UI，用户会看到答案被"回滚"成上一笔 ——
+ * 静默、无报错、刷新后又对了。
+ *
+ * ⇒ 每次保存自增一个代次（`sectionSeq`），落状态前用它比对：
+ * 只有 `current === seq`（这次仍是最新意图）才允许写卡片。
+ *
+ * @param current 该卡当前最新代次（`undefined` = 还没有保存过）
+ * @param seq 这笔响应对应的代次
+ * @returns 是否是最新代次
+ */
+export function isLatestWrite(current: number | undefined, seq: number): boolean {
+	return current === seq;
+}
+
 /** 从异常里取人话（hook 也用，所以在这里）。 */
 export function messageOf(cause: unknown): string {
-	if (cause instanceof Error) {
-		const withCode = cause as { readonly code?: unknown };
-		return typeof withCode.code === 'string' && withCode.code !== ''
-			? cause.message
-			: cause.message;
-	}
-	return String(cause);
+	return cause instanceof Error ? cause.message : String(cause);
 }
 
 /**

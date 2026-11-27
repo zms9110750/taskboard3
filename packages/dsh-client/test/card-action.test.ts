@@ -119,3 +119,16 @@ describe('toOfAction —— 返回值永远是合法 TaskState 或 undefined', (
 		}
 	});
 });
+
+describe('CardAction.transition.to 的类型收窄', () => {
+	it('非法状态字符串在编译期进不来（由 tsc -p tsconfig.test.json 校验）', () => {
+		/*
+		 * `transition.to` 从 `string` 收窄成 `TaskState` 之后，这一行必须报错 ——
+		 * `@ts-expect-error` 让「不报错」本身变成测试失败。
+		 * 这不是运行时断言（对象仍然造得出来），守的是编译期入口。
+		 */
+		// @ts-expect-error 'TASK_STATE_NOPE' 不是 TaskState
+		const bad: CardAction = { kind: 'transition', to: 'TASK_STATE_NOPE' };
+		assert.equal(bad.kind, 'transition');
+	});
+});

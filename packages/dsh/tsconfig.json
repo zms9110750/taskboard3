@@ -21,6 +21,9 @@
     },
     {
       "path": "../dsh-core"
+    },
+    {
+      "path": "../dsh-agent-guard"
     }
   ]
 }

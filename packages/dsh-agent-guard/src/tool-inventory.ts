@@ -266,6 +266,8 @@ function trySchemas(deps: InventoryDeps): readonly unknown[] {
  * @param tools 待并工具
  */
 function merge(byName: Map<string, unknown>, tools: readonly unknown[]): void {
+	/* 运行时兜底：`schemas()` 的脏返回不该让整次枚举崩掉（`safeSchemas` 已挡一层，这里再挡一层）。 */
+	if (!Array.isArray(tools)) return;
 	for (const item of tools) {
 		const name = nameOf(item);
 		if (name === undefined) continue;

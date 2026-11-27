@@ -1,4 +1,20 @@
+import { readFileSync } from 'node:fs';
+
 import { defineConfig } from 'tsdown';
+
+/*
+ * 模块 id —— **从 `package.json` 的 `name` 读**，不在构建配置里手抄。
+ *
+ * 原来 banner 里硬编码 `'@taskboard/dsh-client'`，和 `package.json` 的
+ * `name`、`client.tsx` 的 `TAB_ID` 是三份重复；改包名时漏改 banner 不会
+ * 报错，只会在宿主加载器里报「模块 id 对不上」。
+ * ⇒ 这里只留一份真值（package.json）；`TAB_ID` 是实现身份，仍是显式常量。
+ */
+const packageName = (
+	JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+		readonly name: string;
+	}
+).name;
 
 /**
  * `lib/client.js` 的构建配置。
@@ -63,8 +79,8 @@ const browserConfig = defineConfig({
 	 * `module` / `exports` 在 banner 里手工造 —— CJS 产物本身假设它们存在。
 	 */
 	banner: [
-		"window.__ModuleLoader__.load({",
-		"  id: '@taskboard/dsh-client',",
+		'window.__ModuleLoader__.load({',
+		`  id: '${packageName}',`,
 		'  factory: (require) => {',
 		'    var module = { exports: {} };',
 		'    var exports = module.exports;',

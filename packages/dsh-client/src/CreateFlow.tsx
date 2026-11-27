@@ -45,7 +45,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { createApi, type TaskboardApi, type TemplateDetail } from './api.ts';
+import type { TaskboardApi, TemplateDetail } from './api.ts';
+import { getApi } from './api-client.ts';
 import { errorsFromFailure, hasGeneralError, isFailureLike } from './pure/create-failure.ts';
 import type { CreateDraft } from './pure/create-types.ts';
 import type { PickerTemplate } from './pure/template-picker.ts';
@@ -167,7 +168,7 @@ function pickableOf(cards: readonly Card[]): readonly PickableCard[] {
  * @param props 见 `CreateFlowProps`
  */
 export function CreateFlow(props: CreateFlowProps): ReactNode {
-	const api = props.api ?? createApi();
+	const api = props.api ?? getApi();
 
 	/** 已取到详情的模板。 */
 	const [template, setTemplate] = useState<FormTemplate | undefined>(undefined);

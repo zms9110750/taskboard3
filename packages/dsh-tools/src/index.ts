@@ -37,11 +37,8 @@
  */
 
 // TODO(审查): 本文件 TODO 中标注的行号以 2026-11-25 加注释前的源码为基线（注释本身会移动行号），按符号名/上下文定位。
-// TODO(审查): lib/ 里还留着 src 已删除的 permission.js / tool-guard.js（含 .d.ts/.map，时间戳 11-23 11:05）与 92KB 的 .tsbuildinfo。
-//   package.json 的 files:["lib"] 会把它们一起发布，exports 又指不到 ⇒ 纯发布垃圾。可直接改：rm -rf lib && tsc -b，并把 tsBuildInfoFile 移出 lib/。
-// TODO(审查): package.json 的 build 只有 `tsc -b`，不会删「源已不存在」的旧产物（AGENTS 规则 2）——这次的残留就是证据。
+// TODO(审查): package.json 的 build 只有 `tsc -b`，不会删「源已不存在」的旧产物（AGENTS 规则 2）。
 //   可直接改：build/prepack 先删 lib 再编译（tsc -b --clean 也删不掉已移出 program 的文件，必须真删目录）。
-// TODO(审查): package.json:4 描述「11 个 taskboard_* 工具 + 权限 guard」已过期：本行现在注册 9 个宿主无关工具，guard 与两个策略工具在 dsh-agent-guard。可直接改文案。
 // TODO(审查): engines >=22.13.0 与 test 脚本直接 `node --test test/*.test.ts`（无 flag）不匹配——免 flag 的 TS 类型剥离是 22.18+（推断，需按实际 node 版本核实）。
 //   需用户决定：抬 engines，还是给脚本加 --experimental-strip-types。
 import type { Taskboard } from '@taskboard/core';
@@ -89,7 +86,7 @@ export interface ApplyContext {
 
 /** `@taskboard/dsh-agent-guard` 服务的最小面。 */
 interface AgentGuardLike {
-	readonly isManageEdit?: () => boolean;
+	readonly isManageEdit: () => boolean;
 }
 
 /**
@@ -100,11 +97,8 @@ interface AgentGuardLike {
  */
 // TODO(审查): 两个可选服务（subagents / taskboard3AgentGuard）都只在 apply 时读一次缓存；Cordis 服务可以晚于本插件出现
 //   ⇒ 晚到就永久拿不到：holder 永久回落 UUID、isManageEdit 永久 false。可直接改：ctx.inject([...]) 可选注入，或每次 execute 时 ctx.get。
-// TODO(审查): AgentGuardLike.isManageEdit 已是可选（79），104 行又 ?. 一次 ⇒「服务在但方法不在」也静默 false；二选一即可。
 // TODO(审查): 默认空间策略在这里有第三份实现（inject 一份、dsh-core 一份、106-112 fallback 一份），违反「单一真值」；
 //   inject 已要求该服务 ⇒ 这段 fallback 生产不可达、测试也没覆盖。确认 dsh-core 必供后可直接删，并把 ApplyContext 该字段改必填。
-// TODO(审查): 115 行逐个 register 没有回滚：第 N 个抛错时前 N-1 个已注册、插件激活失败却没人 dispose（泄漏到 reload）。
-//   可直接改：try/catch 里先 disposeAll 再 rethrow（需要把 disposeAll 提到 register 之前定义）。
 export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	const taskboard = ctx.taskboard3Core;
 
@@ -121,7 +115,8 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	 */
 	const guard =
 		typeof ctx.get === 'function' ? (ctx.get(AGENT_GUARD_SERVICE) as AgentGuardLike | undefined) : undefined;
-	const isManageEdit = (): boolean => guard?.isManageEdit?.() === true;
+	/* 服务存在 ⇒ 它的 `isManageEdit` 必然存在（AgentGuardService 的必选方法）；只对「服务本身缺席」兜一次。 */
+	const isManageEdit = (): boolean => guard?.isManageEdit() === true;
 
 	const defaultWorkspaceId =
 		ctx.taskboard3DefaultWorkspaceId ?? (async (): Promise<string> => {
@@ -132,12 +127,22 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 		});
 
 	const tools = createTools({ taskboard, defaultWorkspaceId, subagents, isManageEdit });
-	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
+
+	/*
+	 * ⚠ 逐个 register 必须在同一个 try 里：第 N 个抛错时前 N-1 个**已经注册成功**，
+	 *   而插件激活失败后没人会再调本行的 disposer ⇒ 半注册状态会泄漏到 reload。
+	 *   ⇒ 失败时先回滚已注册的那些，再把原错误原样抛出去。
+	 */
+	const disposeTools: Array<() => void> = [];
+	try {
+		for (const tool of tools) disposeTools.push(ctx.tools.register(tool));
+	} catch (error) {
+		for (const dispose of disposeTools) dispose();
+		throw error;
+	}
 
 	const disposeAll = (): void => {
-		for (const dispose of disposeTools) {
-			if (typeof dispose === 'function') (dispose as () => void)();
-		}
+		for (const dispose of disposeTools) dispose();
 	};
 
 	/*

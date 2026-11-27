@@ -56,20 +56,9 @@
  * TODO(审查): package.json:30-37 把 peer `@deepseek-ai/dsh-tools` 标成 optional，但 src/tools.ts 经
  *   @taskboard/dsh-tools 运行时必然 require 它 ⇒ 缺它时本包不是降级而是 import 失败。
  *   可直接改：改必选 peer，或 tools.ts 动态导入降级；发布口径需用户确认。
- * TODO(审查): apply() 零测试（全包无 test 导入本文件）⇒ inject 清单 / provide 形状 / guard 与 tools 的
- *   卸载顺序 / 可选服务回落全无覆盖，而「少列 inject」只会静默不激活（症状：dsh: warning: 1 entry
- *   did not activate）。可直接改：新增 test/apply.test.ts，用假 ctx 断言 register 3 次、dispose 先 guard。
- * TODO(审查): test/guard.test.ts:57,75-77,91 的 dataDir 创建后从不使用（每个用例在 beforeEach 另建），
- *   只在 after 被删；:82 又用 `undefined as unknown as Taskboard` 表示已关闭。
- *   可直接改：删 dataDir，taskboard 改 `Taskboard | undefined`。
  * TODO(审查): test/guard.test.ts:174-176 断言「namesOf 返回空串 ⇒ 回落 agent.id」，正是与 dsh-tools
- *   holderOf 的分歧行为（见 permission.ts 内 TODO）；改用 dsh-tools 实现后这条会失败。
- *   可直接改：随 holder 统一一起删/移到 dsh-tools。
- * TODO(审查): test/policy-tools.test.ts:76,84,87 的 workspaceId 只被 `void workspaceId;` 消费，
- *   before 里建 workspace 对这两个权限工具无用。可直接改：删 workspace 创建与该变量。
- * TODO(审查): test/policy-tools.test.ts:123,136 给「读」工具传 `{ tier: 'unclaimed' }`，但读工具
- *   inputSchema 是 additionalProperties:false 且只认 templateRef ⇒ 真实 DSH 校验会拒；假 defineTool
- *   绕过校验才绿。可直接改：测试改传 {}。
+ *   holderOf 的分歧行为（见 permission.ts 内 TODO）。两版 holder 尚未统一，**断言先不改**；
+ *   统一后这条要么随实现删，要么移到 dsh-tools 的 holder 测试里。
  * TODO(审查): 两个工具的 hosts:['dsh'] 过滤与 adaptDefinitions 的 schema 转换在本包零覆盖（测试用假
  *   defineTool 直接调 handler）。可直接改：补一条经真实 adaptDefinitions 的 schema 形状断言。
  * TODO(审查): lib/.tsbuildinfo#2 是产物目录里的旁路残留（tsconfig:7 指定 ./lib/.tsbuildinfo）。
@@ -134,6 +123,14 @@ export interface ApplyContext {
 	readonly tools: {
 		register(tool: unknown): () => void;
 		guard(fn: (exec: unknown) => unknown): () => void;
+		/**
+		 * `ctx.tools.schemas(scope?)` —— 读工具清单（DSH `ToolsService` 的最小面）。
+		 *
+		 * 运行时的实现本来就有（`cordis_inspect_query` 的 host Service 实测过
+		 * `schemas(scope?: ScopeKey, toolSet?)`）；以前是在这里双强转取它，现在
+		 * 结构式声明 —— 宿主换了签名会在编译期被看见。
+		 */
+		schemas?(scope?: unknown): unknown[];
 	};
 	// TODO(审查): 这个字段全包无人使用（grep 只命中类型声明本身），路由已改为在 @taskboard/dsh 的
 	// prefix handler 里按 tail 分派。可直接改：删掉 webServer 字段。
@@ -214,11 +211,7 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 		const found = ctx.get(serviceName);
 		return found === undefined || found === null ? undefined : (found as T);
 	};
-	// TODO(审查): `as unknown as ToolsSchemasLike` 双强转只为访问 schemas()；运行时已确认
-	// tools.schemas(scope?: ScopeKey, toolSet?) 真实存在（cordis_inspect_query host Service）。
-	// 可直接改：把 schemas? 写进 ApplyContext.tools，删掉 ToolsSchemasLike；变量名 permissionTools 实为
-	// tools 服务，建议改 toolsService。
-	const permissionTools = ctx.tools as unknown as ToolsSchemasLike;
+	const toolsService = ctx.tools;
 	/*
 	 * ⚠ 全部用**延迟解析**（函数），不在 apply 时固化。
 	 *
@@ -228,7 +221,7 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	 * 枚举发生在**请求到达时**，那时服务早就齐了。
 	 */
 	const toolInventory = createToolInventory({
-		schemas: (scope?: unknown) => permissionTools.schemas?.(scope) ?? [],
+		schemas: (scope?: unknown) => toolsService.schemas?.(scope) ?? [],
 		resolvePresets: () => optionalService<PresetsLike>('agentPresets'),
 		resolveAgents: () => optionalService<AgentsLike>('agents'),
 		resolveAwaitReady: () => {
@@ -249,9 +242,7 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 		writeLevel: async (level) => {
 			await writeToolGuardLevel(kv, level);
 		},
-		// TODO(审查): 与 src/tools.ts:59 各自写一遍 `readToolGuardLevelOf(kv) === 'manage-edit'`，
-		// 同一事实两处重算（service.isManageEdit 也是同一份）。可直接改：把 isManageEdit 注入
-		// createAgentGuardTools，或让 tools.ts 直接用这里的结果。
+		/* 三档位的唯一判定：tools.ts 通过注入拿这一份，不再自己重算。 */
 		isManageEdit: () => readToolGuardLevelOf(kv) === 'manage-edit',
 		handleTools,
 	};
@@ -262,17 +253,15 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	const disposeGuard = ctx.tools.guard(permissionGuard);
 
 	/* ③ 两个 AI 工具（写 / 读三档策略）—— 定义在本包，不再进 `@taskboard/tools`。 */
-	const tools = createAgentGuardTools({ taskboard, kv, resolveSubagents });
+	const tools = createAgentGuardTools({ taskboard, kv, resolveSubagents, isManageEdit: service.isManageEdit });
+	// TODO(审查): 这里逐个 register 也没有回滚（同类问题已在 @taskboard/dsh-tools 的 apply 修掉）。
+	//   两个工具之一失败时会留下已注册的那个；可直接改：try/catch 回滚已注册的 + rethrow。
 	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
 
 	const disposeAll = (): void => {
 		/* 先摘 guard，再清工具：卸载过程中不该再有机会按旧档位判定。 */
 		disposeGuard();
-		for (const dispose of disposeTools) {
-			// TODO(审查): register 的返回类型已保证是函数，这个 typeof 分支是多余的防御。
-			// 可直接改：删掉判断，直接 `dispose()`。
-			if (typeof dispose === 'function') (dispose as () => void)();
-		}
+		for (const dispose of disposeTools) dispose();
 	};
 
 	/*
@@ -280,11 +269,6 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	 *   写 `ctx.effect(disposeAll)` 会让它立刻执行 —— 工具刚注册就被删掉。
 	 */
 	ctx.effect?.(() => disposeAll, 'taskboard3-agent-guard: guard + policy tools');
-}
-
-/** `ctx.tools` 上本包用到的 `schemas()` 最小面（DSH `ToolsService`）。 */
-interface ToolsSchemasLike {
-	schemas(scope?: unknown): unknown[];
 }
 
 export { handleToolsRequest, TOOLS_TAIL, type ConnectionLike, type IncomingLike, type OutgoingLike } from './http.ts';

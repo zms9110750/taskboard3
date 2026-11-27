@@ -36,12 +36,34 @@ import type {
  */
 export const API_BASE = 'taskboard3/api';
 
-/** 带业务错误码的异常。 */
-export interface ApiError extends Error {
+/**
+ * 带业务错误码的异常。
+ *
+ * 用 **class** 而不是「手写 `Error` 再强转挂字段」：后者在类型层是断言、
+ * 运行时仍是裸 `Error`，`instanceof` 判不出来；class 让 `code` / `issues`
+ * 成为真实属性，调用方拿到的类型和运行时形状一致。
+ */
+export class ApiError extends Error {
 	/** 后端错误码（与 `@taskboard/protocol` 的 `ErrorCode` 同值域）。 */
 	readonly code: string;
 	/** 字段级问题（建卡校验失败时有）。 */
 	readonly issues?: readonly { readonly path: string; readonly message: string }[];
+
+	/**
+	 * @param code 后端错误码（`NETWORK` / `BAD_RESPONSE` 是本层自造的）
+	 * @param message 人话说明
+	 * @param issues 字段级问题（可选）
+	 */
+	constructor(
+		code: string,
+		message: string,
+		issues?: readonly { readonly path: string; readonly message: string }[],
+	) {
+		super(message);
+		this.name = 'ApiError';
+		this.code = code;
+		if (issues !== undefined) this.issues = issues;
+	}
 }
 
 /**
@@ -77,13 +99,21 @@ export function buildPath(
 	return parts.length === 0 ? base : `${base}?${parts.join('&')}`;
 }
 
-// TODO(审查): isOk/isFail 在 src 内零调用，只有 test/api.test.ts:25-26,119-123 用；是测试专用导出。可内联到测试或标 @internal（同 pure.ts 的 activeWorkspaces 等三个 helper）。
-/** 是否是失败信封。 */
+/**
+ * 是否是失败信封。
+ *
+ * @internal 仅测试使用（`test/api.test.ts` 用它钉「成功/失败」判别）；
+ *   产品代码零调用。保留导出是为了让测试用同一份类型守卫，而不是复制一份实现。
+ */
 export function isFail<T>(envelope: Envelope<T>): envelope is FailEnvelope {
 	return envelope.ok === false;
 }
 
-/** 是否是成功信封。 */
+/**
+ * 是否是成功信封。
+ *
+ * @internal 仅测试使用（理由同 {@link isFail}）。
+ */
 export function isOk<T>(envelope: Envelope<T>): envelope is OkEnvelope<T> {
 	return envelope.ok === true;
 }
@@ -94,22 +124,14 @@ export function isOk<T>(envelope: Envelope<T>): envelope is OkEnvelope<T> {
  * @returns 成功时的 `data`
  * @throws {ApiError} 失败信封；`code` / `message` / `issues` 原样带出
  */
-// TODO(审查): 手写 Error 再强转挂 code/issues（apiError 同款）可换成 `class ApiError extends Error`，无需外部库；可直接改，属低风险整理。
 export function unwrap<T>(envelope: Envelope<T>): T {
 	if (envelope.ok) return envelope.data;
-	const error = new Error(envelope.message) as ApiError & { code: string };
-	(error as { code: string }).code = envelope.code;
-	if (envelope.issues !== undefined) {
-		(error as { issues: readonly { path: string; message: string }[] }).issues = envelope.issues;
-	}
-	throw error;
+	throw new ApiError(envelope.code, envelope.message, envelope.issues);
 }
 
 /** 造一个 `ApiError`（网络层异常也用这个形状，调用方只需处理一种错误）。 */
 export function apiError(code: string, message: string): ApiError {
-	const error = new Error(message) as ApiError & { code: string };
-	(error as { code: string }).code = code;
-	return error;
+	return new ApiError(code, message);
 }
 
 /**

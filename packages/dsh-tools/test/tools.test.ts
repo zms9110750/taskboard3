@@ -7,10 +7,9 @@
  * （唯一真值在 `@taskboard/tools`，那边有 73 条自己的测试）。
  * 本文件改为测 **DSH 适配层契约**：
  *
- * · 注册面：10 个 v2 工具、顺序、`hosts` 过滤结果；
+ * · 注册面：9 个宿主无关工具、顺序（`test/apply.test.ts` 一次断言，含失败回滚）；
  * · schema 转换：JSON Schema → DSH `parameters`（required 内联、enum/items 保留）；
- * · ctx 注入：holder（subagents 名字 / agent UUID 回落）、默认空间、激活空间、
- *   权限开关（toolLevel=manage-edit）；
+ * · ctx 注入：holder（subagents 名字 / agent UUID 回落）；
  * · 每个工具经适配层跑一遍正常路径 + 一条失败路径（确认真能到达 core，
  *   且失败文案按 v2 契约输出）。
  *
@@ -23,14 +22,12 @@
  * ⚠ 与 v1 oracle 的差异逐条对应见迁移报告；核心是 **v2 删了 6 个工具**
  *   （adopt / claim / release / registry / mark_seen / update_content /
  *    tool_policies / tool_policy_set / tool_policy_members / tool_policy_reset
- *    合并进 10 个新工具），对应用例按 v2 语义重写而不是删除行为覆盖。
+ *    合并进 9 个新工具；`taskboard_tool_policy` / `_read` 两个权限策略工具
+ *    按用户裁决搬到 `@taskboard/dsh-agent-guard`），对应用例按 v2 语义重写而不是删除行为覆盖。
  */
 
 // TODO(审查): 本文件 TODO 中标注的行号以 2026-11-25 加注释前的源码为基线（注释本身会移动行号），按用例名/符号定位。
-// TODO(审查): 头部 10-15 行宣称的四类覆盖（注册面/顺序/hosts 过滤、schema 转换、激活空间、权限开关）在本文件一条都没有；
-//   「删了 6 个工具」后列了 10 个名字（23-26），「合并进 10 个」实际 9 个 ⇒ 文档与用例一起过期。可直接改文案并补用例。
-// TODO(审查): 缺的用例：toDshSchema/toDshParameters（required 内联/additionalProperties/type:'json'）、toolsForHost 过滤、注册数量与顺序、
-//   apply 的注册↔dispose 与 ctx.effect 立即调用陷阱、用真 defineTool 编译一遍 9 个 schema（现在全程假 defineTool，DSH 校验从没跑到）。
+// TODO(审查): 缺的用例：toolsForHost 过滤、用真 defineTool 编译一遍 9 个 schema（现在全程假 defineTool，DSH 校验从没跑到）。
 import assert from 'node:assert/strict';
 import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -46,6 +43,8 @@ import {
 	createTools,
 	describeFailure,
 	describeUnread,
+	toDshParameters,
+	toDshSchema,
 	type DefineTool,
 	type ToolLike,
 } from '../src/tools.ts';
@@ -204,10 +203,65 @@ async function submit(cardId: string): Promise<void> {
 }
 
 /* ────────────────────────────── 注册面 ────────────────────────────── */
-// TODO(审查): 「注册面」下没有任何用例：工具数量/顺序/hosts 过滤都没断言 ⇒ @taskboard/tools 删/加工具时这里不会红。可直接补名字集合快照。
+/* 工具数量 / 顺序 / 失败回滚在 `test/apply.test.ts`（apply 那一层才看得到注册与清理）。 */
 
 /* ────────────────────────── ① schema 转换 ────────────────────────── */
-// TODO(审查): 「schema 转换」下没有任何用例；toDshSchema/toDshParameters 甚至没被 import——这是本适配层最易坏的部分，必须补。
+
+describe('schema 转换：JSON Schema → DSH parameters', () => {
+	it('required 内联成属性上的 true；description / enum / items 保留', () => {
+		const spec = toDshParameters({
+			type: 'object',
+			properties: {
+				id: { type: 'string', description: '卡编号' },
+				status: { type: 'array', items: { type: 'string', enum: ['draft', 'working'] } },
+			},
+			required: ['id'],
+		});
+		assert.deepEqual(spec, {
+			id: { type: 'string', description: '卡编号', required: true },
+			status: { type: 'array', items: { type: 'string', enum: ['draft', 'working'] } },
+		});
+	});
+
+	it("type:'object' 自动补 additionalProperties:false；显式 true 不被覆盖", () => {
+		assert.equal(toDshSchema({ type: 'object', properties: {} })['additionalProperties'], false);
+		assert.equal(
+			toDshSchema({ type: 'object', properties: {}, additionalProperties: true })['additionalProperties'],
+			true,
+		);
+	});
+
+	it("没有 type 的节点 ⇒ 补 type:'json'（DSH 的任意 JSON）", () => {
+		assert.deepEqual(toDshSchema({}), { type: 'json' });
+	});
+
+	it('⚠ 现状：白名单之外的关键字被静默丢弃（不 throw）', () => {
+		/*
+		 * 已知取舍（见 `src/tools.ts` 的 `toDshSchema` JSDoc）：适配层只搬
+		 * type / description / enum / additionalProperties / items / properties。
+		 * 直接 throw 是行为变化（要先确认 v2 的 schema 真的没用 oneOf 等关键字、
+		 * 且 DSH 侧能表达），所以这里用测试钉住「丢弃且不报错」这个现状。
+		 */
+		const withUnknownKeys = {
+			type: 'string',
+			description: '带未知关键字的节点',
+			oneOf: [{ type: 'string' }],
+			default: 'a',
+		} as const;
+		assert.deepEqual(toDshSchema(withUnknownKeys), { type: 'string', description: '带未知关键字的节点' });
+	});
+
+	it("⚠ 现状：「有 properties 无 type」不被推断成 object，也不补 additionalProperties", () => {
+		/*
+		 * 合法 JSON Schema，但 v2 没这么写。现状是原样透传 properties、不猜 type ——
+		 * 真要支持得先定契约（自动补 object？还是保持让 DSH 报错？），不在适配层擅自猜。
+		 */
+		const spec = toDshSchema({ properties: { a: { type: 'string' } } });
+		assert.equal(spec['type'], undefined);
+		assert.equal(spec['additionalProperties'], undefined);
+		assert.deepEqual(Object.keys(spec), ['properties']);
+	});
+});
 
 /* ────────────────────────── ②① ctx：默认空间 / 激活空间 ────────────────────────── */
 // TODO(审查): 标题里的「激活空间」已被用户 11-22 取消（tools.ts:237-238）⇒ 改名；下面用例见 200 行 TODO。
