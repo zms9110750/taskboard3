@@ -1,4 +1,4 @@
-// TODO(审查): 本文件按产品包源码手写、按 lead 确认「未完整实测」：`ctx.slots.inject` 的 owner 清理、slots.register 的 id/key/order、sidebarRightTabs.register 的 definition 都可能与真实 DSH 有差。每个 declare 块应补「已核对来源+日期」，否则升级静默腐烂；另本文件不随 lib 发布（见 client.tsx 顶部 TODO 第 2 条）。
+// TODO(审查): 本文件按产品包源码手写、按 lead 确认「未完整实测」：`ctx.slots.inject` 的 owner 清理、slots.register 的 id/key/order、sidebarRightTabs.register 的 definition 都可能与真实 DSH 有差。每个 declare 块应补「已核对来源+日期」，否则升级静默腐烂；另本文件不随 lib 发布（见 client.tsx 顶部 TODO 第 1 条）。
 /**
  * 外部宿主的**类型桩**（ambient declarations）。
  *
