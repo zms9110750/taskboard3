@@ -8,10 +8,10 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc -b packages/protocol packages/core packages/tools packages/io packages/store packages/dsh-core packages/dsh-tools packages/dsh-agent-guard packages/dsh packages/dsh-client",
-    "clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['protocol','core','tools','io','store','dsh-core','dsh-tools','dsh-agent-guard','dsh','dsh-client'])rmSync('packages/'+p+'/lib',{recursive:true,force:true})\"",
+    "build": "tsc -b packages/protocol packages/core packages/tools packages/io packages/store packages/dsh-core packages/dsh-tools packages/dsh-agent-guard packages/dsh packages/dsh-client packages/dsh-permissions",
+    "clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['protocol','core','tools','io','store','dsh-core','dsh-tools','dsh-agent-guard','dsh','dsh-client','dsh-permissions'])rmSync('packages/'+p+'/lib',{recursive:true,force:true})\"",
     "test": "node --test \"packages/*/test/**/*.test.ts\"",
-    "check:dev": "tsc -p packages/dsh-client/tsconfig.dev.json",
+    "check:dev": "tsc -p packages/dsh-client/tsconfig.dev.json && tsc -p packages/dsh-permissions/tsconfig.dev.json",
     "check:test-types": "tsc -p tsconfig.test.json",
     "check": "pnpm run build && pnpm run check:dev && pnpm run check:test-types && pnpm run test",
     "link-worktree": "node scripts/link-worktree.mjs"

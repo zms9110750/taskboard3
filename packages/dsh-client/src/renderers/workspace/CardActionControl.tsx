@@ -21,29 +21,32 @@
  * composer 权限框（盾牌按钮） → toolGuardLevel   ← agent 侧的权限
  * ```
  *
- * ⇒ 同一个模块级 store（`pure/permission-box-state.ts`），但**各显示各的轴**。
- *   在任一处改，另一处的 store 也更新（同一次 GET 的数据）。
+ * ⇒ 自建的单轴 store（`pure/card-permission-state.ts`），只显示 card 轴。
+ *   ⚠ 2026-11-27 拆分后与 composer 权限框（`@taskboard/dsh-permissions`）
+ *   **不再共享 store** —— 打开本控件的下拉会强制重拉一次（`refreshCardPermission`）。
  *
  * ## 为什么不自己拉数据
  *
- * 状态在模块级 store 里（三个入口共用一份）。本组件只做两件事：
- * `usePermissionBox()` 读、`ensurePermissionLoaded()` 确保拉过一次。
+ * 状态在模块级 store 里（三个入口共用一份）。本组件只做三件事：
+ * `useCardPermission()` 读、`ensureCardPermissionLoaded()` 确保拉过一次、
+ * `refreshCardPermission()` 打开下拉时重拉。
  *
  * ## 文案从哪来
  *
  * **档位 label / description 全部来自接口返回的 `cardActionOptions`** ——
- * `pure/permission-box.ts` 的 `labelOf()`。本文件**不硬编码任何档位文案**
+ * `pure/card-permission.ts` 的 `labelOf()`。本文件**不硬编码任何档位文案**
  * （第二份文案漂移时不会报错，只会静默显示一个存不进去的档）。
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { labelOf } from '../../pure/permission-box.ts';
+import { labelOf } from '../../pure/card-permission.ts';
 import {
-	ensurePermissionLoaded,
-	selectPermissionLevel,
-	usePermissionBox,
-} from '../../pure/permission-box-state.ts';
+	ensureCardPermissionLoaded,
+	refreshCardPermission,
+	selectCardPermissionLevel,
+	useCardPermission,
+} from '../../pure/card-permission-state.ts';
 
 /** 下拉里一项。 */
 interface Option {
@@ -58,14 +61,21 @@ interface Option {
  * @returns 紧凑 pill + 点击展开的三档单选；数据没准备好时渲染一个禁用壳
  */
 export function CardActionControl(): ReactNode {
-	const { state } = usePermissionBox();
+	const state = useCardPermission();
 	const [open, setOpen] = useState(false);
 	const rootRef = useRef<HTMLSpanElement | null>(null);
 
 	/* 挂载就确保拉过一次（不开页面）。三个入口各挂一个，store 里有 in-flight 闸。 */
 	useEffect(() => {
-		void ensurePermissionLoaded();
+		void ensureCardPermissionLoaded();
 	}, []);
+
+	/* 打开下拉就强制重拉一次 —— 拆分后 composer 面板（另一个包）改了 card 轴
+	 * 不会通知本 store；打开那一刻重拉，保证显示的是「现在」的值。 */
+	useEffect(() => {
+		if (!open) return;
+		void refreshCardPermission();
+	}, [open]);
 
 	/* 点外面关掉下拉 —— 工具栏很窄，下拉必须能一键消失。 */
 	useEffect(() => {
@@ -81,9 +91,9 @@ export function CardActionControl(): ReactNode {
 	}, [open]);
 
 	const ready = state.phase === 'ready';
-	const options: readonly Option[] = ready ? state.snapshot.cardActionOptions : [];
-	const current = ready ? state.snapshot.cardActionLevel : '';
-	const pending = ready && state.pending.card !== null;
+	const options: readonly Option[] = ready ? state.options : [];
+	const current = ready ? state.level : '';
+	const pending = ready && state.pending !== null;
 
 	/*
 	 * ⚠ 数据没就绪时**不编造档位**（同 `PermissionBoxEntry` 的理由）：
@@ -144,7 +154,7 @@ export function CardActionControl(): ReactNode {
 								title={option.description}
 								onClick={() => {
 									setOpen(false);
-									void selectPermissionLevel('card', option.value);
+									void selectCardPermissionLevel(option.value);
 								}}
 							>
 								<span className="tb3w-cardact__opt-label">{option.label}</span>

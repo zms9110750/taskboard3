@@ -1,0 +1,6 @@
+{
+	"meta": {
+		"title": "Taskboard permissions",
+		"description": "The taskboard's agent-side permission surface, as its own plugin row. It provides two entries: the left-sidebar \"Tools permission\" page (the tool inventory, the tool group graph editor, and template authorization) and the permission box on the composer tool row (agent tool tiers and the two-axis permission panel). This row carries an activation gate: its host half injects the agent guard service, so when the guard row is disabled this row never activates and the permission entries do not appear — that is by design, not a malfunction. Turn it off and the tools-permission page, the composer permission box, and template authorization all vanish; the taskboard's cards, state machine, board, and tech tree are unaffected. The \"allow claiming cards\" axis does not live here — it belongs to the taskboard toolbar in the general UI row."
+	}
+}

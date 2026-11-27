@@ -1,0 +1,31 @@
+// dev/ 暂存区的类型检查（同 dsh-client 的 tsconfig.dev.json 形态）。
+//
+// 迁入的三个权限预览目录（permission / permission-container / permission-page）
+// 引用相对深度与本包结构一致；include 需要把它们用到的 src 文件一并纳入。
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"types": ["react", "react-dom"],
+		"jsx": "react-jsx",
+
+		"noEmit": true,
+		"composite": false,
+		"declaration": false,
+		"declarationMap": false,
+		"sourceMap": false
+	},
+	"include": [
+		"dev/**/*",
+		"src/**/*.d.ts",
+		"src/api.ts",
+		"src/types.ts",
+		"src/styles.ts",
+		"src/pure/permission-view.ts",
+		"src/pure/permission-box.ts",
+		"src/pure/permission-box-state.ts",
+		"src/renderers/PermissionPanel.tsx",
+		"src/renderers/permission-css.ts",
+		"src/renderers/permission-box-css.ts"
+	]
+}

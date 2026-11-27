@@ -397,8 +397,9 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
    ├─ dsh-tools/           AI 工具的 DSH 适配（`ctx.tools.register`）
    ├─ dsh-agent-guard/     DSH 专属：agent 工具档位守卫 + `GET /api/tools`
    ├─ dsh/                 Host 半边（HTTP + 命令 + SSE(临时)）
-   ├─ dsh-client/          客户端 UI（右侧工作区 + 侧栏 + 输入框 + 悬停浮层）
-   └─ bundle/              ⭐ bundle 壳：`cordis.patch.yml` 里 6 行 insert
+   ├─ dsh-client/          客户端 UI·通用链（右侧工作区 + 侧栏 + 输入框 + 悬停浮层 + 领卡档位）
+   ├─ dsh-permissions/     客户端 UI·权限链（工具权限页 + 模板授权 + 组图 + composer 权限框；Host 半 inj 守卫服务，守卫行不在则整行不激活）
+   └─ bundle/              ⭐ bundle 壳：`cordis.patch.yml` 里 insert 若干行
 ```
 
 ### 各包一句话
@@ -414,19 +415,22 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
 | `dsh-tools` | `@taskboard/tools` 的 DSH 适配（`ctx.tools.register`） | ❌ |
 | `dsh-agent-guard` | **DSH 专属**：agent 工具档位守卫 + `GET /api/tools`（MCP 不提供这一层） | ❌ |
 | `dsh` | HTTP 路由 + 命令 + SSE(临时) + `GET /api/tool-policy` | ❌ |
-| `dsh-client` | 客户端 UI（右侧工作区 / 侧栏 / 输入框浮层） | ✅ 插件行 |
-| `bundle` | bundle 壳：`cordis.patch.yml` 里 6 行 insert | ✅ 插件行 |
+| `dsh-client` | 客户端 UI·通用链（任务板本体视图；2026-11-27 拆出权限链） | ✅ 插件行 |
+| `dsh-permissions` | 客户端 UI·权限链（inj `taskboard3AgentGuard`，守卫行不在则不激活） | ✅ 插件行 |
+| `bundle` | bundle 壳：`cordis.patch.yml` 里 insert | ✅ 插件行 |
 
 ### 构建与测试
 
 ```powershell
-# 构建（按依赖顺序；共 10 个包）
+# 构建（按依赖顺序；共 11 个包）
 node node_modules/typescript/bin/tsc -b `
   packages/protocol packages/core packages/tools packages/io packages/store `
-  packages/dsh-core packages/dsh-tools packages/dsh-agent-guard packages/dsh packages/dsh-client
+  packages/dsh-core packages/dsh-tools packages/dsh-agent-guard packages/dsh `
+  packages/dsh-client packages/dsh-permissions
 
-# dev/ 暂存区单独检查（规则 7）
+# dev/ 暂存区单独检查（规则 7；两个客户端包各一份）
 node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
+node node_modules/typescript/bin/tsc -p packages/dsh-permissions/tsconfig.dev.json
 
 # 测试的 tsconfig
 node node_modules/typescript/bin/tsc -p tsconfig.test.json

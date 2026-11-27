@@ -1,0 +1,17 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"rootDir": "./src",
+		"outDir": "./lib",
+		"declarationDir": "./lib",
+		"tsBuildInfoFile": "./lib/.tsbuildinfo",
+
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"types": ["react", "react-dom"],
+		"jsx": "react-jsx",
+
+		/* 这个包由 tsdown 打成浏览器半，tsc 只做类型检查 + 出 .d.ts。 */
+		"emitDeclarationOnly": true
+	},
+	"include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"]
+}
