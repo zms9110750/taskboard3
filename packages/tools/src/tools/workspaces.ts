@@ -52,8 +52,6 @@ export function createWorkspacesTool(deps: ToolDeps): ReturnType<typeof defineTo
 		name: 'taskboard_workspaces',
 		description:
 			'列任务板的工作空间（容器）以及每个空间有多少张卡。includeArchived=true 时包含已归档空间。' +
-			// TODO(审查): 这句是**对的**（缺 workspaceId 就失败），而另外 7 个工具的描述仍写「省略 = 宿主激活空间」——
-			// 同包内自相矛盾。以这句为准统一，其余 7 处改成「必填 + 先调本工具拿 id」。可直接改。
 			'每个工具调用都必须显式给 workspaceId（没有「激活空间」默认值）。',
 		inputSchema: {
 			type: 'object',

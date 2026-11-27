@@ -21,12 +21,12 @@
 
 import type { Card } from '@taskboard/core';
 
-import { resolveWorkspace, str } from '../context.ts';
-import { failureResult, inputFailure } from '../failure.ts';
+import { readCard, resolveWorkspace, str } from '../context.ts';
+import { inputFailure } from '../failure.ts';
 import { groupText, renderPayload, sectionHeading, stateText, unreadFlags } from '../render.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, type ToolDeps } from './shared.ts';
+import { defineTool, WORKSPACE_ID_DESCRIPTION, WORKSPACE_ID_REQUIRED_NOTE, type ToolDeps } from './shared.ts';
 
 /** 历史展示条数上限（避免大卡把上下文打爆；总数单独给）。 */
 const HISTORY_LIMIT = 10;
@@ -43,8 +43,8 @@ export function createCardTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 			return inputFailure('必须给卡编号（id）；本工具不靠筛选定位。', '先调 taskboard_cards 拿编号，再按编号查看。');
 		}
 
-		const found = taskboard.get(workspaceId, cardId);
-		if (!found.ok) return failureResult(found, { action: '查看卡失败' });
+		const found = readCard(taskboard, workspaceId, cardId, '查看卡失败');
+		if (!found.ok) return found.result;
 		const card = found.card;
 
 		/* 关系目标标题（同空间的卡；墓碑不在列表里时只显示编号）。 */
@@ -129,18 +129,18 @@ export function createCardTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 			'按编号查看一张卡：状态、历史、关系、备注、各章节的 action 视图。' +
 			'**必须给编号**（不靠筛选定位）；按编号直查，所以草稿和已删除的卡也能看到。' +
 			'**查看即 AI 已读**：会清掉这张卡上「用户改过、AI 未读」的标记。' +
-			'要改卡内容请先用 taskboard_raw_card 看原始 JSON。',
+			'要改卡内容请先用 taskboard_raw_card 看原始 JSON。' +
+			WORKSPACE_ID_REQUIRED_NOTE,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				workspaceId: {
 					type: 'string',
-					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
-					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+					description: WORKSPACE_ID_DESCRIPTION,
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
 			},
-			required: ['id'],
+			required: ['workspaceId', 'id'],
 		},
 		handler,
 	});

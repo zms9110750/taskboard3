@@ -4,18 +4,33 @@
  * 全部是**纯读取 + 显式失败**：不猜、不静默回落。
  */
 
-import type { TaskboardToolContext, TaskboardToolResult } from './types.ts';
-import { inputFailure } from './failure.ts';
+import type { Card, Taskboard, TransitionAdvice } from '@taskboard/core';
+import type { Failure } from '@taskboard/protocol';
 
-/** 读字符串参数。 */
-// TODO(审查): 需要「允许空串」的读取器时（update 的 path、update_note 的 note、transition 的 to），
-// 四个工具各自抄了一份 stringField/readString（tools/update.ts:115、tools/update-note.ts:113、
-// tools/transition.ts:256、render.ts:90），且 update.ts 的 strArg 就是本函数的复制品。
-// ⇒ 在这里加一个 strAllowEmpty()，其余四份删掉。可直接改。
+import type { TaskboardToolContext, TaskboardToolResult } from './types.ts';
+import { failureResult, inputFailure } from './failure.ts';
+
+/** 读字符串参数（空串视为没给）。 */
 export function str(args: unknown, key: string): string | undefined {
 	if (typeof args !== 'object' || args === null) return undefined;
 	const value = (args as Record<string, unknown>)[key];
 	return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+/**
+ * 读一个**允许空串**的字符串字段。
+ *
+ * 与 `str` 的唯一区别：空串是有效值 —— `taskboard_update` 的 `path: ''`（整个内容对象）、
+ * `taskboard_update_note` 的 `note: ''`（清空备注）、`taskboard_transition` 的 `to: ''`（只查询）。
+ * 缺 key / 非字符串仍是 `undefined`。
+ *
+ * 四个工具原本各抄了一份（update.ts 的 stringField、update-note.ts 的 readString、
+ * transition.ts 的 readString、render.ts 的死代码 stringField）⇒ 统一到这里，一处维护。
+ */
+export function strAllowEmpty(args: unknown, key: string): string | undefined {
+	if (typeof args !== 'object' || args === null) return undefined;
+	const value = (args as Record<string, unknown>)[key];
+	return typeof value === 'string' ? value : undefined;
 }
 
 /** 读字符串数组参数（过滤非字符串项）。 */
@@ -88,6 +103,56 @@ export async function resolveWorkspace(
 			'先调 taskboard_workspaces 列空间拿 id，再把它传给本次调用。',
 		),
 	};
+}
+
+/** 取卡的成功 / 失败判别联合（失败已翻成给模型看的结果）。 */
+export type CardRead =
+	| { readonly ok: true; readonly card: Card }
+	| { readonly ok: false; readonly result: TaskboardToolResult };
+
+/**
+ * 按 `workspaceId + cardId` 取一张卡（#3 查看卡 / 原始卡 / #7 更新备注共用）。
+ *
+ * 三个工具原本各写一遍 `taskboard.get(...)` + `failureResult(found, {...})`，
+ * 只有失败主题词不同 ⇒ 收在这里，失败主题词由调用方给。
+ *
+ * @param action 失败主题（如 `查看卡失败`），拼成 `失败：<action>：<message>`
+ */
+export function readCard(
+	taskboard: Taskboard,
+	workspaceId: string,
+	cardId: string,
+	action: string,
+): CardRead {
+	const found = taskboard.get(workspaceId, cardId);
+	if (!found.ok) return { ok: false, result: failureResult(found, { action }) };
+	return { ok: true, card: found.card };
+}
+
+/** 读「当前状态 + 可转移目标」的成功 / 失败判别联合。 */
+export type AdviceRead =
+	| { readonly ok: true; readonly advice: TransitionAdvice }
+	| { readonly ok: false; readonly failure: Failure };
+
+/**
+ * 按 `workspaceId + cardId` 读一张卡的转移建议（#8 的查询/执行、#6 #7 改完的回执共用）。
+ *
+ * 两处「胶水」收在这一处维护（三个调用点不再各写一遍）：
+ * · `holder ?? ''` —— 空串当「没有身份」的哨兵，等 core 把 `holder` 收成 `string | undefined`；
+ * · `'targets' in advice` —— 结构嗅探，等 core 的 `transitionAdvice` 给判别字段。
+ *
+ * ⚠ 上面两条都要 **core 改签名**才能根治（见 index.ts 的跨包待确认清单）；
+ *   在这里先收成一处，core 改了之后只需要改这一个函数。
+ */
+export function adviceOf(
+	taskboard: Taskboard,
+	workspaceId: string,
+	cardId: string,
+	holder: string | undefined,
+): AdviceRead {
+	const advice = taskboard.transitionAdvice(workspaceId, cardId, holder ?? '');
+	if (!('targets' in advice)) return { ok: false, failure: advice };
+	return { ok: true, advice };
 }
 
 /* ══════════════════════════════════════════════════════════

@@ -27,12 +27,20 @@
  * ⇒ 成功时 text 就是 `{ [sectionKey]: payload }` 的 JSON（可直接用于下一次拼路径）。
  */
 
-import { holderOf, resolveWorkspace, rawOf } from '../context.ts';
-import { failureResult, inputFailure } from '../failure.ts';
+import type { ErrorCode } from '@taskboard/protocol';
+
+import { holderOf, resolveWorkspace, rawOf, str, strAllowEmpty } from '../context.ts';
+import { failureResult, inputFailure, nextStepFor } from '../failure.ts';
 import { jsonText } from '../render.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, stateAndNextText, type ToolDeps } from './shared.ts';
+import {
+	defineTool,
+	stateAndNextText,
+	WORKSPACE_ID_DESCRIPTION,
+	WORKSPACE_ID_REQUIRED_NOTE,
+	type ToolDeps,
+} from './shared.ts';
 
 export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;
@@ -42,11 +50,11 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 		if (!resolved.ok) return resolved.result;
 		const workspaceId = resolved.workspaceId;
 
-		const cardId = strArg(args, 'id');
+		const cardId = str(args, 'id');
 		if (cardId === undefined) return inputFailure('必须给卡编号（id）。', '先调 taskboard_cards 拿编号。');
 
 		/* path 允许空串（= 整个内容对象），所以不能复用 `str`（它把空串当没给）。 */
-		const path = stringField(args, 'path');
+		const path = strAllowEmpty(args, 'path');
 		if (path === undefined) {
 			return inputFailure(
 				'必须给 path（JSON 路径）。空串表示替换整个内容对象，写法示例：/章节id/字段 或 /章节label/字段。',
@@ -72,7 +80,7 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 		if (!updated.ok) {
 			return failureResult(updated, {
 				action: '更新卡失败',
-				next: nextForUpdateFailure(updated.code),
+				next: nextStepFor(updated.code, UPDATE_NEXT_STEPS),
 			});
 		}
 
@@ -84,20 +92,18 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 	return defineTool({
 		name: 'taskboard_update',
 		description:
-			// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
 			'按 JSON 路径替换一张卡的内容（**替换语义，不是合并**：路径之后整段换成你给的 value）。' +
 			'卡的原始结构是 `{ [章节key]: action payload }`（只含模板内 JSON，不含标题/状态/关系/备注）。' +
 			'**先调 taskboard_raw_card 看当前 JSON 与 key，再拼路径**。' +
 			'path 用 JSON Pointer：空串=整个内容对象；`/章节/字段` 逐层；数组末尾 `-`=追加。首段可用章节 label 或 id。' +
 			'成功返回合并后的完整 JSON，并附「当前状态 + 这个状态下接下来可以做什么」。' +
-			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+			WORKSPACE_ID_REQUIRED_NOTE,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				workspaceId: {
 					type: 'string',
-					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」。可直接改成「必填」。
-					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+					description: WORKSPACE_ID_DESCRIPTION,
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
 				path: {
@@ -109,42 +115,16 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 						'替换后的 JSON 值（任意 JSON：对象/数组/字符串/数字/布尔/null）。替换语义 —— 路径那一整段会被它整体取代。',
 				},
 			},
-			required: ['id', 'path', 'value'],
+			required: ['workspaceId', 'id', 'path', 'value'],
 		},
 		handler,
 	});
 }
 
-/** 读一个必须存在、但允许空串的字符串字段。 */
-// TODO(审查): 本函数与 update-note.ts 的 readString、transition.ts 的 readString、render.ts 的 stringField 是同一函数的四份副本；
-// 可直接改：删掉三份，改用 context.ts 新增的 strAllowEmpty()。
-function stringField(args: unknown, key: string): string | undefined {
-	if (typeof args !== 'object' || args === null) return undefined;
-	const value = (args as Record<string, unknown>)[key];
-	return typeof value === 'string' ? value : undefined;
-}
-
-/** 读必须存在的字符串字段（空串视为没给）。 */
-// TODO(审查): 这就是 context.ts 的 str() 换个名字重写了一遍（同样的判空、同样丢空串）。可直接改：直接 str(args, 'id')。
-function strArg(args: unknown, key: string): string | undefined {
-	const value = stringField(args, key);
-	return value === undefined || value === '' ? undefined : value;
-}
-
-/** 更新失败的下一步。 */
-// TODO(审查): 参数是裸 string 而不是 ErrorCode ⇒ 新增错误码不会有人提醒（同款还有 create.ts / transition.ts 的 nextFor*）。
-// 可直接改：换成 ErrorCode + 一张集中默认表（见 failure.ts 文件尾 TODO）。
-function nextForUpdateFailure(code: string): string {
-	switch (code) {
-		case 'CONTENT_INVALID':
-			return '先用 taskboard_raw_card 看当前 JSON 与字段；path 要指向已存在的中间路径，value 要符合该章节 action 的形状。';
-		case 'FIELD_REQUIRED':
-			return 'path 不是合法 JSON Pointer（检查 ~ 转义）；空串表示替换整个内容对象。';
-		case 'CARD_NOT_FOUND':
-			return '先用 taskboard_cards 确认编号（按 id 直查可见墓碑，但墓碑不能更新）。';
-		case 'CARD_ENDED_IMMUTABLE':
-			return '这张卡已完结，内容已定稿。要接着做就新建一张卡（taskboard_create）；只想看内容用 taskboard_raw_card。';
-		default:
-			return '先看当前 JSON（taskboard_raw_card）再重试。';
-	}
-}
+/** 更新失败的下一步：只覆盖更新口径不同的几条，其余走 `failure.ts` 的共用表。 */
+const UPDATE_NEXT_STEPS = {
+	CONTENT_INVALID: '先用 taskboard_raw_card 看当前 JSON 与字段；path 要指向已存在的中间路径，value 要符合该章节 action 的形状。',
+	FIELD_REQUIRED: 'path 不是合法 JSON Pointer（检查 ~ 转义）；空串表示替换整个内容对象。',
+	CARD_NOT_FOUND: '先用 taskboard_cards 确认编号（按 id 直查可见墓碑，但墓碑不能更新）。',
+	CARD_ENDED_IMMUTABLE: '这张卡已完结，内容已定稿。要接着做就新建一张卡（taskboard_create）；只想看内容用 taskboard_raw_card。',
+} satisfies Partial<Record<ErrorCode, string>>;

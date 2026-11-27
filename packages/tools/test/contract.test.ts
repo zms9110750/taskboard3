@@ -40,6 +40,17 @@ const EXPECTED_NAMES = [
 	'taskboard_transition',
 ] as const;
 
+/** 需要 `workspaceId` 的工具（#1 列空间、#4 看定义不需要）。 */
+const NEEDS_WORKSPACE = [
+	'taskboard_cards',
+	'taskboard_card',
+	'taskboard_raw_card',
+	'taskboard_create',
+	'taskboard_update',
+	'taskboard_update_note',
+	'taskboard_transition',
+] as const;
+
 describe('包边界', () => {
 	const manifest = JSON.parse(readFileSync(join(PACKAGE_DIR, 'package.json'), 'utf8')) as {
 		dependencies?: Record<string, string>;
@@ -113,6 +124,35 @@ describe('工具注册面', () => {
 			for (const [key, node] of Object.entries(tool.inputSchema.properties)) {
 				assert.equal(typeof node, 'object', `${tool.name}.${key} 不是 schema 节点`);
 			}
+		}
+	});
+
+	/*
+	 * 用户 `2026-11-22` 取消「激活空间」⇒ `resolveWorkspace` 对缺 `workspaceId` 一律报错。
+	 * 所以 7 个需要空间的工具必须**如实**把 workspaceId 标成必填，并且描述里不能再许诺
+	 * 「省略 = 宿主激活空间」（模型会照着省略参数，然后吃一个它没预料到的失败）。
+	 */
+	it('7 个需要空间的工具都如实把 workspaceId 标成必填，且不再许诺「激活空间」', async () => {
+		const fixture = await makeFixture();
+		const withWorkspace = fixture.tools.filter((one) => Object.hasOwn(one.inputSchema.properties, 'workspaceId'));
+		assert.deepEqual(
+			withWorkspace.map((one) => one.name),
+			[...NEEDS_WORKSPACE],
+		);
+		for (const tool of withWorkspace) {
+			assert.ok(
+				(tool.inputSchema.required ?? []).includes('workspaceId'),
+				`${tool.name} 没把 workspaceId 列进 required`,
+			);
+			assert.ok(
+				tool.inputSchema.properties['workspaceId']?.description?.includes('必填') === true,
+				`${tool.name}.workspaceId 的描述没写「必填」`,
+			);
+			assert.ok(!tool.description.includes('宿主激活空间'), `${tool.name} 的描述还在许诺激活空间`);
+			assert.ok(
+				!JSON.stringify(tool.inputSchema).includes('宿主激活空间'),
+				`${tool.name} 的 schema 还在许诺激活空间`,
+			);
 		}
 	});
 

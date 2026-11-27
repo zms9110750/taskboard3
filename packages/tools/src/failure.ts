@@ -124,14 +124,51 @@ export function hostFailure(message: string, next: string): TaskboardToolResult 
 	return toolFailure(ErrorCode.PORT_UNAVAILABLE, message, { next, retryable: 'no' });
 }
 
+/* ══════════════════════════════════════════════════════════
+   「下一步」：一张表 + per-tool 覆盖
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * 错误码 → 工具层的「下一步」（各工具共用的一份口径）。
+ *
+ * 与 protocol 的 `ERROR_HINTS` 的分工：`ERROR_HINTS` 是**词级**默认（UI 也在用它决定按钮），
+ * 这里可以点名 `taskboard_*` 工具，给模型的指引更具体。
+ *
+ * ⚠ 新增 `ErrorCode` 时这张表少一条 ⇒ **tsc 直接报**（`satisfies` 只检查、不 widen，AGENTS 3.7）。
+ *   某个工具想换口径，就在自己文件里的 `XXX_NEXT_STEPS` 覆盖
+ *   （`satisfies Partial<Record<ErrorCode, string>>`），不要另写 switch。
+ */
+export const TOOL_NEXT_STEPS = {
+	CARD_NOT_FOUND: '先用 taskboard_cards 确认编号（按编号直查能看到墓碑，但墓碑不能改）。',
+	WORKSPACE_NOT_FOUND: '先调 taskboard_workspaces 列空间，再用返回的空间 id 调用（workspaceId 必填）。',
+	TEMPLATE_NOT_FOUND: '先调 taskboard_definitions 查模板清单与详情，再传正确的 templateRef。',
+	CONTENT_INVALID: '先调 taskboard_raw_card 看当前 JSON，再按 issues 里的章节名与字段修正后重试。',
+	TRANSITION_REJECTED: '不传 to 调一次看当前可转移目标；终结态如果用户授意，由用户推进。',
+	RELATION_TARGET_INVALID: '关系目标必须是同空间中已存在、未删除、非草稿的卡；先用 taskboard_cards 确认编号。',
+	CLAIM_REJECTED: '不传 to 调一次看条件目标；按 blockers 先完成依赖，或先释放手上另一张处理中工作卡。',
+	FIELD_REQUIRED: '补上缺失字段后重试；不确定字段名就先看本工具的说明。',
+	CARD_ENDED_IMMUTABLE: '这张卡已完结，内容不能再改。要接着做就新建一张卡（taskboard_create）；只想看内容用 taskboard_raw_card。',
+	AI_STATE_CHANGE_DISABLED: '任务板当前不允许 AI 改卡状态。把要做的状态变化告诉用户，让用户点按钮；或让用户先把开关打开。',
+	TEMPLATES_UNAVAILABLE: '模板注册表未就绪；这是安装问题，不是调用问题。',
+	ACTION_NOT_FOUND: 'action 未注册；用 taskboard_definitions 查可用 action。',
+	PORT_UNAVAILABLE: '该能力未装配；检查插件是否完整。',
+	INTERNAL_ERROR: '内部错误；这是缺陷，请报告。',
+} satisfies Record<ErrorCode, string>;
+
+/**
+ * 取「下一步」：per-tool 覆盖优先，其次共用表。
+ *
+ * 返回类型是 `string`（不是 `string | undefined`）—— 表是全的，所以失败文本里
+ * 「下一步」这一段不会因为漏写一条指引而消失。
+ */
+export function nextStepFor(
+	code: ErrorCode,
+	overrides: Readonly<Partial<Record<ErrorCode, string>>>,
+): string {
+	return overrides[code] ?? TOOL_NEXT_STEPS[code];
+}
+
 /** 把「参数不对」统一成可重试失败。 */
 export function inputFailure(message: string, next?: string): TaskboardToolResult {
 	return toolFailure(ErrorCode.FIELD_REQUIRED, message, next === undefined ? {} : { next });
 }
-
-/*
- * TODO(审查): 「错误码 → 下一步」现在有三份平行 switch：tools/create.ts 的 nextForCreateFailure、
- * tools/update.ts 的 nextForUpdateFailure、tools/transition.ts 的 nextForTransition，参数类型都是**裸 string**
- * ⇒ 新增 ErrorCode 时没人提醒（AGENTS 3.6：绕行要能被编译失败找到）。可直接改：本文件出一张
- * `satisfies Record<ErrorCode, string>` 的默认表 + 少量 per-tool 覆盖。
- */

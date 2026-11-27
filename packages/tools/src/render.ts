@@ -86,17 +86,6 @@ export function renderPayload(payload: unknown): string {
 	return truncate(textOfAction(payload));
 }
 
-/** 取一个字符串字段。 */
-// TODO(审查): 这个 stringField 在本文件内**从未被调用**（死代码），而 tools/update.ts 的 stringField、
-// tools/update-note.ts 的 readString、tools/transition.ts 的 readString 是同一函数的三份副本，
-// tools/update.ts 的 strArg 又等于 context.ts 的 str。⇒ 提到 context.ts 一个 strAllowEmpty()，其余全删。可直接改。
-function stringField(value: object, key: string): string | undefined {
-	const raw = (value as Record<string, unknown>)[key];
-	return typeof raw === 'string' ? raw : undefined;
-}
-
-
-
 /** 章节标题行：`【正文】（body，action=text）`。 */
 export function sectionHeading(label: string, sectionId: string, action: string): string {
 	return `【${label}】（${sectionId}，action=${action}）`;
