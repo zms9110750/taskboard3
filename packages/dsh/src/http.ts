@@ -602,39 +602,52 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 				return;
 			}
 
-			if (cardRaw !== undefined && cardLevel === undefined) {
+			/*
+			 * 三条字段校验**殊途同归**（都返回 FIELD_REQUIRED + 400 + 同形 issues）
+			 * ⇒ 查表 + 一循环。表序 = 原有校验顺序（card → guard → switch），
+			 * `for...of` + `return` 保持逐字段短路；文案与 path 逐字搬进表项。
+			 */
+			const levelChecks: readonly {
+				readonly name: string;
+				readonly raw: unknown;
+				readonly parsed: string | boolean | undefined;
+				readonly path: string;
+				readonly issue: string;
+				readonly detail: string;
+			}[] = [
+				{
+					name: 'cardActionLevel',
+					raw: cardRaw,
+					parsed: cardLevel,
+					path: '/cardActionLevel',
+					issue: '不是合法档位',
+					detail: `可用：${CARD_ACTION_OPTIONS.map((one) => one.value).join(' / ')}。`,
+				},
+				{
+					name: 'toolGuardLevel',
+					raw: guardRaw,
+					parsed: guardLevel,
+					path: '/toolGuardLevel',
+					issue: '不是合法档位',
+					detail: `可用：${TOOL_GUARD_OPTIONS.map((one) => one.value).join(' / ')}。`,
+				},
+				{
+					name: 'aiStateChangeAllowed',
+					raw: switchRaw,
+					parsed: switchValue,
+					path: '/aiStateChangeAllowed',
+					issue: '不是布尔',
+					detail: '必须是布尔 true / false。',
+				},
+			];
+			for (const check of levelChecks) {
+				if (check.raw === undefined || check.parsed !== undefined) continue;
 				sendFailure(
 					res,
 					failure(
 						ErrorCode.FIELD_REQUIRED,
-						`cardActionLevel 非法：${String(cardRaw)}。可用：${CARD_ACTION_OPTIONS.map((one) => one.value).join(' / ')}。`,
-						{ issues: [{ path: '/cardActionLevel', message: '不是合法档位' }] },
-					),
-					400,
-				);
-				return;
-			}
-
-			if (guardRaw !== undefined && guardLevel === undefined) {
-				sendFailure(
-					res,
-					failure(
-						ErrorCode.FIELD_REQUIRED,
-						`toolGuardLevel 非法：${String(guardRaw)}。可用：${TOOL_GUARD_OPTIONS.map((one) => one.value).join(' / ')}。`,
-						{ issues: [{ path: '/toolGuardLevel', message: '不是合法档位' }] },
-					),
-					400,
-				);
-				return;
-			}
-
-			if (switchRaw !== undefined && switchValue === undefined) {
-				sendFailure(
-					res,
-					failure(
-						ErrorCode.FIELD_REQUIRED,
-						`aiStateChangeAllowed 非法：${String(switchRaw)}。必须是布尔 true / false。`,
-						{ issues: [{ path: '/aiStateChangeAllowed', message: '不是布尔' }] },
+						`${check.name} 非法：${String(check.raw)}。${check.detail}`,
+						{ issues: [{ path: check.path, message: check.issue }] },
 					),
 					400,
 				);

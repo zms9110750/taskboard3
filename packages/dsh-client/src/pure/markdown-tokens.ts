@@ -466,6 +466,22 @@ export function isSafeHref(raw: string): boolean {
 	return SAFE_URL.test(href);
 }
 
+/**
+ * 建一个 `<a>` 草稿 —— `handleTag` 的 `a` 分支与 `renderInline` 的 `link` case
+ * **殊途同归**（都建同三个属性的链接元素）⇒ 收敛为一个 helper（逻辑级化简）。
+ *
+ * ⚠ 只收敛「形状」：href 解码 + `target=_blank` + `rel=noopener noreferrer`。
+ *   **不安全 href 的裁决留在两处原地**（一处整体丢弃、一处拆标签留文字）——
+ *   那是语义差异，调用方各自先 `isSafeHref` 再来。
+ */
+function draftLink(rawHref: string): DraftElement {
+	const link = draft('a');
+	link.props.href = decodeEntities(rawHref);
+	link.props.target = '_blank';
+	link.props.rel = 'noopener noreferrer';
+	return link;
+}
+
 /** 追一个标签的当前挂载点：栈顶元素的 children，栈空就是根数组。 */
 function targetOf(stack: DraftElement[], base: MdNode[]): MdNode[] {
 	const top = stack.at(-1);
@@ -536,10 +552,7 @@ function handleTag(raw: string, ctx: Ctx, stack: DraftElement[], base: MdNode[])
 	if (name === 'a') {
 		const rawHref = attrValue(attrs, 'href');
 		if (rawHref === null || !isSafeHref(rawHref)) return;
-		const link = draft('a');
-		link.props.href = decodeEntities(rawHref);
-		link.props.target = '_blank';
-		link.props.rel = 'noopener noreferrer';
+		const link = draftLink(rawHref);
 		targetOf(stack, base).push(link);
 		if (!selfClosing) stack.push(link);
 		return;
@@ -649,10 +662,7 @@ function renderInline(tokens: readonly Token[], out: MdNode[], ctx: Ctx): void {
 					for (const child of children) target().push(child);
 					break;
 				}
-				const element = draft('a');
-				element.props.href = decodeEntities(link.href);
-				element.props.target = '_blank';
-				element.props.rel = 'noopener noreferrer';
+				const element = draftLink(link.href);
 				element.children.push(...children);
 				target().push(element);
 				break;

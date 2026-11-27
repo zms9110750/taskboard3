@@ -136,6 +136,17 @@ function targetOf(
 		action: button.method,
 	};
 
+	/*
+	 * 成功出口（四处分支原样抄了四遍 —— 逻辑级化简：收敛为一个 helper；
+	 * 字段与顺序逐字不变，各分支自己的裁决逻辑不动）。
+	 */
+	const granted = (allowed: boolean): TransitionTargetAdvice => ({
+		...base,
+		aiAllowed: allowed,
+		available: true,
+		conditions: [],
+	});
+
 	/* 采纳：v2 明确由 AI 工具执行，但必须过 UI 轴（用户第二轮要求）。 */
 	if (button.method === 'adopt') {
 		if (options.cardLevel !== 'adopt') {
@@ -145,7 +156,7 @@ function targetOf(
 				'当前任务板档位不允许 AI 采纳草稿；如果用户授意，可以由用户把档位调到「允许采纳草稿」。',
 			);
 		}
-		return { ...base, aiAllowed: true, available: true, conditions: [] };
+		return granted(true);
 	}
 
 	const aiAllowed = button.actors.includes('ai');
@@ -162,7 +173,7 @@ function targetOf(
 		}
 		if (holder === '') return needHolder(base, '领取');
 		const admission = judgeClaim(card, cards, holder, options);
-		if (admission.ok) return { ...base, aiAllowed, available: true, conditions: [] };
+		if (admission.ok) return granted(aiAllowed);
 		return {
 			...base,
 			aiAllowed,
@@ -202,12 +213,12 @@ function targetOf(
 				],
 			};
 		}
-		return { ...base, aiAllowed, available: true, conditions: [] };
+		return granted(aiAllowed);
 	}
 
 	/* 普通转移：判定在 protocol（AI 不能进终结态等）。 */
 	const verdict = judgeTransition({ kind: card.template.kind, from: card.status, to: button.to, trigger: 'ai' });
-	if (verdict.ok) return { ...base, aiAllowed, available: true, conditions: [] };
+	if (verdict.ok) return granted(aiAllowed);
 
 	if (!aiAllowed) return userOnly(base);
 

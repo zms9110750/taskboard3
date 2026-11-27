@@ -96,6 +96,19 @@ function bodyOf(payload: unknown): string {
  * - `/task-create <标题>` —— 建一张草稿卡
  */
 export function registerCommands(registry: CommandRegistryLike, deps: CommandDeps): void {
+	/*
+	 * 「解析默认空间」的三段 try/catch 收敛（TODO(审查) ① 同款判断）：
+	 * 失败 = `undefined`，各命令自己的兜底语义留在原地 ——
+	 * /taskboard 回落空串、另两处回 error（两处语义不一致是原状，统一属行为变化需另行裁定）。
+	 */
+	const resolveDefaultWorkspace = async (): Promise<string | undefined> => {
+		try {
+			return await deps.defaultWorkspaceId();
+		} catch {
+			return undefined;
+		}
+	};
+
 	/* ── 1. 概览 ── */
 	registry.register({
 		name: 'taskboard',
@@ -107,14 +120,8 @@ export function registerCommands(registry: CommandRegistryLike, deps: CommandDep
 				return { kind: 'success', text: '任务板还没有任何工作空间。' };
 			}
 
-			// TODO(审查): [①] `try { defaultWorkspaceId() } catch` 在本文件复制三处，兜底语义还不一致（这里是空串，后两处是 error）。
-			//   可直接改：抽 `safeDefaultWorkspace(): Promise<string | undefined>`。
-			let current: string;
-			try {
-				current = await deps.defaultWorkspaceId();
-			} catch {
-				current = '';
-			}
+			const resolvedCurrent = await resolveDefaultWorkspace();
+			const current = resolvedCurrent ?? '';
 
 			const cards = current === '' ? [] : deps.taskboard.list(current);
 			const byStatus = new Map<string, number>();
@@ -155,10 +162,8 @@ export function registerCommands(registry: CommandRegistryLike, deps: CommandDep
 				return { kind: 'error', text: '用法：/task-card <编号>，例如 /task-card GU01' };
 			}
 
-			let workspaceId: string;
-			try {
-				workspaceId = await deps.defaultWorkspaceId();
-			} catch {
+			const workspaceId = await resolveDefaultWorkspace();
+			if (workspaceId === undefined) {
 				return { kind: 'error', text: '没有可用的工作空间。' };
 			}
 
@@ -202,10 +207,8 @@ export function registerCommands(registry: CommandRegistryLike, deps: CommandDep
 				return { kind: 'error', text: '用法：/task-create <标题>' };
 			}
 
-			let workspaceId: string;
-			try {
-				workspaceId = await deps.defaultWorkspaceId();
-			} catch {
+			const workspaceId = await resolveDefaultWorkspace();
+			if (workspaceId === undefined) {
 				return { kind: 'error', text: '没有可用的工作空间。' };
 			}
 
