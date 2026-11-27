@@ -28,6 +28,7 @@ import type {
 	Workspace,
 } from './types.ts';
 
+// TODO(审查): 无前导斜杠依赖「文档 URL 在站点根」；lead 已确认当前 GUI 在 `/` 可用，但一旦 DSH 上深路径/子路径，会解析到 `/chat/taskboard3/api/...`。可直接改成可注入 base（或从宿主拿 mount base），是否现在做需用户决定。
 /**
  * API 根路径。**没有前导斜杠** —— 相对文档 URL 解析。
  *
@@ -76,6 +77,7 @@ export function buildPath(
 	return parts.length === 0 ? base : `${base}?${parts.join('&')}`;
 }
 
+// TODO(审查): isOk/isFail 在 src 内零调用，只有 test/api.test.ts:25-26,119-123 用；是测试专用导出。可内联到测试或标 @internal（同 pure.ts 的 activeWorkspaces 等三个 helper）。
 /** 是否是失败信封。 */
 export function isFail<T>(envelope: Envelope<T>): envelope is FailEnvelope {
 	return envelope.ok === false;
@@ -92,6 +94,7 @@ export function isOk<T>(envelope: Envelope<T>): envelope is OkEnvelope<T> {
  * @returns 成功时的 `data`
  * @throws {ApiError} 失败信封；`code` / `message` / `issues` 原样带出
  */
+// TODO(审查): 手写 Error 再强转挂 code/issues（apiError 同款）可换成 `class ApiError extends Error`，无需外部库；可直接改，属低风险整理。
 export function unwrap<T>(envelope: Envelope<T>): T {
 	if (envelope.ok) return envelope.data;
 	const error = new Error(envelope.message) as ApiError & { code: string };

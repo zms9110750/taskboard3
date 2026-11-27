@@ -48,6 +48,7 @@ import { BUTTON_ACTIONS, TaskState as STATE } from '@taskboard/protocol';
 
 import type { CardAction } from '../types.ts';
 
+// TODO(审查): 这里用 BUTTON_ACTIONS.find 复刻了注释所称 core 的 adoptTargetOf(kind,from) 判据；两边不一致时客户端发的 to 服务端不认（见文件头 :37-43）。应把查询放进 protocol 导出（BUTTON_ACTIONS 属于 protocol），client 只调用；可直接改，但需 protocol 加导出。
 /**
  * 从按钮表里查「这个类别、这个源状态，采纳到哪」。
  *
@@ -73,6 +74,7 @@ function adoptTargetOf(kind: string, from: string): TaskState | undefined {
  * @param card 被点的卡（`adopt` 要它的 `template.kind` + `status`）
  * @returns 目标状态；**算不出来时 `undefined`**（调用方应报错，不能发空串）
  */
+// TODO(审查): `action.to as TaskState`（:79）是 types.ts:188 把 `to` 定义成 string 的连带断言；把 CardAction.transition.to 改成 TaskState 后即可删（可直接改，见 types.ts 的同类 TODO）。
 export function toOfAction(action: CardAction, card: { readonly template: { readonly kind: string }; readonly status: string }): TaskState | undefined {
 	switch (action.kind) {
 		case 'transition':

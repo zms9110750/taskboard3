@@ -23,6 +23,9 @@ import { STATE_LABELS, TASK_STATES, groupOf, labelOf } from '@taskboard/protocol
 export type DefinitionType = 'domain' | 'state' | 'template' | 'kind';
 
 /** 枚举顺序 = 用户列举顺序（领域、状态、模板、分类）。 */
+// TODO(审查): 这是 AGENTS 3.7 的同一个坑（Object.freeze + 类型标注）：数组形式更糟 —— **少一个成员也不会红**，
+// 只有 typeLabel() 的穷尽 switch 能保证「多一个成员会红」。可直接改：按 AGENTS 3.5 补裸字面量元组 +
+// `Exclude<DefinitionType, (typeof DEFINITION_TYPES)[number]> extends never ? true : never` 断言。
 export const DEFINITION_TYPES: readonly DefinitionType[] = Object.freeze([
 	'domain',
 	'state',
@@ -50,6 +53,10 @@ export interface DefinitionEntry {
  * 不复制实现，也不依赖未导出的类型名。
  */
 
+// TODO(审查): 下面 5 个 `*Like` 接口是 core 类型的手抄镜像，接住它们的是 3 处 `as readonly DomainLike[]`
+// （本文件 120 / 129 / 159 行附近）—— 这正是 AGENTS 3.1 说的「断言让编译器闭嘴」：core 改名后断言仍可能通过，
+// 运行时读到 undefined。⇒ 让 core 导出 DomainDef/KindDef/TemplateDef/SectionDef 后整块删除（本注释即移除条件）。
+// 需 lead 推动跨包导出。
 interface DomainLike {
 	readonly id: string;
 	readonly displayName: string;
@@ -169,6 +176,8 @@ function entriesOf(taskboard: Taskboard, type: DefinitionType): readonly Definit
 		const detail = [
 			`模板「${template.displayName}」（${template.ref}）`,
 			`分类：${template.kind}　领域：${template.domain}`,
+			// TODO(审查): usage 与 description 在这里是两个并列字段，而 tools/create.ts 的建卡回执把它俩写成
+			// 「description 为空才回退 usage」的二选一 —— 同一份模板元数据两处解释不一致，措辞会漂。需用户定口径。
 			template.usage === '' ? '' : `用法：${template.usage}`,
 			template.description === '' ? '' : `建卡后的下一步：${template.description}`,
 			'',
@@ -177,6 +186,9 @@ function entriesOf(taskboard: Taskboard, type: DefinitionType): readonly Definit
 			...(deriveLines.length === 0 ? [] : ['', '可派生：', deriveLines.join('\n')]),
 		]
 			.filter((line) => line !== '')
+		// TODO(审查): 这个 filter 会连**本意要保留的空行**一起吃掉（上面 `''` 用作章节分隔），
+		// 所以模板详情里从来没有空行；同时它也承担「usage/description 为空就省略」的职责，两件事混在一处。
+		// 可直接改：条件分支产出 undefined，filter 判 `!== undefined`，空行留得住。
 			.join('\n');
 		return {
 			type,
@@ -198,6 +210,8 @@ export function findDefinitions(
 	name: string,
 	only?: DefinitionType,
 ): readonly DefinitionEntry[] {
+	// TODO(审查): 键比较用 toLocaleLowerCase() 是 i18n 雷（土耳其语 I 会变 ı，命不中机器键）；
+	// 这里比的是 id / ref 这类机器键，用 toLowerCase() 就够。可直接改（下面两处比较同改）。
 	const needle = name.trim().toLocaleLowerCase();
 	if (needle === '') return [];
 	return allDefinitions(taskboard, only).filter(

@@ -44,6 +44,8 @@ export interface UiGroup {
 }
 
 /** 一个工作空间的完整 UI 状态。 */
+// TODO(审查): [③] `UiState` 全包零引用，紧随其后的 `EMPTY_UI_STATE` 也零引用（grep 零命中）⇒ 重构残骸。
+//   可直接删；若要留，把 `Object.freeze + 类型标注` 换成 `satisfies`（AGENTS 3.7）。
 export interface UiState {
 	readonly groups: readonly UiGroup[];
 	/** 折叠的卡 id + 组 id（两者共用这一个集合，id 不会撞）。 */
@@ -66,6 +68,8 @@ export const EMPTY_UI_STATE: UiState = Object.freeze({
 });
 
 /** kv 键前缀：组定义。 */
+// TODO(审查): [⑦] 一个空间拆三个 kv 键（下面三个前缀）；将来加一个 UI 态就要再加键，且写入非原子（见 http.ts 的 PUT /api/ui-state）。
+//   合并成 `ui.state.<ws>` 单键（原子、扩展不加键）更好，但属数据迁移，需用户点头。
 const GROUPS_KEY_PREFIX = 'ui.groups.';
 
 /** kv 键前缀：折叠态。 */
@@ -107,6 +111,8 @@ function parseGroup(value: unknown): UiGroup | undefined {
 	if (!Array.isArray(rawMembers)) return undefined;
 
 	const memberIds: string[] = [];
+	// TODO(审查): [②] `memberIds` 只判空、**不 trim**，而组 id 与 folded/expanded 都 trim 过 ⇒ 前端多传一个空格就存进一个永远匹配不上的成员。
+	//   可直接改：`one.trim()`（属修正，不是新行为）。
 	for (const one of rawMembers) {
 		if (!isFilledString(one)) continue;
 		if (memberIds.includes(one)) continue;
@@ -150,6 +156,7 @@ export function parseUiGroups(raw: string | undefined): readonly UiGroup[] {
 		/* 一张卡最多在一个组里 —— 跨组重复的成员在这里剔掉。 */
 		const members = group.memberIds.filter((id) => !seenMembers.has(id));
 		for (const id of members) seenMembers.add(id);
+		// TODO(审查): [①] 本文件的去重全用 `Array.includes`（组内成员、跨组成员、folded/expanded），UI 态可能有几百个 id ⇒ O(n²)；换 `Set` 一行事。
 		groups.push(members.length === group.memberIds.length ? group : { ...group, memberIds: members });
 	}
 	return groups;

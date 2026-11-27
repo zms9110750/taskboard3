@@ -31,6 +31,9 @@ export async function stateAndNextText(
 	cardId: string,
 	holder: string | undefined,
 ): Promise<string> {
+	// TODO(审查): 两处胶水：① `'targets' in advice` 是结构嗅探（transition.ts 同款两处）——
+	// core 给个 `ok` 判别字段就能改成编译期可查的判别；② `holder ?? ''` 用空串当「无身份」哨兵。
+	// 都需 lead 推 core 改签名（holder?: string + 判别字段）。
 	const advice = deps.taskboard.transitionAdvice(workspaceId, cardId, holder ?? '');
 	const body = 'targets' in advice ? renderAdvice(advice, holder) : `（查询当前状态/下一步失败：${advice.message}）`;
 	return ['—— 当前状态与接下来可以做什么 ——', body].join('\n');

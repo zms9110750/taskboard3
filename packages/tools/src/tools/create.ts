@@ -38,6 +38,8 @@ import type { TaskboardToolHandler } from '../types.ts';
 import { defineTool, type ToolDeps } from './shared.ts';
 
 /** 关系类型（5 条边 + parent）。 */
+// TODO(审查): 这 6 个关系是 protocol「词汇与判决」层的硬编码副本（本包为状态都从 protocol 取 STATE_LABELS/TASK_STATES），
+// 关系却在这里另立一份真值；protocol 加关系时这里会静默漏掉。⇒ 若 protocol 已导出关系标签，改成从那里派生。需 lead 确认。
 export const RELATION_TYPES = [
 	'parent',
 	'dependsOn',
@@ -70,6 +72,8 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 		const templates = taskboard.listTemplates();
 		const templateRef = str(args, 'templateRef');
 		if (templateRef === undefined) {
+			// TODO(审查): 这行「取可用模板」的表达式在本函数里逐字重复（下面「模板不存在」分支又一份），
+			// 可提成 templateHelp(templates) 一处维护。可直接改。
 			const available = templates.map((one) => one.ref).slice(0, 20);
 			return inputFailure(
 				'必须选择模板（templateRef）。' +
@@ -119,9 +123,13 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 		const kind = taskboard.kinds().get(card.template.kind);
 		const lines: string[] = [
 			`已建卡 ${card.id}「${card.title}」`,
+		// TODO(审查): 这里手写「状态：未指定（TASK_STATE_UNSPECIFIED）」，而 render.ts 早就有 stateText(card.status)。
+		// 状态改名/加状态时这行不会跟着变（词汇层又一份副本）。可直接改：改成 stateText(card.status)。
 			`模板：${card.template.ref}（分类 ${card.template.kind} / 领域 ${card.template.domain}）；状态：未指定（TASK_STATE_UNSPECIFIED）`,
 		];
 		/* 用户裁决 #11：返回模板描述里的「下一步」+ 分类描述。 */
+		// TODO(审查): description 为空就回退展示 usage（两个语义不同的字段二选一），而 definitions.ts 的模板详情是两者并列显示。
+		// 同一份模板元数据两处解释不一致。需用户定口径；改法很轻。
 		if (template !== undefined && template.description !== '') lines.push('', `下一步：${template.description}`);
 		else if (template !== undefined && template.usage !== '') lines.push('', `模板用法：${template.usage}`);
 		if (kind !== undefined && kind.description !== '') lines.push('', `分类（${kind.displayName}）：${kind.description}`);
@@ -149,6 +157,7 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 	return defineTool({
 		name: 'taskboard_create',
 		description:
+			// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
 			'建一张新任务卡。**先调 taskboard_definitions 看模板定义**（章节 key / action / 默认 payload），再建卡。' +
 			'需要：title、templateRef，可选 relations（关系数组）、content（模板对 action 的 JSON：key=章节 id/label，value=action payload）；' +
 			'kind/domain 通常不要给（模板已声明分类/领域），只有**空模板**（模板没声明分类/领域）时才必需。' +
@@ -160,6 +169,7 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 			properties: {
 				workspaceId: {
 					type: 'string',
+					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」。可直接改成「必填」。
 					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 				},
 				title: { type: 'string', description: '卡标题。必填。' },
@@ -198,6 +208,9 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 function parseRelations(
 	args: unknown,
 ): { readonly ok: true; readonly value: Partial<Pick<CreateInput, 'relations'>> } | { readonly ok: false; readonly result: ReturnType<typeof inputFailure> } {
+	// TODO(审查): 这里用 `as` 绕过 context.ts 的读取器（其它工具都走 str/rawOf）。当前 args 已被 resolveWorkspace
+	// 保证是对象，所以不炸；但 args 为 null 时 `(null as {...}).relations` 会抛 TypeError —— 潜在雷。
+	// 可直接改：改成 rawOf(args, 'relations')。
 	const raw = (args as { relations?: unknown }).relations;
 	if (raw === undefined) return { ok: true, value: {} };
 	if (!Array.isArray(raw)) {
@@ -213,6 +226,9 @@ function parseRelations(
 		const record = one as Record<string, unknown>;
 		const type = record['type'];
 		const to = record['to'];
+		// TODO(审查): `(RELATION_TYPES as readonly string[]).includes(...)` 这种「先断言成 string[] 再 includes」在本包出现 5 处
+		// （本处、cards.ts 两处、tools/definitions.ts 两处）。可直接改：写 isRelationType(x): x is RelationType 类型守卫，
+		// 顺带把后面的 `as RelationType` 也去掉。
 		if (typeof type !== 'string' || !(RELATION_TYPES as readonly string[]).includes(type)) {
 			return {
 				ok: false,
@@ -247,6 +263,8 @@ function parseRelations(
 }
 
 /** 建卡失败的下一步指引。 */
+// TODO(审查): 参数是裸 string 而不是 ErrorCode ⇒ 新增错误码不会有人提醒（同款还有 update.ts / transition.ts 的 nextFor*）。
+// 可直接改：改成 (code: ErrorCode) + 一张 `satisfies Record<ErrorCode, string>` 的默认表（见 failure.ts 文件尾 TODO）。
 function nextForCreateFailure(code: string): string {
 	switch (code) {
 		case 'TEMPLATE_NOT_FOUND':

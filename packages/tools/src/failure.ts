@@ -38,6 +38,9 @@ export type Retryability = 'after-fix' | 'no';
  * `after-fix` = 改参数 / 换目标后可以再调（不是等一会重试）；
  * `no` = 先修装配 / 权限，重试同一个调用没有意义。
  */
+// TODO(审查): 表用「Object.freeze(字面量) + 类型标注」写，等于关掉了多余键检查（AGENTS 3.7）：
+// Object.freeze 让对象字面量成了函数实参，不受多余属性检查约束 ⇒ 「多写一个键」不会红，而新增 ErrorCode 也可能被静默漏掉。
+// 可直接改：`} satisfies Record<ErrorCode, Retryability>;`。
 const RETRYABILITY: Readonly<Record<ErrorCode, Retryability>> = Object.freeze({
 	FIELD_REQUIRED: 'after-fix',
 	CONTENT_INVALID: 'after-fix',
@@ -125,3 +128,10 @@ export function hostFailure(message: string, next: string): TaskboardToolResult 
 export function inputFailure(message: string, next?: string): TaskboardToolResult {
 	return toolFailure(ErrorCode.FIELD_REQUIRED, message, next === undefined ? {} : { next });
 }
+
+/*
+ * TODO(审查): 「错误码 → 下一步」现在有三份平行 switch：tools/create.ts 的 nextForCreateFailure、
+ * tools/update.ts 的 nextForUpdateFailure、tools/transition.ts 的 nextForTransition，参数类型都是**裸 string**
+ * ⇒ 新增 ErrorCode 时没人提醒（AGENTS 3.6：绕行要能被编译失败找到）。可直接改：本文件出一张
+ * `satisfies Record<ErrorCode, string>` 的默认表 + 少量 per-tool 覆盖。
+ */

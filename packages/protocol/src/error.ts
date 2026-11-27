@@ -76,6 +76,8 @@ export const ErrorCode = {
 /** 错误码的联合类型。 */
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
+// TODO(审查): 类型标注 + Object.freeze ⇒ 少键会报、多键/拼错键不报（AGENTS 3.7）。
+// 可直接改：字面量先 `satisfies Record<ErrorCode,string>` 再转 Readonly（status.ts 的 GROUP_LABELS/STATUS_GROUP_OF/STATE_LABELS 同）。
 /**
  * 每个错误码的**默认下一步**。
  *
@@ -126,6 +128,8 @@ export interface Failure {
 	readonly issues?: readonly FieldIssue[];
 	/** 额外的结构化细节，形状随 `code` 而定。 */
 	readonly detail?: unknown;
+	// TODO(审查): `detail?: unknown` 让 code 与形状解耦，UI 无法按 code 穷举处理，只能强转。
+	// 可改：按 code 的判别联合，或先给已知 code 定 detail 形状；属 API 设计，需用户定。
 }
 
 /** 造一个失败结果。 */
@@ -143,6 +147,8 @@ export function failure(
 	};
 }
 
+// TODO(审查): ① 只查 typeof code==='string'，`{ok:false,code:'TYPO'}` 会被判为 Failure，消费方随后 ERROR_HINTS[code] 得 undefined。
+// ② 它本身是死导出（lead 核实四个包 src 零命中；外部 MCP 未知）。可直接改：加 isErrorCode 校验并删/标 deprecated；要留公开面需用户定。
 /** 是否是失败结果。 */
 export function isFailure(value: unknown): value is Failure {
 	return (

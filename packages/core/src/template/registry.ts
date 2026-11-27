@@ -141,6 +141,7 @@ export class TemplateRegistry {
 	 * @throws 有任何一个 ref 已注册（装配错误）
 	 */
 	registerAll(templates: readonly TemplateDef[]): void {
+		// TODO(审查): 只查已有注册表，不查入参数组自身 ⇒ 同一批里两个同 ref 会后者静默覆盖前者；写前先对 `templates.map(t => t.ref)` 判重，可直接改。
 		/* 先整体校验再写入 —— 半途抛错会让注册表停在「一半」的状态。 */
 		for (const template of templates) {
 			if (this.#templates.has(template.ref)) {
@@ -173,6 +174,7 @@ export class TemplateRegistry {
 			try {
 				fn();
 			} catch (error) {
+				// TODO(审查): 库层直接 console（同 actions/domains 的监听器）⇒ 建议注入可选 logger，省略退回 console，可直接改。
 				console.error('[taskboard3-core] 模板变更监听器抛错：', error);
 			}
 		}

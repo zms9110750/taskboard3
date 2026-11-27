@@ -58,6 +58,7 @@ export type ContentPointer = ContentPointerOk | ContentPointerFailure;
  * @param raw 用户/模型给的路径（`''` = 根；允许省略开头的 `/`）
  */
 export function parseContentPointer(raw: string): ContentPointer {
+	// TODO(审查): 整套 JSON Pointer 解析/替换可用 `json-pointer` / `fast-json-patch` 替代，少约 80 行；但本仓多了「省略开头 /」「`-` 追加」两个便利，替换须保语义（或用库解析、保留替换逻辑），需用户决定是否加依赖。
 	const normalized = raw === '' || raw.startsWith('/') ? raw : `/${raw}`;
 	if (normalized === '') return { ok: true, segments: [] };
 

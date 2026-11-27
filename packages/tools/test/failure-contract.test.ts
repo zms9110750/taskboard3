@@ -47,6 +47,8 @@ describe('失败契约', () => {
 		await seedCard(fixture, 't-work', '成功');
 		const text = await runOk(fixture, 'taskboard_cards', {});
 		assert.equal(typeof text, 'string');
+		// TODO(审查): 上一行恒真 —— runOk 的返回类型就是 string，不是 string 早就抛了，等于没断言。
+		// 可直接改：删掉这行，或断言「不含原因码：」以证明成功路径没有失败段。
 		const result = await run(fixture, 'taskboard_cards', {});
 		assert.equal(result.isError, undefined);
 	});

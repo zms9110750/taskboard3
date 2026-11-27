@@ -1,3 +1,4 @@
+// TODO(审查): 文件头 :11 仍把纯逻辑路径写成 `dev/pure/markdown-tokens.ts`，实际已迁到 src/pure/markdown-tokens.ts；同文件 :91-107 的 `markdownChildren`/`renderMarkdown` 在 src/test/dev 全零引用（既无产品调用也无测试覆盖）。可直接改注释、删死导出或标 @internal。
 /**
  * markdown 渲染组件 —— **薄到不需要单测的机械映射**。
  *
@@ -83,6 +84,7 @@ export function Markdown(props: MarkdownProps): ReactNode {
  *
  * @param source markdown 源码
  */
+// TODO(审查): `markdownChildren` 只被下面的 `renderMarkdown` 调用，而 `renderMarkdown` 在 src/test/dev 全零引用 ⇒ 两个导出都是死代码（组件 `<Markdown>` 才是在用的）。可删或标 @internal；是否保留给未来调用方需用户决定。
 export function markdownChildren(source: string): ReactNode[] {
 	return renderMarkdownNodes(source).map(renderNode);
 }

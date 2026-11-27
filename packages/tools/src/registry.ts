@@ -52,6 +52,11 @@ export function createTaskboardToolRegistry(
 		has(name: string): boolean {
 			return byName.has(name);
 		},
+		// TODO(审查): 两件事要一起改：
+		// ① hint 里 `allByName.get(one.name)?.name === name` 因名字唯一恒等于 `one.name === name`，
+		//    等于 O(n) 扫全表找 1 个元素 —— 直接 `const hidden = allByName.get(name)` 即可。可直接改。
+		// ② 现在的文案「可能只存在于 其它宿主」已经是**错的**：那两个名字在 taskboard_tool_policy 场景下
+		//    是搬到 dsh-agent-guard 了，不是「别的宿主」；hosts 也已无人使用（见 types.ts 的 TODO）。需用户决定措辞。
 		async invoke(
 			name: string,
 			args: unknown = {},

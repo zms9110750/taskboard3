@@ -45,6 +45,9 @@
  * 换键等于把用户已配好的档位丢掉（静默回落 `off` = 突然不设防）。
  */
 
+// TODO(审查): 文件头第 4 行说「这个文件在 @taskboard/dsh-tools 而不是 @taskboard/core」、
+//   test/tool-guard.test.ts:13 说「实现搬到 packages/dsh-tools/src/tool-guard.ts」，实际都在
+//   dsh-agent-guard（搬迁留下的路径漂移）。可直接改：改注释；permission.ts:76 的 holder.ts 也应写全包名。
 import type { CardActionLevel, ToolPolicyStore } from '@taskboard/core';
 import { effectiveToolsOf, extrasOf, isBaseTool, isPolicyTool } from '@taskboard/core';
 
@@ -97,6 +100,9 @@ export const TOOL_GUARD_LEVELS: readonly ToolGuardLevel[] = TOOL_GUARD_OPTIONS.m
  * ⚠ **脏值 ⇒ 回落默认 + `console.warn`，不抛错** —— 一条坏记录不该让整个插件挂掉；
  *   但档位错会影响安全边界，静默回落会掩盖配置问题，所以要留痕。
  */
+// TODO(审查): 脏值在每次工具调用（guard 热路径）都会 console.warn，一条坏记录会刷满日志；另外
+//   readToolGuardLevel 循环 TOOL_GUARD_LEVELS、parseToolGuardLevel 又用 TOOL_GUARD_OPTIONS.find 校验，
+//   同一件事两套写法。可直接改：warn-once（按值去重）+ read 复用 parse。
 export function readToolGuardLevel(raw: string | undefined): ToolGuardLevel {
 	if (raw === undefined) return DEFAULT_TOOL_GUARD_LEVEL;
 	for (const choice of TOOL_GUARD_LEVELS) if (choice === raw) return choice;
@@ -196,6 +202,9 @@ export function judgeToolCall(input: ToolCallJudgement, facts: PermissionFacts):
 
 	/* ── 第一段：领卡类动作。永远先跑，完全不看 toolLevel。 ── */
 
+	// TODO(审查): 'taskboard_release'/'taskboard_claim'/'taskboard_adopt' 是裸字面量（core 只导出数组
+	// 常量）⇒ core 改名时这里不会编译失败，只会静默变成「另一个工具」。需 core 配合：导出这三个名字常量，
+	// 或在此加一条编译期对照（现有 permission-judgement.test.ts:339 只兜住命名约定）。
 	if (toolName === 'taskboard_release') return ALLOW;
 
 	if (toolName === 'taskboard_claim') {
@@ -231,6 +240,9 @@ export function judgeToolCall(input: ToolCallJudgement, facts: PermissionFacts):
 	}
 
 	if (isBaseTool(toolName)) return ALLOW;
+	// TODO(审查): unclaimed 在这里单独 includes，而持卡情形（下面）走 effectiveToolsOf（它已包含
+	// unclaimed）⇒ 两条等价通路。若「未持卡时不能按模板展开」是有意的，请在此写明原因；否则后来者会当
+	// 重复代码删掉。需作者/用户确认，不要擅删。
 	if ((facts.policies.unclaimed ?? []).includes(toolName)) return ALLOW;
 
 	if (heldCards.length === 0) {

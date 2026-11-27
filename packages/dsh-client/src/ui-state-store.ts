@@ -56,6 +56,7 @@ export interface UiStateSnapshot {
 	readonly expanded: readonly string[];
 	/** 这个空间的数据取回来了吗（false ⇒ UI 可以显示占位）。 */
 	readonly loaded: boolean;
+	// TODO(审查): 这个 error 全 src 无消费方（TechTree.tsx:686 / SiblingRelationPanel.tsx:63 只读 groups/folded/expanded）⇒ 读写失败界面上完全不可见；建议在 SiblingRelationPanel 顶部显示 error（或至少 console.warn），需用户决定是否要提示。
 	/** 最近一次失败的原因；成功一次就清空。 */
 	readonly error: string | undefined;
 }
@@ -99,6 +100,7 @@ const globalFetch: UiStateFetch = (url, init) =>
 		...(init?.headers === undefined ? {} : { headers: init.headers }),
 	});
 
+// TODO(审查): listeners/subscribe 样板与 drawer-state.ts、permission-box-state.ts 重复三份，可抽 `createExternalStore<T>()`（可直接改）。另本 store 是「没有 inject 契约」的绕行，注释已说明原因，但没有任何守护阻止以后有人在组件里 `createUiStateStore()` 造第二份；建议加单例测试/注释守护。
 /**
  * 造一个 store。
  *
@@ -168,6 +170,7 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 
 	const saveNow = async (): Promise<void> => {
 		const workspaceId = snapshot.workspaceId;
+		// TODO(审查): 这个 guard 挡不住「失败后被当空状态保存」——失败路径（load 的 catch）也把 loaded 置 true，见上方 load 的 TODO。修 load 后再保留本判断；可直接改。
 		if (workspaceId === '' || !snapshot.loaded) return;
 		/* 保存前先取**这一刻**的本地状态：期间又改了也没关系，下次还会存。 */
 		const data = stateOf(workspaceId);
@@ -200,6 +203,7 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 		};
 	}
 
+	// TODO(审查): ⚠ 数据丢失风险：GET 失败时 catch 分支（下面 :241-251）把 cache 写成 EMPTY、loaded 仍 true；用户随后任意一次折叠/组操作 → commit(:148) → saveNow(:169-176) 会把空 groups PUT 回服务端，覆盖已保存的整理结果。:229 还把 `{ok:false}` 当空数据。可直接改成失败时 loaded:false 且禁止保存（或保存前重拉），需用户确认失败交互。
 	const load = async (workspaceId: string): Promise<void> => {
 		if (cache.has(workspaceId)) {
 			const data = cache.get(workspaceId) ?? EMPTY_UI_STATE;

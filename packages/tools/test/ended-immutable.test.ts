@@ -72,6 +72,8 @@ describe('完结态：工具侧必须给错误原因', () => {
 		const result = await run(fixture, 'taskboard_update', { id, path: '/body/value', value: 'x' });
 		assert.equal(result.isError, true);
 		assert.ok(result.text.includes('失败'), result.text);
+		// TODO(审查): 这条断言恒真 —— 失败契约第一行就是「失败：…」（failure.ts），等于没验「卡处于失败态」。
+		// 可直接改：断言「失败（TASK_STATE_FAILED）」或 labelOf(TaskState.FAILED) 的中文名。
 	});
 
 	it('非完结态照常能用 taskboard_update', async () => {

@@ -19,6 +19,9 @@
  * ⇒ 本包只声明「我从卡上读哪两个字段」。core 的 `Card` 结构上满足它。
  */
 
+// TODO(审查): [⑤] 文件头 doc 说「本包实际只碰四个服务：webServer / connection / tools / commands」——实际 inject 是 6 个，且**没有 `tools`**。
+//   窄接口的说明本身过时了。可直接改。
+
 import type { TaskState } from '@taskboard/protocol';
 
 /** node `IncomingMessage` 的最小形状（够本包用，且测试可造）。 */
@@ -54,6 +57,8 @@ export interface ConnectionLike {
 }
 
 /** `ctx.tools` 的最小面。 */
+// TODO(审查): [③] 本接口已死：唯一引用是 `src/index.ts` 的 import，而那里也没用；工具面已搬去 `@taskboard/dsh-tools`。
+//   注释里的 `dsh-tools/src/index.ts:384` 行号我无法核对（禁读别的包）。可直接删（连同 index.ts 的 import）。
 export interface ToolsLike {
 	register(definition: unknown): unknown;
 	/**
@@ -65,6 +70,8 @@ export interface ToolsLike {
 }
 
 /** `ctx.commands` 的最小面。 */
+// TODO(审查): [⑥] 与 `src/commands.ts` 的 `CommandRegistryLike` 重复，且这里少了 `input`/`recordInput`；
+//   能赋值是靠方法参数双变。可直接改：保留一份（建议放到 commands.ts 旁边）。
 export interface CommandsLike {
 	register(command: {
 		name: string;

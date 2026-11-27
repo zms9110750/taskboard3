@@ -35,6 +35,8 @@ export function createDefinitionsTool(deps: ToolDeps): ReturnType<typeof defineT
 		const rawType = str(args, 'type');
 		let type: DefinitionType | undefined;
 		if (rawType !== undefined) {
+			// TODO(审查): 「先断言成 string[] 再 includes，再 as DefinitionType」的两连击（本文件一处，create.ts/cards.ts 三处）。
+			// 可直接改：写 isDefinitionType(rawType): rawType is DefinitionType 类型守卫，后一个 `as` 也一起消失。
 			if (!(DEFINITION_TYPES as readonly string[]).includes(rawType)) {
 				return inputFailure(
 					`type「${rawType}」不认识；可用：${DEFINITION_TYPES.map((one) => `${one}（${typeLabel(one)}）`).join('、')}。`,
@@ -62,6 +64,9 @@ export function createDefinitionsTool(deps: ToolDeps): ReturnType<typeof defineT
 				`补上 type（${[...new Set(matches.map((one) => one.type))].join(' / ')}）后重试。`,
 			);
 		}
+		// TODO(审查): matches.length 已排除 0 和 >1，这个 `undefined` 分支**不可达** —— 它只为满足 noUncheckedIndexedAccess
+		// 而存在，却生成一条用户永远看不到的错误（AGENTS 3.1 要求下标守卫后必须跟真实分支）。可直接改：
+		// 用 `if (matches.length !== 1)` 一次收口，或 `const [only] = matches; if (!only) throw new Error('invariant')`。
 		const only = matches[0];
 		if (only === undefined) return inputFailure(`没有名为「${name}」的定义。`);
 		return okText(only.detail);

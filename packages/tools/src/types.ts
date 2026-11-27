@@ -39,6 +39,9 @@ export interface JsonObjectSchema extends JsonSchema {
 }
 
 /** 一个宿主。v2 只有两个消费方。 */
+// TODO(审查): hosts 过滤机制已空转 —— 两个 DSH 专属工具搬到 dsh-agent-guard 后，
+// 9 个工具都不再标 hosts（contract.test.ts 还专门断言了这一点），toolsForHost / TaskboardToolRegistryOptions.host
+// 没有可过滤的东西。它现在唯一的可见效果是 registry.ts 拼出一句误导文案「可能只存在于其它宿主」。可直接删（或注明保留原因）。
 export type ToolHost = 'dsh' | 'mcp';
 
 /**
@@ -68,6 +71,9 @@ export interface TaskboardToolContext {
 	readonly activeWorkspaceId?: string;
 	/** agent 侧权限开关是否启用（#9 的门槛）。 */
 	readonly canManageToolPolicies?: boolean;
+	// TODO(审查): 上面三个字段（resolveDefaultWorkspace / activeWorkspaceId / canManageToolPolicies）在 tools/src 里
+	// **零读取**（只有测试夹具 fixtures.ts 还在填）：激活空间已被用户 2026-11-22 取消，权限工具已搬到 dsh-agent-guard；
+	// 而本文件 52-54 行的「谁提供 / 缺失时」表格仍在承诺行为。⇒ 删字段或注明「保留接口、当前无消费者」。需用户决定是否保留这个公开面。
 }
 
 /**

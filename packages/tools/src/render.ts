@@ -87,6 +87,9 @@ export function renderPayload(payload: unknown): string {
 }
 
 /** 取一个字符串字段。 */
+// TODO(审查): 这个 stringField 在本文件内**从未被调用**（死代码），而 tools/update.ts 的 stringField、
+// tools/update-note.ts 的 readString、tools/transition.ts 的 readString 是同一函数的三份副本，
+// tools/update.ts 的 strArg 又等于 context.ts 的 str。⇒ 提到 context.ts 一个 strAllowEmpty()，其余全删。可直接改。
 function stringField(value: object, key: string): string | undefined {
 	const raw = (value as Record<string, unknown>)[key];
 	return typeof raw === 'string' ? raw : undefined;
@@ -135,6 +138,8 @@ export function renderAdvice(advice: TransitionAdvice, holder: string | undefine
 		for (const target of blocked) {
 			lines.push(`  · ${stateText(target.to)} ——「${target.label}」（action=${target.action}）`);
 			for (const condition of target.conditions) {
+		// TODO(审查): 这段「原因：…（code=…；…）」+「阻塞卡：…」的排版，在 tools/transition.ts 的 conditionFailure
+		// 里又原样写了一遍（两份文本真值，措辞迟早漂）。可直接改：抽成 conditionLines() 供两处共用。
 				lines.push(
 					`      原因：${condition.message}` +
 						`（code=${condition.code}；${condition.retryable ? '修正后可重试' : '不可重试'}）`,

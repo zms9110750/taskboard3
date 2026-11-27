@@ -52,6 +52,8 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 		/* ── 标题：只有草稿期可以改（先读卡拿状态，失败不写库） ── */
 		const found = taskboard.get(workspaceId, cardId);
 		if (!found.ok) return failureResult(found, { action: '更新失败' });
+		// TODO(审查): 「草稿」在本包有两个名字：这里用 TaskState.UNSPECIFIED，cards.ts 用 protocol 的 DRAFT ——
+		// 若两者是同一值的别名，择一即可，免得以后改草稿语义时漏掉一处。可直接统一。
 		if (title !== undefined && found.card.status !== TaskState.UNSPECIFIED) {
 			const label = labelOf(found.card.status);
 			return toolFailure(
@@ -88,6 +90,8 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 		name: 'taskboard_update_note',
 		description:
 			'更新一张卡的备注和/或标题。**两个参数至少给一个**：' +
+			// TODO(审查): 描述说 note 是「追加型文本」，而实现（下方 taskboard.update）是**整段替换**、空串清空 ——
+			// 「追加型」会让模型以为能续写。需用户定口径（改文案 or 改实现）。
 			'`note`（追加型文本，任何状态都能改；空串 = 清空）；' +
 			'`title`（卡标题，**只有草稿状态可以改**，非草稿会失败并说明原因）。' +
 			'改完会返回当前状态，以及这个状态在这个分类下接下来可以做什么。' +
@@ -97,6 +101,7 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 			properties: {
 				workspaceId: {
 					type: 'string',
+					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」。可直接改成「必填」。
 					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
@@ -110,6 +115,8 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 }
 
 /** 读一个允许空串的字符串字段。 */
+// TODO(审查): 与 update.ts 的 stringField、transition.ts 的 readString、render.ts 的 stringField 是同一函数的四份副本。
+// 可直接改：删掉三份，改用 context.ts 新增的 strAllowEmpty()。
 function readString(args: unknown, key: string): string | undefined {
 	if (typeof args !== 'object' || args === null) return undefined;
 	const value = (args as Record<string, unknown>)[key];

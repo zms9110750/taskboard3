@@ -94,6 +94,9 @@ importers:
       '@taskboard/io':
         specifier: workspace:*
         version: link:../io
+      '@taskboard/tools':
+        specifier: workspace:*
+        version: link:../tools
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0

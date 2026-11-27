@@ -143,6 +143,7 @@ export class ActionRegistry {
 			try {
 				fn();
 			} catch (error) {
+				// TODO(审查): 库层直接 console 与 DSH/Cordis 的 ctx.logger 惯例不一致（推断，未查文档）⇒ 建议注入可选 logger，省略退回 console，可直接改。
 				console.error('[taskboard3-core] action 变更监听器抛错：', error);
 			}
 		}

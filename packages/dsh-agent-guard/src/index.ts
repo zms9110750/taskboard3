@@ -49,6 +49,34 @@
  *   这样「关掉本行」不会让 `dsh-tools` 那一行崩。
  */
 
+/*
+ * ───────────────── TODO(审查) 汇总（本包 2026-11-25 审查，只记问题，未改逻辑） ─────────────────
+ * 非源码问题（package.json / test / 产物）落在这里；源码内的问题就近标在对应代码旁。
+ *
+ * TODO(审查): package.json:30-37 把 peer `@deepseek-ai/dsh-tools` 标成 optional，但 src/tools.ts 经
+ *   @taskboard/dsh-tools 运行时必然 require 它 ⇒ 缺它时本包不是降级而是 import 失败。
+ *   可直接改：改必选 peer，或 tools.ts 动态导入降级；发布口径需用户确认。
+ * TODO(审查): apply() 零测试（全包无 test 导入本文件）⇒ inject 清单 / provide 形状 / guard 与 tools 的
+ *   卸载顺序 / 可选服务回落全无覆盖，而「少列 inject」只会静默不激活（症状：dsh: warning: 1 entry
+ *   did not activate）。可直接改：新增 test/apply.test.ts，用假 ctx 断言 register 3 次、dispose 先 guard。
+ * TODO(审查): test/guard.test.ts:57,75-77,91 的 dataDir 创建后从不使用（每个用例在 beforeEach 另建），
+ *   只在 after 被删；:82 又用 `undefined as unknown as Taskboard` 表示已关闭。
+ *   可直接改：删 dataDir，taskboard 改 `Taskboard | undefined`。
+ * TODO(审查): test/guard.test.ts:174-176 断言「namesOf 返回空串 ⇒ 回落 agent.id」，正是与 dsh-tools
+ *   holderOf 的分歧行为（见 permission.ts 内 TODO）；改用 dsh-tools 实现后这条会失败。
+ *   可直接改：随 holder 统一一起删/移到 dsh-tools。
+ * TODO(审查): test/policy-tools.test.ts:76,84,87 的 workspaceId 只被 `void workspaceId;` 消费，
+ *   before 里建 workspace 对这两个权限工具无用。可直接改：删 workspace 创建与该变量。
+ * TODO(审查): test/policy-tools.test.ts:123,136 给「读」工具传 `{ tier: 'unclaimed' }`，但读工具
+ *   inputSchema 是 additionalProperties:false 且只认 templateRef ⇒ 真实 DSH 校验会拒；假 defineTool
+ *   绕过校验才绿。可直接改：测试改传 {}。
+ * TODO(审查): 两个工具的 hosts:['dsh'] 过滤与 adaptDefinitions 的 schema 转换在本包零覆盖（测试用假
+ *   defineTool 直接调 handler）。可直接改：补一条经真实 adaptDefinitions 的 schema 形状断言。
+ * TODO(审查): lib/.tsbuildinfo#2 是产物目录里的旁路残留（tsconfig:7 指定 ./lib/.tsbuildinfo）。
+ *   可直接改：rm -rf lib && tsc -b 后确认不再出现；若为中断构建残留，无需其它处理。
+ * ────────────────────────────────────────────────────────────────────────────────────────────
+ */
+
 import type { Taskboard } from '@taskboard/core';
 
 import { handleToolsRequest, type ConnectionLike, type IncomingLike, type OutgoingLike } from './http.ts';
@@ -76,9 +104,15 @@ export const name = 'taskboard3-agent-guard';
  *   而是 `apply` 里第一次读 `ctx.<服务>` 时才抛 `cannot get property … without inject`，
  *   症状是 profile 启动报 `dsh: warning: 1 entry did not activate`。
  */
+// TODO(审查): 上面注释说「四个都要列」，但这里只有 3 个；第四项 webServer 已不再使用（路由改走
+//   @taskboard/dsh 的 prefix handler，见 http.ts:36-45），apply 末尾 effect label 也仍写着 /api/tools。
+//   可直接改：注释改「三个」、label 去掉 /api/tools。
 export const inject = ['taskboard3Core', 'taskboard3Store', 'tools'] as const;
 
 /** 本插件行的配置（暂无）。 */
+// TODO(审查): Config 为空，而 tool-inventory 的 TTL（10s / 1s）是硬编码；DSH 实践建议可调值进 Config
+//   以便用户在 cordis.patch.yml 改（dsh-doc references/practices.md:22）。
+//   需用户决定：是否把 TTL 暴露成配置项。
 export interface Config {}
 
 /** 本包 provide 给别的行用的服务名。 */
@@ -104,6 +138,8 @@ export interface ApplyContext {
 		register(tool: unknown): () => void;
 		guard(fn: (exec: unknown) => unknown): () => void;
 	};
+	// TODO(审查): 这个字段全包无人使用（grep 只命中类型声明本身），路由已改为在 @taskboard/dsh 的
+	// prefix handler 里按 tail 分派。可直接改：删掉 webServer 字段。
 	readonly webServer: {
 		register(route: {
 			kind: 'exact' | 'prefix';
@@ -121,6 +157,9 @@ export interface ApplyContext {
 	readonly loader?: { await?(): Promise<unknown> } | undefined;
 	get?(name: string): unknown;
 	provide(serviceName: string, api: unknown): void;
+	// TODO(审查): effect 标成可选后被 `ctx.effect?.()` 调用；宿主没有 effect 时 guard 与两个工具在插件
+	// 卸载时泄漏（服务也仍在）。cordis 的 effect 是 Context 固有方法。可直接改：改必选（也让 apply 测试
+	// 更真实）；若确需可选，应补一条「无 effect 时不注册」的显式分支。
 	effect?(effect: () => () => void, label?: string): void;
 }
 
@@ -138,6 +177,11 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	 * `ctx.subagents` 是**可选**服务 —— 用可选访问读它，不能写进 inject。
 	 * 没有 subagent 环境的 profile 也该能用（holder 回落 `agent.id`）。
 	 */
+	// TODO(审查): 可选服务有 3 种读法：这里 ctx.get 优先/否则读属性并强转，下面 optionalService 只走
+	// ctx.get，再下面 loader 又 `ctx.loader ?? optionalService('loader')`。可直接改：全部收敛到一个
+	// optionalService（subagents/loader 也走它），同时删掉本行的强转。
+	// TODO(审查): DSH 实践（dsh-doc references/practices.md:20）建议可选服务走 inject / ctx.inject([...])，
+	// 而不是 ctx.get + 手写形状检测（hasSubagents / typeof list）。需用户决定：改成 ctx.inject 要重构。
 	const subagents =
 		typeof ctx.get === 'function' ? ctx.get('subagents') : (ctx as { subagents?: unknown }).subagents;
 
@@ -156,6 +200,10 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 		const found = ctx.get(serviceName);
 		return found === undefined || found === null ? undefined : (found as T);
 	};
+	// TODO(审查): `as unknown as ToolsSchemasLike` 双强转只为访问 schemas()；运行时已确认
+	// tools.schemas(scope?: ScopeKey, toolSet?) 真实存在（cordis_inspect_query host Service）。
+	// 可直接改：把 schemas? 写进 ApplyContext.tools，删掉 ToolsSchemasLike；变量名 permissionTools 实为
+	// tools 服务，建议改 toolsService。
 	const permissionTools = ctx.tools as unknown as ToolsSchemasLike;
 	/*
 	 * ⚠ 全部用**延迟解析**（函数），不在 apply 时固化。
@@ -187,6 +235,9 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 		writeLevel: async (level) => {
 			await writeToolGuardLevel(kv, level);
 		},
+		// TODO(审查): 与 src/tools.ts:59 各自写一遍 `readToolGuardLevelOf(kv) === 'manage-edit'`，
+		// 同一事实两处重算（service.isManageEdit 也是同一份）。可直接改：把 isManageEdit 注入
+		// createAgentGuardTools，或让 tools.ts 直接用这里的结果。
 		isManageEdit: () => readToolGuardLevelOf(kv) === 'manage-edit',
 		handleTools,
 	};
@@ -204,6 +255,8 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 		/* 先摘 guard，再清工具：卸载过程中不该再有机会按旧档位判定。 */
 		disposeGuard();
 		for (const dispose of disposeTools) {
+			// TODO(审查): register 的返回类型已保证是函数，这个 typeof 分支是多余的防御。
+			// 可直接改：删掉判断，直接 `dispose()`。
 			if (typeof dispose === 'function') (dispose as () => void)();
 		}
 	};

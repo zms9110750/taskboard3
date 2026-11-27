@@ -234,6 +234,7 @@ export function Drawer(props: DrawerProps): ReactNode {
 		};
 	}, [open, onClose]);
 
+	// TODO(审查): 用 100ms `setInterval` 轮询 + resize 兜「输入框位置变了」；@floating-ui/dom 的 autoUpdate 正是 ResizeObserver+IntersectionObserver 做这件事，可替掉轮询和 syncPanelMaxHeight 的手算（见 status-menu.ts 的同类 TODO）。需用户决定是否加依赖。
 	/*
 	 * ── 动态上限：面板高 `50vh`，但绝不能顶出窗口上沿 ──
 	 *

@@ -854,4 +854,46 @@ body {
 	padding: 18px 24px;
 	color: #6b7280;
 	font-size: 13px;
+}
+
+/* 左栏面板顶部：编组 / 授权 两个选项卡 */
+.tb3g-side__head--tabs {
+	display: flex;
+	gap: 6px;
+	padding: 6px 8px;
+	align-items: center;
+}
+.tb3g-side__head--tabs .tb3g-tab {
+	padding: 3px 12px;
+	border: 1px solid #d7dbe2;
+	border-radius: 7px;
+	background: #fff;
+	color: #4b5563;
+	font-size: 11.5px;
+}
+.tb3g-side__head--tabs .tb3g-tab.is-on {
+	border-color: #2563eb;
+	background: #2563eb;
+	color: #fff;
+	font-weight: 600;
+}
+.tb3g-groupitem__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+/* 右栏工具：直接勾选=绿勾，因组间接包含=灰勾 */
+.tb3g-checkitem[data-check='direct'] input {
+	accent-color: #12b76a;
+}
+.tb3g-checkitem[data-check='inherited'] input {
+	accent-color: #9ca3af;
+}
+.tb3g-checkitem[data-check='inherited'].is-checked {
+	background: #f3f4f6;
+}
+.tb3g-checkitem[data-check='inherited'] .tb3g-checkitem__name {
+	color: #6b7280;
 }`;

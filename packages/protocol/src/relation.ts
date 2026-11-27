@@ -59,6 +59,9 @@ export const LINK_KINDS = [
 	{ id: 'references', displayName: '参考', direction: 'forward', hasBehavior: false },
 ] as const;
 
+// TODO(审查): `as const` 只冻结类型层；LINK_KINDS/RELATION_KINDS 运行期可变，被 JS 消费方改一处会污染全局词表。
+// 可直接改：导出前 deepFreeze（同 status.ts 的 TaskState/TASK_STATES），行为不变。
+
 /** 五条边中的任一标识。 */
 export type LinkKindId = (typeof LINK_KINDS)[number]['id'];
 
@@ -78,6 +81,9 @@ export const BEHAVIOR_LINK: BehaviorLinkKind = 'dependsOn';
 
 /** 唯一「无向」的边。 */
 export const UNDIRECTED_LINK: UndirectedLinkKind = 'related';
+
+// TODO(审查): BEHAVIOR_LINK/UNDIRECTED_LINK 是死导出 —— lead 核实四个包 src 零命中（外部 MCP 未知）。
+// 它们的唯一作用是“表改 id 时编译失败”。可直接改：改成非导出的类型见证（保留守护、缩小公开面）；要留外部 API 需用户定。
 
 /** 某条边的定义（未命中返回 `undefined`）。 */
 export function linkKindOf(id: string): LinkKind | undefined {
@@ -136,6 +142,8 @@ type _SomeBehaviorLink = [BehaviorLinkKind] extends [never] ? false : true;
 /** 六种关系 = 五种边 + 派生。 */
 type _SixRelationKinds = (typeof RELATION_KINDS)['length'] extends 6 ? true : false;
 
+// TODO(审查): 与 LINK_KINDS 只断言了 id 相等，displayName 漂移（中文名只改一处）不会被发现。
+// 可直接改：加 id→displayName 一致的类型断言，或 link 行从 LINK_KINDS 派生（需保留元组长度断言）。
 /**
  * `RELATION_KINDS` 里的五条边与 `LINK_KINDS` 完全一致（id 逐个相等）。
  *

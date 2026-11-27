@@ -16,6 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 
 /** 插件名。 */
+// TODO(审查): 这里导出 `taskboard3-dsh-client-host`，而浏览器半 client.tsx:107 导出 `taskboard3-dsh-client`；Cordis 用 name 做插件标识/日志，同一个包两个名字会让诊断信息对不上。可直接统一（或明确 -host 是刻意区分并写注释）。
 export const name = 'taskboard3-dsh-client-host';
 
 /**

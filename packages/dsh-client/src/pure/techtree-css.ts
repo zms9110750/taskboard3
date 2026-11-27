@@ -31,10 +31,10 @@ export const TECHTREE_CSS = `
 /* ── 列背景 + 列头 ── */
 /* z-index：带底色 0 < 线层 1 < 卡片 2 < 组横幅 3 < 折叠控件 4（见各自规则） */
 .tb3t-band{position:absolute;z-index:0;border-radius:12px;background:var(--bg-soft,#f9fafb);pointer-events:none}
-.tb3t-band__title{position:absolute;left:0;right:0;top:9px;text-align:center;font-size:11.5px;font-weight:600;color:var(--text-weak,#9ca3af);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb3t-band__title{position:absolute;left:0;right:0;top:0;height:2em;line-height:2em;text-align:center;font-size:11.5px;font-weight:600;color:var(--text-weak,#9ca3af);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--bg-soft,#f9fafb);border-radius:12px 12px 0 0}
 
 /* ── 线层 ── */
-.tb3t-links{position:absolute;z-index:1;left:0;pointer-events:none;overflow:visible}
+.tb3t-links{position:absolute;z-index:2;left:0;pointer-events:none;overflow:visible}
 .tb3t-edge{fill:none;stroke-width:2;stroke-linecap:round;stroke:#5b6472;transition:opacity .12s ease,stroke-width .12s ease}
 .tb3t-edge--derives{stroke:#5b6472}
 .tb3t-edge--dependsOn{stroke:#a16207}
@@ -65,7 +65,7 @@ export const TECHTREE_CSS = `
 .tb3t-arrow--references path{fill:#6b7280}
 
 /* ── 卡片 ── */
-.tb3t-card{position:absolute;z-index:2;display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:2px solid var(--card-border,#9aa1ad);border-radius:10px;background:var(--bg-card,#fff);color:inherit;font-family:inherit;text-align:left;cursor:pointer;overflow:hidden;box-shadow:0 1px 2px rgb(15 23 42 / 7%);transition:border-color .12s,background .12s,box-shadow .12s}
+.tb3t-card{position:absolute;z-index:3;display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:2px solid var(--card-border,#9aa1ad);border-radius:10px;background:var(--bg-card,#fff);color:inherit;font-family:inherit;text-align:left;cursor:pointer;overflow:hidden;box-shadow:0 1px 2px rgb(15 23 42 / 7%);transition:border-color .12s,background .12s,box-shadow .12s}
 .tb3t-card:hover{background:#fbfcfe;border-color:#cbd5e1}
 .tb3t-card.is-selected{border-color:var(--accent,#2563eb);box-shadow:0 0 0 4px rgb(37 99 235 / 16%),0 1px 2px rgb(15 23 42 / 7%)}
 /* 草稿：无可见边框，但保留 2px 占位（用户 2026-11-10：草稿无边框） */
@@ -123,9 +123,9 @@ export const TECHTREE_CSS = `
 .tb3t-fold{
   position:absolute;z-index:4;
   display:inline-flex;align-items:center;justify-content:center;gap:0;
-  min-width:18px;height:18px;padding:0 5px;
-  border:1px solid #d7dbe2;border-radius:9px;background:#fff;color:#4b5563;
-  font-family:inherit;font-size:11px;line-height:16px;font-variant-numeric:tabular-nums;
+  min-width:22px;height:24px;padding:0 6px;
+  border:1px solid #d7dbe2;border-radius:12px;background:#fff;color:#4b5563;
+  font-family:inherit;font-size:12px;line-height:22px;font-variant-numeric:tabular-nums;
   cursor:pointer;transition:border-color .12s,color .12s,background .12s;
 }
 .tb3t-fold:hover{border-color:#9aa4b2;background:#f8fafc;color:#111827}
@@ -135,6 +135,6 @@ export const TECHTREE_CSS = `
 .tb3t-fold.is-folded:hover .tb3t-fold__count{display:none}
 .tb3t-fold.is-folded:hover .tb3t-fold__plus{display:inline}
 /* 展开时只显示减号 */
-.tb3t-fold .tb3t-fold__minus{display:inline;font-size:13px;line-height:14px}
+.tb3t-fold .tb3t-fold__minus{display:inline;font-size:15px;line-height:18px}
 `;
 

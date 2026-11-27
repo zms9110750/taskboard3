@@ -87,6 +87,7 @@ export interface WorkspaceBodyProps {
 
 }
 
+// TODO(审查): `notWired()` 用浏览器原生 `alert`，而「新建空间」用原生 `prompt`（:245-249）；DSH 宿主有自己的对话框/输入组件，原生弹窗在 WebView/桌面壳里阻塞行为、观感、可样式化都不一致。可直接换成宿主 UI，需用户决定交互形态（原生弹窗是否可接受）。
 /**
  * 一个「入口还没接」的提示。
  *
@@ -197,6 +198,7 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 				return;
 			}
 
+			// TODO(审查): 回调里现造 `createApi()`，与 useBoardState(:129) / client.tsx:155,330 的实例互不共享；虽当前无状态、无 bug，但建议收敛为一个模块级 api 单例（可直接改）。另 `props.api` 注入路径只服务预览/测试。
 			const api = props.api ?? createApi();
 			/*
 			 * 只取 `derives`。`getTemplate` 还会带回 sections（建卡页要），
@@ -242,6 +244,7 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 		[actions],
 	);
 
+	// TODO(审查): 用原生 `prompt` 让用户输空间名（见 notWired 的 TODO）；宿主有输入组件时原生 prompt 的阻塞/样式/可访问性都不一致。可直接换宿主 UI，具体交互（对话框/内联输入）需用户决定。
 	const onCreateWorkspace = useCallback((): void => {
 		const name = globalThis.prompt('新任务空间的名称');
 		if (name === null || name.trim() === '') return;
@@ -293,6 +296,7 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 		return <PageMessage text="正在加载任务板…" />;
 	}
 
+	// TODO(审查): 任何 `state.error`（含一次失败的按钮动作）都会把整页替换成错误页，chrome/选中卡/筛选全丢；关闭后回到初始视图。属产品行为，是否改成 toast/页内横幅、动作失败不整页替换，需用户决定。
 	if (state.error !== undefined) {
 		return (
 			<PageMessage

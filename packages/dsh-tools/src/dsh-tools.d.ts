@@ -34,6 +34,9 @@
  * types 包发布时 —— 届时把 `peerDependencies` 指向真实包、删本文件。
  */
 
+// TODO(审查): 本文件是 ambient 声明，tsc 不会把它拷进 lib/types/（产物里没有 dsh-tools.d.ts）⇒「垫片只有一份」只对本包成立，
+//   消费方（agent-guard）必须再抄一份，合并/漂移无守护。更好的归属：@taskboard/dsh-core 或独立 types 包（另见 index.ts 导出处的 TODO）。
+// TODO(审查): 垫片的 execute(args: never, exec: never) 让任何 execute 实现都过类型检查 ⇒ 适配层最关键的签名其实没被校验。需用户决定是否收紧。
 declare module '@deepseek-ai/dsh-tools' {
 	/** 一个已定义的工具（`ToolDefinition` 的字段子集）。 */
 	export interface ToolDefinition {

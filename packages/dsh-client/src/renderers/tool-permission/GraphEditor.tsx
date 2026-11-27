@@ -51,7 +51,8 @@ import {
 import type { ToolGraph, ToolGraphNode } from '../../pure/tool-graph.ts';
 import { sourceOfName } from '../../pure/tool-permission.ts';
 import type { ToolEntry } from '../../pure/tool-permission.ts';
-import { TemplateAuthPanel } from './TemplateAuthPanel.tsx';
+import { parseToolPolicy } from '../../pure/tool-policy.ts';
+import { dataOf, fetchJson, templatesOf } from './TemplateAuthPanel.tsx';
 
 /* ══════════════════════════════════════════════════════════
    工具清单：真实来源 + 降级夹具
@@ -182,7 +183,7 @@ function initialGraph(entries: readonly ToolEntry[]): ToolGraph {
    ══════════════════════════════════════════════════════════ */
 
 /** 页签。 */
-type Tab = 'graph' | 'tools' | 'templates';
+type Tab = 'group' | 'auth';
 
 /**
  * 紧密排布的布局参数。
@@ -222,7 +223,31 @@ export function GraphEditor(props: GraphEditorProps): ReactNode {
 	const entries = props.tools.length > 0 ? props.tools : FALLBACK_TOOL_ENTRIES;
 	const [graph, setGraph] = useState<ToolGraph>(() => initialGraph(entries));
 	const [activeId, setActiveId] = useState<string>('group:code');
-	const [tab, setTab] = useState<Tab>('graph');
+	const [tab, setTab] = useState<Tab>('group');
+	const [authData, setAuthData] = useState<{
+		readonly templates: readonly { readonly ref: string; readonly domain: string; readonly displayName: string }[];
+		readonly unclaimed: number;
+		readonly common: number;
+	} | null>(null);
+	useEffect(() => {
+		if (tab !== 'auth' || authData !== null) return;
+		const controller = new AbortController();
+		void (async () => {
+			const [policyRaw, templatesRaw] = await Promise.all([
+				fetchJson('tool-policy', controller.signal),
+				fetchJson('templates', controller.signal),
+			]);
+			if (controller.signal.aborted) return;
+			const policy = typeof policyRaw === 'string' ? undefined : parseToolPolicy(dataOf(policyRaw));
+			const templates = typeof templatesRaw === 'string' ? [] : templatesOf(templatesRaw);
+			setAuthData({
+				templates,
+				unclaimed: policy?.unclaimed.length ?? 0,
+				common: policy?.common.length ?? 0,
+			});
+		})();
+		return () => controller.abort();
+	}, [tab, authData]);
 	const [zoom, setZoom] = useState(1);
 	const [toolQuery, setToolQuery] = useState('');
 	const [toolPage, setToolPage] = useState(0);
@@ -262,6 +287,26 @@ export function GraphEditor(props: GraphEditorProps): ReactNode {
 	const activeChildren = useMemo(() => childrenOf(graph, activeId), [graph, activeId]);
 	const activeGroups = useMemo(() => new Set(activeChildren.filter((one) => one.kind === 'group').map((one) => one.id)), [activeChildren]);
 	const activeTools = useMemo(() => new Set(activeChildren.filter((one) => one.kind === 'tool').map((one) => one.id)), [activeChildren]);
+
+	/** 子组里间接包含的工具（右栏灰勾）。 */
+	const inheritedTools = useMemo(() => {
+		const out = new Set<string>();
+		const seen = new Set<string>();
+		const queue = activeChildren.map((one) => one.id);
+		while (queue.length > 0) {
+			const id = queue.pop();
+			if (id === undefined || seen.has(id)) continue;
+			seen.add(id);
+			const node = nodeOf(graph, id);
+			if (node === undefined) continue;
+			if (node.kind === 'tool') {
+				out.add(id);
+				continue;
+			}
+			for (const child of childrenOf(graph, id)) queue.push(child.id);
+		}
+		return out;
+	}, [activeChildren, graph]);
 
 	/**
 	 * 会成环的组：加 `G → C` 会成环 ⟺ 图里 `C` 已经能走到 `G`。
@@ -392,27 +437,20 @@ export function GraphEditor(props: GraphEditorProps): ReactNode {
 			<header className="tb3g-head">
 				<h1 className="tb3g-title">工具权限</h1>
 				<p className="tb3g-sub">组是 tag：可以含任何工具、也可以含任何别的组 —— 只要不成环。只允许、不取消。</p>
-				<nav className="tb3g-tabs" role="tablist">
-					<button type="button" role="tab" data-action="tab-graph" className={`tb3g-tab${tab === 'graph' ? ' is-on' : ''}`} onClick={() => setTab('graph')}>
-						组图
-					</button>
-					<button type="button" role="tab" data-action="tab-tools" className={`tb3g-tab${tab === 'tools' ? ' is-on' : ''}`} onClick={() => setTab('tools')}>
-						工具清单
-					</button>
-					<button type="button" role="tab" data-action="tab-templates" className={`tb3g-tab${tab === 'templates' ? ' is-on' : ''}`} onClick={() => setTab('templates')}>
-						模板授权
-					</button>
-				</nav>
 			</header>
 
-			{tab === 'graph' ? (
-				<div className="tb3g-graph" data-testid="tab-graph">
-					{/* ═══ 左栏：组列表（单选） ═══ */}
-					<aside className="tb3g-side tb3g-side--left">
-						<div className="tb3g-side__head">
-							<span>组</span>
-							<span className="tb3g-side__hint">单选 = 正在编辑</span>
-						</div>
+			<div className="tb3g-graph">
+				<aside className="tb3g-side tb3g-side--left">
+					<div className="tb3g-side__head tb3g-side__head--tabs">
+						<button type="button" data-action="tab-group" className={`tb3g-tab${tab === 'group' ? ' is-on' : ''}`} onClick={() => setTab('group')}>
+							编组
+						</button>
+						<button type="button" data-action="tab-auth" className={`tb3g-tab${tab === 'auth' ? ' is-on' : ''}`} onClick={() => setTab('auth')}>
+							授权
+						</button>
+					</div>
+					{tab === 'group' ? (
+					<>
 						<div className="tb3g-scroll">
 							{groups.map((one) => {
 								const isActive = one.id === activeId;
@@ -453,7 +491,50 @@ export function GraphEditor(props: GraphEditorProps): ReactNode {
 								＋ 新建组
 							</button>
 						)}
-					</aside>
+					</>
+					) : (
+						<div className="tb3g-scroll">
+							{authData === null ? (
+								<p className="tb3g-muted">正在读取…</p>
+							) : (
+								<>
+									<div className="tb3g-side__head">
+										<span>档位</span>
+										<span className="tb3g-side__hint">全局</span>
+									</div>
+									<div className="tb3g-groupitem">
+										<span className="tb3g-groupitem__name">未领卡档</span>
+										<span className="tb3g-groupitem__count">{String(authData.unclaimed)}</span>
+									</div>
+									<div className="tb3g-groupitem">
+										<span className="tb3g-groupitem__name">通用档（领了卡就有）</span>
+										<span className="tb3g-groupitem__count">{String(authData.common)}</span>
+									</div>
+									<div className="tb3g-side__head">
+										<span>模板</span>
+										<span className="tb3g-side__hint">{String(authData.templates.length)} 个</span>
+									</div>
+									{authData.templates.length === 0 ? null : (
+										[...new Map(
+											authData.templates.map((one) => [one.domain, authData.templates.filter((t) => t.domain === one.domain)]),
+										)].map(([domain, items]) => (
+											<div key={domain}>
+												<div className="tb3g-side__head">
+													<span>{domain}</span>
+												</div>
+												{items.map((one) => (
+													<div key={one.ref} className="tb3g-groupitem" title={one.ref}>
+														<span className="tb3g-groupitem__name">{one.displayName}</span>
+													</div>
+												))}
+											</div>
+										))
+									)}
+								</>
+							)}
+						</div>
+					)}
+				</aside>
 
 					{/* ═══ 中栏：拓扑分层的全图 ═══ */}
 					<section className="tb3g-canvaswrap">
@@ -590,12 +671,21 @@ export function GraphEditor(props: GraphEditorProps): ReactNode {
 						/>
 						<div className="tb3g-scroll">
 							{pageRows.map((one) => {
-								const checked = activeTools.has(one.id);
+								const direct = activeTools.has(one.id);
+								const inherited = !direct && inheritedTools.has(one.id);
+								const checked = direct || inherited;
+								const mark = direct ? 'direct' : inherited ? 'inherited' : 'none';
 								return (
-									<label key={one.id} className={`tb3g-checkitem${checked ? ' is-checked' : ''}`}>
+									<label
+										key={one.id}
+										className={`tb3g-checkitem${checked ? ' is-checked' : ''}`}
+										data-check={mark}
+										title={inherited ? '由子组间接包含（勾上 = 直接加入当前组）' : undefined}
+									>
 										<input
 											type="checkbox"
 											data-tool-id={one.id}
+											data-check={mark}
 											checked={checked}
 											onChange={(event) => toggleTool(one.id, event.target.checked)}
 										/>
@@ -618,68 +708,6 @@ export function GraphEditor(props: GraphEditorProps): ReactNode {
 						</div>
 					</aside>
 				</div>
-			) : null}
-
-			{tab === 'tools' ? (
-				<section className="tb3g-page" data-testid="tab-tools">
-					<div className="tb3g-page__bar">
-						<input className="tb3g-input" data-testid="tool-search" placeholder="搜索工具名 / 来源" value={toolQuery} onChange={(event) => setToolQuery(event.target.value)} />
-						<span className="tb3g-page__count">
-							共 {String(tools.length)} 个工具 · 已过滤 {String(filtered.length)}
-						</span>
-					</div>
-					<table className="tb3g-table">
-						<thead>
-							<tr>
-								<th>工具</th>
-								<th>来源</th>
-								<th>直接所属组</th>
-								<th>连通组数</th>
-							</tr>
-						</thead>
-						<tbody>
-							{filtered.map((one) => {
-								/* 直接所属组 = 与它有直接边的父组（复数） */
-								const direct = graph.edges.filter((edge) => edge.to === one.id).map((edge) => labelOf(edge.from));
-								const directShown = direct.slice(0, 3);
-								const directRest = direct.length - directShown.length;
-								const connected = connectedGroupCount(graph, one.id);
-								return (
-									<tr key={one.id} data-table-tool={one.id}>
-										<td className="tb3g-table__name">{one.label}</td>
-										<td>{one.source}</td>
-										<td className="tb3g-table__groups">
-											{direct.length === 0 ? (
-												<span className="tb3g-muted">未分组</span>
-											) : (
-												<span className="tb3g-chips" title={direct.join(' · ')}>
-													{directShown.map((name) => (
-														<span key={name} className="tb3g-chip">
-															{name}
-														</span>
-													))}
-													{directRest > 0 ? <span className="tb3g-chip tb3g-chip--more">+{String(directRest)}</span> : null}
-												</span>
-											)}
-										</td>
-										<td className="tb3g-table__count" data-connected-count={String(connected)}>
-											{String(connected)}
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
-				</section>
-			) : null}
-
-			{/*
-			 * 模板授权页：真实数据（用户 2026-11-24「什么模板对应什么工具可用还没有界面」）。
-			 * 数据源 GET /taskboard3/api/tool-policy（服务端用 core 的 effectiveToolsOf 算好并集）
-			 * —— 本组件只按来源分组展示，**不重算并集**。
-			 */}
-			{tab === 'templates' ? <TemplateAuthPanel /> : null}
-
 			<div className="tb3g-debug" data-testid="graph-stats" aria-hidden="true">
 				{JSON.stringify({ nodes: graph.nodes.length, edges: graph.edges.length, active: activeId })}
 			</div>

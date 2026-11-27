@@ -75,6 +75,7 @@ export interface WorkspaceToolbarProps {
 	readonly view: WorkspaceView;
 	readonly onViewChange: (next: WorkspaceView) => void;
 	readonly onCreateCard: () => void;
+	// TODO(审查): 这个按钮的入口在 Workspace 侧断了：Workspace.tsx:213 声明了 onOpenPermission 但从不传给本组件，所以「权限与约定」按钮在产品里不可达（dev/preview/workspace/main.tsx:554 仍在传，但那是传给 Workspace 的无效 prop）。要么接上，要么删 prop+按钮；需用户决定是否保留该入口。
 	/**
 	 * 「权限与约定」。**省略 = 不画这个按钮**（V2 还没做；compact 密度也折叠它）。
 	 */

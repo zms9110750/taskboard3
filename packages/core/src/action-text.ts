@@ -258,6 +258,7 @@ const BUILTIN: readonly (readonly [string, ActionTextFn])[] = [
 ] satisfies readonly (readonly [string, ActionTextFn])[];
 
 /** 默认注册表（内置三件已注册，可以继续 `register` 第三方）。 */
+// TODO(审查): 模块级可变单例，任何包 `register` 都影响所有实例（测试 action-text.test.ts 就这么改全局）⇒ 建议由 `createTaskboard` 造实例注入、只保留默认值，可直接改。
 export const DEFAULT_ACTION_TEXT: ActionTextRegistry = createActionTextRegistry(BUILTIN);
 
 /* ══════════════════════════════════════════════════════════

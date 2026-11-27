@@ -133,6 +133,7 @@ const DRAWER_VARIANT = DRAWER_VARIANTS[DRAWER_DEFAULT_VARIANT_ID];
  * @param ctx 客户端上下文
  * @param options 内容 + 形态
  */
+// TODO(审查): 这里两处 `ctx.slots.inject(...)` 裸调并丢掉 disposer，与 client.tsx:184-253 的 `ctx.effect(...)` 写法不一致；`ctx.slots.inject` 是否自动随 owner 清理未核实 ⇒ 可能是卸载/重装时条目泄漏。可直接统一成一种写法（需先确认 Cordis 语义）。
 export function registerDrawerSlots(ctx: Context, options: DrawerSlotOptions): void {
 	const variant = options.variant ?? DRAWER_DEFAULT_VARIANT_ID;
 	const title = options.title ?? '任务板';

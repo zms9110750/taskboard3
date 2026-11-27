@@ -51,6 +51,7 @@ export function createRawCardTool(deps: ToolDeps): ReturnType<typeof defineTool>
 			properties: {
 				workspaceId: {
 					type: 'string',
+					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
 					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },

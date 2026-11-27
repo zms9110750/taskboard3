@@ -23,6 +23,9 @@
  * 协议若改版，`test/a2a-conformance.test.ts` 会报错（它拿官方 SDK 的
  * `taskStateToJSON` 逐个比对），而不是靠人记得升级。
  *
+ * TODO(审查): 这里引用的 `test/a2a-conformance.test.ts` 并不存在（test/ 下只有 transition.test.ts），
+ * 根 devDependencies 也没有 A2A SDK ⇒ 协议改版无人报警。可直接改：补测试（需加 devDependency）或删掉这两行承诺；选哪种需用户定。
+ *
  * ## 「草稿」是组名，不是状态
  *
  * 用户 `2026-11-01 00:57`：「草稿不是组。只有一个情况，做类型联合没有意义。
@@ -37,6 +40,8 @@
  * 转移规则在 `transition.ts`，由用户裁定。
  */
 
+// TODO(审查): `as const` 只冻结类型层，TaskState/TASK_STATES 运行期仍可被改（relation.ts 的 LINK_KINDS 同理）。
+// 这些是单源词表，被 JS 消费方改一处会污染全局；可直接改：导出前 deepFreeze（3 行手写，不必引包）。
 /** 九个状态。键是短名，值是 A2A 协议全名。 */
 export const TaskState = {
 	UNSPECIFIED: 'TASK_STATE_UNSPECIFIED',
@@ -56,6 +61,9 @@ export type TaskState = (typeof TaskState)[keyof typeof TaskState];
 /**
  * 九个状态的清单，顺序同 A2A 枚举。
  *
+ * TODO(审查): 实际顺序把 INPUT_REQUIRED/AUTH_REQUIRED 提到 COMPLETED 之前（按 草稿/进行/搁置/完成 分组），
+ * 与 A2A v1.0 枚举不一致 ⇒ 本行注释是错的。改注释可直接做；改数组顺序会动 UI 菜单，需用户定。
+ *
  * ⚠ 手工列出，不用 `Object.values(TaskState)` —— 那样顺序依赖对象字面量的
  * 书写顺序，而这份顺序要用于契约表（状态机、UI 菜单）。显式写出，
  * 且下面有编译期断言保证它与 `TaskState` 一一对应。
@@ -72,6 +80,8 @@ export const TASK_STATES = [
 	TaskState.REJECTED,
 ] as const;
 
+// TODO(审查): 标注 `: TaskState` 把字面量 widen 成整个联合，比较/收窄时丢掉精确性。
+// 可直接改：去掉标注写成 `export const DRAFT = TaskState.UNSPECIFIED`，无行为变化。
 /**
  * 「草稿」= 未指定。
  *
@@ -97,6 +107,8 @@ export const DRAFT: TaskState = TaskState.UNSPECIFIED;
  */
 export type StatusGroup = 'draft' | 'active' | 'shelved' | 'ended';
 
+// TODO(审查): 类型标注 + Object.freeze ⇒ 少键会报、多键/拼错键不报（AGENTS 3.7）。
+// 可直接改：字面量先 `satisfies Record<StatusGroup,string>` 再转 Readonly。
 /** 四个组的中文名。 */
 export const GROUP_LABELS: Readonly<Record<StatusGroup, string>> = Object.freeze({
 	draft: '草稿',
@@ -105,6 +117,8 @@ export const GROUP_LABELS: Readonly<Record<StatusGroup, string>> = Object.freeze
 	ended: '完成',
 });
 
+// TODO(审查): 同 GROUP_LABELS：标注 + Object.freeze 关掉了多余键检查（AGENTS 3.7）。
+// 注意：正因为这里带了 Record 标注，下面的 _EveryStateGrouped 断言恒真（见本文件后半的断言块）。
 /**
  * 每个状态属于哪个组。
  *
@@ -124,11 +138,15 @@ export const STATUS_GROUP_OF: Readonly<Record<TaskState, StatusGroup>> = Object.
 	[TaskState.REJECTED]: 'ended',
 });
 
+// TODO(审查): 死导出 —— lead 核实 core/tools/dsh/dsh-client 的 src 零命中（外部 MCP 未知），这里只是 STATUS_GROUP_OF[state] 的包装。
+// 可直接删（包内无其他引用）；对外删导出属公开 API 变更，需用户确认。
 /** 某个状态属于哪个组。 */
 export function groupOf(state: TaskState): StatusGroup {
 	return STATUS_GROUP_OF[state];
 }
 
+// TODO(审查): 每次调用都 filter 出新数组，而 isEndedState/endedStates（transition.ts）在每次状态转移判定里都调它。
+// 可直接改：模块加载时按组预计算并冻结，这里返回缓存（顺序与 API 不变）。
 /** 某个组包含哪些状态（顺序同 `TASK_STATES`）。 */
 export function statesInGroup(group: StatusGroup): readonly TaskState[] {
 	return TASK_STATES.filter((state) => STATUS_GROUP_OF[state] === group);
@@ -139,6 +157,7 @@ export function isTaskState(value: unknown): value is TaskState {
 	return typeof value === 'string' && (TASK_STATES as readonly string[]).includes(value);
 }
 
+// TODO(审查): 同 GROUP_LABELS：标注 + Object.freeze 关掉了多余键检查（AGENTS 3.7）。
 /**
  * 状态的中文名。
  *
@@ -183,6 +202,8 @@ type _ExactlyNine = (typeof TASK_STATES)['length'] extends 9 ? true : false;
 /** `TASK_STATES` 覆盖 `TaskState` 的每个值（不多不少）。 */
 type _CoversAll = [TaskState] extends [(typeof TASK_STATES)[number]] ? true : false;
 
+// TODO(审查): 恒真断言 —— typeof STATUS_GROUP_OF 带 Readonly<Record<TaskState,…>> 标注 ⇒ keyof 恒等于 TaskState；_EveryStateLabeled 同理。
+// 删掉类型标注它们才会生效，但完整性又靠标注兜。可直接改：改成对裸字面量断言（配合 satisfies），或删掉。
 /** 每个状态都有组归属。 */
 type _EveryStateGrouped = [TaskState] extends [keyof typeof STATUS_GROUP_OF] ? true : false;
 

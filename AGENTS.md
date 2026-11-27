@@ -482,9 +482,72 @@ pnpm install
 | **目录结构变了** | §四 |
 | **脚手架拆了** | §五 删掉对应行 |
 | **清单里某条不再适用** | 删掉它（**别留「以前的规则」**） |
+| **GitHub 流程变了** | §八 |
 
 **⚠ 不要在这里写「当前状态」**（比如「现在有 149 个测试」）—— 那是事实，会漂。
 **状态在 `docs/设计.md`。**
+
+---
+
+## 八、GitHub：讨论存档与 CI
+
+**仓库私有，远端 `origin` 是 GitHub。测试与讨论都在 GitHub 上，不在本机。**
+
+### 8.1 讨论存档（防会话压缩丢失）
+
+- 源文件：`docs/ARCHIVE.md`
+- 工作流：`.github/workflows/archive-discussion.yml`
+- 触发：push 修改 `docs/ARCHIVE.md`，或手动 `workflow_dispatch`
+- 行为：按标题 `taskboard3 会话存档` 创建或更新 Discussion（分类 `General`）
+- **需要留档的指令先写进 `docs/ARCHIVE.md` 再 push；只写在聊天里不算**
+- 会话被压缩后：先读这个 Discussion / 文件，再动手
+
+### 8.2 CI
+
+- 工作流：`.github/workflows/ci.yml`
+- 触发：push / pull_request
+- 步骤：`pnpm install --frozen-lockfile` → `pnpm run build` → `pnpm run check:dev` → `pnpm run check:test-types` → `pnpm run test`
+- **测试以 CI 结果为准，不在用户机器上跑全量**
+- 本地只做编译和单文件验证；要全量回归就 push 触发 CI
+- 规则 5 的「自己跑」改为：**以 CI 绿为准**；CI 不可用时才本地补跑
+
+### 8.3 GitHub MCP
+
+- 读仓库 / 工作流 / 讨论走 GitHub MCP
+- 写代码优先本地 + push；不要用 MCP 直接改源码
+- 工作流失败先看 `actions_list` / `get_job_logs`，不要靠猜
+
+### 8.4 发帖身份
+
+- **禁止用 MCP（用户账号）发 Discussion / Issue 评论**
+- 要发东西就落地成文件，再走 `github-actions[bot]` 工作流：
+  - 讨论：`docs/ARCHIVE.md` → `archive-discussion.yml`
+  - 分包讨论：`docs/PACKAGES.md` → `packages-discussion.yml`
+  - Issue 评论：`docs/BOT-COMMENT.md` → `bot-issue-comment.yml`
+- 发完看 `author`：必须是 `github-actions`，不是 `zms9110750`
+
+### 8.5 讨论必须带版本与来源
+
+- **每个讨论正文第一段必须 link 一个 tag**：写明「这是对哪个版本的评审」
+- **由 issue 创建的讨论，必须 link 该 issue**（父 issue 也一并 link）
+- 格式：
+
+```md
+> 基线：tag [`<tag>`](https://github.com/<owner>/<repo>/tree/<tag>)
+>
+> 来源：Issue [#N](https://github.com/<owner>/<repo>/issues/N)
+```
+
+- tag 必须指向正文所述版本对应的 commit，并在 discussion 创建前推上去
+- 光有 commit hash 不够：**没有 tag 的讨论视为不合规**
+
+### 8.6 分包评审从行为出发
+
+- **不要以现有包为起点**描述分包；重构后现有分包不存在
+- 先列「系统能做什么」的行为总表，不看代码目录
+- 把行为打乱成池，再按四条直觉聚类：一起变 / 同一条调用链 / 谁拥有数据 / 部署哪一侧
+- 聚类完成后再映射到包；现有包只作为「落位参考」
+- 保留的是行为，不是目录
 
 
 

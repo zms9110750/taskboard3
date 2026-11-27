@@ -20,6 +20,13 @@
  * · 规则 3：AI 到任一终结态（含取消）一律 `AI_CANNOT_END`
  */
 
+/*
+ * TODO(审查) 汇总（测试面）：
+ * ① 全包只有本文件 —— status/relation/error 的导出零直接测试（labelOf 回落、statesInGroup 分组、ErrorCode↔ERROR_HINTS、
+ *    RELATION_KINDS↔LINK_KINDS 的 id/displayName、isFailure 拒脏 code）；可直接补，不需改产品。
+ * ② 缺“按钮表 (kind,from,to) 唯一性”测试（重复行会让 .find 取第一条、UI 渲染两个按钮），也缺 index.ts 文件头承诺的 no-node-imports 守卫。
+ * ③ judge() 的 `as never` 三连掩盖了签名与脏输入的关系；lead 已确认 core 调用处传 TaskState ⇒ 不是消费方缺陷，优先级低。
+ */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -357,5 +364,21 @@ describe('边界', () => {
 				}
 			}
 		}
+	});
+});
+
+describe('拒绝按钮的文案', () => {
+	it('只有 record 用「否认」；其余拒绝按钮统一用「否决」；全表不再出现「否绝」', () => {
+		const deny = BUTTON_ACTIONS.filter((one) => one.label === '否认');
+		assert.equal(deny.length, 1);
+		assert.equal(deny[0]?.kind, 'record');
+		assert.equal(deny[0]?.to, S.FAILED);
+
+		for (const button of BUTTON_ACTIONS) {
+			if (button.to === S.REJECTED) {
+				assert.equal(button.label, '否决', `${button.kind} ${button.from} → rejected`);
+			}
+		}
+		assert.equal(BUTTON_ACTIONS.some((one) => one.label === '否绝'), false);
 	});
 });

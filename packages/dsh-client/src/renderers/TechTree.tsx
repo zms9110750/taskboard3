@@ -128,7 +128,7 @@ export const TREE_HEADER_HEIGHT = 34;
  * 卡片高 78，横幅只有 18 ⇒ 一眼能看出「这是一条横幅，不是一张卡」。
  * 展开时把它挤在行距（14px）附近，尽量减少压到上面的卡。
  */
-export const GROUP_BANNER_HEIGHT = 18;
+export const GROUP_BANNER_HEIGHT = 32;
 
 /**
  * 一列里「收起的分组横幅」的**槽位步进**（含与下一项的间距）。
@@ -608,7 +608,7 @@ function TreeColumn(props: TreeColumnProps): ReactNode {
 					className="tb3t-band"
 					data-band={String(lane.lane)}
 					data-layer={String(band.layer)}
-					style={{ left: lane.x, top: 0, width: lane.width, height: band.height }}
+					style={{ left: lane.x, top: 0, width: lane.width, height: '2em', marginBottom: 8 }}
 				>
 					<span className="tb3t-band__title">{band.label}</span>
 				</div>
@@ -838,6 +838,25 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		[props.cards, layout, lanePlans.boxes],
 	);
 
+	/** 展开组的整块底色（横幅 + 成员卡的外接矩形）。 */
+	const groupBoxes = useMemo(() => {
+		const byId = new Map(items.map((item) => [item.card.id, item]));
+		const out: { readonly id: string; readonly left: number; readonly top: number; readonly width: number; readonly height: number }[] = [];
+		for (const group of groupPlan.presentGroups) {
+			if (groupPlan.hidden.has(group.id)) continue;
+			const members = group.memberIds
+				.map((id) => byId.get(id))
+				.filter((one): one is CardItem => one !== undefined);
+			if (members.length === 0) continue;
+			const top = Math.max(0, Math.min(...members.map((one) => one.box.top)) - GROUP_BANNER_HEIGHT - 4);
+			const bottom = Math.max(...members.map((one) => one.box.bottom)) + 6;
+			const left = Math.min(...members.map((one) => one.box.left)) - 6;
+			const right = Math.max(...members.map((one) => one.box.right)) + 6;
+			out.push({ id: group.id, left, top, width: right - left, height: bottom - top });
+		}
+		return out;
+	}, [groupPlan, items]);
+
 	/* 组横幅：**折叠态也画、展开态也画** —— 展开后必须还能点回收起（用户 2026-11-24 报的 bug）。 */
 	const groupBanners = useMemo(() => {
 		if (groupPlan.presentGroups.length === 0) return [];
@@ -884,8 +903,9 @@ export function TechTree(props: TechTreeProps): ReactNode {
 				const lefts = members.map((item) => item.box.left);
 				const rights = members.map((item) => item.box.left + metrics.cardWidth);
 				const tops = members.map((item) => item.box.top);
-				left = Math.min(...lefts);
-				width = Math.max(...rights) - left;
+				/* 横幅比成员卡左右各宽 6px，正好盖住组范围圈的上边框。 */
+				left = Math.min(...lefts) - 6;
+				width = Math.max(...rights) - left + 6;
 				top = Math.max(0, Math.min(...tops) - GROUP_BANNER_HEIGHT - 4);
 			}
 			const index = groups.indexOf(group);
@@ -1039,6 +1059,20 @@ export function TechTree(props: TechTreeProps): ReactNode {
 						data-edge-count={String(edges.length)}
 						style={{ width: stageWidth, height: stageHeight }}
 					>
+					{/* 展开组的整块底色：横幅 + 成员卡外接矩形（虚线容器） */}
+					{groupBoxes.map((box) => (
+						<div
+							key={`box:${box.id}`}
+							className="tb3t-groupbox"
+							data-group-box={box.id}
+							style={{
+								left: box.left,
+								top: TREE_HEADER_HEIGHT + box.top,
+								width: box.width,
+								height: box.height,
+							}}
+						/>
+					))}
 					{/* SVG 线层：箭头 / 关系色 / hover 淡化都在这层 */}
 					<svg
 						className="tb3t-links"

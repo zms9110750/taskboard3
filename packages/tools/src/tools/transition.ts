@@ -45,11 +45,15 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 		if (cardId === undefined || cardId === '') {
 			return inputFailure('必须给卡编号（id）。', '先调 taskboard_cards 拿编号。');
 		}
+		// TODO(审查): `holder ?? ''` 用空串当「没有身份」的哨兵（本文件两处 transitionAdvice 调用 + shared.ts 一处）——
+		// core 若把 '' 当真实 holder 会污染持有者显示。需 lead 推 core 收 holder?: string；在那之前至少注明哨兵约定。
 		const holder = holderOf(ctx);
 		const rawTo = readString(args, 'to');
 
 		/* ── 目标为空 ⇒ 只展示目标 + 条件，不执行 ── */
 		if (rawTo === undefined || rawTo.trim() === '') {
+			// TODO(审查): `'targets' in advice` 用结构嗅探代替判别字段（本文件两处 + shared.ts 一处）。
+			// 若 core 的 transitionAdvice 能给 `ok: true | false`，这三处可改成显式判别，core 改形状时编译期就能发现。需 lead 确认。
 			const advice = taskboard.transitionAdvice(workspaceId, cardId, holder ?? '');
 			if (!('targets' in advice)) return failureResult(advice, { action: '查询可转移目标失败' });
 			return okText(renderAdvice(advice, holder));
@@ -75,6 +79,8 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 		if (target === undefined) {
 			const available = advice.targets.filter((one) => one.available).map((one) => `${one.to}（${one.label}）`);
 			return toolFailure(
+				// TODO(审查): 这里传裸字符串 'TRANSITION_REJECTED'，而同文件另一处用 ErrorCode.CLAIM_REJECTED —— 风格不一致，
+				// 也让「所有错误码都走 ErrorCode」这条约束失去机械保证。可直接改：ErrorCode.TRANSITION_REJECTED。
 				'TRANSITION_REJECTED',
 				`当前状态「${labelOf(advice.status)}」没有指向「${labelOf(to)}」的合法动作。`,
 				{
@@ -100,11 +106,15 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 		 * 查询结果已经标了不可执行，这里是**防御性二次判定**（advice 是读快照，
 		 * 写之前的老实做法是问 core「现在允许吗」）。
 		 */
+		// TODO(审查): 这里先按动作名判「要不要过 UI 轴」，下面 switch 又把同样三个动作名列了一遍 —— 同一份知识两处维护。
+		// 可直接改：让 core 的 CARD_ACTION_OPTIONS 带上 needsUiGate，或直接在 switch 内按 case 判。
 		if (target.action === 'adopt' || target.action === 'claim' || target.action === 'release') {
 			const verdict = taskboard.judgeCardAction(target.action);
 			if (!verdict.ok) return actionLevelFailure(verdict, target.action);
 		}
 
+		// TODO(审查): 这个 switch 没有 default / assertNever。当前靠 handler 的返回类型兜（core 加第 5 种 action 时 tsc 会报），
+		// 但意图不明显。可直接改：末尾加 `default: return assertNever(target.action);`。
 		switch (target.action) {
 			case 'adopt': {
 				const adopted = await taskboard.adopt(workspaceId, cardId, 'ai', { allowAiAdopt: true });
@@ -157,6 +167,7 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 	return defineTool({
 		name: 'taskboard_transition',
 		description:
+			// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
 			'推进一张卡的状态：**采纳、领取、释放、普通转移都用这一个工具**，区别只在目标字符串。' +
 			'采纳 = 未指定 → 提交（设计/记录会改为「需要授权」）；领取 = 提交 → 处理中（只能对工作卡）；' +
 			'释放 = 处理中 → 提交。' +
@@ -169,6 +180,7 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 			properties: {
 				workspaceId: {
 					type: 'string',
+					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」。可直接改成「必填」。
 					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
@@ -190,6 +202,8 @@ function conditionFailure(
 	conditions: TransitionAdvice['targets'][number]['conditions'],
 	title: string,
 ): TaskboardToolResult {
+	// TODO(审查): 这段「原因：…（code=…；…）」+「阻塞卡：…」的排版与 render.ts renderAdvice 里的条件段逐字重复
+	// （两份文本真值）。可直接改：抽 conditionLines() 供两处共用（render.ts 那侧也留了同款 TODO）。
 	const lines = [`失败：${title}：`];
 	for (const condition of conditions) {
 		lines.push(`  原因：${condition.message}（code=${condition.code}；${condition.retryable ? '修正后可重试' : '不可重试'}）`);
@@ -207,6 +221,8 @@ function conditionFailure(
 }
 
 /** 条件里如果有 UI 轴（用户授权）拦截，下一步要明确告诉 AI「找用户开哪一档」。 */
+// TODO(审查): 两个 if + 一个 return undefined，本质就是一张 `Record<code, string>` 查表。
+// 另外 'CARD_ACTION_LEVEL_ADOPT' / 'CARD_ACTION_LEVEL_CLAIM' 是硬编码错误码；若 core 导出了常量应改引用。可直接改。
 function uiNextOf(conditions: TransitionAdvice['targets'][number]['conditions']): string | undefined {
 	const codes = new Set(conditions.map((one) => one.code));
 	if (codes.has('CARD_ACTION_LEVEL_ADOPT')) {
@@ -229,6 +245,8 @@ function actionLevelFailure(verdict: CardActionDenied, action: 'adopt' | 'claim'
 }
 
 /** 转移失败的下一步。 */
+// TODO(审查): 参数是裸 string 而不是 ErrorCode ⇒ 新增错误码不会有人提醒（同款还有 create.ts / update.ts 的 nextFor*）。
+// 可直接改：换成 ErrorCode + 一张集中默认表（见 failure.ts 文件尾 TODO）。
 function transitionNext(code: string): string {
 	switch (code) {
 		case 'CLAIM_REJECTED':
@@ -243,6 +261,7 @@ function transitionNext(code: string): string {
 }
 
 /** 「接下来能去哪」的文本视图由 `render.renderAdvice` 统一渲染（#6/#7 也用它）。 */
+// TODO(审查): 这是搬迁后剩下的一句孤立注释，下面没有代码 —— 删除或并到 resolveStateId 的文档里。可直接改。
 
 /** 把用户/模型给的目标字符串解析成状态 id（英文 id 或中文名）。 */
 export function resolveStateId(raw: string): (typeof TASK_STATES)[number] | undefined {
@@ -253,6 +272,8 @@ export function resolveStateId(raw: string): (typeof TASK_STATES)[number] | unde
 }
 
 /** 读一个允许空串的字符串字段。 */
+// TODO(审查): 与 update.ts 的 stringField、update-note.ts 的 readString、render.ts 的 stringField 是同一函数的四份副本。
+// 可直接改：删掉三份，改用 context.ts 新增的 strAllowEmpty()。
 function readString(args: unknown, key: string): string | undefined {
 	if (typeof args !== 'object' || args === null) return undefined;
 	const value = (args as Record<string, unknown>)[key];

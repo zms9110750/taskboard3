@@ -53,6 +53,8 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 				'先用 taskboard_raw_card 看当前 JSON，再拼路径。',
 			);
 		}
+		// TODO(审查): `Object.hasOwn(args as Record<string, unknown>, ...)` 绕过了 context.ts 的读取器；args 走到这里必为对象，
+		// 所以安全，但风格与其它参数读取不一致。可直接改：用 rawOf + 显式区分「缺 key」与「值为 undefined」。
 		if (!Object.hasOwn(args as Record<string, unknown>, 'value')) {
 			return inputFailure(
 				'必须给 value（替换后的 JSON 值）。',
@@ -82,6 +84,7 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 	return defineTool({
 		name: 'taskboard_update',
 		description:
+			// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
 			'按 JSON 路径替换一张卡的内容（**替换语义，不是合并**：路径之后整段换成你给的 value）。' +
 			'卡的原始结构是 `{ [章节key]: action payload }`（只含模板内 JSON，不含标题/状态/关系/备注）。' +
 			'**先调 taskboard_raw_card 看当前 JSON 与 key，再拼路径**。' +
@@ -93,6 +96,7 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 			properties: {
 				workspaceId: {
 					type: 'string',
+					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」。可直接改成「必填」。
 					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
@@ -112,6 +116,8 @@ export function createUpdateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 }
 
 /** 读一个必须存在、但允许空串的字符串字段。 */
+// TODO(审查): 本函数与 update-note.ts 的 readString、transition.ts 的 readString、render.ts 的 stringField 是同一函数的四份副本；
+// 可直接改：删掉三份，改用 context.ts 新增的 strAllowEmpty()。
 function stringField(args: unknown, key: string): string | undefined {
 	if (typeof args !== 'object' || args === null) return undefined;
 	const value = (args as Record<string, unknown>)[key];
@@ -119,12 +125,15 @@ function stringField(args: unknown, key: string): string | undefined {
 }
 
 /** 读必须存在的字符串字段（空串视为没给）。 */
+// TODO(审查): 这就是 context.ts 的 str() 换个名字重写了一遍（同样的判空、同样丢空串）。可直接改：直接 str(args, 'id')。
 function strArg(args: unknown, key: string): string | undefined {
 	const value = stringField(args, key);
 	return value === undefined || value === '' ? undefined : value;
 }
 
 /** 更新失败的下一步。 */
+// TODO(审查): 参数是裸 string 而不是 ErrorCode ⇒ 新增错误码不会有人提醒（同款还有 create.ts / transition.ts 的 nextFor*）。
+// 可直接改：换成 ErrorCode + 一张集中默认表（见 failure.ts 文件尾 TODO）。
 function nextForUpdateFailure(code: string): string {
 	switch (code) {
 		case 'CONTENT_INVALID':

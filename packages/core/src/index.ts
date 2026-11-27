@@ -17,6 +17,11 @@
  *
  * 状态转移规则不在本文件（`transition.ts` 由另一个成员负责）。本文件只提供
  * 读、建、改、删、工作空间、模板注册 —— 以及把校验接进建卡路径。
+ *
+ * TODO(审查) 不能就地修的三项：
+ *  · package.json `"sideEffects": false` 与 `template/builtin.ts` 模块求值即读盘冲突 ⇒ 打包器可能误裁；改惰性加载可解，可直接改。
+ *  · `test/memory-store.ts` 的 `save` 只存对象引用（真 SQLite 会序列化）⇒ 可能出现假绿；建议 save 时 `structuredClone`。
+ *  · 测试缺「空模板 update / replaceContentAt 后内容仍在」用例 ⇒ 下面那两处内容抹除 bug 无回归守卫，需补测试（需用户/测试负责人决定）。
  */
 
 import type { Failure } from '@taskboard/protocol';
@@ -163,6 +168,7 @@ export type StatusWriteResult = StatusWriteOk | Failure;
  *
  * 非数组 / 坏元素 ⇒ 静默降级成空。不能因为一条坏记录让权限系统不可用。
  */
+// TODO(审查): 手写 kv 校验可用已依赖的 zod（`.catch` 给默认值）统一替代 ⇒ 信任边界应收在一处，可直接改。
 function readDelta(raw: unknown): readonly string[] {
 	if (!Array.isArray(raw)) return Object.freeze([]);
 	return Object.freeze(raw.filter((one): one is string => typeof one === 'string'));
@@ -180,6 +186,7 @@ function readDeltaMap(raw: unknown): Record<string, readonly string[]> {
 }
 
 /** 从不可信的 kv 值里读 `name → string[]` 映射（组的成员）。 */
+// TODO(审查): 纯别名（实现等同 readDeltaMap）⇒ 可直接删掉并改调用点为 readDeltaMap。
 function readStringListMap(raw: unknown): Record<string, readonly string[]> {
 	return readDeltaMap(raw);
 }
@@ -284,6 +291,7 @@ function readLevel<T extends string>(
 	fallback: T,
 	key: string,
 ): T {
+	// TODO(审查): 本文件与 template/registry.ts、template/actions.ts 都在库层直接用 console.warn/error ⇒ 与 DSH/Cordis 的 ctx.logger 惯例不一致（推断，未查文档）；建议注入可选 logger、省略退回 console，可直接改。
 	if (raw === undefined) return fallback;
 	for (const choice of choices) if (choice === raw) return choice;
 	console.warn(
@@ -310,6 +318,7 @@ function readFlag(raw: string | undefined, fallback: boolean, key: string): bool
 }
 
 /** 任务板实例的公开面。 */
+// TODO(审查): 约 45 个方法把空间/卡/权限/模板/状态机混在一个门面 ⇒ 建议拆 workspaces / cards / policies / templates 子门面；属大改，需用户决定。
 export interface Taskboard {
 	/* ── 工作空间 ── */
 	listWorkspaces(includeArchived?: boolean): readonly Workspace[];
@@ -773,6 +782,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	 * （留着不碍事；真要清，`kvSet('toolPolicy:v1', undefined)` 一行）。
 	 */
 	const TOOL_POLICY_KEY = 'toolPolicy:v2';
+	// TODO(审查): 键名无 `taskboard.` 前缀，与 `taskboard.permission.*` 不一致；dsh-tools 无迁移/清理依赖（lead 已确认），改名要迁移，本次只记不改。
 
 	/**
 	 * 策略缓存 —— **初值从 kv 读一次**，之后写入时同步更新 + 整体写回。
@@ -1045,6 +1055,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		/* ── 工具权限（模型见 permission.ts 顶部） ── */
 
 		getToolPolicies() {
+			// TODO(审查): 注释承诺「返回浅拷贝」，这里返回缓存同一引用（内层 groups/templates/groupMembers 也是）⇒ 调用方可改到缓存；按注释返回拷贝或改注释，可直接改。
 			return toolPolicies;
 		},
 
@@ -1052,6 +1063,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			return effectiveToolsOf(toolPolicies, templateRef);
 		},
 
+		// TODO(审查): v1 三方法（setCommonPolicy / setGroupPolicy / setTemplatePolicy）与 v2 setToolPolicyScope 并存且写同一缓存 ⇒ 两套会各自演化；建议注明是 v2 的薄包装，可直接改。
 		async setCommonPolicy(delta) {
 			toolPolicies.common = cleanDelta(delta);
 			await saveToolPolicies();
@@ -1174,6 +1186,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			/* ── 3. 落库 ── */
 			if (scope === 'unclaimed') toolPolicies.unclaimed = configured;
 			else if (scope === 'claimed') toolPolicies.common = configured;
+			// TODO(审查): 清空模板档时仍写入 `ref: []` ⇒ kv 留空键；空数组时 delete 更干净，可直接改。
 			else if (templateRef !== undefined) toolPolicies.templates[templateRef] = configured;
 			await saveToolPolicies();
 
@@ -1227,6 +1240,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		async setCardActionLevel(level) {
+			// TODO(审查): 写入前不校验合法档位（坏值要等下次启动 readLevel 才 warn 回落）⇒ 运行期会静默持有脏档；按 CARD_ACTION_LEVELS 校验 + warn，可直接改。
 			cardActionLevel = level;
 			await store.kvSet(CARD_ACTION_LEVEL_KEY, level);
 		},
@@ -1245,6 +1259,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		async setAiStateChangeAllowed(allowed) {
+			// TODO(审查): 运行期不校验布尔（签名 `Promise<void>` 无法返回 Failure）⇒ 至少加 typeof 校验 + warn，可直接改。
 			aiStateChangeAllowed = allowed;
 			await store.kvSet(AI_STATE_CHANGE_KEY, allowed ? 'true' : 'false');
 		},
@@ -1274,6 +1289,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		async update(workspaceId, cardId, patch, actor: Actor = 'user') {
+			// TODO(审查): `actor` 默认 'user' 与 create.ts 里用户 2026-11-22「必须明确填写」的裁定冲突（本方法上方注释也反对默认值）⇒ 去默认值改必填可让漏传编译失败，需跨包调用方确认。
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -1303,6 +1319,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 
 			let sections: Record<string, CardSection> = { ...existing.sections };
 			if (patch.content !== undefined) {
+				// TODO(审查): 空模板时 `sections = {}` 后只遍历 template.sections（0 个）⇒ 已验证内容被整段抹掉却返回 ok；按 create.ts 的空模板分支补映射，可直接改（需补测试）。
 				const validated = schemas.validate(existing.template.ref, patch.content);
 				if (!validated.ok) return validated;
 				sections = {};
@@ -1330,6 +1347,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		async replaceContentAt(workspaceId, cardId, pointer, value, actor: Actor = 'user') {
+			// TODO(审查): `actor` 默认 'user' 同 update ⇒ 与「必须明确填写」的裁定冲突，去默认值可让漏传编译失败，需跨包调用方确认。
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -1373,6 +1391,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 
 			const sections: Record<string, CardSection> = {};
 			const template = templates.get(existing.template.ref);
+			// TODO(审查): 同 update 的空模板问题——这里只遍历 template.sections（0 个）⇒ 按路径改完的内容被整段丢弃；按 create.ts 的空模板分支补映射，可直接改（需补测试）。
 			if (template !== undefined) {
 				for (const section of template.sections) {
 					const payload = validated.payloads.get(section.id);
@@ -1390,6 +1409,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		async remove(workspaceId, cardId, actor: Actor = 'user') {
+			// TODO(审查): `actor` 默认 'user' 同上 ⇒ 与「必须明确填写」的裁定冲突，去默认值可让漏传编译失败，需跨包调用方确认。
 			const cards = load(workspaceId);
 			const existing = findCard(cards, cardId);
 			if (existing === undefined) {
@@ -1507,6 +1527,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			 *   放行一半（有别人时放、没别人时拦）会让 AI 看到不一致的行为。
 			 *   ⇒ 一律过总闸。
 			 */
+			// TODO(审查): 总闸关闭时 release 也被拦 ⇒ AI 可能既不能完成也不能释放、继续占「一次一张」配额；permission.ts 对 UI 轴写的是「release 永远放行」，是否放行需用户决定。
 			const blocked = aiStateChangeBlocked(existing, actor, '释放');
 			if (blocked !== null) return blocked;
 

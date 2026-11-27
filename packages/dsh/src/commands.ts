@@ -32,10 +32,19 @@
  * 两处不一致时不会报错，只会让某条入口悄悄放行。
  */
 
+/*
+ * TODO(审查) 汇总 —— 本包审查发现的问题（只记录，不改逻辑）
+ *
+ * TODO(审查): [测试] `test/commands.test.ts` 里 `it('注册了四个命令')` 被放进 `describe('/task-card')` 下，是分组笔误；测试本次禁止改，记录于此。
+ * TODO(审查): [决定记录] `bodyOf` 的 `JSON.stringify` 兜底、以及命令输出压成一行，都是有意的现状（无更合适的现成库），不是待办。
+ */
+
 import type { Card, Taskboard } from '@taskboard/core';
 import { labelOf } from '@taskboard/protocol';
 
 /** 命令注册器的窄形状。 */
+// TODO(审查): [⑥] 本接口与 `src/types.ts` 的 `CommandsLike` 是同一形状的两份声明，且那一份**少了 `input`/`recordInput`**；
+//   `registerCommands(ctx.commands, …)` 编得过是靠方法参数双变（bivariance），不是设计保证。可直接改：合并成一份。
 export interface CommandRegistryLike {
 	register(command: {
 		name: string;
@@ -98,6 +107,8 @@ export function registerCommands(registry: CommandRegistryLike, deps: CommandDep
 				return { kind: 'success', text: '任务板还没有任何工作空间。' };
 			}
 
+			// TODO(审查): [①] `try { defaultWorkspaceId() } catch` 在本文件复制三处，兜底语义还不一致（这里是空串，后两处是 error）。
+			//   可直接改：抽 `safeDefaultWorkspace(): Promise<string | undefined>`。
 			let current: string;
 			try {
 				current = await deps.defaultWorkspaceId();
@@ -112,6 +123,8 @@ export function registerCommands(registry: CommandRegistryLike, deps: CommandDep
 			}
 
 			const lines: string[] = [`工作空间（${workspaces.length} 个）：`];
+			// TODO(审查): [①] 每个空间各调一次 `list(ws.id)` 只为取数量（N+1）；上面已经整表拿过一次 cards，同理可复用。
+			//   低频命令，可留；真要省就在循环里复用已取的数据。
 			for (const ws of workspaces) {
 				const mark = ws.id === current ? '★' : ' ';
 				const archived = ws.archived ? '（已归档）' : '';
