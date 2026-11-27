@@ -18,14 +18,14 @@
  * 状态转移规则不在本文件（`transition.ts` 由另一个成员负责）。本文件只提供
  * 读、建、改、删、工作空间、模板注册 —— 以及把校验接进建卡路径。
  *
- * TODO(审查) 不能就地修的三项：
- *  · package.json `"sideEffects": false` 与 `template/builtin.ts` 模块求值即读盘冲突 ⇒ 打包器可能误裁；改惰性加载可解，可直接改。
+ * TODO(审查) 不能就地修的两项：
  *  · `test/memory-store.ts` 的 `save` 只存对象引用（真 SQLite 会序列化）⇒ 可能出现假绿；建议 save 时 `structuredClone`。
  *  · 测试缺「空模板 update / replaceContentAt 后内容仍在」用例 ⇒ 下面那两处内容抹除 bug 无回归守卫，需补测试（需用户/测试负责人决定）。
  */
 
 import type { Failure } from '@taskboard/protocol';
 import { DRAFT, ErrorCode, failure, labelOf, type Actor, type TaskState } from '@taskboard/protocol';
+import { z } from 'zod';
 
 import type { Card, CardSection, CardUnread, WorkspaceId } from './card.ts';
 import { findCard, isEndedCard, withHistory, withoutDeleted } from './card.ts';
@@ -164,17 +164,24 @@ export interface StatusWriteOk {
 export type StatusWriteResult = StatusWriteOk | Failure;
 
 /**
+ * 一份增量（`string[]`）的清洗器。
+ *
+ * 信任边界收在 zod：kv 里的值可能来自旧版本 / 手改，形状不对就 `.catch([])`
+ * 静默降级 —— 不能因为一条坏记录让权限系统不可用。
+ */
+const DELTA_SCHEMA = z.array(z.string()).catch([]);
+
+/**
  * 从不可信的 kv 值里读一份**增量**（`string[]`）。
  *
- * 非数组 / 坏元素 ⇒ 静默降级成空。不能因为一条坏记录让权限系统不可用。
+ * 非数组 / 坏元素 ⇒ 静默降级成空（`.catch` 的默认值）。返回冻结数组，
+ * 与 `cleanDelta` 的产出同一形状，调用方不要改它。
  */
-// TODO(审查): 手写 kv 校验可用已依赖的 zod（`.catch` 给默认值）统一替代 ⇒ 信任边界应收在一处，可直接改。
 function readDelta(raw: unknown): readonly string[] {
-	if (!Array.isArray(raw)) return Object.freeze([]);
-	return Object.freeze(raw.filter((one): one is string => typeof one === 'string'));
+	return Object.freeze(DELTA_SCHEMA.parse(raw));
 }
 
-/** 从不可信的 kv 值里读 `name → 增量` 映射。 */
+/** 从不可信的 kv 值里读 `name → 增量` 映射（组的成员也走它）。 */
 function readDeltaMap(raw: unknown): Record<string, readonly string[]> {
 	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
 	const out: Record<string, readonly string[]> = {};
@@ -183,12 +190,6 @@ function readDeltaMap(raw: unknown): Record<string, readonly string[]> {
 		out[key] = readDelta(value);
 	}
 	return out;
-}
-
-/** 从不可信的 kv 值里读 `name → string[]` 映射（组的成员）。 */
-// TODO(审查): 纯别名（实现等同 readDeltaMap）⇒ 可直接删掉并改调用点为 readDeltaMap。
-function readStringListMap(raw: unknown): Record<string, readonly string[]> {
-	return readDeltaMap(raw);
 }
 
 /**
@@ -823,7 +824,7 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				unclaimed: readDelta(source['unclaimed']),
 				common: readDelta(source['common']),
 				groups: readDeltaMap(source['groups']),
-				groupMembers: readStringListMap(source['groupMembers']),
+				groupMembers: readDeltaMap(source['groupMembers']),
 				templates: readDeltaMap(source['templates']),
 			};
 		} catch {
@@ -1055,8 +1056,18 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		/* ── 工具权限（模型见 permission.ts 顶部） ── */
 
 		getToolPolicies() {
-			// TODO(审查): 注释承诺「返回浅拷贝」，这里返回缓存同一引用（内层 groups/templates/groupMembers 也是）⇒ 调用方可改到缓存；按注释返回拷贝或改注释，可直接改。
-			return toolPolicies;
+			/*
+			 * 浅拷贝（与缓存注释一致）：`unclaimed` / `common` 与各映射的**值数组**
+			 * 都是冻结的，所以换一层容器对象 + 换一层映射即可防止调用方改到缓存；
+			 * 不必深拷贝。
+			 */
+			return {
+				unclaimed: toolPolicies.unclaimed,
+				common: toolPolicies.common,
+				groups: { ...toolPolicies.groups },
+				groupMembers: { ...toolPolicies.groupMembers },
+				templates: { ...toolPolicies.templates },
+			};
 		},
 
 		effectiveToolsOf(templateRef) {
@@ -1186,8 +1197,11 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			/* ── 3. 落库 ── */
 			if (scope === 'unclaimed') toolPolicies.unclaimed = configured;
 			else if (scope === 'claimed') toolPolicies.common = configured;
-			// TODO(审查): 清空模板档时仍写入 `ref: []` ⇒ kv 留空键；空数组时 delete 更干净，可直接改。
-			else if (templateRef !== undefined) toolPolicies.templates[templateRef] = configured;
+			else if (templateRef !== undefined) {
+				/* 清空模板档 ⇒ **删键**（不写 `ref: []`，免得 kv 里留一堆空键）。 */
+				if (configured.length === 0) delete toolPolicies.templates[templateRef];
+				else toolPolicies.templates[templateRef] = configured;
+			}
 			await saveToolPolicies();
 
 			return {
@@ -1240,7 +1254,18 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		async setCardActionLevel(level) {
-			// TODO(审查): 写入前不校验合法档位（坏值要等下次启动 readLevel 才 warn 回落）⇒ 运行期会静默持有脏档；按 CARD_ACTION_LEVELS 校验 + warn，可直接改。
+			/*
+			 * 前置校验。签名是 `Promise<void>`（没有 `Failure` 通道），所以与
+			 * `readLevel` 同一取舍：**warn 且不写入**，不抛。
+			 * 不校验的话，脏档会在当前进程里静默生效、要到下次启动才回落 ——
+			 * 那是最难查的一类（运行期行为和 kv 里的值不一致）。
+			 */
+			if (!CARD_ACTION_LEVELS.includes(level)) {
+				console.warn(
+					`[taskboard3-core] setCardActionLevel 收到非法档位「${String(level)}」，已忽略（未写入）。`,
+				);
+				return;
+			}
 			cardActionLevel = level;
 			await store.kvSet(CARD_ACTION_LEVEL_KEY, level);
 		},
@@ -1259,7 +1284,16 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 		},
 
 		async setAiStateChangeAllowed(allowed) {
-			// TODO(审查): 运行期不校验布尔（签名 `Promise<void>` 无法返回 Failure）⇒ 至少加 typeof 校验 + warn，可直接改。
+			/*
+			 * 运行期校验布尔（签名 `Promise<void>`，没有 `Failure` 通道）。
+			 * 非布尔值 warn 且不写入 —— 别把 `'false'` 这种字符串当成真值写进缓存。
+			 */
+			if (typeof allowed !== 'boolean') {
+				console.warn(
+					`[taskboard3-core] setAiStateChangeAllowed 收到非布尔值「${String(allowed)}」，已忽略（未写入）。`,
+				);
+				return;
+			}
 			aiStateChangeAllowed = allowed;
 			await store.kvSet(AI_STATE_CHANGE_KEY, allowed ? 'true' : 'false');
 		},

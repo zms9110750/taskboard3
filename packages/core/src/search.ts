@@ -13,13 +13,6 @@
  * | `createSearch({ groupOf })` 必传注入 | 直接 import `STATUS_GROUP_OF` —— 只有一份映射 |
  * | 字段名 `template` / `templateRef` 两边不一致 | 统一 `templateRef`（这曾是静默失效的 bug） |
  *
- * **仍然允许替换**：「并入 core」不等于「不能换」。`core` 的
- * `TaskboardOptions.search` 保留，接口 `SearchStrategy` 不变。
- *
- * TODO(审查): 上面两句与下面的「不可替换」矛盾（旧版残留），且「一条铁律：纯函数」标题重复两次 ⇒ 删掉这两句与重复标题，可直接改。
- *
- * ## 一条铁律：纯函数
- *
  * ## 不可替换（用户裁定）
  *
  * > 「不。是把搜索并入 core 强依赖。ui 和 tool 都强依赖搜索，替换了搜索，

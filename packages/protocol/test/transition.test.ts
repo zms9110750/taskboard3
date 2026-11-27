@@ -24,8 +24,7 @@
  * TODO(审查) 汇总（测试面）：
  * ① 全包只有本文件 —— status/relation/error 的导出零直接测试（labelOf 回落、statesInGroup 分组、ErrorCode↔ERROR_HINTS、
  *    RELATION_KINDS↔LINK_KINDS 的 id/displayName、isFailure 拒脏 code）；可直接补，不需改产品。
- * ② 缺“按钮表 (kind,from,to) 唯一性”测试（重复行会让 .find 取第一条、UI 渲染两个按钮），也缺 index.ts 文件头承诺的 no-node-imports 守卫。
- * ③ judge() 的 `as never` 三连掩盖了签名与脏输入的关系；lead 已确认 core 调用处传 TaskState ⇒ 不是消费方缺陷，优先级低。
+ * ② judge() 的 `as never` 三连掩盖了签名与脏输入的关系；lead 已确认 core 调用处传 TaskState ⇒ 不是消费方缺陷，优先级低。
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -86,6 +85,16 @@ describe('词汇一致性', () => {
 			assert.ok(one.label.length > 0, `${one.kind} ${one.from}->${one.to} 缺文案`);
 			assert.ok(one.actors.length > 0, `${one.kind} ${one.from}->${one.to} 没有 actor`);
 		}
+	});
+
+	it('按钮表 (kind, from, to) 唯一', () => {
+		/*
+		 * 重复行不会让 tsc 报错：判定 `.find` 只取第一条，UI 却会渲染两个按钮
+		 * （点哪个都变成同一个动作）⇒ 必须用运行时唯一性钉住。
+		 */
+		const keys = BUTTON_ACTIONS.map((one) => `${one.kind}|${one.from}|${one.to}`);
+		const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
+		assert.deepEqual(duplicates, [], `重复的按钮：${duplicates.join('、')}`);
 	});
 });
 

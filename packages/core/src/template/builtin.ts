@@ -16,7 +16,9 @@
  *
  * 1. **不是「持久化 IO」那一类** —— 它是包自带的配置，和磁盘上的用户数据无关
  * 2. **只在包里** —— YAML 在 `packages/core/templates/`，随包发布（`files` 带 `templates`）
- * 3. **启动时加载** —— 本模块**被 import 的那一刻**就读完，之后全在内存
+ * 3. **启动时加载一次** —— 第一次 `builtinTemplates()` 调用时读完并缓存，之后全在内存
+ *    （首次调用发生在 `createTaskboard()` 的装配里；不在模块求值时就碰磁盘，
+ *    否则与 `package.json` 的 `"sideEffects": false` 冲突，打包器可能误裁）
  * 4. **包自己的路径** —— 用本文件的 `import.meta.url` 反推包根。
  *    ⚠ **不是**由 `@taskboard/dsh` 替 core 解析（那会让 dsh 知道 core 的目录布局，
  *    依赖方向反了 —— 上一版就是这么错的）。
@@ -35,7 +37,7 @@
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, extname, join } from 'node:path';
+import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parse as parseYaml } from 'yaml';
@@ -63,12 +65,8 @@ const TEMPLATES_SUBDIR = 'templates';
  * 两者深度相同（`<pkg>/<src|lib>/template/`）⇒ 同一句 `../..` 两边都对。
  */
 
-const here = dirname(fileURLToPath(import.meta.url));
-
-// TODO(审查): 手拼 `dirname + join` 可用 `new URL('../..', import.meta.url)` 一步得到包根 ⇒ 少一层路径推断，可直接改。
-
 /** 包根目录（绝对路径）。 */
-const PACKAGE_ROOT = join(here, '..', '..');
+const PACKAGE_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 /**
  * 模板目录（绝对路径）。
@@ -166,13 +164,20 @@ function readBuiltinTemplates(): BuiltinTemplates {
 }
 
 /**
- * 包内模板的加载结果 —— **模块求值时就完成**（= 用户说的「启动时就要加载」）。
+ * 惰性缓存：**第一次调用时读盘**，之后全在内存。
  *
- * 之后的每一次 `builtinTemplates()` / `builtinTemplateErrors()` 都是读这份常量，
- * **不再碰磁盘**。
+ * 为什么不在模块求值时就读：`package.json` 声明了 `"sideEffects": false`，
+ * 模块求值即读盘会让打包器把它当「可裁掉 / 可重排」的副作用（顺序问题），
+ * 而「加载一次」的语义用首次调用 memo 同样成立 —— 首次调用发生在
+ * `createTaskboard()` 的装配里，之后行为完全等价。
  */
-// TODO(审查): 模块求值即读盘（import 副作用），而 package.json 声明 `"sideEffects": false` ⇒ 打包器可能误裁/顺序问题；改成首次调用时惰性 memo，行为等价，可直接改。
-const BUILTIN: BuiltinTemplates = readBuiltinTemplates();
+let cached: BuiltinTemplates | undefined;
+
+/** 取（或首次读盘并缓存）内置模板加载结果。 */
+function builtin(): BuiltinTemplates {
+	cached ??= readBuiltinTemplates();
+	return cached;
+}
 
 /**
  * 取内置模板。
@@ -180,7 +185,7 @@ const BUILTIN: BuiltinTemplates = readBuiltinTemplates();
  * @returns 加载成功的模板（`readonly`，可直接 for 循环注册）
  */
 export function builtinTemplates(): readonly TemplateDef[] {
-	return BUILTIN.templates;
+	return builtin().templates;
 }
 
 /**
@@ -189,5 +194,5 @@ export function builtinTemplates(): readonly TemplateDef[] {
  * @returns 一个坏文件一条；正常情况下为空
  */
 export function builtinTemplateErrors(): readonly BuiltinTemplateError[] {
-	return BUILTIN.errors;
+	return builtin().errors;
 }

@@ -76,15 +76,16 @@ export const ErrorCode = {
 /** 错误码的联合类型。 */
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
-// TODO(审查): 类型标注 + Object.freeze ⇒ 少键会报、多键/拼错键不报（AGENTS 3.7）。
-// 可直接改：字面量先 `satisfies Record<ErrorCode,string>` 再转 Readonly（status.ts 的 GROUP_LABELS/STATUS_GROUP_OF/STATE_LABELS 同）。
 /**
  * 每个错误码的**默认下一步**。
  *
  * 给 AI 工具和 UI 用：AI 工具把它拼进返回文字（「下一步可以……」），
  * UI 用它决定「显示重试按钮 / 显示下拉 / 什么都不做」。
+ *
+ * ⚠ 用 `satisfies` 而不是类型标注（AGENTS 3.7）：`Object.freeze({…})` 的实参位置
+ *   不触发多余属性检查 ⇒ 多一个键 / 拼错键都不会报错；`satisfies` 会。
  */
-export const ERROR_HINTS: Readonly<Record<ErrorCode, string>> = Object.freeze({
+export const ERROR_HINTS = Object.freeze({
 	CARD_NOT_FOUND: '编号不存在。用列表工具查一下可用编号。',
 	WORKSPACE_NOT_FOUND: '空间不存在或已归档。用空间列表确认。',
 	TEMPLATE_NOT_FOUND: '模板不存在。用注册表工具查可用模板。',
@@ -99,7 +100,7 @@ export const ERROR_HINTS: Readonly<Record<ErrorCode, string>> = Object.freeze({
 	ACTION_NOT_FOUND: 'action 未注册。用注册表工具查可用 action。',
 	PORT_UNAVAILABLE: '该能力未装配；检查插件是否完整。',
 	INTERNAL_ERROR: '内部错误；这是缺陷，请报告。',
-});
+} satisfies Record<ErrorCode, string>);
 
 /**
  * 一条字段级问题（UI 标红 / AI 读文字）。
@@ -147,14 +148,26 @@ export function failure(
 	};
 }
 
-// TODO(审查): ① 只查 typeof code==='string'，`{ok:false,code:'TYPO'}` 会被判为 Failure，消费方随后 ERROR_HINTS[code] 得 undefined。
-// ② 它本身是死导出（lead 核实四个包 src 零命中；外部 MCP 未知）。可直接改：加 isErrorCode 校验并删/标 deprecated；要留公开面需用户定。
-/** 是否是失败结果。 */
+/** 全部错误码（运行期清单，供 `isFailure` 拒脏 code）。 */
+const ERROR_CODES: readonly string[] = Object.freeze(Object.values(ErrorCode));
+
+/** 是否是已知错误码。 */
+function isErrorCode(value: unknown): value is ErrorCode {
+	return typeof value === 'string' && ERROR_CODES.includes(value);
+}
+
+/**
+ * 是否是失败结果。
+ *
+ * ⚠ **校验 `code` 属于 `ErrorCode`**，不只查它是字符串：
+ *   `{ ok: false, code: 'TYPO' }` 被判成 `Failure` 的话，消费方随后
+ *   `ERROR_HINTS[code]` 会拿到 `undefined`（静默）。
+ */
 export function isFailure(value: unknown): value is Failure {
 	return (
 		typeof value === 'object' &&
 		value !== null &&
 		(value as { ok?: unknown }).ok === false &&
-		typeof (value as { code?: unknown }).code === 'string'
+		isErrorCode((value as { code?: unknown }).code)
 	);
 }

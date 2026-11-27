@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" fill="none" role="img" aria-label="Taskboard storage">
+	<ellipse cx="18" cy="9" rx="10" ry="4" stroke="currentColor" stroke-width="2.2"/>
+	<path d="M8 9v18c0 2.2 4.5 4 10 4s10-1.8 10-4V9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+	<path d="M8 18c0 2.2 4.5 4 10 4s10-1.8 10-4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+</svg>
