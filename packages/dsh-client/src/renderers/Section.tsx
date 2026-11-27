@@ -169,21 +169,6 @@ export function Section(props: SectionProps): ReactNode {
 	);
 }
 
-// TODO(审查): 这里连续两段 JSDoc（`/** 按 pure 判出来的形态选渲染器。 */` 与下一段）指向同一个 SectionContent，是重复注释；可直接合并（不改行为）。
-/** 按 pure 判出来的形态选渲染器。 */
-
-/** 按 pure 判出来的形态**查表**选渲染器（不是 switch）。 */
-/**
- * 内容分发 —— **查运行时注册表**，不是查本地字典。
- *
- * 用户 2026-11-22：
- * > 「这种外来的东西按照特征或者头在运行时注册和分发。应该有标准做法吧。
- * >   无论是 DI 还是责任链还是更简单的字典。这个问题很难吗？」
- *
- * ⇒ 唯一分发点：`rendererOf(kind)`。内置三件由 `initRenderers()` 注册，
- *   第三方可以 `registerRenderer('foo', FooContent)` 追加。
- *   没注册的 kind 走 `UnknownBlock`（展开原始 JSON，不白屏）。
- */
 /** `SectionContent` 的属性 —— 内容组件共享同一份。 */
 interface SectionContentProps {
 	readonly view: SectionView;
@@ -196,6 +181,17 @@ interface SectionContentProps {
 	readonly onAsk?: (sectionId: string, groupIndex: number, action: AskAction) => void;
 }
 
+/**
+ * 内容分发 —— **查运行时注册表**，不是查本地字典。
+ *
+ * 用户 2026-11-22：
+ * > 「这种外来的东西按照特征或者头在运行时注册和分发。应该有标准做法吧。
+ * >   无论是 DI 还是责任链还是更简单的字典。这个问题很难吗？」
+ *
+ * ⇒ 唯一分发点：`rendererOf(kind)`。内置三件由 `initRenderers()` 注册，
+ *   第三方可以 `registerRenderer('foo', FooContent)` 追加。
+ *   没注册的 kind 走 `UnknownBlock`（展开原始 JSON，不白屏）。
+ */
 // TODO(审查): 这里两处断言（:194 的 `as unknown as {title,json}`、:202 的 `props as unknown as RendererProps`）都是 render-registry.ts:91 `view?: unknown` 的连带成本，不是语言固有摩擦；把 view/onAsk 收紧成具体类型后应能删掉，需先定注册表公共类型。
 function SectionContent(props: SectionContentProps): ReactNode {
 	const Content = rendererOf(props.view.kind);

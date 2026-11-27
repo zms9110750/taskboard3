@@ -1,4 +1,3 @@
-// TODO(审查): 文件头 :11 仍把纯逻辑路径写成 `dev/pure/markdown-tokens.ts`，实际已迁到 src/pure/markdown-tokens.ts；同文件 :91-107 的 `markdownChildren`/`renderMarkdown` 在 src/test/dev 全零引用（既无产品调用也无测试覆盖）。可直接改注释、删死导出或标 @internal。
 /**
  * markdown 渲染组件 —— **薄到不需要单测的机械映射**。
  *
@@ -10,7 +9,7 @@
  * ## 为什么这么薄
  *
  * 所有**判决**（哪些标签允许、哪些链接放行、哪些整棵丢弃）都在
- * `dev/pure/markdown-tokens.ts` —— 那是纯函数，`node --test` 直接跑，
+ * `src/pure/markdown-tokens.ts` —— 那是纯函数，`node --test` 直接跑，
  * 46 条测试含 12 条 XSS 用例。
  *
  * 本文件只做 `MdNode → ReactNode` 的 1:1 映射：
@@ -32,7 +31,7 @@
 
 import { createElement, type ReactNode } from 'react';
 
-import { renderMarkdownNodes, type MdElement, type MdNode } from '../pure/markdown-tokens.ts';
+import { renderMarkdownNodes, type MdNode } from '../pure/markdown-tokens.ts';
 
 /** 组件属性。 */
 export interface MarkdownProps {
@@ -77,34 +76,4 @@ export function Markdown(props: MarkdownProps): ReactNode {
 	const nodes = renderMarkdownNodes(props.source);
 	const className = props.className === undefined ? 'md' : `md ${props.className}`;
 	return createElement('div', { className }, nodes.map(renderNode));
-}
-
-/**
- * 只拿节点、不套 `.md` 容器 —— 给「外面已经有容器」的场合用。
- *
- * @param source markdown 源码
- */
-// TODO(审查): `markdownChildren` 只被下面的 `renderMarkdown` 调用，而 `renderMarkdown` 在 src/test/dev 全零引用 ⇒ 两个导出都是死代码（组件 `<Markdown>` 才是在用的）。可删或标 @internal；是否保留给未来调用方需用户决定。
-export function markdownChildren(source: string): ReactNode[] {
-	return renderMarkdownNodes(source).map(renderNode);
-}
-
-/**
- * `renderMarkdown(source): ReactNode` —— 任务的**收敛点**（旧版同名函数）。
- *
- * 与 `<Markdown source={…} />` 等价，给「不在 JSX 里」的调用方用
- * （比如以后 `section.ts` 要返回 `ReactNode` 而不是自己拼字符串）。
- *
- * ⚠ **换库点只有这一个**：将来若把 marked 换成别的库，
- * 改 `dev/pure/markdown-tokens.ts` 就够了，本函数与所有调用方都不用动。
- *
- * @param source markdown 源码
- * @param className 额外类名（可选，追加在 `md` 后面）
- */
-export function renderMarkdown(source: string, className?: string): ReactNode {
-	return createElement(
-		'div',
-		{ className: className === undefined ? 'md' : `md ${className}` },
-		markdownChildren(source),
-	);
 }
