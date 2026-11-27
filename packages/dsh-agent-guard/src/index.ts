@@ -100,13 +100,10 @@ export const name = 'taskboard3-agent-guard';
  * · `tools`           —— DSH 工具注册表 + guard
  * · `webServer`       —— 挂 `GET /api/tools`
  *
- * ⚠ **四个都要列**（AGENTS §3.10 的教训）：少列一个不报「缺依赖」，
+ * ⚠ **三个都要列**（AGENTS §3.10 的教训）：少列一个不报「缺依赖」，
  *   而是 `apply` 里第一次读 `ctx.<服务>` 时才抛 `cannot get property … without inject`，
  *   症状是 profile 启动报 `dsh: warning: 1 entry did not activate`。
  */
-// TODO(审查): 上面注释说「四个都要列」，但这里只有 3 个；第四项 webServer 已不再使用（路由改走
-//   @taskboard/dsh 的 prefix handler，见 http.ts:36-45），apply 末尾 effect label 也仍写着 /api/tools。
-//   可直接改：注释改「三个」、label 去掉 /api/tools。
 export const inject = ['taskboard3Core', 'taskboard3Store', 'tools'] as const;
 
 /** 本插件行的配置（暂无）。 */
@@ -147,7 +144,18 @@ export interface ApplyContext {
 			handler: (req: never, res: never) => void | Promise<void>;
 		}): () => void;
 	};
-	readonly subagents?: unknown;
+	/* subagents 属性读取已随 2026-11-27 DI 裁定移除 —— 只走上面的 ctx.inject cell。 */
+	/**
+	 * `ctx.inject`（cordis 的可选服务注入）。
+	 *
+	 * 用户 `2026-11-27` 裁定：身份（subagents）不再走 `ctx.get` + 手写形状检测，
+	 * 改走 DI —— 服务出现时更新 cell、消失时清空，guard 每次判定读当前值
+	 * （修复旧实现「服务晚到就永久拿不到，holder 永远回落 UUID」的问题）。
+	 */
+	inject?(
+		deps: readonly string[],
+		callback: (scope: { readonly [service: string]: unknown }) => (() => void) | void,
+	): void;
 	/**
 	 * `ctx.loader`（cordis loader）。
 	 *
@@ -174,16 +182,22 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	const kv = ctx.taskboard3Store;
 
 	/*
-	 * `ctx.subagents` 是**可选**服务 —— 用可选访问读它，不能写进 inject。
-	 * 没有 subagent 环境的 profile 也该能用（holder 回落 `agent.id`）。
+	 * `ctx.subagents` 是**可选**服务 —— 走 DI（用户 2026-11-27 裁定），不进静态 inject。
+	 *
+	 * · 服务出现 ⇒ cell 更新；服务消失 ⇒ cell 清空（返回的清理函数由 cordis 调）。
+	 * · guard 每次判定都读 cell 的**当前值**（`resolveSubagents`）—— 晚激活的
+	 *   subagents 也能被看到，不再有「晚到就永久拿不到」。
+	 * · 没有 `ctx.inject`（假 ctx / 老宿主）⇒ cell 一直是 `undefined`，
+	 *   holder 回落 `agent.id` —— 与旧行为里「没有 subagents 服务」一致。
 	 */
-	// TODO(审查): 可选服务有 3 种读法：这里 ctx.get 优先/否则读属性并强转，下面 optionalService 只走
-	// ctx.get，再下面 loader 又 `ctx.loader ?? optionalService('loader')`。可直接改：全部收敛到一个
-	// optionalService（subagents/loader 也走它），同时删掉本行的强转。
-	// TODO(审查): DSH 实践（dsh-doc references/practices.md:20）建议可选服务走 inject / ctx.inject([...])，
-	// 而不是 ctx.get + 手写形状检测（hasSubagents / typeof list）。需用户决定：改成 ctx.inject 要重构。
-	const subagents =
-		typeof ctx.get === 'function' ? ctx.get('subagents') : (ctx as { subagents?: unknown }).subagents;
+	let subagentsCell: unknown;
+	ctx.inject?.(['subagents'], (scope) => {
+		subagentsCell = scope.subagents;
+		return () => {
+			subagentsCell = undefined;
+		};
+	});
+	const resolveSubagents = (): unknown => subagentsCell;
 
 	/* ① 档位读写 + 对外服务（`dsh` 的 /api/permission 和 composer 权限框都靠它）。 */
 
@@ -243,12 +257,12 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	};
 	ctx.provide(AGENT_GUARD_SERVICE, service);
 
-	/* ② 入侵式 guard —— 加装在 DSH 的工具管线上。 */
-	const permissionGuard = createPermissionGuard({ taskboard, kv, subagents });
+	/* ② 入侵式 guard —— 加装在 DSH 的工具管线上（subagents 每次判定时经 DI cell 解析）。 */
+	const permissionGuard = createPermissionGuard({ taskboard, kv, resolveSubagents });
 	const disposeGuard = ctx.tools.guard(permissionGuard);
 
 	/* ③ 两个 AI 工具（写 / 读三档策略）—— 定义在本包，不再进 `@taskboard/tools`。 */
-	const tools = createAgentGuardTools({ taskboard, kv, subagents });
+	const tools = createAgentGuardTools({ taskboard, kv, resolveSubagents });
 	const disposeTools = tools.map((tool) => ctx.tools.register(tool));
 
 	const disposeAll = (): void => {
@@ -265,7 +279,7 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	 * ⚠ `ctx.effect(execute)` 的 `execute` 会被**立即调用**，返回值才被收作 disposer。
 	 *   写 `ctx.effect(disposeAll)` 会让它立刻执行 —— 工具刚注册就被删掉。
 	 */
-	ctx.effect?.(() => disposeAll, 'taskboard3-agent-guard: guard + policy tools + /api/tools');
+	ctx.effect?.(() => disposeAll, 'taskboard3-agent-guard: guard + policy tools');
 }
 
 /** `ctx.tools` 上本包用到的 `schemas()` 最小面（DSH `ToolsService`）。 */
