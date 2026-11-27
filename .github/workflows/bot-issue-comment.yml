@@ -2,10 +2,11 @@ name: bot-issue-comment
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, review/todo-audit]
-    paths:
-      - docs/BOT-COMMENT.md
+    inputs:
+      issue:
+        description: '目标 issue 编号'
+        required: true
+        default: '4'
 
 permissions:
   contents: read
@@ -14,25 +15,25 @@ permissions:
 jobs:
   post:
     runs-on: ubuntu-latest
+    env:
+      ISSUE: ${{ inputs.issue }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: 删除旧评论（用户账号 + 之前的 bot 评论）
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 删除该 issue 旧的 bot 评论（幂等，可重复发布）
         run: |
           set -euo pipefail
-          gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/comments/7203501268" || true
-          gh api "repos/$GITHUB_REPOSITORY/issues/4/comments" --paginate \
+          gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --paginate \
             --jq '.[] | select(.user.login=="github-actions[bot]") | .id' \
             | while read -r id; do
                 [ -n "$id" ] && gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id" || true
               done
 
       - name: 以 github-actions[bot] 发评论
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          jq -Rs '{body: .}' docs/BOT-COMMENT.md \
-            | gh api -X POST "repos/$GITHUB_REPOSITORY/issues/4/comments" --input -
+          jq -Rs '{body: .}' <<< "$BODY" \
+            | gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --input -
+        env:
+          BODY: ${{ inputs.body }}
