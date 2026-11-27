@@ -10,7 +10,10 @@
  * ## 这个开关拦的是**角色**，不是能力
  *
  * 关掉之后：
- * - `actor` / `trigger` 是 `ai` 的改卡状态操作 ⇒ 拒（`AI_STATE_CHANGE_DISABLED`）
+ * - `actor` / `trigger` 是 `ai` 的**获得**权力的操作（领取 / 采纳 / 转移）
+ *   ⇒ 拒（`AI_STATE_CHANGE_DISABLED`）
+ * - `ai` 的 **release（归还）⇒ 永远放行**（lead `2026-11-28` 裁定，依据 #12 状态机
+ *   设计与 #9 动机 3：拦住归还会让 AI 既不能完成也不能释放、占死「一次一张」配额）
  * - `user` 点按钮 ⇒ 照常
  * - `system` 自动重算 ⇒ 照常（它不是 AI 干的）
  */
@@ -101,7 +104,7 @@ describe('总闸：角色为 ai 的改卡状态操作', () => {
 		}
 	});
 
-	it('关掉之后：AI 释放被拒；`user` 释放照常', async () => {
+	it('★ 关掉之后：AI 释放**仍放行**（归还权力不受总闸限制）；`user` 释放照常', async () => {
 		const { tb, ws } = await makeBoard(TEMPLATES);
 		try {
 			const id = await makeCard(tb, ws, 't-work', '要释放的卡');
@@ -112,12 +115,62 @@ describe('总闸：角色为 ai 的改卡状态操作', () => {
 
 			await tb.setAiStateChangeAllowed(false);
 
-			const blocked = await tb.release(ws, id, 'ai', 'loop-r');
-			assert.equal(blocked.ok, false);
-			if (isFailure(blocked)) assert.equal(blocked.code, ErrorCode.AI_STATE_CHANGE_DISABLED);
+			/*
+			 * 裁定（lead `2026-11-28`，依据 #12 状态机设计与 #9 动机 3）：
+			 * **AI 归还权力不受总闸限制** —— 总闸拦的是「获得」（领取 / 采纳 /
+			 * 转移），release 是「归还」。拦住它 AI 既不能完成也不能释放，
+			 * 会占死「一次一张」配额 ⇒ 违背 #9 动机 3（限制越权不是制造死锁）。
+			 */
+			const released = await tb.release(ws, id, 'ai', 'loop-r');
+			assert.equal(released.ok, true, released.ok ? '' : released.message);
+			if (released.ok) {
+				/* 列表空了 ⇒ 回「提交」，配额释放。 */
+				assert.equal(released.card.status, TaskState.SUBMITTED);
+				assert.deepEqual(released.card.holders, []);
+				assert.equal(lastActor(released.card), 'ai', 'history 仍记是 ai 干的');
+			}
 
+			/* `user` 释放本来就不受总闸管 —— 行为不变。 */
+			const claimedAgain = await tb.claim(ws, id, 'user', 'loop-r');
+			assert.equal(claimedAgain.ok, true, claimedAgain.ok ? '' : claimedAgain.message);
 			const byUser = await tb.release(ws, id, 'user', 'loop-r');
 			assert.equal(byUser.ok, true, byUser.ok ? '' : byUser.message);
+		} finally {
+			await tb.close();
+		}
+	});
+
+	it('★ 同一张卡：关掉总闸后 release 放行、claim / transition 仍拦（边界就在「获得」）', async () => {
+		const { tb, ws } = await makeBoard(TEMPLATES);
+		try {
+			const held = await makeCard(tb, ws, 't-work', 'AI 手上的卡');
+			await submit(tb, ws, held);
+			const claimed = await tb.claim(ws, held, 'user', 'loop-edge');
+			assert.equal(claimed.ok, true, claimed.ok ? '' : claimed.message);
+
+			const idle = await makeCard(tb, ws, 't-work', '没人领的卡');
+			await submit(tb, ws, idle);
+
+			await tb.setAiStateChangeAllowed(false);
+
+			/* 获得：领取仍被拦。 */
+			const blockedClaim = await tb.claim(ws, idle, 'ai', 'loop-edge');
+			assert.equal(blockedClaim.ok, false);
+			if (isFailure(blockedClaim)) {
+				assert.equal(blockedClaim.code, ErrorCode.AI_STATE_CHANGE_DISABLED);
+			}
+
+			/* 获得：普通转移仍被拦。 */
+			const blockedTransition = await tb.transition(ws, held, TaskState.COMPLETED, 'ai');
+			assert.equal(blockedTransition.ok, false);
+			if (isFailure(blockedTransition)) {
+				assert.equal(blockedTransition.code, ErrorCode.AI_STATE_CHANGE_DISABLED);
+			}
+
+			/* 归还：release 放行 —— 这就是本次裁定的边界。 */
+			const released = await tb.release(ws, held, 'ai', 'loop-edge');
+			assert.equal(released.ok, true, released.ok ? '' : released.message);
+			if (released.ok) assert.equal(released.card.status, TaskState.SUBMITTED);
 		} finally {
 			await tb.close();
 		}

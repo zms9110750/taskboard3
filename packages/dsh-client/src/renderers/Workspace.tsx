@@ -247,6 +247,14 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 * 没这一步，store 的 workspaceId 永远是空串，折叠态读写全是空。
 	 */
 	// TODO(审查): 三个入口（右栏 tab / main / 抽屉）各是独立 WorkspaceBody，各自把模块级单例 store 指到自己的 viewingId；两个入口同时看不同空间时会互相覆盖折叠/组数据。可把快照改成按空间分片（store 已有 cache Map），或让读取方带 workspaceId；属可直接改，但会动 store 接口。
+	/*
+	 * 与本仓库「加载失败写回空态」缺陷的关系（2026-11-28 核实，**放大器不是根因**）：
+	 * 单例的 cache / 快照是三个入口共享的 ⇒ 旧行为下一次 GET 失败会往共享 cache 写空态并
+	 * 标记已加载，于是**从未失败的那个入口**也会读到「已加载的空态」，它的一次折叠/组操作
+	 * 就把空数据 PUT 回去。修复（`ui-state-store.ts` 的「加载失败 ≠ 空状态」裁定）已把写回
+	 * 门禁改成按空间的 `loadedWorkspaces`、失败不写 cache ⇒ 失败不再污染共享状态。
+	 * 本条 TODO 本身（不同空间互相覆盖）仍**未修**，留待按空间分片。
+	 */
 	useEffect(() => {
 		if (props.viewingId !== '') uiStateStore.setWorkspace(props.viewingId);
 	}, [props.viewingId]);

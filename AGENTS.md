@@ -145,8 +145,13 @@ node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
 3. **责任边界**：谁建的谁保证基线干净（`reset --hard main` + 同步依赖），
    否则子 AI 会拿着旧代码干活，然后在报告里说「我这边全绿」—— 而那是上一个版本。
 
-⚠ **现实约束**（`2026-11-19` 实测）：**不能再新建 worktree 了**，只能在现有
-`taskboard3-wt-{client,host,core,store,storage}` 之间轮转。新 worktree 装不上依赖。
+⚠ **现实约束的演变**：`2026-11-19` 曾实测「新 worktree 里 `pnpm install` 失败」
+（`ERR_PNPM_SYMLINK_FAILED [symlinkAllModules]`，当时是 pnpm 10）；现有
+`taskboard3-wt-{client,host,core,store,storage}` 也已清理不复存在。
+**`2026-11-28` 实测翻案**：`corepack pnpm install`（pnpm 12.23）在新建 worktree 里
+**成功**（3 秒级）。⇒ 规则改为：lead 可以新建 worktree，装依赖**必须用
+`corepack pnpm install`（v12+）**，不要用 pnpm 10。旧 worktree 名单已过时，
+以 `git worktree list` 为准。
 
 ⚠ **`X:\temp\dsh` 是多 agent 共用目录**：写临时文件（commit message、测试输出）
 必须用**唯一文件名**（`X:\temp\dsh\msg-<谁>-<什么>.txt`）。

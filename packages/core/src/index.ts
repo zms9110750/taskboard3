@@ -1518,19 +1518,26 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			}
 
 			/*
-			 * 只移除**自己**那一条。列表里还有别人 ⇒ 状态不变；
-			 * 空了才回「提交」—— 那由 `releaseCard` 处理。
+			 * ## ⚠ 释放**不过总闸**：AI 归还权力永远放行
 			 *
-			 * ⚠ 「列表还有别人」时状态不变 ⇒ 严格说没改状态。但**释放**是
-			 *   改卡状态那一族动作（`WORKING → SUBMITTED` 正是它干的事），
-			 *   而且用户说的是「角色为 ai 的改卡状态操作」——
-			 *   放行一半（有别人时放、没别人时拦）会让 AI 看到不一致的行为。
-			 *   ⇒ 一律过总闸。
+			 * 裁定（lead `2026-11-28`，依据 #12 状态机设计与 #9 动机 3）：
+			 * **AI 归还权力不受总闸限制：`release`（搁置回提交）对 AI 永远放行。**
+			 *
+			 * 理由：总闸（`aiStateChangeAllowed`）限制的是 AI **获得**权力
+			 * （领取 / 采纳 / 转移）；release 是**归还** —— 拦住它会让 AI
+			 * 既不能完成也不能释放，占死「一次一张」配额，违背 #9 动机 3 的意图
+			 * （限制越权，不是制造死锁）。`permission.ts` 的 UI 轴注释本来就写着
+			 * 「release 永远放行」（`judgeCardAction` 首行直接返回 `ALLOW`），
+			 * core 的实现漏了对齐 —— 这里补上。
+			 *
+			 * ⚠ 只放宽「总闸对 AI 的 release」，**其它判定一条都不动**：
+			 *   · 持有者校验仍在 `releaseCard`（不是持有者 ⇒ `NOT_A_HOLDER`）；
+			 *   · 依赖闸 / 转移合法性 / actor 权限照旧；
+			 *   · `user` / `system` 的 release 本来就不受总闸管，行为不变。
+			 *
+			 * ⚠ 列表里还有别人时状态不变（只移除自己那一条）——
+			 *   那也不是「获得」，仍然是归还，所以同样不需要过总闸。
 			 */
-			// TODO(审查): 总闸关闭时 release 也被拦 ⇒ AI 可能既不能完成也不能释放、继续占「一次一张」配额；permission.ts 对 UI 轴写的是「release 永远放行」，是否放行需用户决定。
-			const blocked = aiStateChangeBlocked(existing, actor, '释放');
-			if (blocked !== null) return blocked;
-
 			const result = releaseCard(existing, holder, actor, now());
 			if (!result.ok) return result;
 
@@ -1552,9 +1559,13 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			/*
 			 * 通用转移：`trigger === 'ai'` 就是「角色为 ai 的改卡状态」。
 			 *
-			 * ⚠ 这是**唯一一处**按 trigger 判总闸的地方 —— 另外三处
-			 *   （adopt / claim / release）按 `actor`。两套入参是既有形状，
+			 * ⚠ 这是**唯一一处**按 trigger 判总闸的地方 —— 另外两处
+			 *   （adopt / claim）按 `actor`。两套入参是既有形状，
 			 *   不改签名（那会波及全部调用方与测试）。
+			 *
+			 * ⚠ `release` **不过总闸**（AI 归还权力永远放行，见 `release`
+			 *   的注释与 lead `2026-11-28` 裁定），所以它不在这两处之列 ——
+			 *   转移（含 AI 想借 WORKING → SUBMITTED 绕过 release）仍然受管。
 			 */
 			if (trigger === 'ai') {
 				const blocked = aiStateChangeBlocked(existing, 'ai', '改状态');

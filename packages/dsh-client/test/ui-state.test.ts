@@ -190,14 +190,21 @@ interface FakeCall {
 	readonly body: string | undefined;
 }
 
-/** 假 fetch：GET 返回给定数据，PUT 记录并回 ok。 */
-function makeFetch(initial: { groups?: unknown[]; folded?: unknown[] } = {}): {
+/** 假 fetch：GET 返回给定数据（可切换成失败），PUT 记录并回 ok。 */
+function makeFetch(
+	initial: { groups?: unknown[]; folded?: unknown[] } = {},
+	initialGet: { readonly ok?: boolean; readonly envelopeOk?: boolean } = {},
+): {
 	readonly fetchImpl: UiStateFetch;
 	readonly calls: FakeCall[];
 	putOk: boolean;
+	getOk: boolean;
+	envelopeOk: boolean;
 } {
 	const calls: FakeCall[] = [];
 	let putOk = true;
+	let getOk = initialGet.ok ?? true;
+	let envelopeOk = initialGet.envelopeOk ?? true;
 	const fetchImpl: UiStateFetch = (url, init) => {
 		const method = init?.method ?? 'GET';
 		calls.push({ url, method, body: init?.body });
@@ -208,13 +215,16 @@ function makeFetch(initial: { groups?: unknown[]; folded?: unknown[] } = {}): {
 				text: () => Promise.resolve(JSON.stringify({ ok: putOk, data: { saved: putOk } })),
 			});
 		}
+		if (!getOk) {
+			return Promise.resolve({ ok: false, status: 503, text: () => Promise.resolve('') });
+		}
 		return Promise.resolve({
 			ok: true,
 			status: 200,
 			text: () =>
 				Promise.resolve(
 					JSON.stringify({
-						ok: true,
+						ok: envelopeOk,
 						data: { groups: initial.groups ?? [], folded: initial.folded ?? [] },
 					}),
 				),
@@ -228,6 +238,18 @@ function makeFetch(initial: { groups?: unknown[]; folded?: unknown[] } = {}): {
 		},
 		set putOk(value: boolean) {
 			putOk = value;
+		},
+		get getOk() {
+			return getOk;
+		},
+		set getOk(value: boolean) {
+			getOk = value;
+		},
+		get envelopeOk() {
+			return envelopeOk;
+		},
+		set envelopeOk(value: boolean) {
+			envelopeOk = value;
 		},
 	};
 }
@@ -363,5 +385,141 @@ describe('ui-state store：加载与保存', () => {
 		unsubscribeB();
 		store.toggleFolded('B');
 		assert.equal(hits - baseline, 2);
+	});
+});
+
+/*
+ * 裁定（todo-audit 2026-11-27 逐行核实、2026-11-28 修复）：**加载失败 ≠ 空状态**。
+ *
+ * 这几条钉的是数据丢失契约，不是实现细节：
+ * · GET 失败 ⇒ 一次写回都不许发生（PUT 调用次数必须是 0）；
+ * · 失败得到的「空」不能当这个空间的值（不能被缓存成已加载）；
+ * · 加载成功之后，正常的折叠 / 组操作照常保存，且基线是**服务端数据**；
+ * · 失败期间的本地改动不是保存基线 —— 重试成功后以服务端为准。
+ */
+describe('ui-state store：加载失败不得触发任何写回（裁定：加载失败 ≠ 空状态）', () => {
+	it('GET 失败 ⇒ 未加载态；之后的折叠 / 加组不排保存，PUT 次数 0', async () => {
+		const fake = makeFetch(
+			{ groups: [{ id: 'g1', memberIds: ['A'] }], folded: ['g1'] },
+			{ ok: false },
+		);
+		const scheduler = makeScheduler();
+		const store = createUiStateStore({ fetchImpl: fake.fetchImpl, schedule: scheduler.schedule });
+
+		store.setWorkspace('ws28');
+		await tick();
+		await tick();
+
+		const failed = store.getSnapshot();
+		assert.equal(failed.loaded, false, '加载失败必须保持「未加载」态，不能伪装成已加载的空态');
+		assert.deepEqual(failed.groups, []);
+		assert.ok((failed.error ?? '').includes('读取失败'), failed.error ?? '(无错误)');
+
+		/* 用户随后任意一次本地整理 —— 旧行为会把空 groups PUT 回服务端。 */
+		store.toggleFolded('A');
+		store.addGroup({ id: 'g1', memberIds: ['A'] });
+		assert.equal(scheduler.pending(), 0, '未加载的空间连防抖都不该排');
+		scheduler.fire();
+		await tick();
+		await tick();
+		await store.flush();
+
+		assert.equal(fake.calls.filter((one) => one.method === 'PUT').length, 0);
+		assert.equal(fake.calls.length, 1, '只应有那一次失败的 GET');
+		assert.equal(store.getSnapshot().loaded, false);
+	});
+
+	it('HTTP 200 但信封 ok:false ⇒ 同样算读取失败，不写回', async () => {
+		const fake = makeFetch(
+			{ groups: [{ id: 'g1', memberIds: ['A'] }] },
+			{ envelopeOk: false },
+		);
+		const scheduler = makeScheduler();
+		const store = createUiStateStore({ fetchImpl: fake.fetchImpl, schedule: scheduler.schedule });
+
+		store.setWorkspace('ws28');
+		await tick();
+		await tick();
+
+		assert.equal(store.getSnapshot().loaded, false);
+		assert.ok((store.getSnapshot().error ?? '').includes('读取失败'));
+
+		store.toggleFolded('A');
+		scheduler.fire();
+		await store.flush();
+		assert.equal(fake.calls.filter((one) => one.method === 'PUT').length, 0);
+	});
+
+	it('加载成功后正常变更仍会保存，且基线是服务端数据（不是空态）', async () => {
+		const fake = makeFetch({ groups: [{ id: 'g1', memberIds: ['A'] }], folded: ['g1'] });
+		const scheduler = makeScheduler();
+		const store = createUiStateStore({ fetchImpl: fake.fetchImpl, schedule: scheduler.schedule });
+
+		store.setWorkspace('ws28');
+		await tick();
+		await tick();
+		assert.equal(store.getSnapshot().loaded, true);
+
+		store.toggleFolded('B');
+		assert.equal(scheduler.pending(), 1);
+		scheduler.fire();
+		await tick();
+		await tick();
+
+		const puts = fake.calls.filter((one) => one.method === 'PUT');
+		assert.equal(puts.length, 1);
+		assert.deepEqual(JSON.parse(puts[0]?.body ?? '{}'), {
+			workspace: 'ws28',
+			groups: [{ id: 'g1', memberIds: ['A'] }],
+			folded: ['g1', 'B'],
+			expanded: [],
+		});
+	});
+
+	it('失败后重试成功 ⇒ 重新 GET（不信本地草稿），重试成功后照常保存', async () => {
+		const fake = makeFetch(
+			{ groups: [{ id: 'g1', memberIds: ['A'] }], folded: ['g1'] },
+			{ ok: false },
+		);
+		const scheduler = makeScheduler();
+		const store = createUiStateStore({ fetchImpl: fake.fetchImpl, schedule: scheduler.schedule });
+
+		store.setWorkspace('ws28');
+		await tick();
+		await tick();
+		assert.equal(store.getSnapshot().loaded, false);
+
+		/* 未加载期间的本地改动：只留在内存，不排保存。 */
+		store.toggleFolded('X');
+		assert.equal(scheduler.pending(), 0);
+		assert.deepEqual(store.getSnapshot().folded, ['X']);
+
+		/* 网络恢复：同空间再 setWorkspace 必须重新请求，不能拿草稿冒充「已加载」。 */
+		fake.getOk = true;
+		store.setWorkspace('ws28');
+		await tick();
+		await tick();
+
+		const loaded = store.getSnapshot();
+		assert.equal(loaded.loaded, true);
+		assert.deepEqual(loaded.groups, [{ id: 'g1', memberIds: ['A'] }]);
+		assert.deepEqual(loaded.folded, ['g1'], '服务端数据覆盖本地草稿 —— 草稿不是保存基线');
+		assert.equal(fake.calls.filter((one) => one.method === 'GET').length, 2);
+		assert.equal(fake.calls.filter((one) => one.method === 'PUT').length, 0);
+
+		/* 之后的正常变更照常保存，PUT 里是服务端数据 + 这次改动。 */
+		store.toggleFolded('X');
+		scheduler.fire();
+		await tick();
+		await tick();
+
+		const puts = fake.calls.filter((one) => one.method === 'PUT');
+		assert.equal(puts.length, 1);
+		assert.deepEqual(JSON.parse(puts[0]?.body ?? '{}'), {
+			workspace: 'ws28',
+			groups: [{ id: 'g1', memberIds: ['A'] }],
+			folded: ['g1', 'X'],
+			expanded: [],
+		});
 	});
 });

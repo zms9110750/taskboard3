@@ -19,6 +19,12 @@
  * · 失败**不回滚**：本地仍保留用户的整理结果，`error` 里给出原因，下次改动会重试
  *   （回滚会让用户刚做的整理凭空消失，比「没存上」更糟）
  * · 切换空间**各存一份缓存**，切回来不丢，也不重复请求
+ * · ⚠ **加载失败 ≠ 空状态**（裁定：todo-audit 2026-11-27 逐行核实、2026-11-28 修复）：
+ *   GET 失败**不写 cache、`loaded` 保持 false、不排任何保存**，写回路径 `saveNow`
+ *   另有一道「该空间已成功加载过」的门禁（`loadedWorkspaces`）⇒ 服务端已保存的
+ *   组 / 折叠态**绝不会**被一次失败的 GET 拿空状态覆盖。
+ *   代价（有意的）：未加载期间的本地改动只留在内存，重新加载**成功后以服务端数据为准**
+ *   —— 它不允许成为保存基线。
  */
 
 import { buildPath } from './api.ts';
@@ -118,8 +124,19 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 			};
 		});
 
-	/** 每个空间一份缓存（切换回来不丢、不重拉）。 */
+	/** 每个空间一份缓存（切换回来不丢、不重拉）。⚠ 只有**成功加载过**的空间才可写回，见 `loadedWorkspaces`。 */
 	const cache = new Map<string, UiStateData>();
+	/**
+	 * 「服务端数据已成功取回」的空间 —— **唯一**允许写回的门禁。
+	 *
+	 * 裁定（todo-audit 2026-11-27 核实、2026-11-28 修复）：**加载失败 ≠ 空状态**。
+	 * 加载失败不得触发任何写回；本地初始状态只有**加载成功之后**才允许作为保存基线。
+	 *
+	 * ⚠ 必须是**按空间**的集合，不能只靠 `snapshot.loaded`：三个入口共享本单例
+	 *   （见 `Workspace.tsx` 的 viewingId 同步），一个入口的加载失败会改写共享快照，
+	 *   若只用快照标记，另一个入口的写回就会把失败空间的空态带到服务端。
+	 */
+	const loadedWorkspaces = new Set<string>();
 	const listeners = new Set<() => void>();
 	/** 挂起的更新请求（同空间连续调用只保留最后一个）。 */
 	const pendingLoad = new Map<string, Promise<void>>();
@@ -146,13 +163,18 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 
 	const stateOf = (workspaceId: string): UiStateData => cache.get(workspaceId) ?? EMPTY_UI_STATE;
 
-	/** 把「当前快照 + 新状态」写回缓存与快照，并安排一次保存。 */
+	/** 把「当前快照 + 新状态」写回缓存与快照；该空间已成功加载过才安排一次保存。 */
 	const commit = (next: UiStateData): void => {
 		const workspaceId = snapshot.workspaceId;
 		if (workspaceId === '') return;
 		cache.set(workspaceId, next);
 		setSnapshot({ ...snapshot, groups: next.groups, folded: next.folded, expanded: next.expanded });
-		scheduleSave();
+		/*
+		 * 裁定（todo-audit 2026-11-27 核实、2026-11-28 修复）：**加载失败 ≠ 空状态**。
+		 * 没成功加载过的空间连防抖都不排 —— 本地改动只留在内存，不成为保存基线；
+		 * （重试）加载成功后以服务端数据为准。
+		 */
+		if (loadedWorkspaces.has(workspaceId)) scheduleSave();
 	};
 
 	const putState = async (workspaceId: string, data: UiStateData): Promise<void> => {
@@ -170,8 +192,14 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 
 	const saveNow = async (): Promise<void> => {
 		const workspaceId = snapshot.workspaceId;
-		// TODO(审查): 这个 guard 挡不住「失败后被当空状态保存」——失败路径（load 的 catch）也把 loaded 置 true，见上方 load 的 TODO。修 load 后再保留本判断；可直接改。
-		if (workspaceId === '' || !snapshot.loaded) return;
+		/*
+		 * 裁定（todo-audit 2026-11-27 核实、2026-11-28 修复）：**加载失败 ≠ 空状态**。
+		 * 只有「服务端数据已成功取回」的空间才允许写回 —— 否则失败后被当成空状态的
+		 * `groups` / `folded` 会 PUT 回去，覆盖用户已保存的整理结果。
+		 * `loadedWorkspaces` 是真正的门禁；`snapshot.loaded` 是同一事实的 UI 可见标记
+		 * （`flush()` 会绕过 `commit` 的防抖直接走到这里，所以这里必须再挡一次）。
+		 */
+		if (workspaceId === '' || !snapshot.loaded || !loadedWorkspaces.has(workspaceId)) return;
 		/* 保存前先取**这一刻**的本地状态：期间又改了也没关系，下次还会存。 */
 		const data = stateOf(workspaceId);
 		try {
@@ -203,15 +231,27 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 		};
 	}
 
-	// TODO(审查): ⚠ 数据丢失风险：GET 失败时 catch 分支（下面 :241-251）把 cache 写成 EMPTY、loaded 仍 true；用户随后任意一次折叠/组操作 → commit(:148) → saveNow(:169-176) 会把空 groups PUT 回服务端，覆盖已保存的整理结果。:229 还把 `{ok:false}` 当空数据。可直接改成失败时 loaded:false 且禁止保存（或保存前重拉），需用户确认失败交互。
+	/*
+	 * 裁定（todo-audit 2026-11-27 逐行核实、2026-11-28 修复）：**加载失败 ≠ 空状态**。
+	 *
+	 * 失败路径以前把 cache 写成 `EMPTY_UI_STATE` 且 `loaded` 仍为 true ⇒ 用户之后
+	 * 任意一次折叠 / 组操作（`commit` → `saveNow`）都会把空的 groups PUT 回服务端，
+	 * 覆盖已保存的整理结果 —— 一次网络抖动就丢掉全部 UI 状态。
+	 *
+	 * 现在的契约：
+	 * · GET 失败 ⇒ **不写 cache**、快照 `loaded:false`、不排保存 ⇒ 不会有任何写回；
+	 * · cache / 写回只认 `loadedWorkspaces` 里「成功加载过」的空间；
+	 * · 未加载期间的本地改动**不是**保存基线，重新加载成功后以服务端数据为准。
+	 */
 	const load = async (workspaceId: string): Promise<void> => {
-		if (cache.has(workspaceId)) {
-			const data = cache.get(workspaceId) ?? EMPTY_UI_STATE;
+		/* 只有成功加载过的缓存才可信：未加载时 `commit` 也会往 cache 写草稿，不能拿它冒充服务端数据。 */
+		const cachedData = loadedWorkspaces.has(workspaceId) ? cache.get(workspaceId) : undefined;
+		if (cachedData !== undefined) {
 			setSnapshot({
 				workspaceId,
-				groups: data.groups,
-				folded: data.folded,
-				expanded: data.expanded,
+				groups: cachedData.groups,
+				folded: cachedData.folded,
+				expanded: cachedData.expanded,
 				loaded: true,
 				error: undefined,
 			});
@@ -230,9 +270,15 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 				throw new Error('读取失败：服务端返回的不是 JSON');
 			}
 			const envelope = parsed as { ok?: unknown; data?: unknown };
-			const data = envelope.ok === true ? parseUiState(envelope.data) : EMPTY_UI_STATE;
+			/*
+			 * `ok` 不是 true ⇒ 服务端没交付数据（正常 200 由 dsh 的 `sendOk` 写成
+			 * `{ok:true,data}`）⇒ 按**读取失败**处理，不能退化成空状态再被写回。
+			 */
+			if (envelope.ok !== true) throw new Error('读取失败：服务端未返回 ok');
+			const data = parseUiState(envelope.data);
 			/* ⚠ 期间可能已经切到别的空间 ⇒ 只写缓存，不动快照。 */
 			cache.set(workspaceId, data);
+			loadedWorkspaces.add(workspaceId);
 			if (snapshot.workspaceId !== workspaceId) return;
 			setSnapshot({
 				workspaceId,
@@ -244,13 +290,18 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 			});
 		} catch (cause) {
 			if (snapshot.workspaceId !== workspaceId) return;
-			cache.set(workspaceId, EMPTY_UI_STATE);
+			/*
+			 * 裁定（同上）：**加载失败 ≠ 空状态** —— 这里**不写 cache**（写了就等于把「空」
+			 * 当成这个空间的值，切回来还会命中缓存），`loaded` 保持 false ⇒ `commit`
+			 * 不排保存、`saveNow` 挡住 `flush()`。服务端已保存的数据只能由下一次
+			 * **成功**的 GET 交付。
+			 */
 			setSnapshot({
 				workspaceId,
 				groups: [],
 				folded: [],
 				expanded: [],
-				loaded: true,
+				loaded: false,
 				error: cause instanceof Error ? cause.message : String(cause),
 			});
 		}
@@ -274,7 +325,11 @@ export function createUiStateStore(options: UiStateStoreOptions = {}): UiStateSt
 				cancelSave = undefined;
 				void saveNow();
 			}
-			const cached = cache.get(workspaceId);
+			/*
+			 * 只信「成功加载过」的缓存（裁定：加载失败 ≠ 空状态）。未加载时的草稿
+			 * 不能把 `loaded` 置回 true —— 否则草稿就成了保存基线、把空态写回服务端。
+			 */
+			const cached = loadedWorkspaces.has(workspaceId) ? cache.get(workspaceId) : undefined;
 			if (cached !== undefined) {
 				setSnapshot({
 					workspaceId,
