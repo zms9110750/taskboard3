@@ -18,6 +18,7 @@
 # | 浏览器 UI（通用） | `@taskboard/dsh-client` | 任务板界面消失；**权限 UI 不受影响** |
 # | agent 守卫 | `@taskboard/dsh-agent-guard` | 三档位消失、guard 不挂、/api/tools 404；**权限 UI（下一行）也跟着不激活** |
 # | 权限 UI | `@taskboard/dsh-permissions` | 工具权限页 / composer 权限框 / 模板授权消失；任务板其它功能不受影响 |
+# | 消息循环 | `@taskboard/dsh-agent-loop` | 未读不再注入、无人值守停止推进；任务板其它功能不受影响 |
 #
 # ## ⑦ 权限 UI 行的激活闸门（2026-11-27，#4 分包裁定）
 #
@@ -100,3 +101,14 @@
     #    关掉它 ⇒ 权限入口消失；任务板其它功能不受影响。
     - id: taskboard3-permissions
       name: '@taskboard/dsh-permissions'
+
+    # ⑧ 消息循环（#9 动机 1「无人值守」的宿主侧机制；裁定见 docs/ARCHIVE.md §5）
+    #
+    #    与 DSH 消息循环接触的两件事：
+    #      ① 未读注入：写卡事件 ⇒ 重拉 ⇒「用户改过、AI 未读」的卡 `agent.inject`（**不唤醒**）
+    #      ② 工作泵：默认每 10 分钟 ⇒ 有「提交/处理中」的 work 卡 ⇒ `agent.followup`（推进下一轮）
+    #    **不做「答案到达即唤醒」的定时器**（用户否决了唤醒机制）。
+    #    关掉它 ⇒ 未读不再注入、无人值守停止推进；任务板其它功能不受影响。
+    #    `agents` 服务是惰性 `ctx.get` 的，不在这行的静态 inject 里（见包内 src/index.ts 文件头）。
+    - id: taskboard3-agent-loop
+      name: '@taskboard/dsh-agent-loop'

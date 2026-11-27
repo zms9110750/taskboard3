@@ -30,11 +30,10 @@
  * —— 文字一律走子节点，结构上没有注入这条路。
  */
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import {
 	canEditOf,
-	emptyHintOf,
 	sectionViewOf,
 	type AskGroupView,
 	type MarkdownSectionView,
@@ -104,7 +103,15 @@ export function Section(props: SectionProps): ReactNode {
 	const section = props.section;
 	/* 相位：新口径优先；老调用方只传 readonly 时按它推导。 */
 	const phase: SectionPhase = props.phase ?? (props.readonly === true ? 'ended' : 'active');
-	const readonlyFlag = phase === 'ended';
+	/*
+	 * 只读判定：**任一来源说冻结就冻结**。
+	 *
+	 * `phase === 'ended'` 是生命周期判决（#10 冻结期）；`props.readonly` 是
+	 * 父层按更细的规则灌进来的结论（lead `2026-11-28`：详情页 markdown 永远只读
+	 * —— markdown 在 #10 的「可编辑期」本来可改，但详情不是建卡页）。
+	 * 两者取「或」：readonly 只能比 phase 更严，不能把冻结态放开。
+	 */
+	const readonlyFlag = phase === 'ended' || props.readonly === true;
 	const view = sectionViewOf(section.payload);
 	const label = typeof section.label === 'string' ? section.label : '';
 	/*
@@ -238,6 +245,12 @@ function UnknownBlock(props: { readonly title: string; readonly json: string }):
  * - **active 候选 1**：单框可编辑正文，灰字 = HTML `placeholder`
  * - **ended 候选 2**：只读 `textarea`（保留框形状，value 和 placeholder 都还在框里）
  *
+ * ## 提交口径（lead `2026-11-28` 裁定）
+ *
+ * **输入框失焦才提交**，不在每次按键时回写 —— 一次编辑一次 PATCH。
+ * 本地草稿只活在这个组件里；`view.value` 因服务端回声变化时同步回来，
+ * 但**正在输入的那一格不被覆盖**（否则保存回来的旧值会打断打字）。
+ *
  * @param props view / phase / readonly / onPatch
  */
 export function TextBlock(props: {
@@ -247,10 +260,34 @@ export function TextBlock(props: {
 	readonly onPatch?: (fields: Readonly<Record<string, unknown>>) => void;
 }): ReactNode {
 	const view = props.view;
+	/* 父层没接线（`onPatch` 缺省）时不假装能改 —— 和冻结态同一个只读形状。 */
 	const editable = !props.readonly && props.onPatch !== undefined;
 
-	/* ended：只读 textarea（候选 2 —— 保留框形状）。 */
-	if (props.readonly) {
+	const [draft, setDraft] = useState(view.value);
+	const [placeholderDraft, setPlaceholderDraft] = useState(view.placeholder);
+	const valueFocused = useRef(false);
+	const placeholderFocused = useRef(false);
+
+	useEffect(() => {
+		if (!valueFocused.current) setDraft(view.value);
+	}, [view.value]);
+	useEffect(() => {
+		if (!placeholderFocused.current) setPlaceholderDraft(view.placeholder);
+	}, [view.placeholder]);
+
+	const commitValue = (): void => {
+		valueFocused.current = false;
+		if (draft !== view.value) props.onPatch?.({ value: draft });
+	};
+	const commitPlaceholder = (): void => {
+		placeholderFocused.current = false;
+		if (placeholderDraft !== view.placeholder) {
+			props.onPatch?.({ placeholder: placeholderDraft });
+		}
+	};
+
+	/* ended（或父层没接线）：只读 textarea（候选 2 —— 保留框形状）。 */
+	if (!editable) {
 		return (
 			<div className="section-block__field">
 				<textarea
@@ -271,12 +308,16 @@ export function TextBlock(props: {
 			<div className="section-block__field">
 				<textarea
 					className="section-block__textarea"
-					value={view.value}
+					value={draft}
 					placeholder={view.placeholder}
-					rows={Math.max(2, view.value.split('\n').length)}
-					onChange={(event) => {
-						props.onPatch?.({ value: event.target.value });
+					rows={Math.max(2, draft.split('\n').length)}
+					onFocus={() => {
+						valueFocused.current = true;
 					}}
+					onChange={(event) => {
+						setDraft(event.target.value);
+					}}
+					onBlur={commitValue}
 					data-section-phase="active"
 				/>
 			</div>
@@ -288,24 +329,33 @@ export function TextBlock(props: {
 		<div className="section-block__field">
 			<textarea
 				className="section-block__textarea"
-				value={view.value}
-				rows={Math.max(2, view.value.split('\n').length)}
-				onChange={(event) => {
-					props.onPatch?.({ value: event.target.value });
+				value={draft}
+				rows={Math.max(2, draft.split('\n').length)}
+				onFocus={() => {
+					valueFocused.current = true;
 				}}
+				onChange={(event) => {
+					setDraft(event.target.value);
+				}}
+				onBlur={commitValue}
 				data-section-phase="create"
 			/>
 			<details className="section-block__decl">
 				<summary>
-					声明（灰字）：{view.placeholder === '' ? '（未设置）' : view.placeholder}
+					声明（灰字）：
+					{placeholderDraft === '' ? '（未设置）' : placeholderDraft}
 				</summary>
 				<input
 					className="section-block__decl-input"
-					value={view.placeholder}
+					value={placeholderDraft}
 					placeholder="清空正文后，框里显示这句灰字"
-					onChange={(event) => {
-						props.onPatch?.({ placeholder: event.target.value });
+					onFocus={() => {
+						placeholderFocused.current = true;
 					}}
+					onChange={(event) => {
+						setPlaceholderDraft(event.target.value);
+					}}
+					onBlur={commitPlaceholder}
 				/>
 			</details>
 		</div>

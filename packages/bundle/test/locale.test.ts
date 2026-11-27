@@ -58,8 +58,8 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..'
 // TODO(审查): PACKAGES 手工维护（5 个带 locale 的包），patch 行里的 dsh-core / dsh-tools / dsh-agent-guard 无 locale 未覆盖。
 //   建议改成从 bundle 的 cordis.patch.yml 读取行（用 yaml 解析），只对有 locale 的包断言 —— 单一事实源。
 //   直接改测试即可，但「无 locale 的包是否该有 locale」需产品决定。
-/** 带 locale 的包（dsh-permissions 2026-11-27 加入，同受本契约约束）。 */
-const PACKAGES = ['bundle', 'store', 'dsh', 'dsh-client', 'dsh-permissions'] as const;
+/** 带 locale 的包（dsh-permissions 2026-11-27、dsh-agent-loop 2026-11-28 加入，同受本契约约束）。 */
+const PACKAGES = ['bundle', 'store', 'dsh', 'dsh-client', 'dsh-permissions', 'dsh-agent-loop'] as const;
 
 /** 语言。 */
 const LANGS = ['zh', 'en'] as const;

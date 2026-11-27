@@ -210,6 +210,19 @@ export interface WorkspaceProps {
 	 */
 	readonly onDerive?: (cardId: string, anchor: HTMLElement) => void;
 	readonly onNoteChange?: (cardId: string, text: string) => void;
+	/**
+	 * 章节内联编辑（ask 作答 / text 失焦）。
+	 *
+	 * ⚠ 本组件**不组装 content、不发请求**（它不持有 api）—— 只把
+	 * `cardId + sectionId + patch` 交给数据层（`WorkspaceBody` → store），
+	 * 由那边用「当前全部章节」组装整份 `content` 再 `PATCH /cards/:id`。
+	 * 省略 ⇒ `CardDetail` 的章节全部只读（没接线时不假装能改）。
+	 */
+	readonly onSectionChange?: (
+		cardId: string,
+		sectionId: string,
+		patch: Readonly<Record<string, unknown>>,
+	) => void;
 	// TODO(审查): 这个 prop 声明后在本组件从不使用（也没传给 WorkspaceToolbar），而 WorkspaceToolbar.tsx:81,155-163 的「权限与约定」按钮依赖它 ⇒ 按钮在产品里不可达。要么接上（setCreating/openPermission 由 WorkspaceBody 传），要么删 prop+按钮；需用户决定。
 	/** 工具栏「权限与约定」。不传 = 不显示这个按钮（V2 还没做）。 */
 	readonly onOpenPermission?: () => void;
@@ -553,6 +566,16 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 				onNoteChange={(text) => {
 					props.onNoteChange?.(card.id, text);
 				}}
+				{...(props.onSectionChange === undefined
+					? {}
+					: {
+							onSectionChange: (
+								sectionId: string,
+								patch: Readonly<Record<string, unknown>>,
+							) => {
+								props.onSectionChange?.(card.id, sectionId, patch);
+							},
+						})}
 				onClose={() => {
 					select(null);
 				}}

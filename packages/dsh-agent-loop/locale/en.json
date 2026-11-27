@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Taskboard · Message loop",
+    "description": "The half of the taskboard that touches the DSH message loop (issue #9, motive 1: unattended work). Two jobs, both only feed taskboard state into an agent’s context:\n\n(1) Unread injection — after the user answers or edits a card, the plugin reloads the workspace when a card-write event arrives and injects those cards into the agent’s inbox as a “[Taskboard] you have unread updates…” message. Inbox only, no wake-up: the user starts the next turn by chatting.\n(2) Work pump (every 10 minutes by default) — reloads the workspace; if any work card is still “submitted” or “working”, it injects a short work summary and advances the message loop (followup, queueing the next turn). A pump round is not stacked while one is still in flight; a round ends when that agent goes idle, or after a 5-minute fallback. Skipped when no agent is live.\n\nIt installs no “wake on answer arrival” timer — the wake-up mechanism was rejected by the user. It does not read card content, change cards, or touch tool permissions.\n\nSwitch it off: unread updates are no longer injected (the model is not told that the user edited a card) and unattended advancement stops. Cards, workspaces, HTTP, UI and the AI tools are unaffected."
+  }
+}

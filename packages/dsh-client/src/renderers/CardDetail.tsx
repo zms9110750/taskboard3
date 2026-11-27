@@ -32,17 +32,30 @@
  * 自己分派 text / markdown / ask / 未知降级（解析只有 `pure/section.ts` 一处）。
  * 这里是**纯形状适配**，不在 JSX 里拼对象、不读 `DetailSection.text`。
  *
- * ⚠ 章节的**编辑 / ask 回答**还没接线（`api.patchCard` 在，但外层没有回调）
- *   ⇒ 这里传 `readonly`。只读时 `AskSection` 把选项渲染成 `div`（不假装能点），
- *   空章节显示「（空）」而不是模板的编辑提示。接编辑时把 `readonly` 换成
- *   卡状态 / 回调判断即可，组件本身不用改。
+ * ⚠ **章节的编辑 / ask 回答已接线**（lead `2026-11-28`，#9 动机 1.i 的用户侧闭环）。
+ *
+ * 判决在 `pure/section-edit.ts`，这里只把「能不能编辑」翻成 `readonly` / 回调：
+ *
+ * | 阶段（#10 三相位）| 卡状态（protocol 分组）| text | ask | markdown |
+ * |---|---|---|---|---|
+ * | 可编辑 | `draft`（草稿 / 未采纳）| 失焦提交 | 可作答 | **只读**（见下）|
+ * | 交互 | `active` / `shelved`（提交 / 处理中 / 搁置）| 失焦提交 | 点选即提交 | 只读 |
+ * | 冻结 | `ended`（成功 / 失败 / 取消 / 拒绝）| 只读 | 只读展示 | 只读 |
+ * | 墓碑 | `deleted`（状态可能还没到终态）| 只读 | 只读展示 | 只读 |
+ *
+ * markdown 在 #10 的「可编辑期」本来可以改源码 + 预览，但那是**建卡页**的交互；
+ * 详情页不是建卡页 ⇒ lead 裁定详情里的 md **永远只读**（`sectionEditableOf()`）。
+ *
+ * 一次 text 失焦 / 一次 ask 动作 ⇒ 一次 `onSectionChange(sectionId, patch)`。
+ * ask 的补丁由 `askPayloadAfter()`（内部就是 `applyAskAction()`）从当前 payload
+ * 算出新 payload；外层负责拿**当前全部章节**组装成 `content` 再调
+ * `api.patchCard`（服务端整份覆盖，见 `pure/section-edit.ts` 的 `contentOfSections()`）。
  *
  * ## 参数里没有的东西
  *
  * - **状态菜单**（`onTransition`）：菜单归 C4 `StatusMenu`（另一个成员）。
  *   本组件收下 `onTransition` 但**不画菜单** —— 它由外层组装，见 `src/views/CardDetail.tsx`
  *   的 `menu` 参数。这里留回调是为了合并时接得上，不是为了现在能点。
- * - **章节编辑 / ask 回答**：见上（还没接线）。
  */
 
 import type { ReactNode } from 'react';
@@ -50,7 +63,9 @@ import type { ReactNode } from 'react';
 import { detailTableOf, type DetailLabels } from '../pure/card-detail.ts';
 import type { RelationsView } from '../pure/relations-block.ts';
 import { isDraftStatus, isEndedStatus } from '../pure/card-view.ts';
+import { askPayloadAfter, payloadKindOf, type AskAction } from '../pure/section.ts';
 import { sectionInputOf } from '../pure/section-adapter.ts';
+import { sectionEditableOf } from '../pure/section-edit.ts';
 import type { Card } from '../types.ts';
 import { DetailHead } from './DetailHead.tsx';
 import { DetailHistory } from './DetailHistory.tsx';
@@ -86,6 +101,7 @@ export interface CardDetailProps {
 	 *
 	 * 省略 ⇒ 章节按相位渲染但**全部只读**（没接线时不假装能改）。
 	 */
+	// TODO(审查): 组件层无测试 —— `test/` 现有风格只有 `.ts`（Node 的类型剥离不能 import `.tsx`，见 AGENTS 规则 6），也没有 react-dom 渲染测试基建。这次接线由 `test/section-edit.test.ts` 钉纯判决 + 三条 tsc 兜类型；真 DOM 行为（失焦提交 / 一次点选一次 PATCH）要等组件测试基建。
 	readonly onSectionChange?: (sectionId: string, patch: Readonly<Record<string, unknown>>) => void;
 	/**
 	 * 右上角 ×；省略 = 不显示这个按钮。
@@ -167,23 +183,58 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 						这张卡的模板没有章节。
 					</div>
 				) : (
-					sections.map((one) => (
+					sections.map((one) => {
 						/*
-						 * 定稿 `Section`：text / markdown / ask / 未知降级都在它内部按 payload 分派。
-						 * `readonly` 的原因见文件头「章节：定稿 Section」那一节
-						 * （编辑 / ask 回答还没接线 ⇒ 不假装能点）。
+						 * 每章各自判：md / 未知永远只读；text / ask 看卡状态。
+						 * 父层没接线（`onSectionChange` 缺省）时也不假装能改。
 						 */
-						<Section
-							key={one.sectionId}
-							sectionId={one.sectionId}
-							section={one.section}
-							phase={phase}
-							readonly={phase === 'ended'}
-							{...(props.onSectionChange === undefined
-								? {}
-								: { onChange: props.onSectionChange })}
-						/>
-					))
+						const change = props.onSectionChange;
+						const editable =
+							change !== undefined &&
+							sectionEditableOf(
+								payloadKindOf(one.section.payload),
+								props.card.status,
+								props.card.deleted,
+							);
+						/* 收窄成「有值 / 只读」两态，避免 JSX 里依赖布尔别名做类型收窄。 */
+						const onChange = editable ? change : undefined;
+
+						/*
+						 * `key` 带 card.id：`TextBlock` / `AskCustomRow` 有「输入中的本地草稿」，
+						 * 切卡时 sectionId 可能重复（每张卡都有一章叫 goal）⇒ 必须重挂，
+						 * 否则上一张卡打了一半的字会跟到下一张卡上。
+						 */
+						const key = `${props.card.id}:${one.sectionId}`;
+
+						return (
+							<Section
+								key={key}
+								sectionId={one.sectionId}
+								section={one.section}
+								phase={phase}
+								readonly={!editable}
+								{...(onChange === undefined || !editable
+									? {}
+									: {
+											onChange,
+											/*
+											 * ask 的一次动作 → 新 payload。以「整份 payload」当 patch 上抛，
+											 * 因为 `applyAskAction()` 的返回值就是完整 payload（形如
+											 * `{ $type:'ask', items:[…] }`）；外层合并后语义不变。
+											 */
+											onAsk: (
+												sectionId: string,
+												groupIndex: number,
+												action: AskAction,
+											) => {
+												const source = props.card.sections[sectionId]?.payload;
+												const next = askPayloadAfter(source, groupIndex, action);
+												if (next !== undefined) onChange(sectionId, next);
+											},
+										})}
+							/>
+						);
+					})
 				)}
 			</div>
 

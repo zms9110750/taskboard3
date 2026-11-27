@@ -426,7 +426,7 @@ console.log('\n═══ ③ ⭐ 没有「正文」二字 ═══');
 		['unknown', true, true],
 	);
 	expect(
-		'⭐ 所有章节都是 readonly（编辑 / ask 回答还没接线）',
+		'⭐ 预览没接 onSectionChange ⇒ 所有章节 readonly（不假装能改）',
 		panel.sections.every((one) => one.readonly === 'true'),
 		true,
 	);

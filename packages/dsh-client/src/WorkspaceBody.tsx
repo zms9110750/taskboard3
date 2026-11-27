@@ -35,16 +35,17 @@
  * ⚠ 筛选 / 搜索**不在这里** —— `Workspace` 自己按 `pure/card-filter.ts` 就地过滤，
  *   只通过 `onFilterChange` / `onSearchChange` 上报。产品里没人监听，所以不传。
  *
- * ## ⚠ 缺口（`BoardActions` 里没有对应动作）
+ * ## ⚠ 缺口（`BoardActions` 里没有对应动作 / 入口还没接）
  *
- * 这些回调**没有服务端接口**，所以只能显式告诉用户「这个入口还没接」，
- * 不能静默失败（用户会以为是 bug）：
+ * 下面这些回调里，有的**没有服务端接口**，有的接口在但入口还没接；
+ * 没接的只能显式告诉用户「这个入口还没接」，不能静默失败（用户会以为是 bug）：
  *
  * | 回调 | 状态 |
  * |---|---|
  * | `onToggleArchived` | ✅ 已接（`api.archiveWorkspace` + `POST /workspaces/:id/archive`）|
  * | `onCreateCard` | ✅ 已接（本文件挂 `CreateFlow`，全屏建卡页 + 提交走 core）|
  * | `onNoteChange` | `api.patchCard` 线格式已修（`fix/patch-wire`），但入口还没接 |
+ * | `onSectionChange` | ✅ 已接（ask 作答 / text 失焦 → `actions.patchSection` → `api.patchCard` 整份 content）|
  * | `onAddRelation` / `onDerive` | 关系编辑、派生子任务都还没做 |
  *
  * ⇒ 没接的一律走 `notWired()`：**alert 一句人话**。这是 MVP 的诚实做法 ——
@@ -281,6 +282,20 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 		setSelectedId(cardId);
 	}, []);
 
+	/**
+	 * 章节内联编辑（ask 作答 / text 失焦）⇒ 数据层保存。
+	 *
+	 * 本文件不组装 content、不直接碰 `api.patchCard`：那是 store 的职责
+	 * （它持有 `state.cards`，能拿到「当前全部章节」）。这里只把
+	 * `cardId + sectionId + patch` 转给 `actions.patchSection`。
+	 */
+	const onSectionChange = useCallback(
+		(cardId: string, sectionId: string, patch: Readonly<Record<string, unknown>>): void => {
+			void actions.patchSection(cardId, sectionId, patch);
+		},
+		[actions],
+	);
+
 	/*
 	 * **首次加载**才整页提示 —— 那时 `workspaces` 还是空的，连 chips 行都没数据可画，
 	 * 只能整页等。
@@ -405,6 +420,7 @@ export function WorkspaceBody(props: WorkspaceBodyProps): ReactNode {
 			onNoteChange={() => {
 				notWired('改备注');
 			}}
+			onSectionChange={onSectionChange}
 			/>
 
 			{/*

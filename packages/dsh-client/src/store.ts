@@ -24,8 +24,10 @@ import {
 	chooseInitialWorkspace,
 	mergeActionResult,
 	messageOf,
+	replaceCards,
 } from './pure.ts';
 import { toOfAction } from './pure/card-action.ts';
+import { contentOfSections, sectionsWithPatch } from './pure/section-edit.ts';
 import type { ActionRequest, Card, KindSummary, StateData, TemplateSummary, Workspace } from './types.ts';
 
 /** `useBoardState` 的状态。 */
@@ -65,6 +67,29 @@ export interface BoardActions {
 	 *   查卡（`api.act()` 只有 `cardId`，拿不到卡）。
 	 */
 	runAction(request: ActionRequest): Promise<boolean>;
+	/**
+	 * 保存一个章节的内联编辑（ask 作答 / text 失焦）。
+	 *
+	 * ## 为什么在 store 里调 `patchCard`
+	 *
+	 * `PATCH /cards/:id` 的 `content` 是**整份覆盖**；组装需要「当前全部章节」，
+	 * 而章节真值只在这里（`state.cards`）。组件层只上报
+	 * `cardId + sectionId + patch`，本函数用 `sectionsWithPatch()` 合并、
+	 * `contentOfSections()` 组装，再交给 `api.patchCard()`。
+	 *
+	 * ## 保存反馈
+	 *
+	 * 先**乐观更新**本地卡（用户立刻看到选中 / 输入），成功后用服务端返回的卡
+	 * 覆盖（服务端可能规范化 payload）；失败则回滚成保存前的卡，并把
+	 * `state.error` 写成一句人话（页面级错误通道，不静默）。
+	 *
+	 * @returns 成功了吗（失败时 `state.error` 有说明，卡已回滚）
+	 */
+	patchSection(
+		cardId: string,
+		sectionId: string,
+		patch: Readonly<Record<string, unknown>>,
+	): Promise<boolean>;
 	/** 新建空间并切过去。 */
 	createWorkspace(name: string): Promise<boolean>;
 	/**
@@ -126,6 +151,25 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 	 */
 	const cardsRef = useRef<readonly Card[]>([]);
 	cardsRef.current = state.cards;
+
+	/**
+	 * 每张卡的章节写序号 —— 只让**最后一次**保存的响应改本地卡。
+	 *
+	 * ask 是「一次点选一次 PATCH」，连点两次时两个请求可能乱序返回；
+	 * 用序号保证后发的（用户最新意图）不会被先发的响应盖回旧答案。
+	 * key 带 workspaceId：切空间后同 id 的卡不算同一次写入。
+	 */
+	const sectionSeq = useRef(new Map<string, number>());
+
+	/**
+	 * 每张卡的章节保存队列 —— **同一张卡的 PATCH 串行发给服务端**。
+	 *
+	 * 只靠 `sectionSeq` 能防「旧响应盖新 UI」，但防不了「后发的请求先到服务端」：
+	 * 两次 ask 点选各自带着完整 content，服务端按到达顺序整份覆盖 ⇒ 先到的
+	 * 旧 content 可能最后落库（静默回退用户答案）。串行发送让「发送顺序 =
+	 * 用户操作顺序」，服务端最后一条一定是用户最新意图。
+	 */
+	const sectionWriteChain = useRef(new Map<string, Promise<void>>());
 
 	// TODO(审查): 这里手写竞态序号/去重/loading/error（:119-215 整段）正是 swr 或 @tanstack/react-query 的标准能力；若接受依赖可整体替换，否则至少用 AbortController + 统一 useAsync。属架构选择，需用户决定是否加依赖。
 	const load = useCallback(async (workspaceId?: string): Promise<void> => {
@@ -218,6 +262,97 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 		}
 	}, []);
 
+	/**
+	 * 保存一个章节的内联编辑。
+	 *
+	 * `patchCard` 的 `content` 是整份覆盖 ⇒ 必须用**当前全部章节**组装，
+	 * 不能只发改过的那一章（否则别的章节会被抹掉）。
+	 */
+	const patchSection = useCallback(
+		async (
+			cardId: string,
+			sectionId: string,
+			patch: Readonly<Record<string, unknown>>,
+		): Promise<boolean> => {
+			const workspaceId = workspaceRef.current;
+			const card = cardsRef.current.find((one) => one.id === cardId);
+			if (card === undefined) {
+				setState((prev) => ({
+					...prev,
+					error: `要改的章节在卡「${cardId}」上找不到 —— 可能刚被删或切了空间。`,
+				}));
+				return false;
+			}
+
+			const sections = sectionsWithPatch(card.sections, sectionId, patch);
+			if (sections === card.sections) {
+				/* 章节不存在 / payload 不是对象：不静默当作保存成功。 */
+				setState((prev) => ({
+					...prev,
+					error: `这一章（${sectionId}）的数据形状不能保存 —— 可能模板已变或数据损坏，刷新后再看。`,
+				}));
+				return false;
+			}
+
+			const content = contentOfSections(sections);
+			const optimistic: Card = { ...card, sections };
+
+			/* 连点两次时，第二次用第一次的乐观结果继续拼 content，不丢上一次改动。 */
+			const key = `${workspaceId}\u0000${cardId}`;
+			const seq = (sectionSeq.current.get(key) ?? 0) + 1;
+			sectionSeq.current.set(key, seq);
+
+			cardsRef.current = replaceCards(cardsRef.current, [optimistic]);
+			setState((prev) => ({
+				...prev,
+				cards: replaceCards(prev.cards, [optimistic]),
+				pending: prev.pending + 1,
+				error: undefined,
+			}));
+
+			/*
+			 * 同一张卡的保存串行：上一笔（无论成败）结束后才发下一笔，
+			 * 保证服务端最后收到的就是用户最后一次意图。
+			 */
+			const previous = sectionWriteChain.current.get(key) ?? Promise.resolve();
+			let savedOk = false;
+			const task: Promise<void> = previous.then(async () => {
+				try {
+					const saved = await apiRef.current.patchCard({ workspaceId, cardId, content });
+					if (sectionSeq.current.get(key) === seq) {
+						cardsRef.current = replaceCards(cardsRef.current, [saved]);
+						setState((prev) => ({
+							...prev,
+							cards: replaceCards(prev.cards, [saved]),
+							pending: Math.max(0, prev.pending - 1),
+						}));
+					} else {
+						/* 已经有更新的保存接手这张卡 —— 不回写旧响应，只把在飞计数还回去。 */
+						setState((prev) => ({ ...prev, pending: Math.max(0, prev.pending - 1) }));
+					}
+					savedOk = true;
+				} catch (cause) {
+					if (sectionSeq.current.get(key) === seq) {
+						cardsRef.current = replaceCards(cardsRef.current, [card]);
+						setState((prev) => ({
+							...prev,
+							cards: replaceCards(prev.cards, [card]),
+							pending: Math.max(0, prev.pending - 1),
+							error: messageOf(cause),
+						}));
+					} else {
+						setState((prev) => ({ ...prev, pending: Math.max(0, prev.pending - 1) }));
+					}
+					savedOk = false;
+				}
+			});
+			sectionWriteChain.current.set(key, task);
+			await task;
+			return savedOk;
+		},
+		[],
+	);
+
 	const createWorkspace = useCallback(
 		async (name: string): Promise<boolean> => {
 			setState((prev) => ({ ...prev, pending: prev.pending + 1, error: undefined }));
@@ -297,6 +432,14 @@ export function useBoardState(apiImpl?: TaskboardApi): BoardHandle {
 
 	return {
 		state,
-		actions: { switchWorkspace, reload, runAction, createWorkspace, setWorkspaceArchived, clearError },
+		actions: {
+			switchWorkspace,
+			reload,
+			runAction,
+			patchSection,
+			createWorkspace,
+			setWorkspaceArchived,
+			clearError,
+		},
 	};
 }
