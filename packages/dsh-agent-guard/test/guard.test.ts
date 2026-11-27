@@ -36,10 +36,9 @@
 import assert from 'node:assert/strict';
 import { createSqliteStore } from '@taskboard/io';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { after, before, beforeEach, describe, it } from 'node:test';
+import { join } from 'node:path';
+import { after, beforeEach, describe, it } from 'node:test';
 
 import { BASE_TOOLS, createTaskboard, type Taskboard } from '@taskboard/core';
 import { TaskState } from '@taskboard/protocol';
@@ -54,8 +53,14 @@ import { writeToolGuardLevel } from '../src/tool-guard.ts';
 
 /* ────────────────────────────── 夹具 ────────────────────────────── */
 
-let dataDir = '';
-let taskboard: Taskboard;
+/**
+ * ⚠ **每个用例一个全新数据目录**（在 `beforeEach` 里建）。
+ *
+ * 不是洁癖 —— `heldWorkCardsOf` 只查 `listWorkspaces()[0]`（已知限制，
+ * 见 `src/permission.ts` 文件头）。若共用同一个目录，前面用例建的空间会排在
+ * 第一个 ⇒ 新用例把卡建在**第三个空间**，guard 永远看不到它。
+ */
+let taskboard: Taskboard | undefined;
 /**
  * agent 侧档位的存储端口。
  *
@@ -65,22 +70,24 @@ let taskboard: Taskboard;
 let store: ReturnType<typeof createSqliteStore>;
 let workspaceId = '';
 
-/**
- * ⚠ **每个用例一个全新数据目录**。
- *
- * 不是洁癖 —— `heldWorkCardsOf` 只查 `listWorkspaces()[0]`（已知限制，
- * 见 `src/permission.ts` 文件头）。若共用 dataDir，前面用例建的空间会排在
- * 第一个 ⇒ 新用例把卡建在**第三个空间**，guard 永远看不到它。
- */
-before(() => {
-	dataDir = mkdtempSync(join(tmpdir(), 'tb3-perm-'));
-});
-
 async function closeTaskboard(): Promise<void> {
 	if (taskboard === undefined) return;
 	const closing = taskboard;
-	taskboard = undefined as unknown as Taskboard;
+	taskboard = undefined;
 	await closing.close();
+}
+
+/**
+ * 取当前实例。
+ *
+ * `taskboard` 声明成 `Taskboard | undefined` 是为了让 `closeTaskboard` 能表达
+ * 「已关闭」——不是 `undefined as unknown as Taskboard` 那种骗类型；
+ * 用例体里一律经这个收窄函数取（`beforeEach` 之后它一定存在）。
+ */
+function tb(): Taskboard {
+	const current = taskboard;
+	if (current === undefined) throw new Error('taskboard 尚未初始化');
+	return current;
 }
 
 /** 用例级临时目录（跑完统一清）。 */
@@ -88,7 +95,7 @@ const createdDirs: string[] = [];
 
 after(async () => {
 	await closeTaskboard();
-	for (const dir of [dataDir, ...createdDirs]) {
+	for (const dir of createdDirs) {
 		for (let i = 0; i < 10; i += 1) {
 			try {
 				rmSync(dir, { recursive: true, force: true });
@@ -106,7 +113,7 @@ beforeEach(async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'tb3-perm-case-'));
 	createdDirs.push(dir);
 	taskboard = createTaskboard({ store: (store = createSqliteStore(dir)) });
-	const created = await taskboard.createWorkspace('权限测试');
+	const created = await tb().createWorkspace('权限测试');
 	assert.equal(created.ok, true);
 	if (created.ok) workspaceId = created.workspace.id;
 });
@@ -129,19 +136,19 @@ function subagentsOf(self: string): PermissionSubagentsLike {
 
 /** 建一张 work 模板的卡并推进到「处理中」（领取）。返回卡编号。 */
 async function claimedWorkCard(title: string, holder: string): Promise<string> {
-	const template = taskboard.listTemplates().find((one) => one.kind === 'work');
+	const template = tb().listTemplates().find((one) => one.kind === 'work');
 	assert.notEqual(template, undefined, '应当存在 work 模板');
 	const ref = template?.ref ?? '';
 
-	const created = await taskboard.create({ workspaceId, templateRef: ref, title, actor: 'user' });
+	const created = await tb().create({ workspaceId, templateRef: ref, title, actor: 'user' });
 	assert.equal(created.ok, true, created.ok ? '' : created.message);
 	if (!created.ok) return '';
 	const cardId = created.card.id;
 
-	const adopted = await taskboard.transition(workspaceId, cardId, TaskState.SUBMITTED, 'button');
+	const adopted = await tb().transition(workspaceId, cardId, TaskState.SUBMITTED, 'button');
 	assert.equal(adopted.ok, true, adopted.ok ? '' : adopted.message);
 
-	const claimed = await taskboard.claim(workspaceId, cardId, 'ai', holder);
+	const claimed = await tb().claim(workspaceId, cardId, 'ai', holder);
 	assert.equal(claimed.ok, true, claimed.ok ? '' : claimed.message);
 
 	return cardId;
@@ -171,7 +178,17 @@ describe('holderOf', () => {
 		assert.equal(holderOf(subagents, execOf({ agent: { id: 'self-uuid' } })), 'self-uuid');
 	});
 
-	it('namesOf 返回空串 ⇒ 回落 agent.id', () => {
+	/*
+	 * ⚠ 这条钉的是**本包私有 holderOf** 的语义：空名字 ⇒ 回落 agent.id。
+	 *
+	 * `@taskboard/dsh-tools` 的 `holderOf`（`src/holder.ts`）没有这一条 ——
+	 * `namesOf` 返回 `''` 时它直接返回 `''`。两版尚未统一：claim 由 dsh-tools 写、
+	 * guard 由本函数读，空 self 的 agent 会出现「领了卡但权限不生效」的静默错误。
+	 *
+	 * 见 `src/permission.ts` 里 `holderOf` 上的 TODO(审查)（待用户决定语义后合并成一份）。
+	 * **断言不改**：它现在如实反映本包的行为，改掉就等于假装统一已经发生。
+	 */
+	it('namesOf 返回空串 ⇒ 回落 agent.id（本包私有语义，与 dsh-tools 版有分歧）', () => {
 		assert.equal(holderOf(subagentsOf(''), execOf({ agent: { id: 'u' } })), 'u');
 	});
 
@@ -191,7 +208,7 @@ describe('heldWorkCardsOf', () => {
 		const mine = await claimedWorkCard('我的卡', 'lead');
 		assert.notEqual(mine, '');
 
-		const { cards, workspaceId: ws } = heldWorkCardsOf(taskboard, 'lead');
+		const { cards, workspaceId: ws } = heldWorkCardsOf(tb(), 'lead');
 		assert.equal(ws, workspaceId);
 		assert.deepEqual(
 			cards.map((one) => one.id),
@@ -202,23 +219,23 @@ describe('heldWorkCardsOf', () => {
 	it('别的 holder 的卡不收', async () => {
 		await claimedWorkCard('别人的卡', 'reviewer');
 
-		const { cards } = heldWorkCardsOf(taskboard, 'lead');
+		const { cards } = heldWorkCardsOf(tb(), 'lead');
 		assert.equal(cards.length, 0);
 	});
 
 	it('未领取（草稿 / 提交）的卡不算持有', async () => {
-		const template = taskboard.listTemplates().find((one) => one.kind === 'work');
+		const template = tb().listTemplates().find((one) => one.kind === 'work');
 		if (template === undefined) return;
-		const created = await taskboard.create({ workspaceId, templateRef: template.ref, title: '还是草稿', actor: 'user' });
+		const created = await tb().create({ workspaceId, templateRef: template.ref, title: '还是草稿', actor: 'user' });
 		assert.equal(created.ok, true);
 
-		const { cards } = heldWorkCardsOf(taskboard, 'lead');
+		const { cards } = heldWorkCardsOf(tb(), 'lead');
 		assert.equal(cards.length, 0, '草稿 / 提交态不算「领取了工作」');
 	});
 
 	it('holder 为空或 unknown ⇒ 空数组（不查）', () => {
-		assert.deepEqual(heldWorkCardsOf(taskboard, '').cards, []);
-		assert.deepEqual(heldWorkCardsOf(taskboard, 'unknown').cards, []);
+		assert.deepEqual(heldWorkCardsOf(tb(), '').cards, []);
+		assert.deepEqual(heldWorkCardsOf(tb(), 'unknown').cards, []);
 	});
 });
 
@@ -228,7 +245,7 @@ describe('createPermissionGuard', () => {
 	/** 造 guard（档位**不注入** —— 它从 taskboard + kv 读）。 */
 	function guardOf(options: { subagents?: unknown } = {}): (exec: unknown) => string | undefined {
 		return createPermissionGuard({
-			taskboard,
+			taskboard: tb(),
 			kv: store,
 			...(options.subagents === undefined ? {} : { subagents: options.subagents }),
 		});
@@ -263,7 +280,7 @@ describe('createPermissionGuard', () => {
 		 * ⇒ 把 toolLevel 显式设成 off，claim / adopt 仍按 cardLevel 判。
 		 */
 		await writeToolGuardLevel(store, 'off');
-		await taskboard.setCardActionLevel('no-claim');
+		await tb().setCardActionLevel('no-claim');
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 
 		assert.notEqual(guard(exec('taskboard_claim')), undefined, 'off 档下 claim 仍受 cardLevel 管');
@@ -271,7 +288,7 @@ describe('createPermissionGuard', () => {
 	});
 
 	it('cardLevel=claim：领卡放行，采纳仍拒', async () => {
-		await taskboard.setCardActionLevel('claim');
+		await tb().setCardActionLevel('claim');
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 
 		assert.equal(guard(exec('taskboard_claim')), undefined, '允许领卡 ⇒ claim 放行');
@@ -279,7 +296,7 @@ describe('createPermissionGuard', () => {
 	});
 
 	it('cardLevel=adopt：领卡与采纳都放行', async () => {
-		await taskboard.setCardActionLevel('adopt');
+		await tb().setCardActionLevel('adopt');
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 
 		assert.equal(guard(exec('taskboard_claim')), undefined);
@@ -295,7 +312,7 @@ describe('createPermissionGuard', () => {
 		 *   `no-claim` 档下会被拒。这里把 UI 轴调到 claim，测的才是
 		 *   「BASE 工具不需要领卡」这件事本身。
 		 */
-		await taskboard.setCardActionLevel('claim');
+		await tb().setCardActionLevel('claim');
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 		for (const name of BASE_TOOLS) {
 			assert.equal(guard(exec(name)), undefined, `BASE 工具「${name}」不该被拦`);
@@ -320,10 +337,10 @@ describe('createPermissionGuard', () => {
 	it('toolLevel=manage + 独立档有 ⇒ 放行；没有的仍拒绝', async () => {
 		await writeToolGuardLevel(store, 'manage');
 		const cardId = await claimedWorkCard('要写代码', 'lead');
-		const ref = taskboard.get(workspaceId, cardId);
+		const ref = tb().get(workspaceId, cardId);
 		assert.equal(ref.ok, true);
 		if (!ref.ok) return;
-		const set = await taskboard.setTemplatePolicy(ref.card.template.ref, ['bash', 'write']);
+		const set = await tb().setTemplatePolicy(ref.card.template.ref, ['bash', 'write']);
 		assert.equal(set.ok, true);
 
 		const guard = guardOf({ subagents: subagentsOf('lead') });
@@ -334,7 +351,7 @@ describe('createPermissionGuard', () => {
 	it('toolLevel=manage：通用档对所有工作卡生效', async () => {
 		await writeToolGuardLevel(store, 'manage');
 		await claimedWorkCard('吃通用档', 'lead');
-		await taskboard.setCommonPolicy(['bash']);
+		await tb().setCommonPolicy(['bash']);
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('bash')), undefined);
 	});
@@ -342,17 +359,17 @@ describe('createPermissionGuard', () => {
 	it('toolLevel=manage：组档只对组成员生效', async () => {
 		await writeToolGuardLevel(store, 'manage');
 		const cardId = await claimedWorkCard('组测试', 'lead');
-		const ref = taskboard.get(workspaceId, cardId);
+		const ref = tb().get(workspaceId, cardId);
 		assert.equal(ref.ok, true);
 		if (!ref.ok) return;
 		const templateRef = ref.card.template.ref;
 
-		await taskboard.setGroupPolicy('别组', ['bash']);
-		await taskboard.setGroupMembers('别组', ['完全不存在的模板']);
+		await tb().setGroupPolicy('别组', ['bash']);
+		await tb().setGroupMembers('别组', ['完全不存在的模板']);
 		let guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.notEqual(guard(exec('bash')), undefined, '卡不在组里 ⇒ 组增量不生效');
 
-		await taskboard.setGroupMembers('别组', [templateRef]);
+		await tb().setGroupMembers('别组', [templateRef]);
 		guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('bash')), undefined, '卡在组里 ⇒ 组增量生效');
 	});
@@ -375,7 +392,7 @@ describe('createPermissionGuard', () => {
 		 * 这里从 dsh 侧确认：把权限工具配进 common 也绕不过去。
 		 */
 		await writeToolGuardLevel(store, 'manage');
-		await taskboard.setCommonPolicy(['taskboard_tool_policy']);
+		await tb().setCommonPolicy(['taskboard_tool_policy']);
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 		assert.notEqual(guard(exec('taskboard_tool_policy')), undefined, '能给自己发权限的工具必须硬拒');
 	});
@@ -394,7 +411,7 @@ describe('createPermissionGuard', () => {
 		 * ⇒ 调用方（工具执行上下文）只能提供 `toolName` / agent 身份，
 		 *   **塞档位字段不能改变判定**。这条就是「档位不由调用方传」的行为证明。
 		 */
-		await taskboard.setCardActionLevel('no-claim');
+		await tb().setCardActionLevel('no-claim');
 		await writeToolGuardLevel(store, 'manage');
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 
@@ -420,7 +437,7 @@ describe('createPermissionGuard', () => {
 		 * （旧语义下 claim 会放行），断言的却是**默认档位仍然拒 claim**。
 		 */
 		const withPresetService = createPermissionGuard({
-			taskboard,
+			taskboard: tb(),
 			kv: store,
 			subagents: subagentsOf('lead'),
 			...( {
@@ -438,7 +455,7 @@ describe('createPermissionGuard', () => {
 		assert.notEqual(claimVerdict, undefined, '默认 no-claim 档必须拒 —— 预设名不该改变判定');
 
 		/* 真正改变判定的是 core 的档位。 */
-		await taskboard.setCardActionLevel('claim');
+		await tb().setCardActionLevel('claim');
 		assert.equal(withPresetService(exec('taskboard_claim')), undefined, '档位才是判据');
 	});
 
@@ -446,10 +463,10 @@ describe('createPermissionGuard', () => {
 		const guard = guardOf({ subagents: subagentsOf('lead') });
 
 		assert.notEqual(guard(exec('taskboard_claim')), undefined, '默认 no-claim');
-		await taskboard.setCardActionLevel('claim');
+		await tb().setCardActionLevel('claim');
 		assert.equal(guard(exec('taskboard_claim')), undefined, '改 claim 后放行');
 		assert.notEqual(guard(exec('taskboard_adopt')), undefined, 'claim 下采纳仍拒');
-		await taskboard.setCardActionLevel('adopt');
+		await tb().setCardActionLevel('adopt');
 		assert.equal(guard(exec('taskboard_adopt')), undefined, '改 adopt 后采纳放行');
 
 		assert.equal(guard(exec('bash')), undefined, '默认 off ⇒ bash 放行');
@@ -467,7 +484,7 @@ describe('createPermissionGuard', () => {
 
 	it('内部抛错 ⇒ 放行并打日志（加装模块坏了不该锁死 dsh）', () => {
 		const broken: Taskboard = {
-			...taskboard,
+			...tb(),
 			listWorkspaces: () => {
 				throw new Error('boom');
 			},
@@ -482,7 +499,7 @@ describe('createPermissionGuard', () => {
 		/* cell 模拟 ctx.inject：服务出现时写入、消失时清空。 */
 		let cell: unknown;
 		const guard = createPermissionGuard({
-			taskboard,
+			taskboard: tb(),
 			kv: store,
 			resolveSubagents: () => cell,
 		});

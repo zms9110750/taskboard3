@@ -41,6 +41,11 @@ import {
 	type ToolDeps,
 } from '@taskboard/tools';
 
+/** 把外部传入的 `tier` 收窄成档位字面量（与 `inputSchema` 的 `enum` 一致）。 */
+function parseTier(value: string): 'unclaimed' | 'claimed' | undefined {
+	return value === 'unclaimed' || value === 'claimed' ? value : undefined;
+}
+
 export function createToolPolicyTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;
 
@@ -53,9 +58,9 @@ export function createToolPolicyTool(deps: ToolDeps): ReturnType<typeof defineTo
 			);
 		}
 
-		const tier = str(args, 'tier');
+		const rawTier = str(args, 'tier');
 		const templateRef = str(args, 'templateRef');
-		const hasTier = tier !== undefined;
+		const hasTier = rawTier !== undefined;
 		const hasTemplate = templateRef !== undefined;
 		if (hasTier === hasTemplate) {
 			return inputFailure(
@@ -63,17 +68,20 @@ export function createToolPolicyTool(deps: ToolDeps): ReturnType<typeof defineTo
 				'给 tier=unclaimed/claimed，或给 templateRef=模板 ref，但不要两个都给。',
 			);
 		}
-		if (hasTier && tier !== 'unclaimed' && tier !== 'claimed') {
-			return inputFailure(`tier 只能是 unclaimed（未领取卡）/ claimed（领取了工作卡）；收到「${tier}」。`);
+		/*
+		 * ⚠ 不用 `tier as 'unclaimed' | 'claimed'`（AGENTS 3.1）：`string` 不是字面量联合，
+		 *   靠 `!==` 排除法收窄不出来 ⇒ 让解析函数直接返回收窄后的字面量（校验与收窄一次完成）。
+		 */
+		const tier = rawTier === undefined ? undefined : parseTier(rawTier);
+		if (hasTier && tier === undefined) {
+			return inputFailure(`tier 只能是 unclaimed（未领取卡）/ claimed（领取了工作卡）；收到「${rawTier}」。`);
 		}
 
 		const allow = strs(args, 'allow') ?? [];
 		const remove = strs(args, 'remove') ?? [];
 
 		const result = await taskboard.setToolPolicyScope({
-			// TODO(审查): 这个 `as` 可删：把 :66 的校验移进 `if (hasTier) {...}` 内（hasTier 是 const，TS 能收窄
-			// 到 'unclaimed' | 'claimed'）。可直接改：删断言 + 重排分支（AGENTS 3.1：可删的断言只是难看）。
-			...(hasTier ? { tier: tier as 'unclaimed' | 'claimed' } : {}),
+			...(tier !== undefined ? { tier } : {}),
 			...(hasTemplate ? { templateRef } : {}),
 			allow,
 			remove,
@@ -127,6 +135,12 @@ export function createToolPolicyTool(deps: ToolDeps): ReturnType<typeof defineTo
 			'`allow` 与原有配置取并集；`remove` 与原有配置取交集（只移除已存在的；同时出现在两者里的名字以 remove 为准）。' +
 			'BASE 基础任务板工具是硬底线，不能被移除（会明确列出来）。',
 		inputSchema: {
+			/*
+			 * 这里**故意不写** `additionalProperties`：DSH 适配层的 `toDshSchema`
+			 * （`@taskboard/dsh-tools` 的 `src/tools.ts`）对 `type: 'object'` 一律补
+			 * `additionalProperties: false`（除非源 schema 显式给值）。写在这里等于
+			 * 同一事实两份 —— DSH 要求显式是**适配层**的职责，由它一处保证。
+			 */
 			type: 'object',
 			properties: {
 				tier: {
@@ -150,9 +164,6 @@ export function createToolPolicyTool(deps: ToolDeps): ReturnType<typeof defineTo
 				},
 			},
 		},
-		// TODO(审查): 这里 inputSchema 没有 additionalProperties，而 tool-policy-read.ts:101 有；tools.ts:5-6
-		// 注释说 DSH 要求 additionalProperties 必须显式。可直接改：补 additionalProperties:false；若
-		// adaptDefinitions 已补默认值则不成立，需先确认（未核实）。
 		hosts: ['dsh'],
 		handler,
 	});

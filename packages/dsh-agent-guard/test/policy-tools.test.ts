@@ -31,7 +31,7 @@ import { BASE_TOOLS, createTaskboard, type Taskboard } from '@taskboard/core';
 import { createSqliteStore } from '@taskboard/io';
 
 import { createAgentGuardTools } from '../src/tools.ts';
-import { writeToolGuardLevel, type ToolGuardKv } from '../src/tool-guard.ts';
+import { readToolGuardLevelOf, writeToolGuardLevel, type ToolGuardKv } from '../src/tool-guard.ts';
 
 /** 内存 kv（三档位的存储端口）。 */
 function memoryKv(): ToolGuardKv {
@@ -65,7 +65,13 @@ function toolsOf(taskboard: Taskboard, kv: ToolGuardKv): readonly CallableTool[]
 		return tool;
 	};
 	/* `defineTool` 的形状由 `adaptDefinitions` 收窄，这里只造它真正用到的字段。 */
-	createAgentGuardTools({ taskboard, kv, defineTool: defineTool as never });
+	createAgentGuardTools({
+		taskboard,
+		kv,
+		/* 模拟插件行注入：`apply()` 传的是 service.isManageEdit（同一份 kv 判定）。 */
+		isManageEdit: () => readToolGuardLevelOf(kv) === 'manage-edit',
+		defineTool: defineTool as never,
+	});
 	return built;
 }
 
@@ -73,18 +79,13 @@ describe('两个权限策略工具（已搬进 dsh-agent-guard）', () => {
 	let dir = '';
 	let taskboard: Taskboard;
 	let kv: ToolGuardKv;
-	let workspaceId = '';
 
 	before(async () => {
 		dir = mkdtempSync(join(tmpdir(), 'tb3-agent-guard-'));
 		taskboard = createTaskboard({ store: createSqliteStore(dir) });
 		kv = memoryKv();
-		const created = await taskboard.createWorkspace('策略工具测试');
-		assert.equal(created.ok, true);
-		if (created.ok) workspaceId = created.workspace.id;
 		await taskboard.setCardActionLevel('no-claim');
 		await writeToolGuardLevel(kv, 'off');
-		void workspaceId;
 	});
 
 	/*
@@ -120,7 +121,7 @@ describe('两个权限策略工具（已搬进 dsh-agent-guard）', () => {
 		assert.ok(refused.text.includes('失败'), refused.text);
 
 		/* 读工具无门槛：off 档也读得到（此时 BASE 之外是空的）。 */
-		const readBack = await read.execute({ tier: 'unclaimed' }, {});
+		const readBack = await read.execute({}, {});
 		assert.ok(readBack.text.includes('unclaimed') || readBack.text.includes('未领取'), readBack.text);
 	});
 
@@ -133,7 +134,7 @@ describe('两个权限策略工具（已搬进 dsh-agent-guard）', () => {
 		assert.ok(wrote.text.includes('已更新'), wrote.text);
 		assert.ok(wrote.text.includes('bash'), wrote.text);
 
-		const readBack = await read.execute({ tier: 'unclaimed' }, {});
+		const readBack = await read.execute({}, {});
 		assert.ok(readBack.text.includes('bash'), readBack.text);
 	});
 

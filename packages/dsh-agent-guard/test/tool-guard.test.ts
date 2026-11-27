@@ -1,7 +1,7 @@
 /**
  * agent 侧工具调用权限（`ToolGuardLevel` + `judgeToolCall`）—— **这套现在归本包**。
  *
- * ## 为什么这个文件在 `dsh-tools` 而不在 `core`（用户裁决）
+ * ## 为什么这个文件在 `dsh-agent-guard` 而不在 `core`（用户裁决）
  *
  * > 「agent处有一个权限选择。完全由各自 agent 接入处提供。这不是任务板的功能。
  * >   因为这依赖 agent 自己的 tool。所以 mcp 也不提供这个功能。…
@@ -10,7 +10,8 @@
  * > 「由3伴生来的一个档位对工具的拦截和权限。也是我对于 dsh 的私人专属实现。
  * >   这个 tool，不在 core 里提供。完全由 dsh 桥接包提供。」
  *
- * ⇒ 实现搬到 `packages/dsh-tools/src/tool-guard.ts`，**测试也跟着搬**。
+ * ⇒ 实现搬到 `packages/dsh-agent-guard/src/tool-guard.ts`（`2026-11-23` 从 core
+ *   经 `dsh-tools` 迁到本包），**测试也跟着搬**。
  *   core 的测试不许 import 本包（依赖方向 `dsh-tools → core`，反向会让
  *   `tsc -b` 的项目引用成环）—— 所以这些用例是**搬过来**，不是「改个 import」。
  *
@@ -372,5 +373,15 @@ describe('脏值：回落默认 + 警告，不抛错', () => {
 		await store.kvSet(GUARD_KEY, '深入敌后');
 		captureWarnings(() => readToolGuardLevelOf(store));
 		assert.equal(readToolGuardLevelOf(store), 'off');
+	});
+
+	it('同一个脏值只告警一次（guard 热路径上不刷日志）', async () => {
+		const store = createMemoryStore();
+		await store.kvSet(GUARD_KEY, 'DIRTY_ONCE');
+		const first = captureWarnings(() => readToolGuardLevelOf(store));
+		const second = captureWarnings(() => readToolGuardLevelOf(store));
+		assert.equal(first.warnings.length, 1, `第一次读应告警：\n${first.warnings.join('\n')}`);
+		assert.equal(second.warnings.length, 0, '同一个值第二次读不该再告警');
+		assert.equal(readToolGuardLevelOf(store), 'off', '告警去重不改变回落结果');
 	});
 });

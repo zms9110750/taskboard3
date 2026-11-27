@@ -104,24 +104,34 @@ export function handleToolsRequest(
 	/* ① 鉴权：与 `@taskboard/dsh` 同一调用、同一返回值处理。 */
 	if (rejected(connection, req, res)) return true;
 
-	/* ② 只支持 GET。 */
-	// TODO(审查): 缺 method 时按 GET 放行；HEAD/OPTIONS 一律 405；下面 403 也回 code UNAUTHORIZED。
-	// 可直接改（低优先级）：HEAD 按 GET 处理、403 用 FORBIDDEN（若与 dsh 同源则两边一起改）。
-	if ((req.method ?? 'GET').toUpperCase() !== 'GET') {
+	/* ② 只支持 GET；HEAD 走同一条读路径（响应体由 node 丢弃，Host 只关心状态/头）。 */
+	// TODO(审查): 缺 method 时按 GET 放行；下面 403 也回 code UNAUTHORIZED（与 dsh 同源，改要两边一起）。
+	const method = (req.method ?? 'GET').toUpperCase();
+	if (method !== 'GET' && method !== 'HEAD') {
 		sendJson(res, 405, { ok: false, code: 'METHOD_NOT_ALLOWED', message: '只支持 GET。' });
 		return true;
 	}
 
 	/* ③ 返回清单（只保留白名单三字段）。同步返回的直接写，异步的等它写完。 */
-	// TODO(审查): fire-and-forget 写响应：成功回调里 normalize()/sendJson() 抛错时 .then 的 rejection 无人
-	// catch（void 不 catch）⇒ unhandled rejection 且响应永不写出，请求挂到超时。
-	// 可直接改：成功回调包 try/catch 或补 .catch；长期可把契约改成 Promise<boolean>（需 @taskboard/dsh
-	// 配合，需用户决定）。
 	const result = listTools();
 	if (isPromiseLike(result)) {
 		void result.then(
 			(tools) => {
-				sendJson(res, 200, { tools: normalize(tools) });
+				try {
+					sendJson(res, 200, { tools: normalize(tools) });
+				} catch (error) {
+					/*
+					 * `normalize` / `sendJson` 抛错以前会让 `.then` 的 rejection 无人接住
+					 * （unhandled rejection + 响应永不写出，请求挂到超时）。
+					 * ⇒ 记日志，再尽力写一个空清单；连写响应都失败就没有补救空间了。
+					 */
+					console.warn(`[taskboard3-agent-guard] /api/tools 写响应失败：${String(error)}`);
+					try {
+						sendJson(res, 200, { tools: [] });
+					} catch {
+						/* 响应已关闭 / 不可写：没有可补救的动作。 */
+					}
+				}
 			},
 			(error: unknown) => {
 				/*
@@ -135,6 +145,8 @@ export function handleToolsRequest(
 		);
 		return true;
 	}
+	// TODO(审查): 同步路径（下面这行）没有 try/catch —— `normalize`/`sendJson` 抛错会直接冒给调用方
+	//   （异步路径已兜）。是否同样降级成空清单需先定契约（调用方是 dsh 的 prefix handler）。
 	sendJson(res, 200, { tools: normalize(result) });
 	return true;
 }
@@ -181,9 +193,9 @@ function sendJson(res: OutgoingLike, status: number, body: unknown): void {
  * ⚠ 只保留白名单三字段 —— DSH 的 `ToolSchema` 可能带更多字段，但清单不需要，
  *   也不该把内部元数据漏到 UI。
  */
-// TODO(审查): normalize 直接 for...of，没有 Array.isArray 兜底，而同层 tool-inventory.ts:237 的
-//   safeSchemas 有 ⇒ 两处防护不一致。可直接改：首行 `if (!Array.isArray(raw)) return [];`。
 function normalize(raw: readonly unknown[]): readonly ToolSummary[] {
+	/* 运行时兜底：`schemas()` 可能返回非数组（旧 DSH / 服务未就绪）。 */
+	if (!Array.isArray(raw)) return [];
 	const out: ToolSummary[] = [];
 	for (const item of raw) {
 		if (typeof item !== 'object' || item === null) continue;

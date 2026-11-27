@@ -1,7 +1,10 @@
 /**
  * agent 侧工具调用权限 —— **不归 core**（用户 `2026-11-23` 裁决）。
  *
- * ## 为什么这个文件在 `@taskboard/dsh-tools` 而不是 `@taskboard/core`
+ * ## 为什么这个文件在 `@taskboard/dsh-agent-guard` 而不是 `@taskboard/core`
+ *
+ * ⚠ 归属：`2026-11-23` 用户裁决后，本文件随「agent 侧注入权限」从 core 搬到
+ * `@taskboard/dsh-agent-guard`（`dsh-tools` 只留宿主无关的 9 个工具，不拥有这一层）。
  *
  * 用户原话：
  *
@@ -45,9 +48,9 @@
  * 换键等于把用户已配好的档位丢掉（静默回落 `off` = 突然不设防）。
  */
 
-// TODO(审查): 文件头第 4 行说「这个文件在 @taskboard/dsh-tools 而不是 @taskboard/core」、
-//   test/tool-guard.test.ts:13 说「实现搬到 packages/dsh-tools/src/tool-guard.ts」，实际都在
-//   dsh-agent-guard（搬迁留下的路径漂移）。可直接改：改注释；permission.ts:76 的 holder.ts 也应写全包名。
+// TODO(审查): 'taskboard_release'/'taskboard_claim'/'taskboard_adopt' 是裸字面量（core 只导出数组
+//  常量）⇒ core 改名时这里不会编译失败，只会静默变成「另一个工具」。需 core 配合：导出这三个名字常量，
+//  或在此加一条编译期对照（现有 permission-judgement.test.ts:339 只兜住命名约定）。
 import type { CardActionLevel, ToolPolicyStore } from '@taskboard/core';
 import { effectiveToolsOf, extrasOf, isBaseTool, isPolicyTool } from '@taskboard/core';
 
@@ -95,20 +98,31 @@ export const TOOL_GUARD_OPTIONS = [
 export const TOOL_GUARD_LEVELS: readonly ToolGuardLevel[] = TOOL_GUARD_OPTIONS.map((one) => one.value);
 
 /**
+ * 已经告警过的脏值（按**原始值**去重）。
+ *
+ * ⚠ guard 在每次工具调用时都会 `readToolGuardLevelOf` —— 一条坏记录会刷满日志。
+ *   所以同一个值只告警一次；换一个坏值时仍会告警（不同配置问题要各自可见）。
+ */
+const warnedBadLevels = new Set<string>();
+
+/**
  * 从不可信的值里读一个档位。
  *
- * ⚠ **脏值 ⇒ 回落默认 + `console.warn`，不抛错** —— 一条坏记录不该让整个插件挂掉；
- *   但档位错会影响安全边界，静默回落会掩盖配置问题，所以要留痕。
+ * ⚠ **脏值 ⇒ 回落默认 + `console.warn`（同一值只一次），不抛错** ——
+ *   一条坏记录不该让整个插件挂掉；但档位错会影响安全边界，
+ *   静默回落会掩盖配置问题，所以要留痕。
  */
-// TODO(审查): 脏值在每次工具调用（guard 热路径）都会 console.warn，一条坏记录会刷满日志；另外
-//   readToolGuardLevel 循环 TOOL_GUARD_LEVELS、parseToolGuardLevel 又用 TOOL_GUARD_OPTIONS.find 校验，
-//   同一件事两套写法。可直接改：warn-once（按值去重）+ read 复用 parse。
 export function readToolGuardLevel(raw: string | undefined): ToolGuardLevel {
 	if (raw === undefined) return DEFAULT_TOOL_GUARD_LEVEL;
-	for (const choice of TOOL_GUARD_LEVELS) if (choice === raw) return choice;
-	console.warn(
-		`[taskboard3-tool-guard] 档位值非法（键 ${TOOL_GUARD_LEVEL_KEY}）：${raw}。回落「${DEFAULT_TOOL_GUARD_LEVEL}」。`,
-	);
+	/* 合法值的判定只保留 `parseToolGuardLevel` 一处。 */
+	const parsed = parseToolGuardLevel(raw);
+	if (parsed !== undefined) return parsed;
+	if (!warnedBadLevels.has(raw)) {
+		warnedBadLevels.add(raw);
+		console.warn(
+			`[taskboard3-tool-guard] 档位值非法（键 ${TOOL_GUARD_LEVEL_KEY}）：${raw}。回落「${DEFAULT_TOOL_GUARD_LEVEL}」。`,
+		);
+	}
 	return DEFAULT_TOOL_GUARD_LEVEL;
 }
 

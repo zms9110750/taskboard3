@@ -113,6 +113,59 @@ describe('handleToolsRequest', () => {
 		assert.equal(res.statusCode, 405);
 	});
 
+	it('HEAD ⇒ 按 GET 处理（200，走同一条读路径）', () => {
+		const res = fakeRes();
+		const handled = handleToolsRequest(allowConnection, { method: 'HEAD', headers: {} }, res, () => [
+			{ name: 'bash', description: 'shell', parameters: {} },
+		]);
+		assert.equal(handled, true);
+		assert.equal(res.statusCode, 200);
+		assert.deepEqual(
+			bodyOf(res).tools.map((one) => one.name),
+			['bash'],
+		);
+	});
+
+	it('listTools 返回非数组（运行时脏值）⇒ 200 + 空清单', () => {
+		const res = fakeRes();
+		handleToolsRequest(
+			allowConnection,
+			{ method: 'GET', headers: {} },
+			res,
+			() => 'not-an-array' as unknown as readonly unknown[],
+		);
+		assert.equal(res.statusCode, 200);
+		assert.deepEqual(bodyOf(res).tools, []);
+	});
+
+	it('异步成功回调里 normalize 抛错 ⇒ 记日志 + 写空清单（不挂住请求）', async () => {
+		const res = fakeRes();
+		const warnings: string[] = [];
+		const original = console.warn;
+		console.warn = (...args: unknown[]): void => {
+			warnings.push(args.map((one) => String(one)).join(' '));
+		};
+		try {
+			const handled = handleToolsRequest(allowConnection, { method: 'GET', headers: {} }, res, async () => [
+				{
+					get name(): string {
+						throw new Error('name getter boom');
+					},
+				},
+			]);
+			assert.equal(handled, true);
+			await tick();
+		} finally {
+			console.warn = original;
+		}
+		assert.equal(res.statusCode, 200);
+		assert.deepEqual(bodyOf(res).tools, []);
+		assert.ok(
+			warnings.some((one) => one.includes('写响应失败')),
+			`应留下写响应失败的日志：\n${warnings.join('\n')}`,
+		);
+	});
+
 	it('只保留 name / description / parameters 三字段', () => {
 		const res = fakeRes();
 		handleToolsRequest(allowConnection, { method: 'GET', headers: {} }, res, () => [

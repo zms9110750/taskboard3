@@ -28,7 +28,7 @@ import type { TaskboardTool } from '@taskboard/tools';
 
 import { createToolPolicyReadTool } from './tool-policy-read.ts';
 import { createToolPolicyTool } from './tool-policy.ts';
-import { readToolGuardLevelOf, type ToolGuardKv } from './tool-guard.ts';
+import type { ToolGuardKv } from './tool-guard.ts';
 
 /** 建这两个工具需要的依赖。 */
 export interface AgentGuardToolDeps {
@@ -41,6 +41,15 @@ export interface AgentGuardToolDeps {
 	readonly resolveSubagents?: () => unknown;
 	/** 测试注入用；省略 = DSH 的 `defineTool`。 */
 	readonly defineTool?: DefineTool;
+	/**
+	 * 「agent 侧档位是否 manage-edit」的判定。
+	 *
+	 * 插件行注入 `service.isManageEdit`（与 HTTP / 其它消费方**同一份事实**，见
+	 * `packages/dsh-agent-guard/src/index.ts` 的 `AgentGuardService`）。
+	 * 省略 ⇒ 一律 `false`（不允许改策略）—— 与「服务缺席就 false」的语义一致；
+	 * 本文件**不自己读 kv 重算**，档位只有服务那一个来源。
+	 */
+	readonly isManageEdit?: () => boolean;
 }
 
 /**
@@ -58,12 +67,12 @@ export function createAgentGuardTools(deps: AgentGuardToolDeps): readonly ToolLi
 		createToolPolicyTool(toolDeps),
 		createToolPolicyReadTool(toolDeps),
 	];
+	/* 插件行注入的是 `service.isManageEdit`（单一真值）；未注入 ⇒ 保守地不允许改策略。 */
+	const isManageEdit = deps.isManageEdit ?? ((): boolean => false);
 
 	return adaptDefinitions(definitions, {
 		taskboard: deps.taskboard,
-		// TODO(审查): 与 src/index.ts 的 service.isManageEdit 是同一事实的两份重算。可直接改：把
-		// isManageEdit 作为 AgentGuardToolDeps 的依赖传入，与 index 共用一处实现。
-		isManageEdit: () => readToolGuardLevelOf(deps.kv) === 'manage-edit',
+		isManageEdit,
 		...(subagentsSnapshot === undefined ? {} : { subagents: subagentsSnapshot }),
 		...(deps.defineTool === undefined ? {} : { defineTool: deps.defineTool }),
 	});

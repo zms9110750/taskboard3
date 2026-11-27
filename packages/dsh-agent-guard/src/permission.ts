@@ -86,11 +86,16 @@ export interface PermissionSubagentsLike {
 }
 
 /** 从 `exec` 取 agent（缺席时 `undefined`）。 */
-function agentOf(exec: unknown): { readonly id?: string; readonly session?: unknown } | undefined {
+interface AgentLike {
+	readonly id?: string;
+	readonly session?: unknown;
+}
+
+function agentOf(exec: unknown): AgentLike | undefined {
 	if (typeof exec !== 'object' || exec === null) return undefined;
 	const agent = (exec as { agent?: unknown }).agent;
 	if (typeof agent !== 'object' || agent === null) return undefined;
-	return agent as { readonly id?: string; readonly session?: unknown };
+	return agent as AgentLike;
 }
 
 /** 判断对象是否能当 `PermissionSubagentsLike` 用。 */
@@ -108,13 +113,18 @@ function hasSubagents(value: unknown): value is PermissionSubagentsLike {
  *
  * @param subagents `ctx.subagents`；可缺席（无 subagent 的 profile）
  * @param exec 工具执行上下文
+ * @param agent 已经解析过的 `exec.agent`（可选）。`createPermissionGuard` 自己解析过一次，
+ *   传进来避免对同一个 `exec` 解析两遍；省略时内部仍从 `exec` 解析（向后兼容）。
  */
 // TODO(审查): 与 @taskboard/dsh-tools holder.ts 的 holderOf 有一处行为分歧：namesOf 返回空 self 时，
 //   本函数回落 agent.id，而 dsh-tools 版直接返回 ''。claim 用 dsh-tools 写、guard 用本函数读 ⇒ 空 self
 //   的 agent 领卡后 holder 对不上，权限静默不生效（推断 root 的 self 为空，未核实）。需用户决定语义后
 //   两边只留一份（建议直接复用 dsh-tools 的 holderOf）。
-export function holderOf(subagents: unknown, exec: unknown): string {
-	const agent = agentOf(exec);
+export function holderOf(
+	subagents: unknown,
+	exec: unknown,
+	agent: AgentLike | undefined = agentOf(exec),
+): string {
 	if (agent === undefined) return 'unknown';
 
 	const id = typeof agent.id === 'string' && agent.id !== '' ? agent.id : 'unknown';
@@ -143,12 +153,11 @@ export function holderOf(subagents: unknown, exec: unknown): string {
  * core 的判定模型是「领取了工作，才有权限」——
  * 只有「处理中」的卡才带执行权限。搁置 / 提交态的卡不算持有（虽然 `holders` 里有名字）。
  *
- * @returns core 的 `judgeToolCall` 要的形状（**只有 `templateRef`**，不是完整 Card）
+ * @returns `cards` —— 完整的「处理中 + 本 holder 持有」卡（**不是**窄形状；映射成
+ *   `{ templateRef }` 是 `createPermissionGuard` 的职责，本函数不替 core 减字段）。
+ *   `workspaceId` —— 本次查的是哪个工作空间，**仅供测试 / 演示断言**；
+ *   生产调用方（`createPermissionGuard`）直接丢弃它。
  */
-// TODO(审查): 上面 JSDoc 说返回「core 要的窄形状（只有 templateRef）」，但签名返回完整 Card[]（映射在
-//   createPermissionGuard 里才做）。可直接改：改注释，或在这里就映射成 { templateRef }。
-// TODO(审查): 返回的 workspaceId 只被测试断言用，生产调用方（:214）直接丢弃。可直接改：去掉它或注明
-//   仅供测试。
 export function heldWorkCardsOf(
 	taskboard: Taskboard,
 	holder: string,
@@ -222,8 +231,6 @@ export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => Guard
 
 	return (exec: unknown): GuardVerdict => {
 		const agent = agentOf(exec);
-		// TODO(审查): agentOf(exec) 在 createPermissionGuard 与 holderOf 内各解析一次。可直接改：把已
-		// 解析的 agent 传进 holderOf（低优先级）。
 		if (agent === undefined) return undefined;
 
 		const toolName = nameOf(exec);
@@ -231,7 +238,7 @@ export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => Guard
 
 		try {
 			/* DI 通道优先：每次判定读当前 cell（2026-11-27 裁定）；没有则用快照。 */
-			const held = holderOf(deps.resolveSubagents?.() ?? subagents, exec);
+			const held = holderOf(deps.resolveSubagents?.() ?? subagents, exec, agent);
 			const { cards } = heldWorkCardsOf(taskboard, held);
 			/*
 			 * ⚠ core 要的是**窄形状**（只有 `templateRef`），不是完整 Card。
