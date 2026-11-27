@@ -92,6 +92,15 @@ export const CORE_SERVICE = 'taskboard3Core' as const;
 export const DEFAULT_WORKSPACE_SERVICE = 'taskboard3DefaultWorkspaceId' as const;
 
 /**
+ * 提供的模板贡献面服务名（用户 2026-11-27 裁定：模板提供者是 DI 对象）。
+ *
+ * 领域扩展行 inj 它（**不需要 inj 整个 ②**）拿到三个注册表：
+ * `templates`（#15）、`kinds` / `domains`（#13）。「后人依赖前人」走
+ * Cordis 的 inject 等待，不靠 patch 行序。
+ */
+export const TEMPLATES_SERVICE = 'taskboard3Templates' as const;
+
+/**
  * 提供的广播总线服务名。
  *
  * ⚠ **原型期脚手架**：与 `core/src/bus.ts` 同生共死。
@@ -145,6 +154,21 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 
 	ctx.provide(CORE_SERVICE, taskboard);
 	ctx.provide(BUS_SERVICE, bus);
+
+	/*
+	 * ③ 模板贡献面（用户 2026-11-27 裁定：模板提供者是 DI 对象）。
+	 *
+	 * 领域扩展行**不需要 inject ②（整个实例）**也能注册自己的领域资产：
+	 * inj `taskboard3Templates` 拿到三个注册表 —— 模板（#15）、类别 / 领域
+	 * （#13）。前人包先装、后人包 inj 它 ⇒ 依赖走 DI 的 inject 等待，不靠
+	 * patch 行序。schema 校验留在注册表里（#15：扩展行只喂内容，不带校验）。
+	 */
+	const contribution = Object.freeze({
+		templates: taskboard.templates(),
+		kinds: taskboard.kinds(),
+		domains: taskboard.domains(),
+	});
+	ctx.provide(TEMPLATES_SERVICE, contribution);
 
 	/*
 	 * TODO(审查) 本文件头声明「默认空间是入口策略，不是 core 概念」，但策略住在核心实例包里；
