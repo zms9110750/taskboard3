@@ -13,6 +13,8 @@
  *   `test/schema-parity.test.ts` 用一份固定的样例 JSON 钉住这一点。
  */
 
+import type { TaskState } from '@taskboard/protocol';
+
 /** 工作空间（容器）。 */
 export interface Workspace {
 	readonly id: string;
@@ -177,8 +179,13 @@ export interface OkEnvelope<T> {
 /** 服务端返回的两种信封。 */
 export type Envelope<T> = OkEnvelope<T> | FailEnvelope;
 
-// TODO(审查): `transition.to` 是 `string`，导致 pure/card-action.ts:79 只能 `as TaskState`；源头 ButtonAction.to 本就是 TaskState、actions.ts:33 也原样传递。把这里改成 `TaskState` 即可删断言，并让非法状态在编译期进不来（可直接改）。
-/** 一次转移请求的动作。 */
+/**
+ * 一次转移请求的动作。
+ *
+ * `transition.to` 用的是 `@taskboard/protocol` 的 `TaskState`（**纯类型导入**，
+ * 不进 bundle）—— 源头 `ButtonAction.to` 本来就是它，写成 `string` 只会让
+ * `pure/card-action.ts` 多一次 `as TaskState` 断言，并放非法状态进编译期。
+ */
 export type CardAction =
 	/** 采纳草稿。 */
 	| { readonly kind: 'adopt' }
@@ -187,7 +194,7 @@ export type CardAction =
 	/** 搁置：处理中 → 提交。 */
 	| { readonly kind: 'release' }
 	/** 普通转移。 */
-	| { readonly kind: 'transition'; readonly to: string };
+	| { readonly kind: 'transition'; readonly to: TaskState };
 
 /** 点击一个按钮要发的东西。 */
 export interface ActionRequest {
