@@ -1,8 +1,10 @@
 name: ci
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
+
+# 用户 2026-11-27：测试在 GitHub 上跑、不本地跑；但不随 push/PR 自动跑，
+# 改完由人（或 agent）手动 workflow_dispatch。
 
 permissions:
   contents: read

@@ -505,11 +505,10 @@ pnpm install
 ### 8.2 CI
 
 - 工作流：`.github/workflows/ci.yml`
-- 触发：push / pull_request
+- 触发：**仅 `workflow_dispatch`（手动）**——push / PR 不自动跑（用户 `2026-11-27`：「开手动工作流跑测试，不要推上去就测一遍」）
 - 步骤：`pnpm install --frozen-lockfile` → `pnpm run build` → `pnpm run check:dev` → `pnpm run check:test-types` → `pnpm run test`
 - **测试以 CI 结果为准，不在用户机器上跑全量**
-- 本地只做编译和单文件验证；要全量回归就 push 触发 CI
-- 规则 5 的「自己跑」改为：**以 CI 绿为准**；CI 不可用时才本地补跑
+- 改动推上去后：**手动 dispatch 一次 ci，看绿再继续**；CI 不可用时才本地补跑
 
 ### 8.3 GitHub MCP
 
