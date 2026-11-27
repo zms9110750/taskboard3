@@ -523,7 +523,7 @@ pnpm install
 - 要发东西就落地成文件，再走 `github-actions[bot]` 工作流：
   - 讨论：`docs/ARCHIVE.md` → `archive-discussion.yml`
   - 分包讨论：`docs/PACKAGES.md` → `packages-discussion.yml`
-  - Issue 评论：`docs/BOT-COMMENT.md` → `bot-issue-comment.yml`
+  - Issue 评论：`bot-issue-write.yml`（workflow_dispatch，纯内存输入 `issue` + `body`，不落文件；重复触发会先清掉该 issue 旧的 bot 评论）
 - 发完看 `author`：必须是 `github-actions`，不是 `zms9110750`
 
 ### 8.5 讨论必须带版本与来源

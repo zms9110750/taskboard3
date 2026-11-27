@@ -1,4 +1,4 @@
-name: bot-issue-comment
+name: bot-issue-write
 
 on:
   workflow_dispatch:
