@@ -111,13 +111,24 @@ const CREATE = '[data-phase="create"]';
 const ACTIVE = '[data-phase="active"]';
 const ENDED = '[data-phase="ended"]';
 
-/** 给受控 input / textarea 赋值（绕过 React 的 value tracker）。 */
+/**
+ * 给受控 input / textarea 赋值并**失焦提交**（绕过 React 的 value tracker）。
+ *
+ * 产品从 lead 2026-11-28 起是「失焦才提交」—— 只派发 input 不会回写，
+ * 所以这里 input 之后补一个 `focusout`（React 的 onBlur 监听它）。
+ * ⚠ 不调 `el.focus()/blur()`：折叠区里的 input 在 `<details>` 关闭时不可聚焦，
+ *   那个路径会静默不触发提交。
+ */
 const setValue = (selector, value, index = 0) => `(function(){
 	const el = document.querySelectorAll('${selector}')[${index}];
 	const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
 	desc.set.call(el, ${JSON.stringify(value)});
 	el.dispatchEvent(new Event('input', { bubbles: true }));
-	return true;
+	/* 让 React 把 input 的 setState 冲完再 focusout —— 同一个任务里会读到旧草稿。 */
+	return new Promise((resolve) => setTimeout(() => {
+		el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+		resolve(true);
+	}, 0));
 })()`;
 
 /* ══════════════════════════════════════════════════════════

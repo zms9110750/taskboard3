@@ -35,7 +35,7 @@
  *   这条规则由父层应用 `AskAction` 时保证（本文件只上报动作）。
  */
 
-import { type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { askStateLabelOf, type AskAction, type AskGroupView, type AskOptionView } from '../pure/section.ts';
 
@@ -176,9 +176,11 @@ export function AskOptionRow(props: {
 /**
  * 「其它（自己填）」行 = `AskRow` + 受控输入框。
  *
- * - 文字来自 `group.custom[0]`，**输入就上报**（不存草稿 state）
+ * - 文字来自 `group.custom[0]`，**失焦才上报 `custom-input`**（lead `2026-11-28`：
+ *   一次编辑一次 PATCH；否则每敲一个字都写一次库）
  * - 选中态来自 `group.customActive`（答案字段）
- * - 点整行 / 点输入框 ⇒ 上报 `custom-toggle`，父层决定互斥
+ * - 点整行 / 点「自己填：」⇒ 上报 `custom-toggle`，父层决定互斥
+ * - 点输入框本身**不是选择**（可能只是想复制文字）⇒ 只 focus，不 toggle
  *
  * @param props group / readonly / onAsk
  */
@@ -187,9 +189,25 @@ export function AskCustomRow(props: {
 	readonly readonly: boolean;
 	readonly onAsk?: (action: AskAction) => void;
 }): ReactNode {
-	const text = props.group.custom[0] ?? '';
+	const stored = props.group.custom[0] ?? '';
 	const picked = props.group.customActive;
 	const placeholder = props.group.placeholder === '' ? '其它（自己填）…' : props.group.placeholder;
+
+	/*
+	 * 输入中的文字是**本地草稿**：受控输入框必须有个能跟着按键变的值，
+	 * 但答案只在失焦时回写。`group.custom[0]` 因服务端回声变化时同步回来
+	 * （正在输入时不覆盖，免得保存回来的旧值打断打字）。
+	 */
+	const [text, setText] = useState(stored);
+	const focused = useRef(false);
+	useEffect(() => {
+		if (!focused.current) setText(stored);
+	}, [stored]);
+
+	const commit = (): void => {
+		focused.current = false;
+		if (text !== stored) props.onAsk?.({ type: 'custom-input', text });
+	};
 
 	return (
 		<AskRow
@@ -201,7 +219,7 @@ export function AskCustomRow(props: {
 		>
 			{props.readonly ? (
 				<span className="ask-option__body">
-					<span className="ask-option__label">{text === '' ? '（未填写）' : text}</span>
+					<span className="ask-option__label">{stored === '' ? '（未填写）' : stored}</span>
 				</span>
 			) : (
 				<>
@@ -234,7 +252,13 @@ export function AskCustomRow(props: {
 						 */
 						onClick={(event) => event.stopPropagation()}
 						onMouseDown={(event) => event.stopPropagation()}
-						onChange={(event) => props.onAsk?.({ type: 'custom-input', text: event.target.value })}
+						onFocus={() => {
+							focused.current = true;
+						}}
+						onChange={(event) => {
+							setText(event.target.value);
+						}}
+						onBlur={commit}
 						onKeyDown={(event) => {
 							/* 别让回车冒泡到父层（比如关详情）。 */
 							if (event.key === 'Enter') event.stopPropagation();

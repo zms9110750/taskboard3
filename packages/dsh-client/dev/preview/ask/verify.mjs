@@ -293,9 +293,12 @@ console.log('\n多选 · 空文字点自填不改状态');
  */
 await evalJs(`(function(){
 	const input = (${G(2)}).querySelector('[data-ask-custom]');
+	input.focus();
 	const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
 	desc.set.call(input, '');
 	input.dispatchEvent(new Event('input', { bubbles: true }));
+	/* 产品是「失焦才提交」：清空后必须 blur 才会回写 custom/picked。 */
+	setTimeout(() => input.blur(), 0);
 	return true;
 })()`);
 await sleep(150);
@@ -361,6 +364,8 @@ await evalJs(`(function(){
 	const desc = Object.getOwnPropertyDescriptor(proto, 'value');
 	desc.set.call(input, '自己写的答案');
 	input.dispatchEvent(new Event('input', { bubbles: true }));
+	/* 产品是「失焦才提交」：输入完要 blur 才把 custom/picked 写回。 */
+	setTimeout(() => input.blur(), 0);
 	return true;
 })()`);
 await sleep(200);

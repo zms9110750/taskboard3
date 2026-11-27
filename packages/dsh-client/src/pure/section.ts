@@ -262,6 +262,28 @@ export function applyAskAction(payload: unknown, groupIndex: number, action: Ask
 	return { ...payload, items: nextItems };
 }
 
+/**
+ * 一次作答动作 → **整个新 payload**（只在形状合法时返回）。
+ *
+ * `applyAskAction()` 对脏数据会原样返回入参；这个包装把「没法作答」收窄成
+ * `undefined`，让调用方（CardDetail 的接线）不用把 `unknown` 断言成对象。
+ *
+ * @param payload 原 payload
+ * @param groupIndex 改第几组
+ * @param action 用户的动作
+ * @returns 新 payload；入参不是对象 / `items` 不对 / 那一组不是对象时 `undefined`
+ */
+export function askPayloadAfter(
+	payload: unknown,
+	groupIndex: number,
+	action: AskAction,
+): Readonly<Record<string, unknown>> | undefined {
+	if (!isRecord(payload)) return undefined;
+	const next = applyAskAction(payload, groupIndex, action);
+	if (next === payload) return undefined;
+	return isRecord(next) ? next : undefined;
+}
+
 export interface AskSectionView {
 	readonly kind: 'ask';
 	/** 问题组。**结构上 N 条**，模板现在都只用 1 条。 */

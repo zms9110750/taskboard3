@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { applyAskAction, askPatchOf, askSectionOf } from '../src/pure/section.ts';
+import { applyAskAction, askPatchOf, askPayloadAfter, askSectionOf } from '../src/pure/section.ts';
 
 /** 造一个 ask payload。 */
 function payloadOf(options: readonly string[], extra: Readonly<Record<string, unknown>> = {}): unknown {
@@ -149,5 +149,29 @@ describe('applyAskAction', () => {
 	it('形状不对时原样返回', () => {
 		const bad = { $type: 'ask' };
 		assert.equal(applyAskAction(bad, 0, { type: 'clear' }), bad);
+	});
+});
+
+/*
+ * `askPayloadAfter` 是**组件接线的入口**：CardDetail 拿到它返回的整个新 payload，
+ * 以 patch 形式上抛；形状不对时返回 `undefined`，调用方就不会发一次无意义的 PATCH。
+ */
+describe('askPayloadAfter', () => {
+	it('形状合法 ⇒ 返回完整新 payload', () => {
+		const next = askPayloadAfter(payloadOf(['A', 'B']), 0, { type: 'pick', label: 'B' });
+		assert.ok(next !== undefined);
+		assert.equal(next['$type'], 'ask');
+		assert.equal(groupOf(next).pickedState, 'picked');
+		assert.equal(groupOf(next).options.find((one) => one.label === 'B')?.picked, true);
+	});
+
+	it('payload 不是对象 ⇒ undefined（不假装作答成功）', () => {
+		assert.equal(askPayloadAfter(undefined, 0, { type: 'clear' }), undefined);
+		assert.equal(askPayloadAfter('旧形状', 0, { type: 'clear' }), undefined);
+	});
+
+	it('items 缺失 / 组下标越界 ⇒ undefined', () => {
+		assert.equal(askPayloadAfter({ $type: 'ask' }, 0, { type: 'clear' }), undefined);
+		assert.equal(askPayloadAfter(payloadOf(['A']), 3, { type: 'clear' }), undefined);
 	});
 });
