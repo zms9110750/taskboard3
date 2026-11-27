@@ -11,12 +11,15 @@
       "default": "./lib/index.js"
     },
     "./package.json": "./package.json",
-    "./locale/*.json": "./locale/*.json"
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
   },
   "files": [
     "lib",
     "cordis.patch.yml",
-    "locale"
+    "locale",
+    "icon.svg",
+    "README.md"
   ],
   "sideEffects": false,
   "scripts": {
