@@ -475,5 +475,30 @@ describe('createPermissionGuard', () => {
 		const guard = createPermissionGuard({ taskboard: broken, kv: store, subagents: subagentsOf('lead') });
 		assert.equal(guard(exec('bash')), undefined, '内部错应放行（并 console.error）');
 	});
+
+	/* ── DI 通道（用户 2026-11-27 裁定：subagents 走 ctx.inject 的 cell） ── */
+
+	it('resolveSubagents 每次判定读当前值：cell 变 ⇒ holder 跟着变', async () => {
+		/* cell 模拟 ctx.inject：服务出现时写入、消失时清空。 */
+		let cell: unknown;
+		const guard = createPermissionGuard({
+			taskboard,
+			kv: store,
+			resolveSubagents: () => cell,
+		});
+
+		/* cell 空 ⇒ 回落 agent.id（同「没有 subagents 服务」）。 */
+		await writeToolGuardLevel(store, 'manage');
+		assert.ok(guard(exec('bash', 'uuid-1')) !== undefined, 'manage 且无持有卡应拒');
+
+		/* 服务出现 ⇒ 同一次 guard 生命周期内立刻生效（旧实现拿不到晚到的服务）。 */
+		cell = subagentsOf('lead');
+		const verdictWithService = guard(exec('bash', 'uuid-1'));
+		assert.ok(verdictWithService !== undefined, '无持有卡仍应拒（只是 holder 名字变了）');
+
+		/* 服务消失 ⇒ 回落 agent.id，判定照常走。 */
+		cell = undefined;
+		assert.ok(guard(exec('bash', 'uuid-1')) !== undefined, 'cell 清空后回落 agent.id，不影响档位判定');
+	});
 });
 

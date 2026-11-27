@@ -35,8 +35,10 @@ export interface AgentGuardToolDeps {
 	readonly taskboard: Taskboard;
 	/** 三档位的存储端口（借 store 的 kv）。 */
 	readonly kv: ToolGuardKv;
-	/** `ctx.subagents`（可选）—— 取当前 agent 名字当 holder。 */
+	/** `ctx.subagents` 的快照（旧通道，测试直传用）；可缺席。 */
 	readonly subagents?: unknown;
+	/** DI 通道（2026-11-27 裁定）：建工具时解析当前 cell；没有则用快照。 */
+	readonly resolveSubagents?: () => unknown;
 	/** 测试注入用；省略 = DSH 的 `defineTool`。 */
 	readonly defineTool?: DefineTool;
 }
@@ -48,6 +50,9 @@ export interface AgentGuardToolDeps {
  * @returns DSH 形状的工具定义（调用方逐个 `ctx.tools.register`）
  */
 export function createAgentGuardTools(deps: AgentGuardToolDeps): readonly ToolLike[] {
+	/* DI 通道优先（2026-11-27 裁定）—— 建工具时的快照；工具每次调用读的是这个
+	 * 快照（adapter 的 subagents 是值不是 resolver），guard 那边才是每次判定时解析。 */
+	const subagentsSnapshot = deps.resolveSubagents?.() ?? deps.subagents;
 	const toolDeps = { taskboard: deps.taskboard };
 	const definitions: readonly TaskboardTool[] = [
 		createToolPolicyTool(toolDeps),
@@ -56,10 +61,10 @@ export function createAgentGuardTools(deps: AgentGuardToolDeps): readonly ToolLi
 
 	return adaptDefinitions(definitions, {
 		taskboard: deps.taskboard,
-		// TODO(审查): 与 src/index.ts:190 的 service.isManageEdit 是同一事实的两份重算。可直接改：把
+		// TODO(审查): 与 src/index.ts 的 service.isManageEdit 是同一事实的两份重算。可直接改：把
 		// isManageEdit 作为 AgentGuardToolDeps 的依赖传入，与 index 共用一处实现。
 		isManageEdit: () => readToolGuardLevelOf(deps.kv) === 'manage-edit',
-		...(deps.subagents === undefined ? {} : { subagents: deps.subagents }),
+		...(subagentsSnapshot === undefined ? {} : { subagents: subagentsSnapshot }),
 		...(deps.defineTool === undefined ? {} : { defineTool: deps.defineTool }),
 	});
 }

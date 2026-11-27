@@ -58,6 +58,15 @@ interface ParsedRelations {
 export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;
 
+	/*
+	 * 「可用模板」的拼装（缺失 / 不存在两个分支共用 —— 逻辑级化简，TODO(审查) ① 同款判断；
+	 * 首句与 next 各分支仍各写各的）。
+	 */
+	const templateHelp = (): string => {
+		const available = taskboard.listTemplates().map((one) => one.ref).slice(0, 20);
+		return available.length === 0 ? '当前没有任何可用模板。' : `可用模板：${available.join('、')}。`;
+	};
+
 	const handler: TaskboardToolHandler = async (args, ctx) => {
 		const resolved = await resolveWorkspace(args, ctx);
 		if (!resolved.ok) return resolved.result;
@@ -72,19 +81,14 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 		const templates = taskboard.listTemplates();
 		const templateRef = str(args, 'templateRef');
 		if (templateRef === undefined) {
-			// TODO(审查): 这行「取可用模板」的表达式在本函数里逐字重复（下面「模板不存在」分支又一份），
-			// 可提成 templateHelp(templates) 一处维护。可直接改。
-			const available = templates.map((one) => one.ref).slice(0, 20);
 			return inputFailure(
-				'必须选择模板（templateRef）。' +
-					(available.length === 0 ? '当前没有任何可用模板。' : `可用模板：${available.join('、')}。`),
+				'必须选择模板（templateRef）。' + templateHelp(),
 				'先调 taskboard_definitions（不传 name）列出模板，再查具体模板详情（章节 / action / 默认 payload）后建卡。',
 			);
 		}
 		if (!templates.some((one) => one.ref === templateRef)) {
-			const available = templates.map((one) => one.ref).slice(0, 20);
 			return inputFailure(
-				`模板「${templateRef}」不存在。` + (available.length === 0 ? '当前没有任何可用模板。' : `可用模板：${available.join('、')}。`),
+				`模板「${templateRef}」不存在。` + templateHelp(),
 				'先调 taskboard_definitions 查模板定义，再传正确的 templateRef。',
 			);
 		}

@@ -124,6 +124,10 @@ importers:
       '@taskboard/protocol':
         specifier: workspace:*
         version: link:../protocol
+    devDependencies:
+      '@taskboard/io':
+        specifier: workspace:*
+        version: link:../io
 
   packages/dsh-permissions:
     devDependencies:

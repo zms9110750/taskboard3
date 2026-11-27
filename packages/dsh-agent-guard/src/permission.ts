@@ -178,8 +178,14 @@ export interface GuardDeps {
 	 *   借用 store 的 kv 端口落库（键沿用 `taskboard.permission.toolGuardLevel`）。
 	 */
 	readonly kv: ToolGuardKv;
-	/** `ctx.subagents`；可缺席。 */
+	/** `ctx.subagents` 的快照（旧通道，测试直传用）；可缺席。 */
 	readonly subagents?: unknown;
+	/**
+	 * DI 通道（用户 `2026-11-27` 裁定）：每次判定时解析当前 subagents。
+	 *
+	 * 优先于 `subagents` 快照 —— 晚激活 / 卸载中的服务都能被看到。
+	 */
+	readonly resolveSubagents?: () => unknown;
 }
 
 /** guard 的返回值（与 `dsh-tools` 的 `ToolGuard` 同形，但不 import 它的类型）。 */
@@ -224,7 +230,9 @@ export function createPermissionGuard(deps: GuardDeps): (exec: unknown) => Guard
 		if (toolName === '') return undefined;
 
 		try {
-			const { cards } = heldWorkCardsOf(taskboard, holderOf(subagents, exec));
+			/* DI 通道优先：每次判定读当前 cell（2026-11-27 裁定）；没有则用快照。 */
+			const held = holderOf(deps.resolveSubagents?.() ?? subagents, exec);
+			const { cards } = heldWorkCardsOf(taskboard, held);
 			/*
 			 * ⚠ core 要的是**窄形状**（只有 `templateRef`），不是完整 Card。
 			 *   映射在这里做，而不是让 core 认识 Card —— 那是反向依赖。

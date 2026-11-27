@@ -25,6 +25,9 @@
     "@taskboard/core": "workspace:*",
     "@taskboard/protocol": "workspace:*"
   },
+  "devDependencies": {
+    "@taskboard/io": "workspace:*"
+  },
   "engines": {
     "node": ">=22.13.0"
   }

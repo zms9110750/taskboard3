@@ -100,30 +100,35 @@ export const ICON_UNKNOWN = '·';
 /**
  * 一个按钮左侧的图标。
  *
- * ⚠ **先按 `method` 判，再按 `from === CANCELED` 判重开，最后才按 `to` 查表**：
+ * ⚠ 优先级链与旧实现严格一致：`method`（adopt/claim/release 全集先命中）→
+ * `from === CANCELED`（重开）→ `to` 查表 → `ICON_UNKNOWN` 兜底。
  * 设计的「重开」目标是 `AUTH_REQUIRED`（不是 `SUBMITTED`），只按 `to` 查会漏成 `·`。
  *
  * @param action 一个按钮
  */
-export function iconOf(action: ButtonAction): string {
-	if (action.method === 'adopt') return ICON_ADOPT;
-	if (action.method === 'claim') return ICON_CLAIM;
-	if (action.method === 'release') return ICON_RELEASE;
-	/* 重开 = 从取消态回来（旧版 id `reopen`）。 */
-	if (action.from === S.CANCELED) return ICON_REOPEN;
+/* 方法 → 图标。`transition` 故意不在表里（走 from/to 派生）。
+ * ⚠ 这里用「Partial 标注」而不是 AGENTS 3.7 的 satisfies：表**故意缺键**，
+ *   需要用 ButtonMethod 整体索引（satisfies 会把对象类型收窄成自有的键集，索引报 TS7053）。
+ *   新鲜字面量 + 标注仍保留**多余键检查**——3.7 真正要防的方向没丢。 */
+const METHOD_ICONS: Readonly<Partial<Record<ButtonAction['method'], string>>> = {
+	adopt: ICON_ADOPT,
+	claim: ICON_CLAIM,
+	release: ICON_RELEASE,
+};
 
-	switch (action.to) {
-		case S.COMPLETED:
-			return ICON_COMPLETE;
-		case S.FAILED:
-			return ICON_FAIL;
-		case S.CANCELED:
-			return ICON_CANCEL;
-		case S.REJECTED:
-			return ICON_REJECT;
-		default:
-			return ICON_UNKNOWN;
-	}
+/* 目标状态 → 图标（只列有专属图标的四个；其余走 `ICON_UNKNOWN` 兜底）。 */
+const TARGET_ICONS: Readonly<Partial<Record<S, string>>> = {
+	[S.COMPLETED]: ICON_COMPLETE,
+	[S.FAILED]: ICON_FAIL,
+	[S.CANCELED]: ICON_CANCEL,
+	[S.REJECTED]: ICON_REJECT,
+};
+
+export function iconOf(action: ButtonAction): string {
+	return (
+		METHOD_ICONS[action.method] ??
+		(action.from === S.CANCELED ? ICON_REOPEN : (TARGET_ICONS[action.to] ?? ICON_UNKNOWN))
+	);
 }
 
 /* ══════════════════════════════════════════════════════════

@@ -161,11 +161,10 @@ export function fieldOf(path: string, keys: ReadonlyMap<string, string>): string
 		return sectionId === undefined ? GENERAL_FIELD : `/sections/${sectionId}`;
 	}
 
-	if (head === 'relations') {
-		/* core 目前不给关系逐条 issue（`RELATION_TARGET_INVALID` 走 message），兜底成统错。 */
-		return GENERAL_FIELD;
-	}
-
+	/*
+	 * 其余一切 head（含 relations —— core 目前不给关系逐条 issue，
+	 * `RELATION_TARGET_INVALID` 走 message；也含没列出的未来字段）兜底成统错。
+	 */
 	return GENERAL_FIELD;
 }
 
