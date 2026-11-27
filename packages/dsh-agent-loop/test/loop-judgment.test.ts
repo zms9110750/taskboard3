@@ -141,7 +141,7 @@ describe('workDigestOf', () => {
 	test('处理中的 work 卡 ⇒ 也算', () => {
 		const text = workDigestOf([fakeCard({ id: 'W2', title: '跑测试', status: TaskState.WORKING })]);
 		assert.ok(text !== null);
-		assert.match(text, /2\. W2 跑测试（处理中）/);
+		assert.match(text, /1\. W2 跑测试（处理中）/);
 	});
 
 	test('草稿 / 搁置 / 完结的 work 卡 ⇒ 都不算（走 protocol 的 active 分组）', () => {
