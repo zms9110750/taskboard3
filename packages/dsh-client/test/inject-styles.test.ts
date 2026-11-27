@@ -56,7 +56,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { STYLE_ID, injectStyles } from '../src/styles.ts';
+import { STYLE_ID, STYLE_SEGMENTS, injectStyles } from '../src/styles.ts';
 
 /** 一个最简假节点：记下 `id` / `textContent` / 子节点。 */
 interface FakeNode {
@@ -179,6 +179,72 @@ describe('injectStyles() 的副作用契约', () => {
 		assert.doesNotThrow(() => {
 			injectStyles();
 		});
+	});
+});
+
+/**
+ * 逐段哨兵 —— **拦住「漏注入一段」**。
+ *
+ * ## 为什么需要
+ *
+ * 注入曾经是手写模板字符串 `${A}\n${B}\n…`。少写一段（例如新增了
+ * `CARD_ACTION_CSS` 但忘了拼进去）**不会报错**：产品照常渲染，只是那部分
+ * 控件没样式 —— 而且往往只在某个入口/某种状态下才看得出来。
+ *
+ * 现在 `injectStyles()` 由 `STYLE_SEGMENTS` 表驱动；这里逐段钉两件事：
+ *
+ * 1. **表覆盖了预期的全部段**（独立于表的名单 —— 删表项时这条会红）
+ * 2. 每段的 `sentinel` 真的进入了注入结果（空串 / 拼错 / 漏 join 时红）
+ */
+describe('injectStyles() 逐段哨兵', () => {
+	/** 独立名单（不从表里推）—— 表少一段时这里会红。 */
+	const EXPECTED_SEGMENTS = [
+		'CREATE_CSS',
+		'WORKSPACE_CSS',
+		'SECTION_CSS',
+		'SEARCHBOX_CSS',
+		'DRAWER_CSS',
+		'CREATE_SHELL_CSS',
+		'TECHTREE_CSS',
+		'FALLBACK_CSS',
+		'DERIVE_MENU_CSS',
+		'CARD_ACTION_CSS',
+		'SIBLING_GROUPS_CSS',
+	];
+
+	it('⭐ 注入表覆盖全部预期段（顺序不变）', () => {
+		assert.deepEqual(
+			STYLE_SEGMENTS.map((segment) => segment.name),
+			EXPECTED_SEGMENTS,
+			'STYLE_SEGMENTS 少了一段 / 顺序变了 —— 漏注入一段不会报错，只会少一截样式',
+		);
+	});
+
+	it('⭐ 每一段的 sentinel 都在自己的 CSS 里（哨兵本身没拼错）', () => {
+		for (const segment of STYLE_SEGMENTS) {
+			assert.ok(
+				segment.css.includes(segment.sentinel),
+				`${segment.name} 的哨兵 ${JSON.stringify(segment.sentinel)} 不在这段 CSS 里`,
+			);
+		}
+	});
+
+	it('⭐ 每一个 sentinel 都出现在注入结果里（没有哪段被漏拼）', () => {
+		const css = run()[0]?.textContent ?? '';
+		for (const segment of STYLE_SEGMENTS) {
+			assert.ok(
+				css.includes(segment.sentinel),
+				`注入结果缺少 ${segment.name}（哨兵 ${JSON.stringify(segment.sentinel)}）—— 这段样式没进 DOM`,
+			);
+		}
+	});
+
+	it('TECHTREE_CSS 在 WORKSPACE_CSS 之后（同特异度规则靠后写赢）', () => {
+		const names = STYLE_SEGMENTS.map((segment) => segment.name);
+		assert.ok(
+			names.indexOf('TECHTREE_CSS') > names.indexOf('WORKSPACE_CSS'),
+			'顺序有约束：TECHTREE_CSS 必须靠后，见 STYLE_SEGMENTS 的注释',
+		);
 	});
 });
 

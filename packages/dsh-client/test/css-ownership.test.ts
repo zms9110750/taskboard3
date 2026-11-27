@@ -16,8 +16,9 @@
  * src/renderers/section-css.ts            SECTION_CSS
  * src/renderers/fallback-css.ts           FALLBACK_CSS
  * src/renderers/create/create-css.ts      CREATE_CSS
- * src/pure/techtree-css.ts                TECHTREE_CSS
- * src/renderers/drawer-css.ts              DRAWER_CSS
+ * src/renderers/create/create-shell-css.ts CREATE_SHELL_CSS
+ * src/renderers/workspace/card-action-css.ts CARD_ACTION_CSS
+ * src/renderers/sibling-groups-css.ts     SIBLING_GROUPS_CSS
  * src/pure/techtree-css.ts                TECHTREE_CSS
  * ```
  *
@@ -40,12 +41,15 @@ import { test } from 'node:test';
 
 import { CREATE_CSS as CREATE_FROM_NEW } from '../src/renderers/create/create-css.ts';
 import { CREATE_SHELL_CSS as CREATE_SHELL_FROM_NEW } from '../src/renderers/create/create-shell-css.ts';
+import { CARD_ACTION_CSS as CARD_ACTION_FROM_NEW } from '../src/renderers/workspace/card-action-css.ts';
 import { DERIVE_MENU_CSS as DERIVE_MENU_FROM_NEW } from '../src/renderers/derive-menu-css.ts';
 import { DRAWER_CSS as DRAWER_FROM_NEW } from '../src/renderers/drawer-css.ts';
 import { FALLBACK_CSS as FALLBACK_FROM_NEW } from '../src/renderers/fallback-css.ts';
 import { SEARCHBOX_CSS as SEARCHBOX_FROM_NEW } from '../src/renderers/searchbox-css.ts';
 import { SECTION_CSS as SECTION_FROM_NEW } from '../src/renderers/section-css.ts';
+import { SIBLING_GROUPS_CSS as SIBLING_GROUPS_FROM_NEW } from '../src/renderers/sibling-groups-css.ts';
 import {
+	CARD_ACTION_CSS as CARD_ACTION_FROM_STYLES,
 	CREATE_CSS as CREATE_FROM_STYLES,
 	CREATE_SHELL_CSS as CREATE_SHELL_FROM_STYLES,
 	DERIVE_MENU_CSS as DERIVE_MENU_FROM_STYLES,
@@ -53,6 +57,7 @@ import {
 	FALLBACK_CSS as FALLBACK_FROM_STYLES,
 	SEARCHBOX_CSS as SEARCHBOX_FROM_STYLES,
 	SECTION_CSS as SECTION_FROM_STYLES,
+	SIBLING_GROUPS_CSS as SIBLING_GROUPS_FROM_STYLES,
 } from '../src/styles.ts';
 
 /* ══════════════════════════════════════════════════════════
@@ -93,6 +98,14 @@ void test('styles.ts 与组件目录里的是同一份（DERIVE_MENU_CSS）', ()
 		DERIVE_MENU_FROM_NEW.includes('width:280px'),
 		'宽度必须 = placeMenu 的 MENU_WIDTH(280)，否则右侧会溢出',
 	);
+});
+
+void test('styles.ts 与组件目录里的是同一份（CARD_ACTION_CSS）', () => {
+	assert.equal(CARD_ACTION_FROM_STYLES, CARD_ACTION_FROM_NEW);
+});
+
+void test('styles.ts 与组件目录里的是同一份（SIBLING_GROUPS_CSS）', () => {
+	assert.equal(SIBLING_GROUPS_FROM_STYLES, SIBLING_GROUPS_FROM_NEW);
 });
 
 /* ══════════════════════════════════════════════════════════
