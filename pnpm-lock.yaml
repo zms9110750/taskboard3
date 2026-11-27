@@ -79,6 +79,12 @@ importers:
         specifier: workspace:*
         version: link:../io
 
+  packages/dsh-agent-loop:
+    dependencies:
+      '@taskboard/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/dsh-client:
     dependencies:
       '@taskboard/protocol':
