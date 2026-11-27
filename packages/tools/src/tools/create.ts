@@ -30,12 +30,18 @@
  */
 
 import type { CreateInput } from '@taskboard/core';
+import type { ErrorCode } from '@taskboard/protocol';
 
 import { resolveWorkspace, objectOf, str } from '../context.ts';
-import { inputFailure, failureResult } from '../failure.ts';
+import { inputFailure, failureResult, nextStepFor } from '../failure.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, type ToolDeps } from './shared.ts';
+import {
+	defineTool,
+	WORKSPACE_ID_DESCRIPTION,
+	WORKSPACE_ID_REQUIRED_NOTE,
+	type ToolDeps,
+} from './shared.ts';
 
 /** 关系类型（5 条边 + parent）。 */
 // TODO(审查): 这 6 个关系是 protocol「词汇与判决」层的硬编码副本（本包为状态都从 protocol 取 STATE_LABELS/TASK_STATES），
@@ -118,7 +124,7 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 		if (!created.ok) {
 			return failureResult(created, {
 				action: '建卡失败',
-				next: nextForCreateFailure(created.code),
+				next: nextStepFor(created.code, CREATE_NEXT_STEPS),
 			});
 		}
 
@@ -161,20 +167,18 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 	return defineTool({
 		name: 'taskboard_create',
 		description:
-			// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
 			'建一张新任务卡。**先调 taskboard_definitions 看模板定义**（章节 key / action / 默认 payload），再建卡。' +
 			'需要：title、templateRef，可选 relations（关系数组）、content（模板对 action 的 JSON：key=章节 id/label，value=action payload）；' +
 			'kind/domain 通常不要给（模板已声明分类/领域），只有**空模板**（模板没声明分类/领域）时才必需。' +
 			'content 可以只给部分章节（缺的用模板默认值）；但「部分章节 + 模板外 key」会被拒绝；' +
 			'「章节齐全 + 模板外 key」会建卡成功并返回警告（模板外 key 被忽略）。' +
-			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+			WORKSPACE_ID_REQUIRED_NOTE,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				workspaceId: {
 					type: 'string',
-					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」。可直接改成「必填」。
-					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+					description: WORKSPACE_ID_DESCRIPTION,
 				},
 				title: { type: 'string', description: '卡标题。必填。' },
 				templateRef: { type: 'string', description: '模板 ref。必填；先用 taskboard_definitions 查。' },
@@ -202,7 +206,7 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 				},
 				domain: { type: 'string', description: '领域：只在空模板时需要；模板已声明时必须一致或省略。' },
 			},
-			required: ['title'],
+			required: ['workspaceId', 'title'],
 		},
 		handler,
 	});
@@ -266,23 +270,13 @@ function parseRelations(
 	};
 }
 
-/** 建卡失败的下一步指引。 */
-// TODO(审查): 参数是裸 string 而不是 ErrorCode ⇒ 新增错误码不会有人提醒（同款还有 update.ts / transition.ts 的 nextFor*）。
-// 可直接改：改成 (code: ErrorCode) + 一张 `satisfies Record<ErrorCode, string>` 的默认表（见 failure.ts 文件尾 TODO）。
-function nextForCreateFailure(code: string): string {
-	switch (code) {
-		case 'TEMPLATE_NOT_FOUND':
-			return '先调 taskboard_definitions 查模板清单与详情，再传正确的 templateRef。';
-		case 'CONTENT_INVALID':
-			return '先调 taskboard_definitions 看该模板的章节 id / label、每章 action 与默认 payload，再按形状写 content。';
-		case 'RELATION_TARGET_INVALID':
-			return '关系目标必须是同空间中已存在、未删除、非草稿的卡；先用 taskboard_cards 确认编号。';
-		case 'FIELD_REQUIRED':
-			return '检查 title；若模板是空模板（定义里没有分类/领域），必须补 kind（目的/分类）与 domain（领域）。';
-		default:
-			return '修正参数后重试；不确定就先调 taskboard_definitions 看定义。';
-	}
-}
+/** 建卡失败的下一步：只覆盖建卡口径不同的几条，其余走 `failure.ts` 的共用表。 */
+const CREATE_NEXT_STEPS = {
+	TEMPLATE_NOT_FOUND: '先调 taskboard_definitions 查模板清单与详情，再传正确的 templateRef。',
+	CONTENT_INVALID: '先调 taskboard_definitions 看该模板的章节 id / label、每章 action 与默认 payload，再按形状写 content。',
+	RELATION_TARGET_INVALID: '关系目标必须是同空间中已存在、未删除、非草稿的卡；先用 taskboard_cards 确认编号。',
+	FIELD_REQUIRED: '检查 title；若模板是空模板（定义里没有分类/领域），必须补 kind（目的/分类）与 domain（领域）。',
+} satisfies Partial<Record<ErrorCode, string>>;
 
 /** 关系文案。 */
 function describeRelations(

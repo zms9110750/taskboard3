@@ -21,11 +21,17 @@
 
 import { ErrorCode, TaskState, labelOf } from '@taskboard/protocol';
 
-import { holderOf, resolveWorkspace } from '../context.ts';
+import { holderOf, readCard, resolveWorkspace, str, strAllowEmpty } from '../context.ts';
 import { failureResult, inputFailure, toolFailure } from '../failure.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, stateAndNextText, type ToolDeps } from './shared.ts';
+import {
+	defineTool,
+	stateAndNextText,
+	WORKSPACE_ID_DESCRIPTION,
+	WORKSPACE_ID_REQUIRED_NOTE,
+	type ToolDeps,
+} from './shared.ts';
 
 export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;
@@ -35,13 +41,13 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 		if (!resolved.ok) return resolved.result;
 		const workspaceId = resolved.workspaceId;
 
-		const cardId = readString(args, 'id');
-		if (cardId === undefined || cardId === '') {
+		const cardId = str(args, 'id');
+		if (cardId === undefined) {
 			return inputFailure('必须给卡编号（id）。', '先调 taskboard_cards 拿编号。');
 		}
 
-		const title = readString(args, 'title');
-		const note = readString(args, 'note');
+		const title = strAllowEmpty(args, 'title');
+		const note = strAllowEmpty(args, 'note');
 		if (title === undefined && note === undefined) {
 			return inputFailure('至少给 title 或 note 之一。', '只改备注就传 note；只改标题就传 title（仅草稿期）。');
 		}
@@ -50,8 +56,8 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 		}
 
 		/* ── 标题：只有草稿期可以改（先读卡拿状态，失败不写库） ── */
-		const found = taskboard.get(workspaceId, cardId);
-		if (!found.ok) return failureResult(found, { action: '更新失败' });
+		const found = readCard(taskboard, workspaceId, cardId, '更新失败');
+		if (!found.ok) return found.result;
 		// TODO(审查): 「草稿」在本包有两个名字：这里用 TaskState.UNSPECIFIED，cards.ts 用 protocol 的 DRAFT ——
 		// 若两者是同一值的别名，择一即可，免得以后改草稿语义时漏掉一处。可直接统一。
 		if (title !== undefined && found.card.status !== TaskState.UNSPECIFIED) {
@@ -95,30 +101,20 @@ export function createUpdateNoteTool(deps: ToolDeps): ReturnType<typeof defineTo
 			'`note`（追加型文本，任何状态都能改；空串 = 清空）；' +
 			'`title`（卡标题，**只有草稿状态可以改**，非草稿会失败并说明原因）。' +
 			'改完会返回当前状态，以及这个状态在这个分类下接下来可以做什么。' +
-			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+			WORKSPACE_ID_REQUIRED_NOTE,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				workspaceId: {
 					type: 'string',
-					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」。可直接改成「必填」。
-					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+					description: WORKSPACE_ID_DESCRIPTION,
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
 				note: { type: 'string', description: '新备注内容；空串 = 清空。任何状态都能改。' },
 				title: { type: 'string', description: '新标题（非空）。只有草稿状态可以改。' },
 			},
-			required: ['id'],
+			required: ['workspaceId', 'id'],
 		},
 		handler,
 	});
-}
-
-/** 读一个允许空串的字符串字段。 */
-// TODO(审查): 与 update.ts 的 stringField、transition.ts 的 readString、render.ts 的 stringField 是同一函数的四份副本。
-// 可直接改：删掉三份，改用 context.ts 新增的 strAllowEmpty()。
-function readString(args: unknown, key: string): string | undefined {
-	if (typeof args !== 'object' || args === null) return undefined;
-	const value = (args as Record<string, unknown>)[key];
-	return typeof value === 'string' ? value : undefined;
 }

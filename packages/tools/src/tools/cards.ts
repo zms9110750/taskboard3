@@ -36,7 +36,7 @@ import { cardLine, stateText } from '../render.ts';
 import { okText } from '../schema.ts';
 import type { SearchCondition } from '@taskboard/core';
 import type { TaskboardToolHandler } from '../types.ts';
-import { CARDS_PAGE_SIZE, defineTool, type ToolDeps } from './shared.ts';
+import { CARDS_PAGE_SIZE, defineTool, WORKSPACE_ID_DESCRIPTION, WORKSPACE_ID_REQUIRED_NOTE, type ToolDeps } from './shared.ts';
 
 /** 合法的状态组 id。 */
 // TODO(审查): 这四个组 id 是 protocol「词汇层」的硬编码副本（渲染层已经在用 protocol 的 groupOf）。
@@ -170,20 +170,17 @@ export function createCardsTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	return defineTool({
 		name: 'taskboard_cards',
 		description:
-			// TODO(审查): 这句还在许诺「空间省略时用宿主激活空间」，但 resolveWorkspace 对缺 workspaceId 一律报错
-			// （用户 2026-11-22 已取消激活空间）。7 个工具的描述都有这处旧文案（另见 card/raw-card/create/update/
-			// update-note/transition），且 workspaces.ts 自己写着「必须显式给」—— 模型会照着省略参数然后吃错。可直接改成「必填」。
-			'列任务卡 / 搜索。空间省略时用宿主激活空间（没有该行为的宿主会报错）。可按标题（模糊）、状态、领域、分类、模板筛选，' +
+			'列任务卡 / 搜索。可按标题（模糊）、状态、领域、分类、模板筛选，' +
 			'以及「用户没看 / AI 没看」两个未读筛选（两个同时给 = 两边都未读）。' +
 			'不写状态筛选时**不含草稿**；状态里明确写了草稿（draft / TASK_STATE_UNSPECIFIED / 中文「未指定」）才包含草稿。' +
-			`结果分页（每页 ${CARDS_PAGE_SIZE} 张，page 从 1 开始）。`,
+			`结果分页（每页 ${CARDS_PAGE_SIZE} 张，page 从 1 开始）。` +
+			WORKSPACE_ID_REQUIRED_NOTE,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				workspaceId: {
 					type: 'string',
-					// TODO(审查): 同上的旧文案：缺 workspaceId 会直接失败，不是「用激活空间」。可直接改成「必填」。
-					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+					description: WORKSPACE_ID_DESCRIPTION,
 				},
 				title: { type: 'string', description: '标题模糊搜索（子串，大小写不敏感）。' },
 				status: {
@@ -205,6 +202,7 @@ export function createCardsTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 				},
 				page: { type: 'integer', description: `页码，从 1 开始；每页 ${CARDS_PAGE_SIZE} 张。省略 = 1。` },
 			},
+			required: ['workspaceId'],
 		},
 		handler,
 	});

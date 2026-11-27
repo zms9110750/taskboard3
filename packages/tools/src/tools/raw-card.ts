@@ -16,12 +16,12 @@
 
 import { contentOfCard } from '@taskboard/core';
 
-import { resolveWorkspace, str } from '../context.ts';
-import { failureResult, inputFailure } from '../failure.ts';
+import { readCard, resolveWorkspace, str } from '../context.ts';
+import { inputFailure } from '../failure.ts';
 import { jsonText } from '../render.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler } from '../types.ts';
-import { defineTool, type ToolDeps } from './shared.ts';
+import { defineTool, WORKSPACE_ID_DESCRIPTION, WORKSPACE_ID_REQUIRED_NOTE, type ToolDeps } from './shared.ts';
 
 export function createRawCardTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;
@@ -34,8 +34,8 @@ export function createRawCardTool(deps: ToolDeps): ReturnType<typeof defineTool>
 			return inputFailure('必须给卡编号（id）。', '先调 taskboard_cards 拿编号。');
 		}
 
-		const found = taskboard.get(resolved.workspaceId, cardId);
-		if (!found.ok) return failureResult(found, { action: '查看原始卡失败' });
+		const found = readCard(taskboard, resolved.workspaceId, cardId, '查看原始卡失败');
+		if (!found.ok) return found.result;
 
 		/* 纯 JSON：key = 章节 id，value = action payload。 */
 		return okText(jsonText(contentOfCard(found.card)));
@@ -45,18 +45,18 @@ export function createRawCardTool(deps: ToolDeps): ReturnType<typeof defineTool>
 		name: 'taskboard_raw_card',
 		description:
 			'查看一张卡的**原始 JSON**：`{ [章节key]: action payload }`（只含模板内 JSON，不含标题/状态/关系等元数据）。' +
-			'改卡之前用它确认结构与 key，再调 taskboard_update 用 JSON 路径替换。按编号直查，草稿/已删除也能看。',
+			'改卡之前用它确认结构与 key，再调 taskboard_update 用 JSON 路径替换。按编号直查，草稿/已删除也能看。' +
+			WORKSPACE_ID_REQUIRED_NOTE,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				workspaceId: {
 					type: 'string',
-					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
-					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+					description: WORKSPACE_ID_DESCRIPTION,
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
 			},
-			required: ['id'],
+			required: ['workspaceId', 'id'],
 		},
 		handler,
 	});

@@ -25,13 +25,18 @@ import type { TransitionAdvice } from '@taskboard/core';
 import { CARD_ACTION_OPTIONS } from '@taskboard/core';
 import { ErrorCode, STATE_LABELS, TASK_STATES, isTaskState, labelOf } from '@taskboard/protocol';
 
-import { holderOf, resolveWorkspace } from '../context.ts';
-import { failureResult, hostFailure, inputFailure, toolFailure } from '../failure.ts';
+import { adviceOf, holderOf, resolveWorkspace, str, strAllowEmpty } from '../context.ts';
+import { failureResult, hostFailure, inputFailure, nextStepFor, toolFailure } from '../failure.ts';
 import { renderAdvice, stateText } from '../render.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler, TaskboardToolResult } from '../types.ts';
 import type { CardActionDenied } from '@taskboard/core';
-import { defineTool, type ToolDeps } from './shared.ts';
+import {
+	defineTool,
+	WORKSPACE_ID_DESCRIPTION,
+	WORKSPACE_ID_REQUIRED_NOTE,
+	type ToolDeps,
+} from './shared.ts';
 
 export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTool> {
 	const { taskboard } = deps;
@@ -41,22 +46,18 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 		if (!resolved.ok) return resolved.result;
 		const workspaceId = resolved.workspaceId;
 
-		const cardId = readString(args, 'id');
-		if (cardId === undefined || cardId === '') {
+		const cardId = str(args, 'id');
+		if (cardId === undefined) {
 			return inputFailure('必须给卡编号（id）。', '先调 taskboard_cards 拿编号。');
 		}
-		// TODO(审查): `holder ?? ''` 用空串当「没有身份」的哨兵（本文件两处 transitionAdvice 调用 + shared.ts 一处）——
-		// core 若把 '' 当真实 holder 会污染持有者显示。需 lead 推 core 收 holder?: string；在那之前至少注明哨兵约定。
 		const holder = holderOf(ctx);
-		const rawTo = readString(args, 'to');
+		const rawTo = strAllowEmpty(args, 'to');
 
 		/* ── 目标为空 ⇒ 只展示目标 + 条件，不执行 ── */
 		if (rawTo === undefined || rawTo.trim() === '') {
-			// TODO(审查): `'targets' in advice` 用结构嗅探代替判别字段（本文件两处 + shared.ts 一处）。
-			// 若 core 的 transitionAdvice 能给 `ok: true | false`，这三处可改成显式判别，core 改形状时编译期就能发现。需 lead 确认。
-			const advice = taskboard.transitionAdvice(workspaceId, cardId, holder ?? '');
-			if (!('targets' in advice)) return failureResult(advice, { action: '查询可转移目标失败' });
-			return okText(renderAdvice(advice, holder));
+			const read = adviceOf(taskboard, workspaceId, cardId, holder);
+			if (!read.ok) return failureResult(read.failure, { action: '查询可转移目标失败' });
+			return okText(renderAdvice(read.advice, holder));
 		}
 
 		const to = resolveStateId(rawTo);
@@ -67,8 +68,9 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 			);
 		}
 
-		const advice = taskboard.transitionAdvice(workspaceId, cardId, holder ?? '');
-		if (!('targets' in advice)) return failureResult(advice, { action: '查询可转移目标失败' });
+		const read = adviceOf(taskboard, workspaceId, cardId, holder);
+		if (!read.ok) return failureResult(read.failure, { action: '查询可转移目标失败' });
+		const advice = read.advice;
 
 		/* 同状态 = 幂等 no-op（不是错误，明确告知未执行）。 */
 		if (advice.status === to) {
@@ -118,7 +120,12 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 		switch (target.action) {
 			case 'adopt': {
 				const adopted = await taskboard.adopt(workspaceId, cardId, 'ai', { allowAiAdopt: true });
-				if (!adopted.ok) return failureResult(adopted, { action: '采纳失败', next: transitionNext(adopted.code) });
+				if (!adopted.ok) {
+					return failureResult(adopted, {
+						action: '采纳失败',
+						next: nextStepFor(adopted.code, TRANSITION_NEXT_STEPS),
+					});
+				}
 				return okText(
 					`已采纳 ${adopted.card.id}「${adopted.card.title}」：` +
 						`${labelOf(advice.status)} → ${labelOf(adopted.card.status)}（TASK_STATE 目标=${adopted.card.status}）。`,
@@ -132,7 +139,12 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 					);
 				}
 				const claimed = await taskboard.claim(workspaceId, cardId, 'ai', holder);
-				if (!claimed.ok) return failureResult(claimed, { action: '领取失败', next: transitionNext(claimed.code) });
+				if (!claimed.ok) {
+					return failureResult(claimed, {
+						action: '领取失败',
+						next: nextStepFor(claimed.code, TRANSITION_NEXT_STEPS),
+					});
+				}
 				return okText(
 					`已领取 ${claimed.card.id}「${claimed.card.title}」：` +
 						`${labelOf(advice.status)} → ${labelOf(claimed.card.status)}；持有者 ${holder}。`,
@@ -146,7 +158,12 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 					);
 				}
 				const released = await taskboard.release(workspaceId, cardId, 'ai', holder);
-				if (!released.ok) return failureResult(released, { action: '释放失败', next: transitionNext(released.code) });
+				if (!released.ok) {
+					return failureResult(released, {
+						action: '释放失败',
+						next: nextStepFor(released.code, TRANSITION_NEXT_STEPS),
+					});
+				}
 				const holders = released.card.holders.map((one) => one.holder);
 				return okText(
 					`已释放 ${released.card.id}「${released.card.title}」；当前状态：${labelOf(released.card.status)}；` +
@@ -155,7 +172,12 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 			}
 			case 'transition': {
 				const applied = await taskboard.transition(workspaceId, cardId, to, 'ai');
-				if (!applied.ok) return failureResult(applied, { action: '转移失败', next: transitionNext(applied.code) });
+				if (!applied.ok) {
+					return failureResult(applied, {
+						action: '转移失败',
+						next: nextStepFor(applied.code, TRANSITION_NEXT_STEPS),
+					});
+				}
 				return okText(
 					`已转移 ${applied.card.id}「${applied.card.title}」：` +
 						`${labelOf(advice.status)} → ${labelOf(applied.card.status)}。`,
@@ -167,21 +189,19 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 	return defineTool({
 		name: 'taskboard_transition',
 		description:
-			// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」；7 个工具都有这处。可直接改成「必填」。
 			'推进一张卡的状态：**采纳、领取、释放、普通转移都用这一个工具**，区别只在目标字符串。' +
 			'采纳 = 未指定 → 提交（设计/记录会改为「需要授权」）；领取 = 提交 → 处理中（只能对工作卡）；' +
 			'释放 = 处理中 → 提交。' +
 			'**目标字符串省略/为空时只查询**：列出接下来可转移的目标、对应动作、AI 能不能做、' +
 			'不能做的具体原因与阻塞卡（依赖没结束 / 子任务等授权 / 手上已有处理中工作卡 / 只有用户能点 / UI 档位未开）。' +
 			'采纳与领取默认关闭；如果用户授意，可以由用户在任务板 UI 打开对应档位。' +
-			'空间省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+			WORKSPACE_ID_REQUIRED_NOTE,
 		inputSchema: {
 			type: 'object',
 			properties: {
 				workspaceId: {
 					type: 'string',
-					// TODO(审查): 旧文案：缺 workspaceId 直接失败，不是「用激活空间」。可直接改成「必填」。
-					description: '空间 id。省略 = 宿主激活空间（DSH）；MCP 等没有该行为的宿主会报错。',
+					description: WORKSPACE_ID_DESCRIPTION,
 				},
 				id: { type: 'string', description: '卡编号（如 W1）。必填。' },
 				to: {
@@ -190,7 +210,7 @@ export function createTransitionTool(deps: ToolDeps): ReturnType<typeof defineTo
 						'目标状态 id（TASK_STATE_*）或中文名（提交/处理中/成功…）。省略 = 只查询目标与条件，不执行。',
 				},
 			},
-			required: ['id'],
+			required: ['workspaceId', 'id'],
 		},
 		handler,
 	});
@@ -244,24 +264,12 @@ function actionLevelFailure(verdict: CardActionDenied, action: 'adopt' | 'claim'
 	});
 }
 
-/** 转移失败的下一步。 */
-// TODO(审查): 参数是裸 string 而不是 ErrorCode ⇒ 新增错误码不会有人提醒（同款还有 create.ts / update.ts 的 nextFor*）。
-// 可直接改：换成 ErrorCode + 一张集中默认表（见 failure.ts 文件尾 TODO）。
-function transitionNext(code: string): string {
-	switch (code) {
-		case 'CLAIM_REJECTED':
-			return '不传 to 调一次看条件目标；按 blockers 先完成依赖，或先释放手上另一张处理中工作卡。';
-		case 'TRANSITION_REJECTED':
-			return '不传 to 调一次看当前可转移目标；终结态如果用户授意，由用户推进。';
-		case 'CARD_NOT_FOUND':
-			return '先用 taskboard_cards 确认编号；已删除的卡不能转移。';
-		default:
-			return '不传 to 调一次看当前可转移目标。';
-	}
-}
-
-/** 「接下来能去哪」的文本视图由 `render.renderAdvice` 统一渲染（#6/#7 也用它）。 */
-// TODO(审查): 这是搬迁后剩下的一句孤立注释，下面没有代码 —— 删除或并到 resolveStateId 的文档里。可直接改。
+/** 转移失败的下一步：只覆盖转移口径不同的几条，其余走 `failure.ts` 的共用表。 */
+const TRANSITION_NEXT_STEPS = {
+	CLAIM_REJECTED: '不传 to 调一次看条件目标；按 blockers 先完成依赖，或先释放手上另一张处理中工作卡。',
+	TRANSITION_REJECTED: '不传 to 调一次看当前可转移目标；终结态如果用户授意，由用户推进。',
+	CARD_NOT_FOUND: '先用 taskboard_cards 确认编号；已删除的卡不能转移。',
+} satisfies Partial<Record<ErrorCode, string>>;
 
 /** 把用户/模型给的目标字符串解析成状态 id（英文 id 或中文名）。 */
 export function resolveStateId(raw: string): (typeof TASK_STATES)[number] | undefined {
@@ -269,13 +277,4 @@ export function resolveStateId(raw: string): (typeof TASK_STATES)[number] | unde
 	const trimmed = raw.trim();
 	if (isTaskState(trimmed)) return trimmed;
 	return TASK_STATES.find((state) => STATE_LABELS[state] === trimmed);
-}
-
-/** 读一个允许空串的字符串字段。 */
-// TODO(审查): 与 update.ts 的 stringField、update-note.ts 的 readString、render.ts 的 stringField 是同一函数的四份副本。
-// 可直接改：删掉三份，改用 context.ts 新增的 strAllowEmpty()。
-function readString(args: unknown, key: string): string | undefined {
-	if (typeof args !== 'object' || args === null) return undefined;
-	const value = (args as Record<string, unknown>)[key];
-	return typeof value === 'string' ? value : undefined;
 }
