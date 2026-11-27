@@ -54,7 +54,7 @@
  * 类名（预览里由 `preview.css` 提供同一条规则），所以颜色**只有一份真值**。
  */
 
-import { memo, useId, useMemo, useSyncExternalStore } from 'react';
+import { memo, useId, useMemo } from 'react';
 import type { ReactNode } from 'react';
 
 import { RELATION_KINDS, TASK_STATES, isLinkKindId } from '@taskboard/protocol';
@@ -68,6 +68,7 @@ import {
 	groupLabelOf,
 	type GroupableCard,
 } from '../pure/sibling-groups.ts';
+import { useUiState } from '../use-ui-state.ts';
 import type { TreeGroup } from '../pure/ui-state.ts';
 import type { TreeFilterCriteria } from '../pure/tree-filter.ts';
 import {
@@ -88,7 +89,6 @@ import type {
 	TreeMetrics,
 } from '../pure/tree-layout.ts';
 import type { Card } from '../types.ts';
-import { uiStateStore } from '../ui-state-store.ts';
 import { StatusDot } from './StatusDot.tsx';
 import { TreeCard } from './TreeCard.tsx';
 
@@ -408,21 +408,30 @@ export interface TechTreeProps {
 	 */
 	readonly templateLabelOf?: (ref: string) => string;
 	/**
-	 * 用户显式**折叠**的 id；省略 = 读模块级单例 store（三入口共享）。
+	 * 用户显式**折叠**的 id；省略 = 读本组件正在看的空间（`workspaceId`）的 UI 状态。
 	 *
-	 * ⚠ 省略时本组件自己订阅 store —— 那是产品形态；预览 / 测试传显式值，避免打网络。
+	 * ⚠ 省略时本组件自己订阅 store —— 那是预览 / SSR 直接渲染本组件的形态；
+	 *   产品里 `Workspace` 会把**它那个入口正在看的空间**的那一份显式传进来。
 	 */
 	readonly foldedIds?: readonly string[];
-	/** 用户显式**展开**的 id；省略 = 读 store。 */
+	/** 用户显式**展开**的 id；省略 = 读本组件正在看的空间（`workspaceId`）。 */
 	readonly expandedIds?: readonly string[];
-	/** 点折叠三角；省略 = 写 store。 */
+	/** 点折叠三角；省略 = 写本组件正在看的空间（`workspaceId`）。 */
 	readonly onToggleFold?: (id: string, folded: boolean) => void;
 	/**
-	 * 组的定义；省略 = 读模块级单例 store。
+	 * 组的定义；省略 = 读本组件正在看的空间（`workspaceId`）的 UI 状态。
 	 *
 	 * 组只影响**布局**：折叠的组把成员藏起来、在原位置画一个组节点。
 	 */
 	readonly groups?: readonly TreeGroup[];
+	/**
+	 * 本组件正在看的空间 id（裁定 B-8；lead `2026-11-28`）。
+	 *
+	 * 只在上面四个 prop 省略时才用得上：折叠态 / 组从**这个空间**读、也写回**这个空间**。
+	 * 省略（`''`）= 不加载、不保存、**操作被忽略**（没有空间可归属 —— 旧实现同样如此）。
+	 * 产品里由 `Workspace` 把四个 prop 显式传好，不依赖这个默认。
+	 */
+	readonly workspaceId?: string;
 	/** 点最左「根卡」窄列；省略 = 不渲染那一列（预览 / 测试）。 */
 	readonly onRootColumnClick?: () => void;
 	/** 根卡关系视图是否正开着（给窄列高亮）。 */
@@ -680,17 +689,17 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	const filtering = isFiltering(props.filter);
 
 	/*
-	 * 折叠态：省略 props 时读模块级单例（三入口共享一份，用户 2026-11-24
-	 * 「三出入口用同一的。内存都是一份数据。」）。
+	 * 折叠态 / 组：省略 props 时读**本组件正在看的空间**（`workspaceId`）那一份。
+	 *
+	 * 裁定（B-8，lead `2026-11-28`）：三个入口各持自己的 `viewingId`（由 `Workspace`
+	 * 传进来 / 显式 props），一处切空间不会改掉另一处正在看的东西。
+	 * `workspaceId` 省略（预览 / SSR 直接渲染本组件）⇒ `''` ⇒ 不加载、不保存、
+	 * 操作被忽略（没有空间可归属；旧实现同样如此）。
 	 */
-	const uiSnapshot = useSyncExternalStore(uiStateStore.subscribe, uiStateStore.getSnapshot);
-	const foldedIds = props.foldedIds ?? uiSnapshot.folded;
-	const expandedIds = props.expandedIds ?? uiSnapshot.expanded;
-	const onToggleFold =
-		props.onToggleFold ??
-		((id: string, folded: boolean): void => {
-			uiStateStore.setFolded(id, folded);
-		});
+	const ui = useUiState(props.workspaceId ?? '');
+	const foldedIds = props.foldedIds ?? ui.snapshot.folded;
+	const expandedIds = props.expandedIds ?? ui.snapshot.expanded;
+	const onToggleFold = props.onToggleFold ?? ui.setFolded;
 
 	/*
 	 * 子树折叠（用户 2026-11-24）：
@@ -720,7 +729,7 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	 *   在原位置画一个组节点替代。
 	 * 组只影响布局，不碰卡数据。
 	 */
-	const groups = props.groups ?? uiSnapshot.groups;
+	const groups = props.groups ?? ui.snapshot.groups;
 	const groupableCards = useMemo<readonly GroupableCard[]>(
 		() =>
 			props.cards.map((card) => ({

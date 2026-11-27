@@ -12,11 +12,16 @@
  *
  * ## 只管 UI 状态
  *
- * 组的增删改全走 `uiStateStore`（SQLite kv，AI 与 MCP 读不到）。
+ * 组的增删改全走 `uiStateStore`（SQLite kv，AI 与 MCP 读不到）——
+ * 经 `useUiState` 绑到**本组件正在看的那个空间**（`workspaceId`）。
  * 本组件**不发卡数据请求、不改卡、不进 `/api/state`**。
+ *
+ * ⚠ 写哪个空间由 props 的 `workspaceId` 决定（裁定 B-8，lead `2026-11-28`）：
+ *   组 / 折叠态按空间分，`Workspace` 会把**本入口正在看的** `viewingId` 传进来。
+ *   省略 = `''` ⇒ 不加载、不保存、操作被忽略（预览直接渲染本组件）。
  */
 
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 import type { Card } from '../types.ts';
 import {
@@ -27,7 +32,7 @@ import {
 	ungroupedSiblings,
 	type GroupableCard,
 } from '../pure/sibling-groups.ts';
-import { uiStateStore } from '../ui-state-store.ts';
+import { useUiState } from '../use-ui-state.ts';
 
 /** 组件 props。 */
 export interface SiblingRelationPanelProps {
@@ -39,6 +44,13 @@ export interface SiblingRelationPanelProps {
 	readonly title?: string;
 	/** 关掉面板（只有根卡视图需要）。 */
 	readonly onClose?: () => void;
+	/**
+	 * 本组件正在看的空间 id（裁定 B-8，lead `2026-11-28`）。
+	 *
+	 * 组 / 折叠态按空间分：`Workspace` 传它自己的 `viewingId`，两处（根卡关系 /
+	 * 子卡关系）共用同一份。省略 = `''` ⇒ 不加载、不保存、操作被忽略（预览直接渲染本组件）。
+	 */
+	readonly workspaceId?: string;
 }
 
 /**
@@ -60,7 +72,12 @@ function groupableOf(cards: readonly Card[]): readonly GroupableCard[] {
  * @param props 见 `SiblingRelationPanelProps`
  */
 export function SiblingRelationPanel(props: SiblingRelationPanelProps): ReactNode {
-	const snapshot = useSyncExternalStore(uiStateStore.subscribe, uiStateStore.getSnapshot);
+	/*
+	 * 组 / 折叠态属于**本组件正在看的那个空间**（裁定 B-8，lead `2026-11-28`）。
+	 * 不订阅「全局当前空间」—— 那会跟着别的入口切走。
+	 */
+	const ui = useUiState(props.workspaceId ?? '');
+	const snapshot = ui.snapshot;
 	const [picked, setPicked] = useState<readonly string[]>([]);
 	const [error, setError] = useState<string | undefined>(undefined);
 	const [renaming, setRenaming] = useState<string | undefined>(undefined);
@@ -96,9 +113,9 @@ export function SiblingRelationPanel(props: SiblingRelationPanelProps): ReactNod
 			return;
 		}
 		const group = { id: nextGroupIdOf(snapshot.groups), memberIds: picked };
-		uiStateStore.addGroup(group);
+		ui.addGroup(group);
 		/* 新组默认折叠（用户：「组总是折叠的。需要打开」） */
-		uiStateStore.setFolded(group.id, true);
+		ui.setFolded(group.id, true);
 		setPicked([]);
 		setError(undefined);
 	};
@@ -109,7 +126,7 @@ export function SiblingRelationPanel(props: SiblingRelationPanelProps): ReactNod
 			setError(check.message);
 			return;
 		}
-		for (const id of picked) uiStateStore.addMember(groupId, id);
+		for (const id of picked) ui.addMember(groupId, id);
 		setPicked([]);
 		setAddingTo(undefined);
 		setError(undefined);
@@ -152,7 +169,7 @@ export function SiblingRelationPanel(props: SiblingRelationPanelProps): ReactNod
 										data-group-toggle={group.id}
 										title={isFolded ? '展开组' : '折叠组'}
 										onClick={() => {
-											uiStateStore.setFolded(group.id, !isFolded);
+											ui.setFolded(group.id, !isFolded);
 										}}
 									>
 										{isFolded ? '▸' : '▾'}
@@ -168,12 +185,12 @@ export function SiblingRelationPanel(props: SiblingRelationPanelProps): ReactNod
 												setDraftName(event.target.value);
 											}}
 											onBlur={() => {
-												uiStateStore.renameGroup(group.id, draftName);
+												ui.renameGroup(group.id, draftName);
 												setRenaming(undefined);
 											}}
 											onKeyDown={(event) => {
 												if (event.key === 'Enter') {
-													uiStateStore.renameGroup(group.id, draftName);
+													ui.renameGroup(group.id, draftName);
 													setRenaming(undefined);
 												}
 												if (event.key === 'Escape') setRenaming(undefined);
@@ -202,7 +219,7 @@ export function SiblingRelationPanel(props: SiblingRelationPanelProps): ReactNod
 										data-group-delete={group.id}
 										title="删组（成员回到未分组）"
 										onClick={() => {
-											uiStateStore.removeGroup(group.id);
+											ui.removeGroup(group.id);
 										}}
 									>
 										删
@@ -231,7 +248,7 @@ export function SiblingRelationPanel(props: SiblingRelationPanelProps): ReactNod
 														title="从组里移出"
 														onClick={(event) => {
 															event.preventDefault();
-															uiStateStore.removeMember(group.id, id);
+															ui.removeMember(group.id, id);
 														}}
 													>
 														移出
