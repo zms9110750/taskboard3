@@ -10,7 +10,9 @@
  * 服务端多给的字段本包忽略即可（JSON 传输，不校验额外字段）。
  *
  * ⚠ 字段名必须与 core 的 `Card` 一致。不一致时**编译不报错、运行静默空白** ——
- *   `test/schema-parity.test.ts` 用一份固定的样例 JSON 钉住这一点。
+ *   `test/schema-parity.test.ts` 用**双向 assignability（编译期）+ 一份固定的
+ *   样例 JSON（运行期）**钉住：core → wire 可赋值（wire 是结构子集），wire 的
+ *   每个键都必须能在 core 的对应类型里找到。core 后加的字段没跟上 ⇒ 测试红。
  */
 
 import type { TaskState } from '@taskboard/protocol';
@@ -78,12 +80,22 @@ export interface CardUnread {
 	readonly user: boolean;
 }
 
-// TODO(审查): 本文件与 core 的 Card/Workspace/StateData 逐字段复制，注释两处（:13、:83）声称由 `test/schema-parity.test.ts` 钉住，但该测试文件不存在（全包 grep 只有引用文本）⇒ 漂移完全静默。可补真正的 parity 测试（test 里 `import type` core 做双向 assignability），或把 wire DTO 收进 protocol；选哪条需用户定架构。
+// TODO(审查): `test/schema-parity.test.ts` 已落地（2026-11-28）—— 编译期双向
+// assignability + 运行期固定样例 JSON，漂移不再静默。测试同时记录了**已知的
+// 刻意收窄**：`HistoryEntry` 缺 `actor`、`TemplateSummary` 缺 `codePrefix`
+// （都是 UI 当前不读的字段，白名单写在测试里；core 再删/改名/加字段同样会红）。
+// 若 UI 需要它们，**wire 补字段需产品决定**，测试白名单同步收紧。
 /**
  * 一张任务卡。
  *
  * ⚠ **与 core 的 `Card` 逐字段一一对应** —— 缺一个字段就是界面上一块空白，
- *   而且不报错。`test/schema-parity.test.ts` 钉住这一点。
+ *   而且不报错。`test/schema-parity.test.ts` 钉住这一点：
+ *   - 编译期：core → wire 可赋值；`Card` 顶层的键集与 core 完全相等，
+ *     子形状（`HistoryEntry` / `TemplateSummary`）只允许测试里列出的已知收窄；
+ *   - 运行期：一份照 core 写的样例 JSON，解析回来必须仍是 wire 的 `Card`。
+ *
+ * ⚠ core 以后**加**字段而这里没跟（或字段改名）⇒ 该测试编译失败。
+ *   这是它存在的意义，不要用 `any` / 放宽差集断言绕过去。
  *
  * ⚠ **旧字段 `claimedBy` / `claimedAt` 已删**：core 把它们换成了 `holders` 列表
  *   （允许多人协作，用户 `2026-11-13`）。留着会让类型和服务端对不上，
