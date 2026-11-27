@@ -38,7 +38,9 @@ import { useSyncExternalStore } from 'react';
 /** 抽屉是否打开（模块级唯一真值）。 */
 let drawerOpen = false;
 
-// TODO(审查): 本文件的 listeners/subscribe/useSyncExternalStore 样板与 permission-box-state.ts、ui-state-store.ts 重复三份；可抽一个 `createExternalStore<T>()` 统一（可直接改，低风险）。另「多会话共享同一 drawerOpen」是已知副作用（见上方注释），是否需要按会话隔离需用户决定。
+// TODO(审查): 本文件的 listeners/subscribe/useSyncExternalStore 样板与 ui-state-store.ts 重复（包内两份）；
+// 第三份 permission-box-state.ts 已随 2026-11-27 拆包搬去 @taskboard/dsh-permissions ——「抽 createExternalStore」
+// 从包内重构变**跨包**主题，需先裁定公共 helper 放哪个包。另「多会话共享同一 drawerOpen」是已知副作用（见上方注释），是否按会话隔离需用户决定。
 /** 订阅者（两个槽各一个 React 实例）。 */
 const listeners = new Set<() => void>();
 

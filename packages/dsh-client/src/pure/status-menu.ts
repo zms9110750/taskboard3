@@ -331,7 +331,7 @@ export interface Placement {
  * @param naturalHeight 菜单挂上后量到的真实高度
  * @param viewport 视口尺寸（`innerWidth` / `innerHeight`）
  */
-// TODO(审查): 手写定位的边界数学（flip/clamp/最大高度）可直接换 @floating-ui/dom 的 computePosition+flip/shift/size；同类手写在 DeriveMenu.tsx:98、StatusMenu.tsx:101、TemplatePickerPopover.tsx:184、PermissionBoxPopover.tsx:72，Drawer.tsx:246-264 还靠 100ms 轮询补位。统一后可删本函数与相关常量，需用户决定是否加该依赖。
+// TODO(审查): 手写定位的边界数学（flip/clamp/最大高度）可直接换 @floating-ui/dom 的 computePosition+flip/shift/size；同类手写在 DeriveMenu.tsx:98、StatusMenu.tsx:101、TemplatePickerPopover.tsx:184，以及 @taskboard/dsh-permissions 的 PermissionBoxPopover.tsx（2026-11-27 拆包搬过去的），Drawer.tsx:246-264 还靠 100ms 轮询补位。统一后可删本函数与相关常量；若统一，权限包那份要一起换——需用户决定是否加该依赖（跨包主题）。
 export function placeMenu(
 	anchor: Rect,
 	naturalHeight: number,

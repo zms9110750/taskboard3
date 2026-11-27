@@ -100,7 +100,7 @@ const globalFetch: UiStateFetch = (url, init) =>
 		...(init?.headers === undefined ? {} : { headers: init.headers }),
 	});
 
-// TODO(审查): listeners/subscribe 样板与 drawer-state.ts、permission-box-state.ts 重复三份，可抽 `createExternalStore<T>()`（可直接改）。另本 store 是「没有 inject 契约」的绕行，注释已说明原因，但没有任何守护阻止以后有人在组件里 `createUiStateStore()` 造第二份；建议加单例测试/注释守护。
+// TODO(审查): listeners/subscribe 样板与 drawer-state.ts 重复（包内两份）；第三份 permission-box-state.ts 已随 2026-11-27 拆包搬去 @taskboard/dsh-permissions ⇒ 抽 `createExternalStore<T>()` 变**跨包**主题，需先裁定公共 helper 归属。另本 store 是「没有 inject 契约」的绕行，注释已说明原因，但没有任何守护阻止以后有人在组件里 `createUiStateStore()` 造第二份；建议加单例测试/注释守护。
 /**
  * 造一个 store。
  *

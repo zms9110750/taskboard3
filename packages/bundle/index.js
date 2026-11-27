@@ -26,7 +26,7 @@
  *
  * 每个都能单独关：关掉 ② 就只剩数据层，关掉 ③ 就只剩 Host 能力。
  *
- * TODO(审查): 本段仍是「三个组件」的旧结构 —— 实际 patch 插入 6 行（store/core/host/tools/client/guard）。
+ * TODO(审查): 本段仍是「三个组件」的旧结构 —— patch 实际插入若干行（以 cordis.patch.yml 为准，别在这里写数字：行数已两次随拆包漂移）。
  * TODO(审查): ② 行把「AI 工具」算给 @taskboard/dsh，但 patch ④ 才是 @taskboard/dsh-tools；归属写重了。
  *   两处均可直接改注释，无行为影响。
  */
@@ -34,8 +34,8 @@
 /*
  * TODO(审查) 汇总 —— 非源码项（package.json / locale / icon / README），全部只加注释、未改行为：
  *
- * 1. package.json:5「一个 bundle，三个插件条目」与实际 6 行不符 —— 描述漂移。
- *    可直接改成 6 / 不写数字（措辞属产品文案）。
+ * 1. package.json:5「一个 bundle，三个插件条目」与 patch 实际行数不符 —— 描述漂移（行数两次随拆包变化，别写数字）。
+ *    可直接改成不写数字（措辞属产品文案）。
  * 2. package.json:19 的 files 列了 README.md，但仓库没有该文件；locale 也没有 meta.detail
  *    ⇒ bundle 详情页无内容（DSH host-plugin.md:31：无 meta.detail 回退包 README）。
  *    补 README 可直接改；详情里放什么内容需用户决定。

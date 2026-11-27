@@ -52,8 +52,9 @@
  * **这是正确的失败方式。**
  */
 
-// TODO(审查): 上面「dsh 那边的 inject」实际消费者是 dsh-core（lead 确认）—— 引用漂移；
-// 按 AGENTS 3.10 改成准确包名。可直接改注释。
+// ⚠ 2026-11-27 验真：原 TODO(审查) 说「实际消费者是 dsh-core、上面引用漂移」——**不实**。
+//   dsh/src/index.ts:97 `inject` 了 taskboard3Store 且消费其 kv，dsh-agent-guard 也 inject；
+//   上面「dsh 那边的 inject」并没有漂移。按那条 TODO 改注释反而会写错。
 
 // TODO(审查) 汇总 —— 本文件代码行之外的问题（package.json / tsconfig / patch / locale / test / 架构）；
 // 每条：问题 + 为什么 + 可直接改 / 需用户决定。本次只加注释，未改任何逻辑/类型/测试/配置，未构建未测试。
