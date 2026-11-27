@@ -16,13 +16,20 @@
  * > 依赖不存在，这个包就不能用。用户就要找一个这个来。
  * > 这是插件的依赖语义。
  *
- * ⇒ 本包在 `inject` 里声明五个服务，但 **`cordis.patch.yml` 只插自己这一行**。
- *   存储的实现由 `@taskboard/store` 那一行提供（或用户自己的替换品）。
+ * ⇒ 本包在 `inject` 里声明**六个**服务，但 **`cordis.patch.yml` 只插自己这一行**。
+ *   存储实例由 `@taskboard/store` 那一行提供（或用户自己的替换品）；
+ *   任务板实例与总线由 `@taskboard/dsh-core` 那一行提供。
  *
  * | 服务 | 提供者 | 缺失时 |
  * |---|---|---|
- * | `webServer` / `connection` / `tools` / `commands` | DSH 自带 | 插件不激活 |
- * | `taskboard3Store` | `@taskboard/store` 或替换品 | **插件不激活** |
+ * | `webServer` / `connection` / `commands` | DSH 自带 | 插件不激活 |
+ * | `taskboard3Core`（`Taskboard` 实例） | `@taskboard/dsh-core` | **插件不激活** |
+ * | `taskboard3Bus`（广播总线，⚠ 原型期脚手架） | `@taskboard/dsh-core` | **插件不激活** |
+ * | `taskboard3Store`（`kv` 两方法，存 agent 侧档位） | `@taskboard/store` 或替换品 | **插件不激活** |
+ *
+ * ⚠ `taskboard3AgentGuard` **不在 `inject` 里** —— 它是**可选**服务，用 `ctx.get()`
+ *   运行时探测（不在 ⇒ `/api/tools` 落 404）。写进 `inject` 会让关掉那一行的 profile
+ *   整行不激活，那不是用户要的语义。
  *
  * ⚠ **搜索不在这个表里** —— 它已并入 core 并强耦合（用户裁定：
  *   「ui 和 tool 都强依赖搜索，替换了搜索，那接口也没法做啊……就强耦合吧」）。
@@ -55,15 +62,11 @@
  * TODO(审查): [package.json] 遗留依赖：`@taskboard/dsh-tools` 的 dependency(:34) / peerDependency(:39) / devDependency(:50) 在 src 里**零 import**，
  *   `src/dsh-tools.d.ts` 垫片也已不存在 ⇒ 工具面搬走后没清理。可直接改（删），但会动依赖图，建议 lead 一次改完。
  *   （`@taskboard/dsh-core` 也零 import，但它的服务名是契约、按 lead 裁定属正常，不动。）
- * TODO(审查): [lib/] `lib/actions.js / holder.js / permission.js / tools.js` 及其 `.d.ts` 没有对应 `src` 下的 `.ts` 且无人 import ⇒ `tsc` 不删孤儿产物（AGENTS 规则 2），
- *   而 package.json 的 `files` 含 `lib`，发布会把死文件打出去。可直接改：`rm -rf lib && tsc -b`。
- * TODO(审查): [tsconfig.json] `references` 只有 protocol/core/dsh-core，但 `src/http.ts` 顶部 import 了 `@taskboard/dsh-agent-guard`
- *   ⇒ `tsc -b packages/dsh` 不会先重建它，会拿旧 `.d.ts` 编译（AGENTS 规则 6 的假绿）。可直接改（补 reference）。
- * TODO(审查): [README.md] 失真：:91-111 十工具表与 `src/tools.ts`、:115 `src/holder.ts`、:210 `packages/search`、:216 `src/dsh-tools.d.ts` 都不存在；
- *   :51-62 路由表缺 ui-state/permission/tool-policy/render-check/events/updates/tools/seen/archive。README 在 `files` 里会发布 ⇒ 可直接改文档。
- * TODO(审查): [文档口径] `test/apply-lifecycle.test.ts:32` 写「11 个 AI 工具」、README:91 写「10 个」、locale 写「十一个」——三处都已过时。可直接改（口径要用户定）。
- * TODO(审查): [locale/zh.json:4, locale/en.json:4] 插件描述仍写「十一个工具 / 本包挂工具守卫 / 判定逻辑在 core」——那是 dsh-tools + dsh-agent-guard 的职责，
- *   而用户装插件时看到的就是这段。可直接改文案（工具数量属产品口径，需用户点头）。
+ * TODO(审查): [README.md] 仍有失真：`:115` 的 `src/holder.ts`、`:210` 的 `packages/search`、`:216` 的 `src/dsh-tools.d.ts`
+ *   都不存在；`:51-62` 路由表缺 ui-state/permission/tool-policy/render-check/events/updates/tools/seen/archive。
+ *   README 在 `files` 里会发布 ⇒ 可直接改文档。（服务数与工具表本轮已修正。）
+ * TODO(审查): [测试口径] `test/apply-lifecycle.test.ts` 文件头的结构图写「`@taskboard/dsh-tools` 11 个 AI 工具 + 权限 guard」，
+ *   而 `@taskboard/tools` 实际只建 9 个（两个 policy 工具在 dsh-agent-guard）。测试本次未改，记录于此。
  * TODO(审查): [本文件头部两节] 「三件事，不多做」与「为什么 `defineTool` 只出现在 `tools.ts`」仍写「`src/tools.ts` 用 defineTool」「编译期用 `src/dsh-tools.d.ts` 垫片」——**两个文件都不存在**（AGENTS 3.10：引用要能被找到）。可直接改。
  */
 
@@ -72,8 +75,7 @@ import type { Bus, Taskboard } from '@taskboard/core';
 import { registerCommands } from './commands.ts';
 import { mountRoutes } from './http.ts';
 import { createSseHub } from './sse.ts';
-// TODO(审查): [③] `ToolsLike` 在这里 import 了却全文未用；`src/types.ts` 的 `ToolsLike` 接口因此是死的（工具面已搬去 dsh-tools）。可直接删这两处。
-import type { CommandsLike, ConnectionLike, IncomingLike, OutgoingLike, ToolsLike, WebServerLike } from './types.ts';
+import type { CommandsLike, ConnectionLike, IncomingLike, OutgoingLike, WebServerLike } from './types.ts';
 
 /** Cordis 插件名。 */
 export const name = 'taskboard3';
@@ -81,12 +83,11 @@ export const name = 'taskboard3';
 /**
  * 前置服务。
  *
- * ⚠ **声明依赖，不替用户装配。** 五个服务缺任何一个 ⇒ 本插件不激活。
+ * ⚠ **声明依赖，不替用户装配。** 六个服务缺任何一个 ⇒ 本插件不激活。
  *   用户会看到「任务板没出现」，然后去补那一行 —— 这是正确的失败方式。
  */
 // TODO(审查): [⑤] 三个服务名是**硬编码字符串**，而 `@taskboard/dsh-core` 已公开导出服务名常量（CORE_SERVICE / BUS_SERVICE / DEFAULT_WORKSPACE_SERVICE）
 //   ⇒ 字符串漂移时 inject 静默失配、插件静默不激活。需 lead 给出常量与字符串的确切对应后可直接改；`taskboard3AgentGuard` 若有常量同理。
-// TODO(审查): [⑤] 服务表口径三处不一致：本文件头部的服务表说「五个」且列了 `tools`，`README.md:9-13` 说「四个」，实际这里是 **6 个且没有 `tools`**。可直接改文档。
 export const inject = [
 	'webServer',
 	'connection',
@@ -163,23 +164,24 @@ export type ApplyContext = {
  */
 export function apply(ctx: ApplyContext, config: Config = {}): void {
 	/*
-	 * ⚠ **原型期脚手架**：广播总线 + SSE。
+	 * ⚠ **原型期脚手架**：SSE。
+	 *
+	 * ⚠ 总线**不是本包建的** —— 它由 `@taskboard/dsh-core` 那一行 `createBus()` 后
+	 *   `provide('taskboard3Bus')`，本包只是订阅它。
 	 *
 	 * 与 `core/src/bus.ts` 同生共死 —— 那个文件是临时的，原型完成后要整个拆掉。
 	 * 拆的时候一起删：
 	 *
 	 * ```
-	 * · 本段的 `createBus()` 与 `bus`
-	 * · `createTaskboard({ ..., bus })` 里的 `bus`
-	 * · `createSseHub(bus)` 与 `disposeRoutes` 的 `events: hub`
-	 * · `disposeAll` 里的 `hub.closeAll()`
+	 * · 本段的 `bus` / `hub`（`createSseHub(bus)`）
 	 * · `src/sse.ts` 整个文件
 	 * · `http.ts` 的 `GET /api/events` 与 `RouteDeps.events`
+	 * · `disposeAll` 里的 `hub.closeAll()`
+	 * · `@taskboard/dsh-core` 的 `BUS_SERVICE` / `createBus()` / `createTaskboard({ ..., bus })`
 	 * ```
 	 *
 	 * 依据：`core/src/bus.ts` 文件头的拆解步骤 **第 4 条**（「dsh：删 SSE 端点」）。
 	 */
-	// TODO(审查): [③] 上面注释写「本段的 `createBus()` 与 `bus`」，但代码里 bus 来自 `ctx.taskboard3Bus`、根本没有 createBus —— 注释是旧的。可直接改。
 	const bus = ctx.taskboard3Bus;
 	const hub = createSseHub(bus);
 
@@ -237,12 +239,16 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		defaultWorkspaceId,
 		/* ⚠ 原型期脚手架：与 `core/src/bus.ts` 同生共死。见 `src/sse.ts` 文件头。 */
 		events: hub,
-		// TODO(审查): [②] 与 `src/http.ts` 顶部的 import 矛盾：那边**静态 import** 了 dsh-agent-guard 的公开导出，这里却写「不 import 那个包，否则关掉那一行会让本行一起崩」。
-		//   实际是「编译期硬依赖 + 运行时探测」并存。可直接改注释为准确描述；是否改成纯运行时依赖需 lead 定。
 		/*
 		 * `GET /api/tools` 的处理器由 `@taskboard/dsh-agent-guard` 那一行提供。
-		 * 那一行被关掉 ⇒ 服务不存在 ⇒ `undefined` ⇒ 请求落到 404。
-		 * ⚠ **不 import 那个包** —— 否则关掉那一行会让本行一起崩。
+		 * 那一行被关掉 ⇒ 服务不存在 ⇒ 本包拿到 `undefined` ⇒ 请求落到 `src/http.ts` 的 404。
+		 *
+		 * ⚠ **两件事别混**：
+		 *   · **包**是硬依赖 —— `src/http.ts` 顶部**静态 import** 了它的公开导出
+		 *     （档位选项表 / 解析与读写函数），所以包必须装；
+		 *   · **服务**是运行时可选的 —— 用 `ctx.get('taskboard3AgentGuard')` 探测，
+		 *     拿不到就当作没装那一行。关掉插件行不会让本行崩（import 的是包的代码，
+		 *     不是服务实例），这才是不把服务写进 `inject` 的原因。
 		 */
 		...(guardService === undefined ? {} : { agentGuardTools: guardService.handleTools }),
 	});
@@ -266,18 +272,23 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		 */
 	};
 
-	// TODO(审查): [②] 没有 `ctx.effect` 时**静默不注册 disposer** ⇒ 路由/SSE 泄漏且无日志；真实 Cordis 永远有 effect，但假 ctx 可绕过。
-	//   可直接加一行 `console.warn`（只在测试/异常 profile 可见）。
 	if (typeof ctx.effect === 'function') {
 		ctx.effect(() => disposeAll, 'taskboard3: routes / tools / commands');
+	} else {
+		/*
+		 * 没有 `ctx.effect` ⇒ 没人持有 disposer ⇒ 路由注册与 SSE 连接随卸载泄漏。
+		 *
+		 * 真实 Cordis 永远有 `effect`（缺的只可能是假 ctx / 异常 profile）——
+		 * ⇒ **只 warn，不抛**：任务板该用的部分照常工作，但泄漏必须留痕（AGENTS 3.6：
+		 *   静默跳过清理是「绕行抓不到」的形态）。同款写法见 `dsh-agent-loop/src/index.ts` 的 `warn()`。
+		 */
+		console.warn('[taskboard3] ctx.effect 缺失：routes / SSE 的清理函数无人持有，卸载时会泄漏。');
 	}
 }
 
 export { createHandler, mountRoutes, ROUTE_PREFIX } from './http.ts';
 export type { RouteDeps } from './http.ts';
-// TODO(审查): [③] `adoptTargetOf` 在本包零使用（内部只用 `isAdoptTransition` 且直接来自 core）；这条转发导出没有消费者就是死面。
-//   我禁读其它包，无法核实是否有包从 `@taskboard/dsh` 拿它 ⇒ 需 lead 确认后删（`createHandler/mountRoutes/ROUTE_PREFIX` 是给测试的，保留）。
-export { adoptTargetOf, isAdoptTransition } from '@taskboard/core';
+export { isAdoptTransition } from '@taskboard/core';
 /* ⚠ 原型期脚手架导出 —— 与 `core/src/bus.ts` 同生共死。 */
 export {
 	createSseHub,

@@ -111,13 +111,19 @@ function parseGroup(value: unknown): UiGroup | undefined {
 	const rawMembers = record['memberIds'];
 	if (!Array.isArray(rawMembers)) return undefined;
 
+	/*
+	 * 成员 id 采用与组 id / folded / expanded 相同的清洗口径：**判空后 trim、去重**。
+	 * 不 trim 的话，前端多传一个空格就会存进一个永远匹配不上的成员 id
+	 * —— 不报错，只在界面上表现为「这张卡不在组里」。
+	 */
 	const memberIds: string[] = [];
-	// TODO(审查): [②] `memberIds` 只判空、**不 trim**，而组 id 与 folded/expanded 都 trim 过 ⇒ 前端多传一个空格就存进一个永远匹配不上的成员。
-	//   可直接改：`one.trim()`（属修正，不是新行为）。
+	const seenMemberIds = new Set<string>();
 	for (const one of rawMembers) {
 		if (!isFilledString(one)) continue;
-		if (memberIds.includes(one)) continue;
-		memberIds.push(one);
+		const memberId = one.trim();
+		if (seenMemberIds.has(memberId)) continue;
+		seenMemberIds.add(memberId);
+		memberIds.push(memberId);
 	}
 
 	const group: { id: string; name?: string; memberIds: readonly string[] } = {
@@ -157,7 +163,7 @@ export function parseUiGroups(raw: string | undefined): readonly UiGroup[] {
 		/* 一张卡最多在一个组里 —— 跨组重复的成员在这里剔掉。 */
 		const members = group.memberIds.filter((id) => !seenMembers.has(id));
 		for (const id of members) seenMembers.add(id);
-		// TODO(审查): [①] 本文件的去重全用 `Array.includes`（组内成员、跨组成员、folded/expanded），UI 态可能有几百个 id ⇒ O(n²)；换 `Set` 一行事。
+		// TODO(审查): [①] `parseIdList`（folded / expanded）的去重仍是 `Array.includes`，UI 态可能有几百个 id ⇒ O(n²)；换 `Set` 一行事。
 		groups.push(members.length === group.memberIds.length ? group : { ...group, memberIds: members });
 	}
 	return groups;

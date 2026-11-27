@@ -1,5 +1,5 @@
 /**
- * SSE 端点 —— **原型期脚手架，跟 `core/src/bus.ts` 一起拆**。
+ * SSE 端点 —— **原型期脚手架，与 `core/src/bus.ts` 同生共死**；拆法见那个文件头。
  *
  * ---
  * ## ⚠ 这个文件是临时的，拆 `bus.ts` 时必须一起删
@@ -14,9 +14,12 @@
  * · 本文件（packages/dsh/src/sse.ts）
  * · packages/dsh/src/http.ts 里 `GET /api/events` 那一段
  * · packages/dsh/src/http.ts 的 `RouteDeps.events` 字段
- * · packages/dsh/src/index.ts 里 `createBus()` + `bus` 的构造与传入
+ * · packages/dsh/src/index.ts 里 `createSseHub(bus)` 与 `disposeAll` 的 `hub.closeAll()`
  * · packages/dsh/test/sse.test.ts
  * ```
+ *
+ * ⚠ **本文件只订阅总线，不造总线** —— `taskboard3Bus` 由 `@taskboard/dsh-core`
+ *   那一行 `createBus()` 后 `provide` 出来（与 `bus.ts` 一起拆）。
  *
  * 判据（`bus.ts` 里写的）：**设计目标不是「优雅」，是「可拆」**。
  * ⇒ 本文件刻意只做四件事：**订阅、写帧、退订、清理**。不解析消息内容

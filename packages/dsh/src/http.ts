@@ -30,8 +30,6 @@
 /*
  * TODO(审查) 汇总 —— 本包审查发现的问题（只记录，不改逻辑）
  *
- * TODO(审查): [测试] `test/http.test.ts:497-528` 两处 `status >= 400 && < 500` 松断言（未知 templateRef / 缺 title）；core 错误码是确定的，
- *   可钉 400/404——今天退化成 500 也会绿。测试本次禁止改，故记录于此。
  * TODO(审查): [决定记录] 本文件手写 body 读取 / URL 解析是**刻意零依赖**（不用 raw-body）；`zod` 也不引入（会把运行时依赖拉进 dsh）。
  *   唯一该换的是 `readBody` 里的字节计数（用 `Buffer.byteLength`）。这些是决定，不是待办。
  * TODO(审查): [⑦] `@taskboard/dsh-core` 目前不导出 HTTP 应答 / 错误码→status（lead 确认）⇒ 本文件自持 `sendJson/sendOk/sendFailure/statusOf` 合理；
@@ -193,6 +191,16 @@ function multi(query: URLSearchParams, key: string): readonly string[] | undefin
 	return all.length === 0 ? undefined : all;
 }
 
+/**
+ * 只读集合 → JSON 数组。
+ *
+ * 纯复制：**不改内容、不排序、不去重** —— 只把 core 的 `readonly` 集合摊成能
+ * `JSON.stringify` 的数组。`GET /api/tool-policy` 有 8 处同形摊平，收敛到这里。
+ */
+function toArrays<T>(items: readonly T[]): T[] {
+	return [...items];
+}
+
 /** 从已解析的 body 里取字符串字段。 */
 function str(body: unknown, key: string): string | undefined {
 	if (typeof body !== 'object' || body === null) return undefined;
@@ -296,7 +304,13 @@ export interface RouteDeps {
 	 * GET /api/tools 的处理器 —— 由 `@taskboard/dsh-agent-guard` 那一行提供。
 	 *
 	 * ⚠ 本包**不实现**它，只把请求转过去：端点随 agent-guard 那一行开关，
-	 *   关掉 ⇒ `undefined` ⇒ 落到下面的 404，且本包不 import 那个包（不会崩）。
+	 *   关掉 ⇒ `undefined` ⇒ 落到下面的 404。
+	 *
+	 * ⚠ 「不 import 那个包」是**旧注释，已不成立**：本文件顶部静态 import 了它的
+	 *   公开导出（档位选项表 / 解析与读写函数）。那是**包级硬依赖**；「关掉插件行不会崩」
+	 *   靠的是服务用 `ctx.get()` 运行时探测（见 `src/index.ts` 的 `guardService`），
+	 *   不是靠不 import。
+	 *
 	 *   用户 `2026-11-23`：「这个访问工具的事情也要在agentguard这个包里。
 	 *   因为只有他会用。」
 	 */
@@ -357,19 +371,47 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	}
 	const tail = path.slice(prefix.length);
 
+	/**
+	 * 解析「本次请求的空间」：显式给的优先，否则回落入口的默认空间策略。
+	 *
+	 * ⚠ 这是**入口的默认参数策略**，不是 core 概念（core 只认显式 `workspaceId`）。
+	 * ⚠ 只统一「取不到时怎么回落」；**传输方式仍按端点分工**（既有契约，别顺手统一）：
+	 *   读端点从 `?workspace=` 取，写端点从 body 的 `workspaceId` 取。
+	 */
+	const resolveWorkspace = async (explicit: string | null | undefined): Promise<string> =>
+		explicit ?? (await deps.defaultWorkspaceId());
+
 	/* ── GET /api/tools —— 交给 `@taskboard/dsh-agent-guard` 那一行 ── */
-	// TODO(审查): [②] `agentGuardTools(...)` **没 await、也没看返回值**（签名声明 `=> boolean`）：handler 若 async 抛错会成 unhandled rejection，
-	//   返回 false（未处理）会被静默当成已处理。这是两个包唯一边界，且 test/ 下 `agentGuardTools|api/tools` 零命中（零覆盖）。
-	//   可直接改：`await` 并检查返回值，未处理则落 404；补测试需另行批准。
 	if (tail === '/tools' && deps.agentGuardTools !== undefined) {
-		deps.agentGuardTools(connection, req, res);
+		/*
+		 * ⚠ 这是本包与 `@taskboard/dsh-agent-guard` 之间**唯一的运行时边界**，
+		 *   ⇒ 返回值与异常都必须留痕，不许静默当作「已处理」：
+		 *
+		 *   · 抛错 ⇒ 500 + `console.error`（别让异常冒到 `createHandler` 被笼统答成 400）；
+		 *   · 返回 `false`（按契约 = 没接这条请求）⇒ `console.warn` 后落 404 ——
+		 *     与「没装那一行」同一形状，客户端拿到「没有这个资源」而不是空响应。
+		 *
+		 * `await` 是为将来那边把契约改成异步留的余地：现在签名是同步 `=> boolean`。
+		 */
+		let handled = false;
+		try {
+			handled = await deps.agentGuardTools(connection, req, res);
+		} catch (error) {
+			console.error('[taskboard3] agent-guard 的 /api/tools 处理器抛错：', error);
+			sendFailure(res, failure(ErrorCode.INTERNAL_ERROR, '工具清单端点异常。'), 500);
+			return;
+		}
+		if (!handled) {
+			console.warn('[taskboard3] agent-guard 的 /api/tools 处理器未处理该请求，按 404 兜底。');
+			sendFailure(res, failure(ErrorCode.INTERNAL_ERROR, '工具清单端点未处理该请求。'), 404);
+		}
 		return;
 	}
 
 	/* ── GET /api/state?workspace=<id> ── */
 	if (tail === '/state') {
 		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
-		const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+		const workspaceId = await resolveWorkspace(query.get('workspace'));
 		sendOk(res, {
 			workspaceId,
 			workspaces: taskboard.listWorkspaces(true),
@@ -404,7 +446,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	 */
 	if (tail === '/ui-state') {
 		if (method === 'GET') {
-			const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+			const workspaceId = await resolveWorkspace(query.get('workspace'));
 			sendOk(res, {
 				groups: parseUiGroups(deps.kv.kvGet(uiGroupsKeyOf(workspaceId))),
 				folded: parseFolded(deps.kv.kvGet(uiFoldedKeyOf(workspaceId))),
@@ -534,23 +576,22 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		/* 鉴权已经在 `route()` 开头统一做过（`rejected()` 先于任何路径判断）。 */
 		const store = taskboard.getToolPolicies();
 		const templates = taskboard.listTemplates();
-		// TODO(审查): [①] 下面 5 处 `[...x]` 展开只是为了把 readonly 集合变成数组，可提一个 `toArrays(store)`；纯可读性。
 		sendOk(res, {
-			baseTools: [...BASE_TOOLS],
-			unclaimed: [...store.unclaimed],
-			common: [...store.common],
-			groups: Object.entries(store.groups).map(([name, tools]) => ({ name, tools: [...tools] })),
+			baseTools: toArrays(BASE_TOOLS),
+			unclaimed: toArrays(store.unclaimed),
+			common: toArrays(store.common),
+			groups: Object.entries(store.groups).map(([name, tools]) => ({ name, tools: toArrays(tools) })),
 			groupMembers: Object.entries(store.groupMembers).map(([group, refs]) => ({
 				group,
-				templates: [...refs],
+				templates: toArrays(refs),
 			})),
 			templates: Object.entries(store.templates).map(([templateRef, tools]) => ({
 				templateRef,
-				tools: [...tools],
+				tools: toArrays(tools),
 			})),
 			effective: templates.map((one) => ({
 				templateRef: one.ref,
-				tools: [...taskboard.effectiveToolsOf(one.ref)],
+				tools: toArrays(taskboard.effectiveToolsOf(one.ref)),
 			})),
 		});
 		return;
@@ -711,7 +752,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	/* ── GET /api/search ── */
 	if (tail === '/search') {
 		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
-		const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+		const workspaceId = await resolveWorkspace(query.get('workspace'));
 		const title = query.get('title');
 		const status = multi(query, 'status');
 		const kind = multi(query, 'kind');
@@ -781,7 +822,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	/* ── GET /api/updates ── */
 	if (tail === '/updates') {
 		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
-		const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+		const workspaceId = await resolveWorkspace(query.get('workspace'));
 		const updates = await taskboard.updates(workspaceId);
 		/*
 		 * ⚠ 字段名按「**谁改的**」命名（core 的口径，别搞反）：
@@ -800,8 +841,8 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		const body = await readJson(req);
 		// TODO(审查): [②] `workspaceId` 的传法前后不一：/cards 建卡、PATCH、action 从 body 取，
 		//   而 GET /state、GET cards/:id、DELETE 从 query 取；同一个值两种传法，客户端只能靠背。
-		//   本处起的 `str(body,'workspaceId') ?? await defaultWorkspaceId()` 也重复了 5 遍 ⇒ 可抽 `resolveWorkspace(body)`。
-		const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
+		//   （「取不到时回落默认空间」的重复已收敛到 `resolveWorkspace()`；两种传法本身未动 —— 统一属契约变化。）
+		const workspaceId = await resolveWorkspace(str(body, 'workspaceId'));
 		/*
 		 * ⚠ **`reader` 固定 `'user'`，不从 body 取。**
 		 *
@@ -832,7 +873,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	if (tail === '/cards') {
 		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
 		const body = await readJson(req);
-		const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
+		const workspaceId = await resolveWorkspace(str(body, 'workspaceId'));
 		const content = rawField(body, 'content');
 		const relations = rawField(body, 'relations');
 		const note = str(body, 'note');
@@ -879,7 +920,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	if (cardMatch !== null) {
 		const cardId = decodeURIComponent(cardMatch[1] ?? '');
 		if (method === 'GET') {
-			const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+			const workspaceId = await resolveWorkspace(query.get('workspace'));
 			const found = taskboard.get(workspaceId, cardId);
 			if (!found.ok) return sendFailure(res, found, 404);
 			sendOk(res, { card: found.card });
@@ -887,7 +928,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		}
 		if (method === 'PATCH') {
 			const body = await readJson(req);
-			const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
+			const workspaceId = await resolveWorkspace(str(body, 'workspaceId'));
 			const title = rawField(body, 'title');
 			const note = rawField(body, 'note');
 			const content = rawField(body, 'content');
@@ -907,7 +948,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 			return;
 		}
 		if (method === 'DELETE') {
-			const workspaceId = query.get('workspace') ?? (await deps.defaultWorkspaceId());
+			const workspaceId = await resolveWorkspace(query.get('workspace'));
 			/* 显式 `'user'`：同上。 */
 			const removed = await taskboard.remove(workspaceId, cardId, 'user');
 			if (!removed.ok) return sendFailure(res, removed);
@@ -923,7 +964,7 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		if (method !== 'POST') return sendMethodNotAllowed(res, 'POST');
 		const cardId = decodeURIComponent(actionMatch[1] ?? '');
 		const body = await readJson(req);
-		const workspaceId = str(body, 'workspaceId') ?? (await deps.defaultWorkspaceId());
+		const workspaceId = await resolveWorkspace(str(body, 'workspaceId'));
 		const to = str(body, 'to') ?? '';
 
 		if (!isTaskState(to)) {

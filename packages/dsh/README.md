@@ -6,22 +6,34 @@
 
 ## 依赖
 
-本插件在 `inject` 里声明四个 DSH 服务：
+本插件在 `inject` 里声明三个 DSH 服务 + 三个任务板服务：
 
 ```ts
-export const inject = ['webServer', 'connection', 'tools', 'commands'];
+export const inject = [
+  'webServer',       // DSH 自带
+  'connection',      // DSH 自带
+  'commands',        // DSH 自带
+  'taskboard3Core',  // @taskboard/dsh-core
+  'taskboard3Bus',   // @taskboard/dsh-core（⚠ 原型期脚手架）
+  'taskboard3Store', // @taskboard/store 或替换品
+];
 ```
 
 服务的含义：
 
-| 服务 | 用途 |
-|---|---|
-| `webServer` | 注册 `/taskboard3` 前缀路由 —— 浏览器读写数据的通道 |
-| `connection` | 请求鉴权（`requestRejection(req)`，返回 401 / 403 / 放行） |
-| `tools` | 注册 AI 工具 |
-| `commands` | 注册斜杠命令 |
+| 服务 | 提供者 | 用途 |
+|---|---|---|
+| `webServer` | DSH | 注册 `/taskboard3` 前缀路由 —— 浏览器读写数据的通道 |
+| `connection` | DSH | 请求鉴权（`requestRejection(req)`，返回 401 / 403 / 放行） |
+| `commands` | DSH | 注册斜杠命令 |
+| `taskboard3Core` | `@taskboard/dsh-core` | 任务板实例（全仓唯一建实例的那一行） |
+| `taskboard3Bus` | `@taskboard/dsh-core` | 广播总线（SSE 用，⚠ 原型期脚手架） |
+| `taskboard3Store` | `@taskboard/store` 或替换品 | 存储端口（本包只用 `kvGet` / `kvSet`，存 agent 侧档位） |
 
-**这四个都是 DSH 自带的**，正常 profile 里都有。缺任何一个 ⇒ 本插件不激活（Cordis 的依赖语义），用户会看到任务板没出现。
+**缺任何一个 ⇒ 本插件不激活**（Cordis 的依赖语义），用户会看到任务板没出现。
+
+⚠ `taskboard3AgentGuard`（`@taskboard/dsh-agent-guard` 提供）**不在 `inject` 里**：
+它是可选服务，用 `ctx.get()` 运行时探测 —— 缺它只让 `/api/tools` 落 404，不会让本行不激活。
 
 ### 唯一可替换的依赖：存储
 
@@ -88,9 +100,9 @@ export const inject = ['webServer', 'connection', 'tools', 'commands'];
 
 ## AI 工具
 
-**10 个，定义全部在 `@taskboard/tools`（MCP / DSH 通用）**，本包只做薄适配层
-（`src/tools.ts`：schema 转换 + ctx 注入 + `hosts` 过滤）。schema **全部静态**
-（用户裁定：工具 schema 在 prompt 前缀里，一动就击穿 KV cache）。
+定义全部在 `@taskboard/tools`（MCP / DSH 通用），**由 `@taskboard/dsh-tools` 那一行注册**
+（`ctx.tools.register`：schema 转换 + ctx 注入 + `hosts` 过滤）—— 本包不注册工具。
+schema **全部静态**（用户裁定：工具 schema 在 prompt 前缀里，一动就击穿 KV cache）。
 
 | 工具 | 说明 |
 |---|---|
@@ -103,7 +115,9 @@ export const inject = ['webServer', 'connection', 'tools', 'commands'];
 | `taskboard_update` | JSON 路径替换（返回合并 JSON + 状态/下一步） |
 | `taskboard_update_note` | 改备注 / 改标题（标题仅草稿期） |
 | `taskboard_transition` | 采纳 / 领取 / 释放 / 转移（`to` 为空 ⇒ 查目标与条件） |
-| `taskboard_tool_policy` | 仅 DSH：改工具权限（需宿主轴 `manage-edit`） |
+
+⚠ 两个权限工具（`taskboard_tool_policy` / `taskboard_tool_policy_read`）**不在上面这张表**：
+它们属于 `@taskboard/dsh-agent-guard` 那一行（DSH 专属，需宿主轴 `manage-edit`）。
 
 ⚠ v1 的 16 个工具名（`taskboard_adopt` / `claim` / `release` / `registry` /
 `mark_seen` / `update_content` / `tool_policies*`）已删除：采纳/领取/释放合并进
@@ -192,6 +206,7 @@ HTTP 请求**没有 `exec.agent`** —— 浏览器不知道「是哪个 agent �
 | `/taskboard` | 概览：全部工作空间 + 当前空间，按状态分布 |
 | `/task-card <编号>` | 看一张卡的元数据与章节 |
 | `/task-create <标题>` | 建一张草稿卡 |
+| `/task-ai-switch [on\|off]` | 看 / 改总闸：角色为 `ai` 的改卡状态操作允不允许 |
 
 ## 默认空间
 

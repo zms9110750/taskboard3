@@ -44,9 +44,9 @@
 
 /*
  * TODO(审查) 非源码问题汇总（package.json / tsconfig / lib 产物）：
- * 1. `lib/policy-store.js`、`lib/policy-store.js.map`、`lib/types/policy-store.d.ts(.map)` 是删掉
- *    `src/policy-store.ts` 后的陈旧产物，src 已无对应文件；`files: ["lib"]` 会把它打进 npm。
- *    可直接改：`rm -rf lib && tsc -b`（AGENTS 规则 2）。
+ * 1. ~~`lib/policy-store.js` 等是删掉 `src/policy-store.ts` 后的陈旧产物~~
+ *    ⚠ 2026-11-28 验真：本 worktree 的 `lib/` 已不存在（未构建过），`rm -rf lib && tsc -b`
+ *    之后产物只来自现存 `src/` ⇒ 该项已失效；构建由验收命令本身覆盖。
  * 2. ~~package.json 的 test 脚本指向不存在的 test/，本包测试数为 0~~
  *    ⚠ 2026-11-27 验真：本条已失效 —— `test/apply.test.ts` 已补（覆盖 provide 四个服务名 /
  *    ③ 贡献面 / effect 清理形状）。旧审查记录留此划线，防止按它再「补测试」。
@@ -72,10 +72,10 @@ export const inject = ['taskboard3Store'] as const;
 /*
  * TODO(审查) 空 interface 是 TS 类型，编译后擦除；Cordis 只校验 `runtime.Config` 这个 standard-schema
  *   值（cordis fiber.ts:50-62），所以本导出运行期不校验任何 config，却让人以为校验过了。
- *   可直接改：删掉本 interface 与 `apply` 的 `_config` 参数；需用户决定：真要校验就用 schemastery/standard-schema。
+ *   ⇒ 已删掉空 `interface Config {}` 与 `apply` 的 `_config` 参数（对齐 `dsh-agent-guard` 等行的
+ *   `apply(ctx)` 形状；`cordis.patch.yml` 那行不传 config，多传一个实参在 JS 里也无副作用）。
+ *   ⚠ 真要校验就接 schemastery / standard-schema —— 需用户决定。
  */
-/** 本插件行的配置。 */
-export interface Config {}
 
 /*
  * TODO(审查) CORE_SERVICE / DEFAULT_WORKSPACE_SERVICE / BUS_SERVICE 三个导出无外部使用者
@@ -117,13 +117,15 @@ export const BUS_SERVICE = 'taskboard3Bus' as const;
  *   provide 返回 disposer（这里写成 void 把返回值丢了）。可直接改：type-only import '@deepseek-ai/cordis' 的 Context，或加一条编译期兼容断言。
  * TODO(审查) `effect?` 可选 + 调用处 `ctx.effect?.()`：真实 ctx 上 effect 必然存在（cordis reflect.ts:234），
  *   可选化只会在假 ctx 下静默跳过清理（与 AGENTS §3.6「绕行必须能被编译失败或测试变红找到」相反）。可直接改：改必选，测试里补 no-op effect。
- * TODO(审查) 下面注释说「只声明本包真正调用的两个方法」，实际是 3 个成员（provide / taskboard3Store / effect）。可直接改：改注释。
  */
 /**
  * `apply` 用到的最小上下文。
  *
- * 只声明本包真正调用的两个方法 —— 不假装知道 Cordis 的其余部分。
+ * 只声明本包真正碰的**三样**东西 —— `provide` / `taskboard3Store` / `effect`，
+ * 不假装知道 Cordis 的其余部分。
  * Cordis 的 `Context` 结构上满足本接口 ⇒ 运行时能直接传进来。
+ *
+ * ⚠ `effect?` 在这个窄接口里是**可选**的（测试替身可以不给），真实 Cordis 上必然存在。
  */
 export interface ApplyContext {
 	/** 注册/提供运行时服务。 */
@@ -134,17 +136,20 @@ export interface ApplyContext {
 	 * 注册一个由本插件拥有的副作用；返回清理函数。
 	 *
 	 * 入参是一个「返回清理函数」的函数，Cordis 在卸载时调用那个清理函数。
+	 * 清理函数**可以返回 Promise** —— Cordis 会等它并 catch 记录（见下方 `close()` 的注释）。
 	 */
-	effect?(effect: () => () => void, label?: string): void;
+	effect?(effect: () => () => void | Promise<void>, label?: string): void;
 }
 
 /**
  * 造实例并 provide。
  *
  * @param ctx 宿主上下文（只需要 `provide` / `taskboard3Store` / `effect`）
- * @param config 无（本行目前不接受配置）
+ *
+ * ⚠ 没有 `config` 参数：本行不接受配置（曾经有个空 `Config` 接口，运行期什么都不校验，
+ *   只让人以为校验过了 ⇒ 删掉）。Cordis 那行不传 config 也不炸。
  */
-export function apply(ctx: ApplyContext, _config: Config = {}): void {
+export function apply(ctx: ApplyContext): void {
 	/*
 	 * TODO(审查) 总线脚手架放在「只建实例」的核心行里，拆 SSE 时要同时改 dsh-core 与 dsh 两处；
 	 *   更可拆的做法是单独一行 taskboard3-bus + 本包可选 inject（需 core 确认 createTaskboard 的 bus 可否省略）。需 lead/用户决定。
@@ -182,8 +187,13 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	 */
 	const defaultWorkspaceId = async (): Promise<string> => {
 		/*
-		 * TODO(审查) core 的 ensureAnyWorkspace() 本身就是「取第一个未归档，没有就建默认」（lead 已确认）；
-		 *   这里先 list 再 ensure 是同一策略的第二份实现：core 改排序/筛选规则时两处会分叉。可直接改：`return (await taskboard.ensureAnyWorkspace()).id`。
+		 * TODO(审查) 这里「先 list 再 ensure」看着像 core `ensureAnyWorkspace()` 的第二份实现，
+		 *   但 **2026-11-28 复核：两者策略不同，未合并**——
+		 *   core 的 `ensureAnyWorkspace()` 用 `readAll()`（**含归档**）取 `[0]`
+		 *   （`core/src/workspace.ts` 的 `ensureAnyWorkspace`），而本函数取的是**第一个未归档**
+		 *   （`listWorkspaces(false)`）。归档空间排在前面、后面还有活跃空间时，两者返回的 id 不同
+		 *   ⇒ 收成一行 `return (await taskboard.ensureAnyWorkspace()).id` 会**改变默认空间的行为**
+		 *   （默认可能落到一个归档空间上），不是纯去重。需 lead/用户先裁定「默认空间能不能落在归档空间上」。
 		 * TODO(审查) 并发首次调用可能都看到空并各建一个「默认」空间；缓存 in-flight promise 可消除。需用户决定（产品行为）。
 		 */
 		const list = taskboard.listWorkspaces(false);
@@ -196,17 +206,15 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	ctx.provide(DEFAULT_WORKSPACE_SERVICE, defaultWorkspaceId);
 
 	/*
-	 * TODO(审查) 异步 close() 被 `void` 丢弃：Cordis 只在 disposer **返回** Promise 时才 await 并 catch 记录
-	 *   （cordis fiber.ts:720-730）；现在卸载不等 close 完成，close 若 reject 会变成未处理 rejection（Node 可能终止进程）。
-	 *   可直接改：`() => taskboard.close()`（先用 core 确认 close 为 async）；可选：把本 effect 提前到 createTaskboard 之后，避免后续 provide 抛错时实例无人关（会改变 dispose 顺序）。
-	 */
-	/*
 	 * 关实例是**本行的副作用**：Cordis 卸载本行时调 `taskboard.close()`。
+	 *
+	 * ⚠ **disposer 要把 `close()` 的 Promise 返回出去** —— Cordis 只在 disposer
+	 *   *返回* Promise 时才 await 并 catch 记录（cordis fiber.ts:720-730）。
+	 *   写成 `void taskboard.close()` 的后果有两层：卸载不等它完成；`close()` 若 reject
+	 *   会变成**未处理 rejection**（Node 可能直接终止进程）。
 	 *
 	 * ⚠ **不关 store** —— 它属于提供它的那一行（`@taskboard/store`）。
 	 *   本包只是使用者。关别人的资源是所有权越界。
 	 */
-	ctx.effect?.(() => () => {
-		void taskboard.close();
-	}, 'taskboard3-core: close taskboard');
+	ctx.effect?.(() => () => taskboard.close(), 'taskboard3-core: close taskboard');
 }
