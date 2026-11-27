@@ -64,7 +64,7 @@
  * 全仓规则：`./x.ts` / `./x.tsx`（见 AGENTS.md 规则 1）。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 
 import { GROUP_LABELS, TASK_STATES, buttonsOf, isTaskState, statesInGroup } from '@taskboard/protocol';
@@ -73,7 +73,7 @@ import type { ButtonAction } from '@taskboard/protocol';
 
 import { KIND_ORDER, cardTimes, stateLabel } from '../pure/card-view.ts';
 import { SiblingRelationPanel } from './SiblingRelationPanel.tsx';
-import { uiStateStore } from '../ui-state-store.ts';
+import { useUiState } from '../use-ui-state.ts';
 import {
 	applyCardQuery,
 	emptyReasonOf,
@@ -255,21 +255,18 @@ export interface WorkspaceProps {
 export function Workspace(props: WorkspaceProps): ReactNode {
 	/*
 	 * 三入口共享的 UI 状态（组 / 折叠态）按**空间**分——用户 `2026-11-24`
-	 * 「状态属于容器，不属于文件」。这里负责把它指到正在看的那个空间；
-	 * 没这一步，store 的 workspaceId 永远是空串，折叠态读写全是空。
+	 * 「状态属于容器，不属于文件」。
+	 *
+	 * 裁定（B-8，lead `2026-11-28`）修的就是这里：以前是「把模块级单例 store 指到
+	 * 本入口的 viewingId」，三个入口共用一个「当前空间」⇒ 一处切空间，另两处正在看的
+	 * 空间被切走，它们的折叠 / 组操作写到切换后的空间名下。
+	 *
+	 * 现在改成**传自己正在看的空间**：三个入口（右栏 tab / main / 抽屉）各是独立
+	 * `WorkspaceBody`、各持自己的 `viewingId` ⇒ 一处切空间只换它自己的订阅键；
+	 * 折叠 / 组操作也只写到**本入口正在看的**那个空间。核心不变式见
+	 * `ui-state-store.ts` 文件头的裁定。
 	 */
-	// TODO(审查): 三个入口（右栏 tab / main / 抽屉）各是独立 WorkspaceBody，各自把模块级单例 store 指到自己的 viewingId；两个入口同时看不同空间时会互相覆盖折叠/组数据。可把快照改成按空间分片（store 已有 cache Map），或让读取方带 workspaceId；属可直接改，但会动 store 接口。
-	/*
-	 * 与本仓库「加载失败写回空态」缺陷的关系（2026-11-28 核实，**放大器不是根因**）：
-	 * 单例的 cache / 快照是三个入口共享的 ⇒ 旧行为下一次 GET 失败会往共享 cache 写空态并
-	 * 标记已加载，于是**从未失败的那个入口**也会读到「已加载的空态」，它的一次折叠/组操作
-	 * 就把空数据 PUT 回去。修复（`ui-state-store.ts` 的「加载失败 ≠ 空状态」裁定）已把写回
-	 * 门禁改成按空间的 `loadedWorkspaces`、失败不写 cache ⇒ 失败不再污染共享状态。
-	 * 本条 TODO 本身（不同空间互相覆盖）仍**未修**，留待按空间分片。
-	 */
-	useEffect(() => {
-		if (props.viewingId !== '') uiStateStore.setWorkspace(props.viewingId);
-	}, [props.viewingId]);
+	const ui = useUiState(props.viewingId);
 
 	/* ── 纯 UI 状态 ── */
 	const [view, setView] = useState<'list' | 'tree'>(() => props.defaultView ?? 'tree');
@@ -596,6 +593,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 						cards={props.cards}
 						parentId={card.id}
 						title="子卡关系"
+						workspaceId={props.viewingId}
 					/>
 				}
 			/>
@@ -754,6 +752,14 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 									hoverId={treeHoverId}
 									filter={treeFilter}
 									kindLabelOf={kindLabel}
+									/*
+									 * 组 / 折叠态**显式传本入口正在看的空间那一份**（裁定 B-8）。
+									 * 不传的话 `TechTree` 会退回它自己的 `workspaceId`（这里没有）。
+									 */
+									groups={ui.snapshot.groups}
+									foldedIds={ui.snapshot.folded}
+									expandedIds={ui.snapshot.expanded}
+									onToggleFold={ui.setFolded}
 									onSelect={select}
 									onHoverChange={setTreeHoverId}
 									onRootColumnClick={() => {
@@ -809,6 +815,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 							<SiblingRelationPanel
 								cards={props.cards}
 								parentId={null}
+								workspaceId={props.viewingId}
 								onClose={() => {
 									setRootsOpen(false);
 								}}
