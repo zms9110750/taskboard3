@@ -47,8 +47,9 @@
  * 1. `lib/policy-store.js`、`lib/policy-store.js.map`、`lib/types/policy-store.d.ts(.map)` 是删掉
  *    `src/policy-store.ts` 后的陈旧产物，src 已无对应文件；`files: ["lib"]` 会把它打进 npm。
  *    可直接改：`rm -rf lib && tsc -b`（AGENTS 规则 2）。
- * 2. `package.json` 的 test 脚本指向不存在的 `test/`，本包测试数为 0，而它是「全仓唯一实例」的关键包。
- *    可直接改：加 `test/apply.test.ts`（import '../src/index.ts'，规则 6），至少覆盖 provide 三个服务名 / close effect / 默认空间两条分支。
+ * 2. ~~package.json 的 test 脚本指向不存在的 test/，本包测试数为 0~~
+ *    ⚠ 2026-11-27 验真：本条已失效 —— `test/apply.test.ts` 已补（覆盖 provide 四个服务名 /
+ *    ③ 贡献面 / effect 清理形状）。旧审查记录留此划线，防止按它再「补测试」。
  * 3. `package.json` 依赖 `@taskboard/protocol` 与 `tsconfig.json` 的 `references: ["../protocol"]` 均无直接使用
  *    （src 只 import core，`lib/types/index.d.ts` 也只有 CardStore）。推断可删，但需 `tsc -b` 实跑确认 declaration 解析不依赖它。
  * 4. `tsconfig.json` 的 `tsBuildInfoFile` 指向 `lib/.tsbuildinfo`，会被 `files: ["lib"]` 一起发布；`"types": ["node"]`

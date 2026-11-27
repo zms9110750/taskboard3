@@ -39,7 +39,7 @@
  * import 一份 JSON 会绕过打包路径，测的就不是发布形态。
  */
 
-// TODO(审查): 文件头与 describe 里仍写「四个包」，但参与装配的是 6 行 + 壳（7 个包）。
+// TODO(审查): 文件头与 describe 里仍写「四个包」，但参与装配的行数以 cordis.patch.yml 为准（两次拆包都在变，别在注释里写数字）。
 //   dsh-core / dsh-tools / dsh-agent-guard 未纳入（lead 答复：core/guard 没有 locale，系推断、未逐一验证 ⇒
 //   设置页只有包名/默认图回退）；可直接改注释与 PACKAGES。
 
@@ -55,7 +55,7 @@ import { describe, it } from 'node:test';
 /** 仓库根 —— 从本测试文件位置反推（`packages/bundle/test/` → 根）。 */
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-// TODO(审查): PACKAGES 只列 4 个，实际 6 行里的 dsh-core / dsh-tools / dsh-agent-guard 未覆盖。
+// TODO(审查): PACKAGES 手工维护（5 个带 locale 的包），patch 行里的 dsh-core / dsh-tools / dsh-agent-guard 无 locale 未覆盖。
 //   建议改成从 bundle 的 cordis.patch.yml 读取行（用 yaml 解析），只对有 locale 的包断言 —— 单一事实源。
 //   直接改测试即可，但「无 locale 的包是否该有 locale」需产品决定。
 /** 带 locale 的包（dsh-permissions 2026-11-27 加入，同受本契约约束）。 */

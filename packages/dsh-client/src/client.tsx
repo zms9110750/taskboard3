@@ -1,6 +1,6 @@
 /*
  * TODO(审查): 包级遗留（非本文件代码，均为审查发现，未改行为）——
- * 1) package.json:21-26 的 `files:["lib"]` 会把 lib 里 11 个源文件已删除的旧 .d.ts（BoardBody、views/*、SectionFrame 等）发上 npm；可直接 `rm -rf lib && tsc -b` 修。
+ * 1) package.json:21-26 的 `files:["lib"]` 会把 lib 里源文件已删除的旧 .d.ts 发上 npm（BoardBody、views/、SectionFrame 等 11 个 + 2026-11-27 拆包后 PermissionBox 系 / tool-permission / permission 系列孤儿）；可直接 `rm -rf lib && tsc -b` 修。
  * 2) tsconfig 的 emitDeclarationOnly 不拷贝 src/host-types.d.ts，而 lib/index.d.ts:15 / lib/client.d.ts:23 依赖 @deepseek-ai/cordis ⇒ 消费者 TS2307；需把垫片纳入 files 或声明 peerDependency（发布方式需用户定）。
  * 3) README.md:72-84 仍写已删的 BoardBody/views，README.md:133-142 写「57 条/4 文件」（实测 46 文件、约 1100 条）；可直接改文档。
  * 4) tsdown.config.ts:66-68 硬编码 id '@taskboard/dsh-client'，与 TAB_ID 和 package.name 三份重复；可从 package.json 读入。
@@ -140,7 +140,7 @@ export function apply(ctx: Context): void {
 	 * 没有调用方会等这个检查。`void` 明说「我故意丢弃这个 promise」，
 	 * 比留着未处理的 promise 更清楚（后者会被 lint 当成漏处理）。
 	 */
-	// TODO(审查): 这里又 new 一个 `createApi()`（另见 :330、store.ts:110、WorkspaceBody.tsx:200），一个包 4 个客户端实例；建议收敛为 `src/api-client.ts` 的单例（测试显式传 fake）。另此检查每次 apply 都发一次 POST，可加一次性标记（是否值得取决于 Cordis 重装频率）。
+	// TODO(审查): 这里又 new 一个 `createApi()`（权限面已拆走，包内剩 store.ts:110、WorkspaceBody.tsx:200、CreateFlow.tsx:170 三处同类；本文件拆分前共 5 处），建议收敛为 `src/api-client.ts` 的单例（测试显式传 fake）。另此检查每次 apply 都发一次 POST，可加一次性标记（是否值得取决于 Cordis 重装频率）。
 	void createApi()
 		.renderCheck(registeredTypes())
 		.then((result) => {

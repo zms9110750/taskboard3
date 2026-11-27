@@ -44,8 +44,9 @@ export interface UiGroup {
 }
 
 /** 一个工作空间的完整 UI 状态。 */
-// TODO(审查): [③] `UiState` 全包零引用，紧随其后的 `EMPTY_UI_STATE` 也零引用（grep 零命中）⇒ 重构残骸。
-//   可直接删；若要留，把 `Object.freeze + 类型标注` 换成 `satisfies`（AGENTS 3.7）。
+// TODO(审查): [③] `UiState` 全包 src 零引用（grep 实测，仅本文件与测试的 `EMPTY_UI_STATE` 引用链）⇒ 重构残骸。
+//   ⚠ 2026-11-27 验真：原注说 `EMPTY_UI_STATE` 也零引用——**不实**：test/ui-state.test.ts
+//   四处断言使用它，它是**测试专用导出**。处理方式改为「移进测试或标 @internal」，不是直接删。
 export interface UiState {
 	readonly groups: readonly UiGroup[];
 	/** 折叠的卡 id + 组 id（两者共用这一个集合，id 不会撞）。 */

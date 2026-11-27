@@ -59,65 +59,52 @@ export function JsonFallback(props: JsonFallbackProps): ReactNode {
 function renderNode(node: JsonPreview, depth: number, keyLabel: string): ReactNode {
 	const key = keyLabel === '' ? null : <span className="json-fallback__key">{keyLabel}: </span>;
 
-	switch (node.kind) {
-		case 'object':
-		case 'array':
-			return (
-				<div className="json-fallback__branch" key={undefined}>
-					{key}
-					<Branch node={node} depth={depth} />
-				</div>
-			);
-		case 'string':
-			return (
-				<div className="json-fallback__leaf">
-					{key}
-					<span className="json-fallback__string">
-						&ldquo;{node.value}&rdquo;
-						{node.truncated ? <i className="json-fallback__trunc"> …（已截断）</i> : null}
-					</span>
-				</div>
-			);
-		case 'number':
-			return (
-				<div className="json-fallback__leaf">
-					{key}
-					<span className="json-fallback__number">{node.value}</span>
-				</div>
-			);
-		case 'boolean':
-			return (
-				<div className="json-fallback__leaf">
-					{key}
-					<span className="json-fallback__bool">{String(node.value)}</span>
-				</div>
-			);
-		case 'null':
-			return (
-				<div className="json-fallback__leaf">
-					{key}
-					<span className="json-fallback__null">null</span>
-				</div>
-			);
-		case 'undefined':
-			return (
-				<div className="json-fallback__leaf">
-					{key}
-					<span className="json-fallback__null">&lt;undefined&gt;</span>
-				</div>
-			);
-		case 'opaque':
-			/*
-			 * ⚠ 必须画出来，不能留空 —— 「payload 里有怪东西」这个事实
-			 *   被藏起来的后果是「界面显示空但没人知道为什么空」。
-			 */
-			return (
-				<div className="json-fallback__leaf">
-					{key}
-					<span className="json-fallback__opaque">{node.note}</span>
-				</div>
-			);
+	/* object / array：走 Branch（可折叠）。 */
+	if (node.kind === 'object' || node.kind === 'array') {
+		return (
+			<div className="json-fallback__branch" key={undefined}>
+				{key}
+				<Branch node={node} depth={depth} />
+			</div>
+		);
 	}
+
+	/* string：带引号 + 截断后缀（与其他叶子不同形，独立分支）。 */
+	if (node.kind === 'string') {
+		return (
+			<div className="json-fallback__leaf">
+				{key}
+				<span className="json-fallback__string">
+					&ldquo;{node.value}&rdquo;
+					{node.truncated ? <i className="json-fallback__trunc"> …（已截断）</i> : null}
+				</span>
+			</div>
+		);
+	}
+
+	/*
+	 * 五种「叶子」殊途同归（同一段 DOM，只有类名与文本不同）⇒ 收敛成一次渲染。
+	 * ⚠ 表链逐字对应原 case：undefined 复用 __null 类是**原状**，别「顺手修正」。
+	 *   string（截断后缀）与 object/array（Branch）不进表，保留独立分支。
+	 *
+	 * ⚠ opaque 必须画出来，不能留空 —— 「payload 里有怪东西」这个事实被藏起来的
+	 *   后果是「界面显示空但没人知道为什么空」（原 case 的注释，随行为一起搬来）。
+	 */
+	const leaf = node.kind === 'number'
+		? { cls: 'json-fallback__number', text: String(node.value) }
+		: node.kind === 'boolean'
+			? { cls: 'json-fallback__bool', text: String(node.value) }
+			: node.kind === 'null'
+				? { cls: 'json-fallback__null', text: 'null' }
+				: node.kind === 'undefined'
+					? { cls: 'json-fallback__null', text: '<undefined>' }
+					: { cls: 'json-fallback__opaque', text: node.note };
+	return (
+		<div className="json-fallback__leaf">
+			{key}
+			<span className={leaf.cls}>{leaf.text}</span>
+		</div>
+	);
 }
 
 /**

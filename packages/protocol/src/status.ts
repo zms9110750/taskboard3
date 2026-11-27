@@ -138,8 +138,12 @@ export const STATUS_GROUP_OF: Readonly<Record<TaskState, StatusGroup>> = Object.
 	[TaskState.REJECTED]: 'ended',
 });
 
-// TODO(审查): 死导出 —— lead 核实 core/tools/dsh/dsh-client 的 src 零命中（外部 MCP 未知），这里只是 STATUS_GROUP_OF[state] 的包装。
-// 可直接删（包内无其他引用）；对外删导出属公开 API 变更，需用户确认。
+/*
+ * ⚠ 2026-11-27 验真：原 TODO(审查) 说这是「死导出」——**不实**（todo-audit 核实）。
+ *   groupOf 在 tools/src/definitions.ts、tools/src/render.ts、
+ *   dsh-client/src/pure/status-menu.ts、relations-block.ts 的 src 里被实际消费。
+ *   保留导出；后续读旧审查记录的人别按「死导出」处理。
+ */
 /** 某个状态属于哪个组。 */
 export function groupOf(state: TaskState): StatusGroup {
 	return STATUS_GROUP_OF[state];
