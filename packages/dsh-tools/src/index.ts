@@ -104,7 +104,8 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 
 	/*
 	 * `ctx.subagents` 是**可选**服务 —— 用可选访问读它，不能写进 inject。
-	 * 缺席时 holder 回落 `agent.id`（UUID）。
+	 * 缺席时 holder 为 `''`（无 holder；issue #42 Bug 2：不再回落 UUID）⇒
+	 * 需要身份的动作（claim / release）会以 needHolder 明确失败。
 	 */
 	const subagents =
 		typeof ctx.get === 'function' ? ctx.get('subagents') : (ctx as { subagents?: unknown }).subagents;

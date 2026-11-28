@@ -9,7 +9,7 @@
  *
  * · 注册面：9 个宿主无关工具、顺序（`test/apply.test.ts` 一次断言，含失败回滚）；
  * · schema 转换：JSON Schema → DSH `parameters`（required 内联、enum/items 保留）；
- * · ctx 注入：holder（subagents 名字 / agent UUID 回落）；
+ * · ctx 注入：holder（subagents 名字 / 无 agent 上下文 unknown / 拿不到名字 ''）；
  * · 每个工具经适配层跑一遍正常路径 + 一条失败路径（确认真能到达 core，
  *   且失败文案按 v2 契约输出）。
  *
@@ -297,7 +297,7 @@ describe('ctx：holder（领取/释放的持有者）', () => {
 		if (after.ok) assert.deepEqual(after.card.holders.map((one) => one.holder), ['测试agent']);
 	});
 
-	it('subagents 缺席 ⇒ holder 回落 agent.id（功能照样可用）', async () => {
+	it('subagents 缺席 ⇒ 无 holder，claim 明确失败（needHolder），不产生 UUID 持有', async () => {
 		const local = createTools({
 			taskboard,
 			isManageEdit: () => false,
@@ -305,12 +305,22 @@ describe('ctx：holder（领取/释放的持有者）', () => {
 			defaultWorkspaceId: async () => workspaceId,
 		});
 		await taskboard.setCardActionLevel('claim');
-		const id = await seedCard(workRef(), 'UUID 持有');
+		const id = await seedCard(workRef(), '无 subagents');
 		await submit(id);
 		const transition = local.find((one) => one.name === 'taskboard_transition') as ToolLike;
-		await transition.execute({ workspaceId, id, to: TaskState.WORKING }, { agent: { id: 'uuid-1234' } });
+		const value = (await transition.execute(
+			{ workspaceId, id, to: TaskState.WORKING },
+			{ agent: { id: 'uuid-1234' } },
+		)) as { text: string };
+
+		/* 身份解析不了 ⇒ 明确失败，而不是把 UUID 写进 holders。 */
+		assert.ok(value.text.includes('宿主没有提供当前调用者身份（holder），无法领取'), value.text);
 		const after = taskboard.get(workspaceId, id);
-		if (after.ok) assert.deepEqual(after.card.holders.map((one) => one.holder), ['uuid-1234']);
+		assert.equal(after.ok, true);
+		if (after.ok) {
+			assert.deepEqual(after.card.holders, [], '不应产生 UUID 持有');
+			assert.equal(after.card.status, TaskState.SUBMITTED, '卡应停在「提交」态');
+		}
 	});
 
 	it('没有 agent 上下文 ⇒ holder=unknown（不编名字，claim 仍能工作）', async () => {

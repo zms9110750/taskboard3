@@ -2,8 +2,10 @@
 
 > **本文按代码事实重写**（2026-11-28，基线 `47e6339`）。旧版是调研 `task-12` 的
 > 结论稿（「holder 用 `ctx.subagents.namesOf(agent).self`，兜底 `exec.agent.id`」），
-> 那条结论**仍然成立**，但当时的「落地建议」（存 `holderId`、MCP 自报、
-> 必填 `inject ['subagents']`）与现状不同。
+> 当时的「落地建议」（存 `holderId`、MCP 自报、必填 `inject ['subagents']`）与现状不同。
+>
+> **2026-11-28 补记（issue #42 Bug 2）**：`exec.agent.id` 兜底**已被删除** ——
+> guard 与 dsh-tools 拿不到名字时都返回 `''`（无 holder，fail-safe）。
 >
 > **宿主事实的来源**：DSH `0.2.2-rc.2` 的 `app.asar` 内源码
 > （`B:\DeepSeek Harness\0.2.2-rc2\resources\app.asar` 里 `dsh/node_modules/@deepseek-ai/…`），
@@ -17,20 +19,25 @@
 
 ## 一、结论（现状）
 
-**holder 仍是「agent 的可读名」优先、UUID 兜底**，但取法有**两份实现**，且行为不完全一致：
+**holder 只认 agent 的可读名；拿不到名字 ⇒ 无 holder**。issue #42 Bug 2 之后
+（lead `2026-11-28` 裁定 fail-safe：**宁可按「无持有卡」判，也不猜一个 UUID**），
+guard 与 dsh-tools 两版都统一到 `''`，不再回落 `agent.id`：
 
-| 谁在取 | 函数 | 输入 | 空名字时 |
+| 谁在取 | 函数 | 输入 | 拿不到名字时 |
 |---|---|---|---|
-| `@taskboard/dsh-agent-guard`（guard 判定 + 两个策略工具） | `holderOf(subagents, exec, agent?)` | **每次判定**从 DI cell 解析 `subagents` | 回落 `agent.id` |
+| `@taskboard/dsh-agent-guard`（guard 判定 + 两个策略工具） | `holderOf(subagents, exec, agent?)` | **每次判定**从 DI cell 解析 `subagents` | **返回 `''`** |
 | `@taskboard/dsh-tools`（9 个宿主无关工具） | `holderOf(subagents, exec)` | apply 时的 `subagents` **快照** | **返回 `''`** |
 | `@taskboard/tools`（宿主无关工具层） | `holderOf(ctx: TaskboardToolContext)` | 宿主注入的 `ctx.holder` 字符串 | `undefined`（空串当没有） |
 
-这三条链路最终都落到 core 的 `CardHolder.holder`（**只存一个字符串**，没有 `holderId`）：
+能领卡时，最终都落到 core 的 `CardHolder.holder`（**只存一个字符串**，没有 `holderId`）：
 `packages/core/src/card.ts:159-165`。
 
-⚠ **已知静默错误风险**：guard 版「空名字 ⇒ 回落 UUID」，`dsh-tools` 版「空名字 ⇒ 返回空串」。
-claim 由 `dsh-tools` 写、guard 读 ⇒ 空 self 的 agent 会出现「领了卡但权限不生效」。
-两处 TODO 与一条测试专门钉住这个分歧（见第五节）。
+- `exec.agent` 缺席时前两者返回 `'unknown'` —— 那是「没有 agent 上下文」（程序化调用）的
+  既有哨兵，不是名字；guard 的 `heldWorkCardsOf` 把 `''` / `'unknown'` 都当无卡
+  （`permission.ts:176`）。
+- 身份解析不了时**不能领卡**：`@taskboard/tools` 的 transition 会以 needHolder 明确失败
+  （`core/src/advice.ts:181`、`tools/src/tools/transition.ts:135-141`），而不是把卡存进
+  一个 guard 永远匹配不到的 UUID。
 
 ---
 
@@ -38,7 +45,7 @@ claim 由 `dsh-tools` 写、guard 读 ⇒ 空 self 的 agent 会出现「领了�
 
 ### 2.1 guard：`holderOf(subagents, exec, agent?)` + DI cell
 
-`packages/dsh-agent-guard/src/permission.ts:123-140`：
+`packages/dsh-agent-guard/src/permission.ts:135-148`：
 
 ```ts
 export function holderOf(
@@ -47,15 +54,14 @@ export function holderOf(
 	agent: AgentLike | undefined = agentOf(exec),
 ): string {
 	if (agent === undefined) return 'unknown';
-	const id = typeof agent.id === 'string' && agent.id !== '' ? agent.id : 'unknown';
-	if (!hasSubagents(subagents)) return id;                  // 形状不对 / 缺席 ⇒ UUID
+	if (!hasSubagents(subagents)) return '';                 // 服务/形状缺席 ⇒ 无 holder
 	try {
 		const name = subagents.namesOf(agent).self;
-		if (typeof name === 'string' && name !== '') return name;   // 空串也回落
+		if (typeof name === 'string' && name !== '') return name;   // 空串 = 拿不到名字
 	} catch {
-		/* 不在树里 ⇒ 回落 UUID。不编名字。 */
+		/* 不在树里 ⇒ 无 holder（issue #42 Bug 2：不回落 UUID）。 */
 	}
-	return id;
+	return '';
 }
 ```
 
@@ -63,13 +69,14 @@ export function holderOf(
 
 | 环节 | 事实 | 路径 |
 |---|---|---|
-| 建立 cell | `ctx.inject?.(['subagents'], (scope) => { subagentsCell = scope.subagents; return () => { subagentsCell = undefined; }; })` | `packages/dsh-agent-guard/src/index.ts:190-197` |
-| 传给 guard | `createPermissionGuard({ taskboard, kv, resolveSubagents })` | `index.ts:252` |
-| 判定时读 | `holderOf(deps.resolveSubagents?.() ?? subagents, exec, agent)` —— **每次工具调用读当前值** | `permission.ts:241` |
-| 依赖形状 | `GuardDeps.resolveSubagents?: () => unknown`（旧快照 `subagents?` 保留给测试直传） | `permission.ts:181-198` |
+| 建立 cell | `ctx.inject?.(['subagents'], (scope) => { subagentsCell = scope.subagents; return () => { subagentsCell = undefined; }; })` | `packages/dsh-agent-guard/src/index.ts:189-194` |
+| 传给 guard | `createPermissionGuard({ taskboard, kv, resolveSubagents })` | `index.ts:250` |
+| 判定时读 | `holderOf(deps.resolveSubagents?.() ?? subagents, exec, agent)` —— **每次工具调用读当前值** | `permission.ts:252` |
+| 依赖形状 | `GuardDeps.resolveSubagents?: () => unknown`（旧快照 `subagents?` 保留给测试直传） | `permission.ts:192-209` |
 
-⇒ 服务晚激活 / 卸载中都能被看到（旧实现「服务晚到就永久拿不到，holder 永远回落 UUID」已修）。
-测试：`packages/dsh-agent-guard/test/guard.test.ts:498-519`（cell 空 → 出现 → 清空，三次判定都走当前值）。
+⇒ 服务晚激活 / 卸载中都能被看到（旧实现「服务晚到就永久拿不到」已修；issue #42 后
+拿不到名字则按无 holder 判）。
+测试：`packages/dsh-agent-guard/test/guard.test.ts:535-558`（cell 空 → 出现 → 清空，三次判定都走当前值）。
 
 **两个策略工具的 subagents 仍是快照**（不是每次调用解析）：
 `packages/dsh-agent-guard/src/tools.ts:61-64`（`resolveSubagents?.() ?? deps.subagents` 在**建工具时**取一次），
@@ -99,12 +106,14 @@ export function holderOf(ctx: TaskboardToolContext): string | undefined {
 export function holderOf(subagents: unknown, exec: unknown): string {
 	const agent = agentOf(exec);
 	if (agent === undefined) return 'unknown';
-	if (!hasNamesOf(subagents)) return idOf(agent);
+	if (!hasNamesOf(subagents)) return '';        // 服务/形状缺席 ⇒ 无 holder
 	try {
-		return subagents.namesOf(agent).self;      // ← 空串原样返回
+		const name = subagents.namesOf(agent).self;
+		if (typeof name === 'string' && name !== '') return name;   // 空串 = 拿不到名字
 	} catch {
-		return idOf(agent);
+		/* 不在树里 ⇒ 无 holder */
 	}
+	return '';
 }
 ```
 
@@ -113,24 +122,23 @@ export function holderOf(subagents: unknown, exec: unknown): string {
   同一文件 `:98-99` 有 TODO：Cordis 服务可能晚于本插件出现 ⇒ 晚到就永久拿不到。
 - 用它的地方：`packages/dsh-tools/src/tools.ts:272-278` 的 `contextOf()`，
   `holder: holderOf(deps.subagents, exec)`。
-- 测试：`packages/dsh-tools/test/holder.test.ts:45-93`（名字优先 / 抛错回落 / 缺席 `unknown` /
-  **没有「空串回落」这一条**）。
+- 测试：`packages/dsh-tools/test/holder.test.ts`（名字优先 / 服务缺席、`namesOf` 抛错、
+  空 self 都 ⇒ `''` / agent 缺席 ⇒ `'unknown'`）；`test/tools.test.ts` 另有一条
+  「subagents 缺席 ⇒ claim 明确失败、不产生 UUID 持有」。
 
-### 2.4 三份实现的分歧（必须写清，否则下一个人会踩）
+### 2.4 三份实现的现状（语义已统一，issue #42）
 
 | 场景 | guard 版 | dsh-tools 版 | tools 版 |
 |---|---|---|---|
 | `exec.agent` 缺席 | `'unknown'` | `'unknown'` | `undefined`（那是另一个入参） |
-| 没有 `subagents` 服务 | `agent.id`（空 id ⇒ `'unknown'`） | `agent.id`（空 id ⇒ `'unknown'`） | — |
-| `namesOf` 抛错 | `agent.id` | `agent.id` | — |
-| `namesOf` 返回 `''` | **`agent.id`** | **`''`** | — |
+| 没有 `subagents` 服务 | `''` | `''` | — |
+| `namesOf` 抛错 | `''` | `''` | — |
+| `namesOf` 返回 `''` / self 缺席 | `''` | `''` | — |
 
-- 分歧由两条测试**如实钉住**：`guard.test.ts:181-193`（注释写明「与 dsh-tools 版有分歧，
-  断言不改」）、`dsh-tools/test/holder.test.ts:45-93`（没有空串用例）。
-- 两处 TODO 指向同一件事：`dsh-agent-guard/src/permission.ts:119-122`、
-  `:81-83`（「PermissionSubagentsLike 与 holder.ts 故意不合并」的理由已被推翻，
-  建议删本包私有实现、直接复用 `@taskboard/dsh-tools` 的 `holderOf`）。
-  **需要用户先定语义**（空名字到底算谁），本文不擅自统一。
+- issue #42 Bug 2（lead `2026-11-28` 裁定）：两版都统一到 fail-safe 的 `''`，
+  **不再回落 UUID**。测试：`dsh-agent-guard/test/guard.test.ts:168-206`、
+  `dsh-tools/test/holder.test.ts`。
+- 两份 `holderOf` 仍各自保留（形状相同、接口未合并）；本次只统一语义，不合并实现。
 
 ---
 
@@ -216,7 +224,7 @@ export function holderOf(subagents: unknown, exec: unknown): string {
 |---|---|---|
 | 1 | 行号：`contracts.ts:245/220/188/410`、`agent/src/types.ts:16-19`、`namesOf` `index.ts:304-314`、`SubagentMemberNames` `types.ts:68-74`、`names.ts:13/16/44-47`、`task-board.ts:142-151`、`types.ts:64-75`、`commands/src/index.ts:40-58`、`tool-agent-team/index.ts:15`、`:100-101` | 全部**复核过**，结论对；行号小幅漂移已按 0.2.2-rc.2 更新（`namesOf` 在 `:312`、`SubagentMemberNames` 在 `:69-74`、claim 在 `:149-151`、`resolveAssignee` 在 `:232-236`） |
 | 2 | 「`agentAddress`：`path === ''` 返回 `'lead'`，否则 `path ?? id`」 | 与源码一致（`names.ts:44-46`）；本次只是逐字复核，未改结论 |
-| 3 | 「`namesOf` 抛错 ⇒ 回落 Session id」 | 对；**补充**：它也可能返回**空串**（`dsh-tools` 版会原样存空串），这是两版分歧的根因 |
+| 3 | 「`namesOf` 抛错 ⇒ 回落 Session id」 | **已过时**（issue #42）：抛错 / 返回空串都不再回落 Session id，而是 `''`（无 holder） |
 | 4 | 落地建议「`inject = ['tools','subagents']` 必填」/「或可选 `ctx.inject` / `ctx.get`」 | guard 选了 **`ctx.inject` 的 DI cell**（2026-11-27 裁定，每次判定读当前值）；`dsh-tools` 仍是 **apply 时 `ctx.get` 快照**（晚到拿不到，有 TODO） |
 | 5 | 落地建议「`holder` 和 `holderId` 都存」 | **未实现**：core 的 `CardHolder` 只有 `holder` + `at`（`card.ts:159-165`），没有 `holderId` |
 | 6 | 「MCP 调用方自报 `mcp:<名字>`」 | **未实现**（工具参数里没有 holder）；MCP 下 claim / release 会明确失败 |
@@ -227,9 +235,10 @@ export function holderOf(subagents: unknown, exec: unknown): string {
 
 ## 五、已知漂移 / TODO（只记，不扩面）
 
-1. **两版 `holderOf` 在「空 self」上行为不同** ⇒ 静默「领了卡但权限不生效」。
-   证据：`guard.test.ts:181-193`（断言钉住分歧）、`permission.ts:119-122`（TODO）、
-   `dsh-tools/test/holder.test.ts`（无空串用例）。**需用户先定语义**再合并成一份。
+1. ~~**两版 `holderOf` 在「空 self」上行为不同** ⇒ 静默「领了卡但权限不生效」。~~
+   **已关闭**（issue #42 Bug 2）：两版都统一到 `''`（无 holder），不再回落 UUID；
+   身份解析不了时 claim 走 needHolder 明确失败。测试见 `guard.test.ts` /
+   `dsh-tools/test/holder.test.ts`。
 2. **guard 只看第一个工作空间**：`heldWorkCardsOf()` 只查 `listWorkspaces(false)[0].id`
    （`permission.ts:54-61`、`:161-176`，注释写明「已知限制，不是 bug」）——
    用户在第二个空间领的卡，guard 看不见。
@@ -238,8 +247,8 @@ export function holderOf(subagents: unknown, exec: unknown): string {
 4. **`dsh-tools` 的 subagents 在 apply 时取一次**（`index.ts:98-110`），晚激活的服务永久错过。
 5. **`holderId` 未存**：core 无法用 UUID 做程序判定（旧文档的双字段设计只剩一半）。
 6. **MCP 自报身份未实现**。
-7. **`PermissionSubagentsLike` 与 `SubagentsLike` 两份接口**：`permission.ts:81-86` 的 TODO
-   已推翻「故意不合并」的理由，但合并需跨包确认依赖方向。
+7. **`PermissionSubagentsLike` 与 `SubagentsLike` 两份接口**仍各自保留（形状相同）。
+   issue #42 只统一语义，不合并实现；是否合并需跨包确认依赖方向。
 
 ---
 
@@ -258,4 +267,5 @@ export function holderOf(subagents: unknown, exec: unknown): string {
 > - 正常情况拿到 `lead` / `reviewer` / `reviewer/checker`
 > - `ctx.subagents` 没挂载（或 agent 不在 subagent 树里）时，`namesOf` 抛错 ⇒ 回落 Session id（一个 UUID）
 
-这两条与现状一致（差异只在「空串」这个第三种情况，见第二节）。
+以上是**旧文档的立论，已过时**（issue #42 Bug 2）：guard 与 dsh-tools 都不再回落
+Session id / UUID —— 拿不到名字就是 `''`（无 holder，见第二节）。
