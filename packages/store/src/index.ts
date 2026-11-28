@@ -135,9 +135,17 @@ export function apply(ctx: ApplyContext, config: Config): void {
 	 */
 	ctx.effect(() => () => {
 		/*
-		 * `close()` 是异步的，而 Cordis 的 disposer 不保证被 await（本包不依赖它）。
-		 * 必须接住拒绝：否则是一个未处理的 Promise rejection，可能让进程退出，
-		 * 而真正的关闭失败会被完全吞掉。
+		 * `close()` 是异步的。**Cordis 会 await disposer 返回的 Promise** —— `Fiber._unload()`
+		 * 里 `await Promise.all(this._disposables.clear()…)` 并发等待、`catch` 后 `ctx.logger.error`
+		 * （`cordis/src/fiber.ts:720-728`；注册反序在 `utils.ts` 的 `DisposableList.clear()`，
+		 * 但那是**发起序**，不保证完成序）。
+		 *
+		 * ⚠ 早先这里写的「Cordis 的 disposer 不保证被 await」是**事实错误**：真正的问题在我们
+		 *   自己 —— disposer **不返回** Promise 时 Cordis 才没东西可等（fire-and-forget）。
+		 *   `dsh-core` 的同类 disposer 已改成 `() => () => taskboard.close()`
+		 *   （`dsh-core/src/index.ts:219`）；**本行仍自己 `catch`**（下面的写法），所以卸载不等
+		 *   关库完成。必须接住拒绝：否则是一个未处理的 Promise rejection，可能让进程退出，
+		 *   而真正的关闭失败会被完全吞掉。
 		 */
 		void store.close().catch((error: unknown) => {
 			console.error('[taskboard3/store] 关闭 SQLite 失败：', error);

@@ -295,8 +295,9 @@ export function apply(ctx: Context): void {
 	 * 内容传 `createElement(WorkspaceBody)`：它自己拉数据，Drawer 只管外壳。
 	 *
 	 * ⚠ **不要再包一层 `ctx.slots.inject`** —— `registerDrawerSlots` 内部已经对
-	 *   两个槽各做了一次 `inject`，disposer 由 Cordis 按 owner 管理。
-	 *   再包一层会让「注册函数的执行时机」和「owner 坍缩」错位。
+	 *   两个槽各做了一次 `inject`。再包一层**不是泄漏**（裸调本身不泄漏，见
+	 *   `register-drawer.tsx` 的说明），而是**行为耦合**：那两个槽的注册会被额外绑到
+	 *   第三个无关 owner 声明上 —— 那个 owner 坍缩时两条一起消失、恢复时一起重装。
 	 */
 	registerDrawerSlots(ctx, { content: createElement(WorkspaceBody) });
 

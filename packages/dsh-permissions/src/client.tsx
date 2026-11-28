@@ -85,6 +85,8 @@ export function apply(ctx: Context): void {
 	 * 所以在注册时把 `createApi()` 的结果喂给它一次。
 	 */
 	attachPermissionApi(createApi());
+	/* 裸调丢返回值**不泄漏**（已核实 `2026-11-28`，源码级：`slots.inject` 内部用 `ctx.effect`
+	 * 持有 factory 返回的 disposer，按声明寿命拆装）；丢掉的只是「提前手动停」的能力。 */
 	ctx.slots.inject('conversation.input.left', () =>
 		ctx.slots.register(
 			{ name: 'conversation.input.left', id: PERMISSION_ENTRY_REGISTRATION_ID, order: PERMISSION_ENTRY_ORDER },

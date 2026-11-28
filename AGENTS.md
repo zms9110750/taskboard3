@@ -160,7 +160,7 @@ node node_modules/typescript/bin/tsc -p packages/dsh-client/tsconfig.dev.json
 
 ---
 
-## 三、⚠ 十条「动笔之前先想」
+## 三、⚠ 十一条「动笔之前先想」
 
 ### 3.1 删掉断言会编译失败吗？
 
@@ -372,6 +372,35 @@ const TABLE: Readonly<Record<BuiltinType, RendererComponent>> =
 
 ⚠ **这是 AGENTS 3.3 的变体**：3.3 说「说已补上必须给 hash」，
 这条说「说读到了必须给路径」。**两者的共同点是：没有可核对的凭据就等于没做。**
+
+### 3.11 升级真 cordis 类型时的已知坑
+
+垫片（`packages/*/src/host-types.d.ts`）是**按用法手写的窄面**，不是真实 Cordis 类型。
+把真类型接进来时下面这些点会一次性全红 —— **那不是回归，是垫片一直没反映真形状**。
+
+| # | 垫片写的 | 真实签名（出处） |
+|---|---|---|
+| 1 | `effect(…): void` | 返回 `Disposable<Promise<void>>` / `AsyncDisposable<Promise<void>>`（`cordis/src/fiber.ts:421-423`；`Disposable<T> = () => T` 见 `:74`）|
+| 2 | `slots` / `sidebarRightTabs` / `locale` 是 `readonly`，`locale` 可选 | 真实 `Context` 上**没有**这些修饰，`locale` 恒在（源码级核对；该包不发 .d.ts）|
+| 3 | `SlotRegistration` 只有 name/key/id/order/label/locale/inject | 还缺 `children` / `store` / `select` / `priority` / `registrant`；`inject` 返回 `Record<string, unknown>`、`sessionId` 非必填（`dsh-client-ui-renderer/src/client/registry.ts:209-271`）|
+| 4 | `SidebarRightTabDefinition` 无 `multiple` / `keepMounted`，`guide[].order` 可选 | 缺前两个字段；`guide[].order` **必填** |
+| 5 | `provide<T>(name, value)` 有 `<T>` | 真实 `provide(name, value?, check?)` **没有** `<T>`（`cordis/src/reflect.ts:46`、`:291`）⇒ `ctx.provide<CardStore>` 必红 |
+| 6 | `inject` 用 `as const` | 真实 `Inject = (keyof M)[] \| { [K in keyof M]?: M[K] }` 是**可变**数组（`cordis/src/registry.ts:19`）|
+
+**两条判据：**
+
+1. **`inject` 不要写 `as const`，也不要用 `readonly string[]`。** 真实 `Inject` 是可变数组，
+   只读元组 / 只读数组在 `satisfies Plugin` 处一定红。
+2. **「加 `peerDependency` 就有类型」是假设，不是事实。** 打包后的 asar 里 `@deepseek-ai/cordis`
+   只有 `lib/index.js` + `src/*.ts`；`package.json` 的 `types: lib/types/index.d.ts`
+   **指向的文件不在包内** ⇒ 装上去也解析不到类型。垫片必须**随包发**才有效
+   （发布方式仍待用户裁定）。
+
+**验证方式**（不要凭包名推断，先在当前安装上看文件在不在）：
+
+```powershell
+Test-Path node_modules/@deepseek-ai/cordis/lib/types/index.d.ts
+```
 
 ---
 
