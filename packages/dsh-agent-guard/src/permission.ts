@@ -112,20 +112,17 @@ function hasSubagents(value: unknown): value is PermissionSubagentsLike {
  *
  * ## 只认名字；拿不到名字 ⇒ 无 holder（`''`）—— issue #42 Bug 2（lead 裁定）
  *
- * 这里曾经有第三条回落：`namesOf` 空串 / 缺席 / 抛错时回落 `agent.id`（UUID）。
- * 但卡只会以 `namesOf.self`（名字）被领取；`@taskboard/dsh-tools` 的
- * `holderOf` 在**空 self** 时返回 `''`（claim 因此明确失败）⇒ guard 的 UUID
- * 回落**永远匹配不到任何已领卡**，是一段死语义。
+ * 两条曾经的回落都已删除：
+ * - `namesOf` 空串 / 缺席 / 抛错时回落 `agent.id`（UUID）—— 卡只以名字被领取，
+ *   UUID 永远查不到已领卡（死语义），且一旦有人在 UUID 下领卡就会和 tools 写语义错位；
+ * - `exec.agent` 缺席时回落 `'unknown'` —— 退化身份（guard 永不匹配、程序化调用方共享），
+ *   同样不该能领卡（claim 走 needHolder 明确失败）。
  *
- * 更坏的是它是**语义地雷**：哪一天有人真在 UUID 下建卡 / 领卡，guard 的读语义
- * 就会和 tools 的写语义错位，表现是「领了卡但权限不生效」这种静默错误。
- *
- * ⇒ 统一到 fail-safe 的 `''`：权限系统**宁可按「无持有卡」判，也不猜一个 UUID**。
+ * ⇒ 统一到 fail-safe 的 `''`：权限系统**宁可按「无持有卡」判**，不猜 UUID、也不用退化哨兵。
  * `heldWorkCardsOf('')` 直接返回空数组（见下面该函数的第一条分支），不会误匹配任何卡。
  *
- * ⚠ 与 `@taskboard/dsh-tools` 的 `holder.ts` 仍有一处差异：那版在 `namesOf` 服务缺席 /
- *   抛错时回落 UUID，本函数一律不回落。两边完整的合并待跨包收敛；但「空 self」
- *   这个 issue #42 的分歧点已经一致。
+ * ⚠ 与 `@taskboard/dsh-tools` 的 `holder.ts` 语义已一致（服务缺席 / 抛错 / 空 self /
+ *   agent 缺席都是 `''`）。
  *
  * @param subagents `ctx.subagents`；可缺席（无 subagent 的 profile）
  * @param exec 工具执行上下文
@@ -137,7 +134,8 @@ export function holderOf(
 	exec: unknown,
 	agent: AgentLike | undefined = agentOf(exec),
 ): string {
-	if (agent === undefined) return 'unknown';
+	/* ① 没有 agent 上下文（程序化调用）⇒ 无 holder（'unknown' 哨兵已删除）。 */
+	if (agent === undefined) return '';
 
 	if (!hasSubagents(subagents)) return '';
 
@@ -173,6 +171,7 @@ export function heldWorkCardsOf(
 	taskboard: Taskboard,
 	holder: string,
 ): { readonly cards: readonly Card[]; readonly workspaceId: string } {
+	/* `'unknown'` 是旧数据兼容：历史程序化领取可能写入过它，仍按无卡判（fail-safe）。 */
 	if (holder === '' || holder === 'unknown') return { cards: [], workspaceId: '' };
 
 	const workspace = taskboard.listWorkspaces(false)[0];

@@ -10,7 +10,7 @@
  * | `namesOf` 抛错 | `''` | agent 是独立会话，不在任何 subagent 树里 |
  * | `namesOf` 返回空串 / self 缺席 | `''` | 名字解析不出来 |
  * | `subagents` 缺席 / 形状不对 | `''` | 单 agent profile，没装 subagent 服务 |
- * | `agent` 缺席 | `'unknown'` | 工具被程序化调用（不经模型），如 workflow / 测试 |
+ * | `agent` 缺席 | `''` | 工具被程序化调用（不经模型），如 workflow / 测试 |
  */
 
 import assert from 'node:assert/strict';
@@ -58,10 +58,10 @@ describe('holderOf', () => {
 		assert.equal(holder, '');
 	});
 
-	it('agent 缺席 ⇒ unknown（不编名字）', () => {
-		assert.equal(holderOf(stubSubagents('lead'), {}), 'unknown');
-		assert.equal(holderOf(stubSubagents('lead'), undefined), 'unknown');
-		assert.equal(holderOf(stubSubagents('lead'), null), 'unknown');
+	it('agent 缺席 ⇒ 无 holder（空串；不编名字）', () => {
+		assert.equal(holderOf(stubSubagents('lead'), {}), '');
+		assert.equal(holderOf(stubSubagents('lead'), undefined), '');
+		assert.equal(holderOf(stubSubagents('lead'), null), '');
 	});
 
 	it('agent 存在但没有 id：名字优先（namesOf 能答就用它）', () => {
@@ -96,9 +96,9 @@ describe('holderOf', () => {
 		/*
 		 * 猜名字会让两个不同 agent 撞到同一个 holder；
 		 * 回落 UUID 则会让卡存进 guard 永远匹配不到的标识。
-		 * ⇒ 只认 namesOf 的 self；其余（除 agent 缺席）一律 ''。
+		 * ⇒ 只认 namesOf 的 self；其余（含 agent 缺席）一律 ''。
 		 */
-		assert.equal(holderOf(undefined, {}), 'unknown');
+		assert.equal(holderOf(undefined, {}), '');
 		assert.equal(holderOf(throwingSubagents(), { agent: { id: '' } }), '');
 	});
 });

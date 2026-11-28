@@ -20,17 +20,17 @@
  * ## 只认名字：拿不到名字 ⇒ 无 holder（`''`）
  *
  * issue #42 Bug 2 + lead `2026-11-28` 裁定（fail-safe）：`subagents` 服务缺席、
- * `namesOf` 抛错、`self` 空 —— 一律返回 `''`，**不再回落 `agent.id`（UUID）**。
+ * `namesOf` 抛错、`self` 空、以及 `exec.agent` 缺席 —— 一律返回 `''`，
+ * **不回落 `agent.id`（UUID），也不再用 `'unknown'` 退化哨兵**。
  *
  * 理由：
  * - 卡只以名字（`namesOf.self`）被领取 —— UUID 存进卡里既不可读，也会和
  *   guard 的读语义错位（「领了卡但权限不生效」的静默错误）；
  * - 权限系统**宁可按「无持有卡」判，也不猜一个 UUID**。身份解析不了时应当
  *   **不能领卡**（`@taskboard/tools` 的 transition 会以 needHolder 明确失败），
- *   而不是把卡存进一个 guard 永远匹配不到的 UUID。
+ *   而不是把卡存进一个 guard 永远匹配不到的 UUID / 退化身份。
  *
- * ⚠ 唯一的非空回落是 `exec.agent` 缺席 ⇒ `'unknown'`：那是「没有 agent 上下文」
- *   （程序化调用）的既有哨兵；本函数不把它当「名字」用。
+ * ⚠ 返回值只有两种：**名字**或 `''`（无 holder）。不再有 `'unknown'` 哨兵。
  *
  * ## 为什么 `subagents` 用最小结构接口
  *
@@ -65,12 +65,12 @@ export interface ExecLike {
  *
  * @param subagents `ctx.subagents`；可缺席（缺席 ⇒ `''`，见文件头）
  * @param exec 工具执行上下文
- * @returns `'lead'` / `'reviewer/checker'` / `'unknown'`（agent 缺席）/ `''`（拿不到名字）
+ * @returns `'lead'` / `'reviewer/checker'` / `''`（拿不到身份）
  */
 export function holderOf(subagents: unknown, exec: unknown): string {
-	/* ① 没有 agent 上下文（程序化调用 / standalone）⇒ 不知道是谁。 */
+	/* ① 没有 agent 上下文（程序化调用 / standalone）⇒ 无 holder（'unknown' 已删除）。 */
 	const agent = agentOf(exec);
-	if (agent === undefined) return 'unknown';
+	if (agent === undefined) return '';
 
 	/* ② 没有 subagents 服务 ⇒ 拿不到名字 ⇒ 无 holder（issue #42 Bug 2）。 */
 	if (!hasNamesOf(subagents)) return '';

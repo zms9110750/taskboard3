@@ -161,8 +161,8 @@ describe('holderOf', () => {
 		assert.equal(holderOf(subagentsOf('reviewer/checker'), execOf({ agent: { id: 'uuid' } })), 'reviewer/checker');
 	});
 
-	it('agent 缺席 ⇒ unknown', () => {
-		assert.equal(holderOf(subagentsOf('lead'), execOf({})), 'unknown');
+	it('agent 缺席 ⇒ 无 holder（空串，不猜身份；issue #42）', () => {
+		assert.equal(holderOf(subagentsOf('lead'), execOf({})), '');
 	});
 
 	it('没有 subagents 服务 ⇒ 无 holder（不猜 UUID；issue #42 Bug 2）', () => {
@@ -239,7 +239,7 @@ describe('heldWorkCardsOf', () => {
 		assert.equal(cards.length, 0, '草稿 / 提交态不算「领取了工作」');
 	});
 
-	it('holder 为空或 unknown ⇒ 空数组（不查）', () => {
+	it('holder 为空（或旧数据 unknown）⇒ 空数组（不查）', () => {
 		assert.deepEqual(heldWorkCardsOf(tb(), '').cards, []);
 		assert.deepEqual(heldWorkCardsOf(tb(), 'unknown').cards, []);
 	});

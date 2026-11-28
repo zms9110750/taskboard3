@@ -4,8 +4,8 @@
 > 结论稿（「holder 用 `ctx.subagents.namesOf(agent).self`，兜底 `exec.agent.id`」），
 > 当时的「落地建议」（存 `holderId`、MCP 自报、必填 `inject ['subagents']`）与现状不同。
 >
-> **2026-11-28 补记（issue #42 Bug 2）**：`exec.agent.id` 兜底**已被删除** ——
-> guard 与 dsh-tools 拿不到名字时都返回 `''`（无 holder，fail-safe）。
+> **2026-11-28 补记（issue #42 Bug 2）**：`exec.agent.id` 兜底与 `'unknown'` 退化哨兵
+> **都已被删除** —— guard 与 dsh-tools 拿不到身份时一律返回 `''`（无 holder，fail-safe）。
 >
 > **宿主事实的来源**：DSH `0.2.2-rc.2` 的 `app.asar` 内源码
 > （`B:\DeepSeek Harness\0.2.2-rc2\resources\app.asar` 里 `dsh/node_modules/@deepseek-ai/…`），
@@ -32,12 +32,15 @@ guard 与 dsh-tools 两版都统一到 `''`，不再回落 `agent.id`：
 能领卡时，最终都落到 core 的 `CardHolder.holder`（**只存一个字符串**，没有 `holderId`）：
 `packages/core/src/card.ts:159-165`。
 
-- `exec.agent` 缺席时前两者返回 `'unknown'` —— 那是「没有 agent 上下文」（程序化调用）的
-  既有哨兵，不是名字；guard 的 `heldWorkCardsOf` 把 `''` / `'unknown'` 都当无卡
-  （`permission.ts:176`）。
+- `exec.agent` 缺席时两处 `holderOf` 也返回 `''`（issue #42 第三次收紧：`'unknown'`
+  退化哨兵已删除）—— 程序化调用方没有身份，不能用共享的退化身份领卡。
+  注意 guard 的**判定入口**仍对 agent 缺席早退（放行）：那是「程序化调用不归任务板管」
+  的入口语义，不是写入身份。
+- `heldWorkCardsOf` 把 `''`（以及旧数据里可能存在的 `'unknown'`）都当无卡
+  （`permission.ts:176`），不会误匹配。
 - 身份解析不了时**不能领卡**：`@taskboard/tools` 的 transition 会以 needHolder 明确失败
   （`core/src/advice.ts:181`、`tools/src/tools/transition.ts:135-141`），而不是把卡存进
-  一个 guard 永远匹配不到的 UUID。
+  一个 guard 永远匹配不到的 UUID / 退化身份。
 
 ---
 
@@ -53,7 +56,7 @@ export function holderOf(
 	exec: unknown,
 	agent: AgentLike | undefined = agentOf(exec),
 ): string {
-	if (agent === undefined) return 'unknown';
+	if (agent === undefined) return '';                     // 无 agent 上下文 ⇒ 无 holder
 	if (!hasSubagents(subagents)) return '';                 // 服务/形状缺席 ⇒ 无 holder
 	try {
 		const name = subagents.namesOf(agent).self;
@@ -105,7 +108,7 @@ export function holderOf(ctx: TaskboardToolContext): string | undefined {
 ```ts
 export function holderOf(subagents: unknown, exec: unknown): string {
 	const agent = agentOf(exec);
-	if (agent === undefined) return 'unknown';
+	if (agent === undefined) return '';           // 无 agent 上下文 ⇒ 无 holder
 	if (!hasNamesOf(subagents)) return '';        // 服务/形状缺席 ⇒ 无 holder
 	try {
 		const name = subagents.namesOf(agent).self;
@@ -123,14 +126,14 @@ export function holderOf(subagents: unknown, exec: unknown): string {
 - 用它的地方：`packages/dsh-tools/src/tools.ts:272-278` 的 `contextOf()`，
   `holder: holderOf(deps.subagents, exec)`。
 - 测试：`packages/dsh-tools/test/holder.test.ts`（名字优先 / 服务缺席、`namesOf` 抛错、
-  空 self 都 ⇒ `''` / agent 缺席 ⇒ `'unknown'`）；`test/tools.test.ts` 另有一条
-  「subagents 缺席 ⇒ claim 明确失败、不产生 UUID 持有」。
+  空 self、agent 缺席都 ⇒ `''`）；`test/tools.test.ts` 另有两条
+  「subagents 缺席 / 无 agent 上下文 ⇒ claim 明确失败、不产生 UUID 或退化身份持有」。
 
 ### 2.4 三份实现的现状（语义已统一，issue #42）
 
 | 场景 | guard 版 | dsh-tools 版 | tools 版 |
 |---|---|---|---|
-| `exec.agent` 缺席 | `'unknown'` | `'unknown'` | `undefined`（那是另一个入参） |
+| `exec.agent` 缺席 | `''` | `''` | `undefined`（那是另一个入参） |
 | 没有 `subagents` 服务 | `''` | `''` | — |
 | `namesOf` 抛错 | `''` | `''` | — |
 | `namesOf` 返回 `''` / self 缺席 | `''` | `''` | — |
@@ -236,9 +239,9 @@ export function holderOf(subagents: unknown, exec: unknown): string {
 ## 五、已知漂移 / TODO（只记，不扩面）
 
 1. ~~**两版 `holderOf` 在「空 self」上行为不同** ⇒ 静默「领了卡但权限不生效」。~~
-   **已关闭**（issue #42 Bug 2）：两版都统一到 `''`（无 holder），不再回落 UUID；
-   身份解析不了时 claim 走 needHolder 明确失败。测试见 `guard.test.ts` /
-   `dsh-tools/test/holder.test.ts`。
+   **已关闭**（issue #42 Bug 2）：两版都统一到 `''`（无 holder），不回落 UUID、
+   也不用 `'unknown'` 退化哨兵；身份解析不了时 claim 走 needHolder 明确失败。
+   测试见 `guard.test.ts` / `dsh-tools/test/holder.test.ts`。
 2. **guard 只看第一个工作空间**：`heldWorkCardsOf()` 只查 `listWorkspaces(false)[0].id`
    （`permission.ts:54-61`、`:161-176`，注释写明「已知限制，不是 bug」）——
    用户在第二个空间领的卡，guard 看不见。

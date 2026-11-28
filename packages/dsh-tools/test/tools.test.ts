@@ -9,7 +9,7 @@
  *
  * · 注册面：9 个宿主无关工具、顺序（`test/apply.test.ts` 一次断言，含失败回滚）；
  * · schema 转换：JSON Schema → DSH `parameters`（required 内联、enum/items 保留）；
- * · ctx 注入：holder（subagents 名字 / 无 agent 上下文 unknown / 拿不到名字 ''）；
+ * · ctx 注入：holder（subagents 名字 / 无 agent 上下文与拿不到名字都 ''）；
  * · 每个工具经适配层跑一遍正常路径 + 一条失败路径（确认真能到达 core，
  *   且失败文案按 v2 契约输出）。
  *
@@ -323,11 +323,23 @@ describe('ctx：holder（领取/释放的持有者）', () => {
 		}
 	});
 
-	it('没有 agent 上下文 ⇒ holder=unknown（不编名字，claim 仍能工作）', async () => {
+	it('没有 agent 上下文 ⇒ 无 holder：采纳仍可用，claim 明确失败（needHolder）', async () => {
 		await taskboard.setCardActionLevel('adopt');
 		const id = await seedCard(workRef(), '无 agent 上下文');
-		const text = await run('taskboard_transition', { id, to: TaskState.SUBMITTED }, {});
-		assert.ok(text.includes('已采纳'), text);
+
+		/* 采纳不需要身份：程序化调用仍能推进。 */
+		const adopted = await run('taskboard_transition', { id, to: TaskState.SUBMITTED }, {});
+		assert.ok(adopted.includes('已采纳'), adopted);
+
+		/* 领取需要身份：agent 缺席 ⇒ holder 为 '' ⇒ 明确失败，不写 holders。 */
+		const claimed = await run('taskboard_transition', { id, to: TaskState.WORKING }, {});
+		assert.ok(claimed.includes('宿主没有提供当前调用者身份（holder），无法领取'), claimed);
+		const after = taskboard.get(workspaceId, id);
+		assert.equal(after.ok, true);
+		if (after.ok) {
+			assert.deepEqual(after.card.holders, [], '不应产生退化身份持有');
+			assert.equal(after.card.status, TaskState.SUBMITTED);
+		}
 	});
 });
 

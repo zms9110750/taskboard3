@@ -24,7 +24,7 @@
  *
  * | ctx 字段 | 来源 | 说明 |
  * |---|---|---|
- * | `holder` | `holderOf(deps.subagents, exec)` | 与 v1 同一实现（`src/holder.ts`）：subagent 名字优先；agent 缺席 ⇒ `unknown`；拿不到名字 ⇒ `''`（issue #42 Bug 2：不回落 UUID） |
+ * | `holder` | `holderOf(deps.subagents, exec)` | 与 v1 同一实现（`src/holder.ts`）：subagent 名字优先；agent 缺席 / 拿不到名字 ⇒ `''`（issue #42 Bug 2：不回落 UUID、无 'unknown' 哨兵） |
  * | `canManageToolPolicies` | `deps.isManageEdit()` | 由 `@taskboard/dsh-agent-guard` 的插件行决定：`packages/dsh-agent-guard/src/index.ts` 的 `service.isManageEdit` 读该包 kv 的三档位（`readToolGuardLevelOf(kv) === 'manage-edit'`）。本包**不 import 那一行**（关掉它不能让本行崩）；服务缺席 ⇒ 一律 `false` |
  *
  * ⚠ **不注入 `resolveDefaultWorkspace` / `activeWorkspaceId`**：用户 `2026-11-22`
