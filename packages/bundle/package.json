@@ -2,7 +2,7 @@
   "name": "@taskboard/bundle",
   "version": "0.1.0-3.a.1",
   "type": "module",
-  "description": "任务板：一个 bundle，三个插件条目。一张卡片，各自独立开关。",
+  "description": "任务板：一个 bundle。存储 / 核心实例 / Host / AI 工具 / 浏览器 UI / agent 守卫 / 权限 UI / 消息循环 各行可独立开关。",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",

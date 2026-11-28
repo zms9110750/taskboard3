@@ -1,5 +1,8 @@
 /**
- * 给新建的 git worktree 接上依赖 —— **一条命令**。
+ * 给新建的 git worktree 接上 `node_modules`（junction 方案）—— **一条命令**。
+ *
+ * ⚠ 它**不是**「worktree 唯一的装依赖方式」：`corepack pnpm install`（v12+）也能装，
+ * 见下面对比。
  *
  * ## 为什么需要它
  *
@@ -11,10 +14,25 @@
  * <主仓>/node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg> ← 真实物理目录
  * ```
  *
- * **新 worktree 只有第一层是空的。** 而 AGENTS.md §规则8 记录过
- * 「新 worktree 里 `pnpm install` 会 ERR_PNPM_SYMLINK_FAILED，装不上」。
+ * **新 worktree 的第一层是空的**（没有 `node_modules`）。
  *
- * ## 三条路（实测过，只有第 3 条对）
+ * ⚠ **`2026-11-28` 翻案**：AGENTS.md §规则8 已改 —— 新建 worktree 里
+ * `corepack pnpm install`（pnpm 12.23）实测**成功**（3 秒级）。旧禁令
+ * 「worktree 里 `pnpm install` 装不上（ERR_PNPM_SYMLINK_FAILED）」是 pnpm 10 时代的事实，
+ * **已不再成立**。
+ *
+ * ⇒ 本脚本的真实用途不是「让 worktree 能装依赖」，而是**另一条取舍**：
+ * 给新 worktree 接一套指向主仓的 `node_modules` junction（不重新下载、不占磁盘；
+ * 代价是共享物理目录，见下方「隐患」）。
+ *
+ * ### 两个选项（二选一，别混用）
+ *
+ * | 选项 | 做法 | 取舍 |
+ * |---|---|---|
+ * | **真实安装**（默认推荐） | `corepack pnpm install`（v12+） | 独立 `node_modules`、不写穿主仓；要下载/占磁盘（秒级） |
+ * | **本脚本（junction）** | `node scripts/link-worktree.mjs <worktree>` | 复用主仓 `.pnpm` 的物理目录，省下载与磁盘；共享目录要按只读对待，且主仓重装后 junction 会悬空（重跑本脚本） |
+ *
+ * ## 三条路（junction 内部的三种做法，实测只有第 3 条对）
  *
  * | 做法 | 结果 |
  * |---|---|
@@ -64,7 +82,9 @@
  *    任何往里写文件的操作会污染所有 worktree ⇒ **按只读对待**。
  * 3. **清理一律用 `cmd /c rmdir`**（只删链接）。绝不能用 `rm -rf` / `rsync --delete`，
  *    那会顺着 junction 删到主仓内容。
- * 4. **worktree 里永远不要跑 `pnpm install`**：没有 `.modules.yaml`，pnpm 会以为没装依赖。
+ * 4. **接了 junction 的 worktree 不要再跑 `pnpm install`**：那属于上面的「真实安装」选项，
+ *    两者混用会留下 junction 与 `.pnpm` 安装结果并存的目录（后果未实测）。
+ *    要换成真实安装：先用 `cmd /c rmdir` 删掉本脚本建的 junction，再 `corepack pnpm install`。
  * 5. **必须先 `tsc -b` 再跑全仓测试**：`@taskboard/*` 指本 worktree 的包目录 ⇒
  *    Node 走 `package.json` 的 `exports` → `lib/`。忘了构建 = 测上一次的 lib（假绿）。
  * 6. **Windows only**（`mklink /J`）。换平台要改成 `symlinkSync(target, link, 'dir')`。
