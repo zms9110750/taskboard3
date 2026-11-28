@@ -227,6 +227,119 @@ export function askPatchOf(
 
 	}
 }
+
+/**
+ * 自填框的**输入草稿** —— 「输入即选中」的全部状态（issue #61）。
+ *
+ * 它**不是**答案：答案仍然是 payload 的 `picked` / `custom`。草稿只活在组件的一次
+ * 聚焦会话里，用来在「还没落库」的那段时间里画出选中态。
+ */
+export interface AskCustomDraft {
+	/** 输入框当前文字（聚焦那一刻 = `custom[0]`）。 */
+	readonly text: string;
+	/**
+	 * 这一轮输入里**有没有真的打过字**（发生过 input 事件，哪怕是删空）。
+	 *
+	 * 区分「聚焦」和「输入」是必须的 —— 用户 `2026-11-21`：
+	 * 「点输入框不是选择（可能只是想刮取/看文字）」。所以：
+	 *
+	 * | 会话 | 界面 | 失焦后 |
+	 * |---|---|---|
+	 * | 只聚焦（`edited: false`）| **立刻选中**（看得见）| 回到原答案，**不写库** |
+	 * | 打过字（`edited: true`）| 立刻选中 | 一次 `custom-input` 落库（老节奏）|
+	 */
+	readonly edited: boolean;
+}
+
+/**
+ * 「自填框正在输入中的草稿」叠到组视图上 —— **输入即选中**。
+ *
+ * ## 为什么要这一层（issue #61）
+ *
+ * 用户 `2026-11-28`（截图 11）：在自填框里打了 `444`、光标还在框内，
+ * 单选圆圈却是空的；**必须失焦才变选中**。
+ *
+ * 根因是数据流：选中态只能来自 payload（`customActive` ← `picked`），
+ * 而 `picked` 只在失焦时随 `custom-input` 落库 ⇒ **打字期间界面没有「选中」可画**。
+ *
+ * 但「一次编辑一次 PATCH」的节奏不能破（见 `AskCustomRow` 的注释）。所以草稿
+ * **不落库**，只在渲染时叠上去：本函数就是那层叠加，规则与 `askPatchOf()` 一致 ——
+ *
+ * | 组 | 草稿 | 叠加结果（同一帧）|
+ * |---|---|---|
+ * | 单选 | 任意（含空串）| 自填选中，**其它选项全部取消**，「未选择」熄灭 |
+ * | 多选 | 非空 | 自填选中，**已选选项保留**（共存，和 `custom-input` 一样）|
+ * | 多选 | 空串 | **原样返回**（多选里没文字不算选中，与 `custom-toggle` 同一条规则）|
+ *
+ * `edited` 不参与叠加（只是「聚焦」也要立刻选中），它只决定失焦后落不落库。
+ *
+ * @param group 当前组
+ * @param draft 草稿；`undefined` = 没在输入（原样返回）
+ * @returns 叠加后的组视图
+ */
+export function askDraftViewOf(group: AskGroupView, draft: AskCustomDraft | undefined): AskGroupView {
+	if (draft === undefined) return group;
+
+	/* 多选 + 空草稿：保持「没输入文字 = 不算选中」，界面一个像素都不动。 */
+	if (group.multiSelect && draft.text === '') return group;
+
+	/** 草稿叠加后 `picked` 里的选项部分：单选全清，多选原样保留。 */
+	const kept = group.multiSelect ? group.options.filter((one) => one.picked).map((one) => one.label) : [];
+
+	return {
+		...group,
+		options: group.options.map((one) => ({ ...one, picked: group.multiSelect ? one.picked : false })),
+		custom: draft.text === '' ? [] : [draft.text],
+		customActive: true,
+		pickedState: 'picked',
+		/*
+		 * 单选 = 只有自填这一条（空串也占一位，和 `picked: ['']` 落库后一致）；
+		 * 多选 = 已选选项 + 自填一条（自填本来就选中时它已经在 `picked` 里，
+		 * 叠加只是换掉它的文字 ⇒ 计数不变，仍等于 `kept.length + 1`）。
+		 */
+		pickedCount: group.multiSelect ? kept.length + 1 : 1,
+	};
+}
+
+/**
+ * 自填框失焦时**该发什么动作**（`undefined` = 什么都不用发）。
+ *
+ * 只做一件事：把「打过字」的那一轮草稿按**既有节奏**落库 —— 一次失焦一次
+ * `custom-input`（`custom` 与 `picked` 一起写，单选互斥 / 多选共存都在
+ * `askPatchOf()` 里）。**没有新的写入口**：只聚焦不打字 ⇒ 什么都不发。
+ *
+ * | 情形 | 动作 |
+ * |---|---|
+ * | 只聚焦，没打过字 | 不发（`2026-11-21`：点输入框不是选择）|
+ * | 打过字、文字确实变了 | `custom-input` |
+ * | 打过字、文字又改回原值，且本来就选中 | 不发（省一次无意义的 PATCH）|
+ * | 打过字、文字又改回原值，但还没选中 | `custom-input`（把选中落库）|
+ *
+ * @param group 当前组（真值，不是叠加后的视图）
+ * @param draft 失焦那一刻的草稿；`undefined` = 没有输入会话
+ */
+export function askCustomCommitOf(
+	group: AskGroupView,
+	draft: AskCustomDraft | undefined,
+): AskAction | undefined {
+	if (draft === undefined) return undefined;
+
+	/* 只聚焦过：界面上选中过，但没有「作答」这个意图（用户 2026-11-21 第 3 条）。 */
+	if (!draft.edited) return undefined;
+
+	const stored = group.custom[0] ?? '';
+
+	/* ① 文字变了 ⇒ 一定得写（文字与选中一起进 payload；`askPatchOf` 的 custom-input）。 */
+	if (draft.text !== stored) return { type: 'custom-input', text: draft.text };
+
+	/* ② 文字没变 ⇒ 只补「界面上的选中还没落到 payload」这一种。 */
+	if (group.customActive) return undefined;
+	/* 多选 + 空文字：`askDraftViewOf()` 判定界面没变化 ⇒ 没有「看到的选中」要补。 */
+	if (askDraftViewOf(group, draft) === group) return undefined;
+
+	return { type: 'custom-input', text: draft.text };
+}
+
 /**
  * 把一次作答动作**应用到 payload**，返回新 payload。
  *

@@ -8,8 +8,17 @@
  * 用户动作 → onAsk(AskAction) → 父层写 payload → 新 view 灌回来
  * ```
  *
- * **组件里没有「选中」state**：选中态是 `AskGroupView.picked` /
- * `.customActive`（答案字段），只能从 payload 来、往 payload 去。
+ * **选中态是 `AskGroupView.picked` / `.customActive`（答案字段）**，只能从 payload
+ * 来、往 payload 去。唯一的例外是**自填框草稿**（`AskGroupCard` 里的一个
+ * `useState<AskCustomDraft | undefined>`，issue #61「输入即选中」）：
+ *
+ * ```
+ * 草稿 ──askDraftViewOf()──▶ 这一帧画的东西（自填选中 / 同组选项取消 / 未选择熄灭）
+ * 草稿 ──askCustomCommitOf()─▶ 失焦那一次 PATCH（只聚焦不打字 ⇒ 没有 PATCH）
+ * ```
+ *
+ * 草稿**不落库**，所以「一次编辑一次 PATCH」的既有节奏不变；两个判决都在
+ * `src/pure/section.ts`，组件只调用。
  *
  * > 用户 2026-11-21：「重构这个组件。还继续细分组件的就细分。不要写胶水代码。
  * > 拿来那么多奇奇怪怪的逻辑。这个组件很难写吗？公开几个参数然后保证内部状态，
@@ -22,22 +31,32 @@
  * | `AskMark` | 画标记（圆圈 / 方框 / 勾）| picked, multiSelect, readonly |
  * | `AskRow` | 行外壳：标记 + body + 整行点击 | picked, multiSelect, readonly, onSelect?, children |
  * | `AskOptionRow` | 普通选项 = AskRow + 标题/说明 | option, multiSelect, readonly, onPick? |
- * | `AskCustomRow` | 自填行 = AskRow + 输入框 | group, readonly, onAsk? |
+ * | `AskCustomRow` | 自填行 = AskRow + 输入框 | group, picked, draft, readonly, onDraft?, onAsk? |
  * | `AskGroupHead` | 问题行：问题 + 未选择按钮 | group, readonly, onClear? |
- * | `AskGroupCard` | 问题页 = Head + 若干 Row | group, readonly, onAsk? |
+ * | `AskGroupCard` | 问题页 = Head + 若干 Row（**草稿在这里**）| group, readonly, onAsk? |
  * | `AskSection` | 章节 = 若干 GroupCard | sectionId, view, readonly, onAsk? |
  *
  * ## 契约
  *
  * - `askCompose`（create）走另一条渲染路径，不经过本文件。
- * - 字段以 `packages/core/src/template/actions.ts` 的 `askItemSchema` 为准：`r`n *   `picked` / `custom`，**没有** `custom_active`。
+ * - 字段以 `packages/core/src/template/actions.ts` 的 `askItemSchema` 为准：
+ *   `picked` / `custom`，**没有** `custom_active`。
  * - 单选组任一时刻只有一处「已选」：点选项 ⇒ 自填行取消；点自填 ⇒ 清掉选项。
- *   这条规则由父层应用 `AskAction` 时保证（本文件只上报动作）。
+ *   这条规则由父层应用 `AskAction` 时保证（本文件只上报动作）；输入草稿的叠加
+ *   由 `askDraftViewOf()` 保证**同一帧**一致。
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
-import { askStateLabelOf, type AskAction, type AskGroupView, type AskOptionView } from '../pure/section.ts';
+import {
+	askCustomCommitOf,
+	askDraftViewOf,
+	askStateLabelOf,
+	type AskAction,
+	type AskCustomDraft,
+	type AskGroupView,
+	type AskOptionView,
+} from '../pure/section.ts';
 
 /* ══════════════════════════════════════════════════════════
    ① 标记
@@ -176,43 +195,49 @@ export function AskOptionRow(props: {
 /**
  * 「其它（自己填）」行 = `AskRow` + 受控输入框。
  *
- * - 文字来自 `group.custom[0]`，**失焦才上报 `custom-input`**（lead `2026-11-28`：
- *   一次编辑一次 PATCH；否则每敲一个字都写一次库）
- * - 选中态来自 `group.customActive`（答案字段）
+ * - 文字：输入中显示 `draft.text`（**组件级草稿**，见 `AskGroupCard`），
+ *   不在输入时显示 `group.custom[0]`（答案字段）
+ * - **输入即选中**（issue #61）：`onFocus` / `onInput` 任一触发 ⇒ 交给 `onDraft`
+ *   记下草稿，同一次渲染里这一行就是选中态（叠加规则在 `askDraftViewOf()`）
+ * - **落库节奏不变**：只有「真的打过字」的那一轮，才在失焦时发一次 `custom-input`
+ *   （lead `2026-11-28`：一次编辑一次 PATCH；否则每敲一个字都写一次库）。
+ *   只聚焦不打字 ⇒ 界面选了一下、失焦回到原答案，**不产生 PATCH**
+ *   （用户 `2026-11-21`：「点输入框不是选择（可能只是想刮取/看文字）」）
  * - 点整行 / 点「自己填：」⇒ 上报 `custom-toggle`，父层决定互斥
- * - 点输入框本身**不是选择**（可能只是想复制文字）⇒ 只 focus，不 toggle
+ * - 点输入框本身**不是 toggle**（不会把已选中的自填取消掉）；它只是聚焦 ⇒ 选中
  *
- * @param props group / readonly / onAsk
+ * @param props group / picked / draft / readonly / onDraft / onAsk
  */
 export function AskCustomRow(props: {
+	/** 真值视图（`stored` 文字 / 多选标记）。 */
 	readonly group: AskGroupView;
+	/** 这一行当前是否选中 —— 可能是草稿叠加后的结果。 */
+	readonly picked: boolean;
+	/** 输入中的草稿；`undefined` = 没在输入。 */
+	readonly draft: AskCustomDraft | undefined;
 	readonly readonly: boolean;
+	/** 草稿变化（`undefined` = 结束输入）。省略 = 这一行不可作答。 */
+	readonly onDraft?: (next: AskCustomDraft | undefined) => void;
 	readonly onAsk?: (action: AskAction) => void;
 }): ReactNode {
 	const stored = props.group.custom[0] ?? '';
-	const picked = props.group.customActive;
 	const placeholder = props.group.placeholder === '' ? '其它（自己填）…' : props.group.placeholder;
+	/** 输入框该显示什么：输入中用草稿，否则用答案里的文字。 */
+	const value = props.draft?.text ?? stored;
 
-	/*
-	 * 输入中的文字是**本地草稿**：受控输入框必须有个能跟着按键变的值，
-	 * 但答案只在失焦时回写。`group.custom[0]` 因服务端回声变化时同步回来
-	 * （正在输入时不覆盖，免得保存回来的旧值打断打字）。
+	/**
+	 * 结束输入：先把草稿清掉（回到「跟着答案走」），再按 pure 的判决落库。
 	 */
-	const [text, setText] = useState(stored);
-	const focused = useRef(false);
-	useEffect(() => {
-		if (!focused.current) setText(stored);
-	}, [stored]);
-
 	const commit = (): void => {
-		focused.current = false;
-		if (text !== stored) props.onAsk?.({ type: 'custom-input', text });
+		const action = askCustomCommitOf(props.group, props.draft);
+		props.onDraft?.(undefined);
+		if (action !== undefined) props.onAsk?.(action);
 	};
 
 	return (
 		<AskRow
 			kind="custom"
-			picked={picked}
+			picked={props.picked}
 			multiSelect={props.group.multiSelect}
 			readonly={props.readonly}
 			{...(props.onAsk === undefined ? {} : { onSelect: () => props.onAsk?.({ type: 'custom-toggle' }) })}
@@ -243,20 +268,25 @@ export function AskCustomRow(props: {
 						type="text"
 						className="ask-group__custom"
 						data-ask-custom
-						value={text}
+						value={value}
 						/* 占位符就是空框里的灰字；不再重复「自己填」 */
 						placeholder={placeholder}
 						/*
-						 * 第 3 条：点输入框**不是选择**（可能只是想刮取/看文字），
-						 * 所以只 focus，不 toggle；也阻止冒泡（否则会触发外层的选中）。
+						 * 点输入框不 toggle（stopPropagation 阻止外层选中）——
+						 * 它只是聚焦；**聚焦本身就等于选中这一行**（issue #61）。
 						 */
 						onClick={(event) => event.stopPropagation()}
 						onMouseDown={(event) => event.stopPropagation()}
 						onFocus={() => {
-							focused.current = true;
+							/*
+							 * 聚焦 ⇒ 草稿 = 当前文字（`edited: false`）⇒ 同一帧切到 custom。
+							 * 没打字就失焦 ⇒ 不落库（见 `AskCustomDraft.edited` 的说明）。
+							 */
+							props.onDraft?.({ text: value, edited: false });
 						}}
 						onChange={(event) => {
-							setText(event.target.value);
+							/* 每次按键更新草稿（`edited: true`）⇒ 选中态立刻跟着走，但仍不落库。 */
+							props.onDraft?.({ text: event.target.value, edited: true });
 						}}
 						onBlur={commit}
 						onKeyDown={(event) => {
@@ -320,6 +350,20 @@ export function AskGroupHead(props: {
 /**
  * 一个问题页 = 问题行 + 选项行们 + 自填行。
  *
+ * ## 唯一的组件级 state：自填框草稿
+ *
+ * 「输入即选中」（issue #61）要求**同一帧**里三件事一起发生：自填行选中、
+ * 同组其它选项取消、`未选择` 熄灭。选中态只能从 payload 来，而 payload 要等失焦
+ * 才写 ⇒ 这里存一份**不落库的草稿**，渲染时用 `askDraftViewOf()` 叠上去：
+ *
+ * ```
+ * draft ──askDraftViewOf()──▶ shown（这一帧真正画的东西）
+ * draft ──askCustomCommitOf()─▶ 失焦那一次 PATCH（打过字才有，仍是 custom-input）
+ * ```
+ *
+ * 规则一条都不在这里判：单选清同组、多选共存、多选空文字不算选中、只聚焦不落库，
+ * 全在 pure 里（`AskCustomDraft`）。
+ *
  * @param props sectionId / group / readonly / onAsk
  */
 export function AskGroupCard(props: {
@@ -331,6 +375,14 @@ export function AskGroupCard(props: {
 	const group = props.group;
 	const ask = props.onAsk === undefined ? undefined : (action: AskAction) => props.onAsk?.(props.sectionId, action);
 
+	/**
+	 * 自填框的输入草稿；`undefined` = 没在输入（一切跟着答案走）。
+	 *
+	 * ⚠ 草稿是**纯视觉**的：它不写 payload。只有「真的打过字」的那一轮才在失焦时
+	 * 落一次 `custom-input` ⇒ 「一次编辑一次 PATCH」的节奏不变。
+	 */
+	const [draft, setDraft] = useState<AskCustomDraft | undefined>(undefined);
+
 	if (group.empty) {
 		return (
 			<div className="ask-group" data-ask-group-empty="1">
@@ -339,34 +391,47 @@ export function AskGroupCard(props: {
 		);
 	}
 
+	/* 没接作答回调 / 冻结态 ⇒ 没有草稿这回事。 */
+	const shown = askDraftViewOf(group, props.readonly || ask === undefined ? undefined : draft);
+
 	return (
 		<div
 			className="ask-group"
-			data-ask-multi={String(group.multiSelect)}
-			data-ask-state={group.pickedState}
+			data-ask-multi={String(shown.multiSelect)}
+			data-ask-state={shown.pickedState}
 			/*
 			 * 选择态：只要**不是未选择**（`picked` / `none`）⇒ 整个问题页左边打边框。
 			 * 冻结态不打整页，改打选中选项（见 `AskRow` 的 `is-readonly` + CSS）。
 			 */
-			data-ask-active={String(!props.readonly && group.pickedState !== 'unset')}
+			data-ask-active={String(!props.readonly && shown.pickedState !== 'unset')}
 		>
 			<AskGroupHead
-				group={group}
+				group={shown}
 				readonly={props.readonly}
 				{...(ask === undefined ? {} : { onClear: () => ask({ type: 'clear' }) })}
 			/>
 
 			<div className="ask-group__options">
-				{group.options.map((option) => (
+				{shown.options.map((option) => (
 					<AskOptionRow
 						key={option.label}
 						option={option}
-						multiSelect={group.multiSelect}
+						multiSelect={shown.multiSelect}
 						readonly={props.readonly}
 						{...(ask === undefined ? {} : { onPick: (label) => ask({ type: 'pick', label }) })}
 					/>
 				))}
-				<AskCustomRow group={group} readonly={props.readonly} {...(ask === undefined ? {} : { onAsk: ask })} />
+				<AskCustomRow
+					group={group}
+					picked={shown.customActive}
+					/*
+					 * 草稿原样给它 —— 即使叠加结果「没有可见变化」（多选 + 空文字：
+					 * 比如把「还有配色」删空），输入框也必须跟着草稿显示空串。
+					 */
+					draft={draft}
+					readonly={props.readonly}
+					{...(ask === undefined ? {} : { onAsk: ask, onDraft: setDraft })}
+				/>
 			</div>
 		</div>
 	);
