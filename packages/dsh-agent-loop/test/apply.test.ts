@@ -1,6 +1,12 @@
 /**
  * `apply()` 的形状测试 —— 用假 ctx（假总线 / 假定时器 / 假 agent）。
  *
+ * 两处假件的取法直接对应 2026-11-28 真实 profile 的暴雷（当时它们没照真实行为造）：
+ * · **假 ctx 是 Proxy**：读没声明的成员会抛 —— 真实 Cordis ctx 的 inject 闸门
+ *   就是这样（`cannot get property "timer" without inject`），普通对象假 ctx 测不出。
+ * · **假定时器替换 `globalThis`**：宿主侧真的在读全局定时器（见 src 文件头
+ *   「宿主 API 事实」），不给 src 加测试专用注入口。
+ *
  * 覆盖用户裁定里的四条行为：
  * · `inject` **只在**有「用户改过、AI 未读」的卡时发生（且不 followup）；
  * · `followup` **只在**泵开且有「提交/处理中」的 work 卡时发生；
@@ -11,7 +17,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 
 import { TaskState } from '@taskboard/protocol';
 
@@ -85,6 +91,98 @@ function removeEntry(entries: TimerEntry[], handle: unknown): void {
 	if (index >= 0) entries.splice(index, 1);
 }
 
+/* ─────────────────────── 假定时器（替换全局） ─────────────────────── */
+
+/** 手工驱动的假定时器表；`afterEach` 负责还原全局。 */
+interface FakeTimers {
+	readonly intervals: TimerEntry[];
+	readonly timeouts: TimerEntry[];
+	restore(): void;
+}
+
+/** 当前用例装上的假定时器（`afterEach` 还原后置空）。 */
+let installedTimers: FakeTimers | undefined;
+
+/**
+ * 把全局 `setInterval` / `setTimeout` 换成手工驱动的假件。
+ *
+ * ## 为什么替换 `globalThis`，而不是给 src 加 `setTimerBackend(…)` 之类的注入口
+ *
+ * 宿主侧（`src/index.ts`）现在的行为就是**用全局定时器**：真实 Cordis 的 `Context`
+ * 是代理，读 `ctx.setInterval` 会路由到没 `inject` 的 `timer` 服务并**当场抛**
+ * `cannot get property "timer" without inject`（2026-11-28 真实 profile 实测），
+ * `?? 全局` 的回落只是死代码，已经删掉。
+ *
+ * 若改成模块级注入口，测的就是那个开关，而不是「代码去读全局」这条生产事实，
+ * 并且要在生产代码里留一个测试专用 API。替换全局让测试与生产走同一条路，
+ * src 里零测试钩子 —— 这是**实现最小、语义最诚实**的那个。
+ *
+ * 代价是下面一次 `as unknown as`：Node 的真实句柄是 `Timeout` 对象，而假句柄
+ * 只有**身份**语义（`removeEntry` 按引用比）。这是测试替身的固有摩擦，
+ * 不是在掩盖类型错误。
+ */
+function installFakeTimers(): FakeTimers {
+	/* 只声明本包用到的四个口子，句柄是 `unknown` ⇒ 假件不必伪造 `NodeJS.Timeout`。 */
+	const globals = globalThis as unknown as {
+		setInterval(fn: () => void, ms: number): unknown;
+		clearInterval(handle: unknown): void;
+		setTimeout(fn: () => void, ms: number): unknown;
+		clearTimeout(handle: unknown): void;
+	};
+	const real = {
+		setInterval: globals.setInterval,
+		clearInterval: globals.clearInterval,
+		setTimeout: globals.setTimeout,
+		clearTimeout: globals.clearTimeout,
+	};
+
+	const intervals: TimerEntry[] = [];
+	const timeouts: TimerEntry[] = [];
+
+	globals.setInterval = (fn, ms) => {
+		const handle = {};
+		intervals.push({ fn, ms, handle });
+		return handle;
+	};
+	globals.clearInterval = (handle) => {
+		removeEntry(intervals, handle);
+	};
+	globals.setTimeout = (fn, ms) => {
+		const handle = {};
+		timeouts.push({ fn, ms, handle });
+		return handle;
+	};
+	globals.clearTimeout = (handle) => {
+		removeEntry(timeouts, handle);
+	};
+
+	return {
+		intervals,
+		timeouts,
+		restore() {
+			globals.setInterval = real.setInterval;
+			globals.clearInterval = real.clearInterval;
+			globals.setTimeout = real.setTimeout;
+			globals.clearTimeout = real.clearTimeout;
+		},
+	};
+}
+
+/** 取（必要时装上）本用例的假定时器。 */
+function fakeTimersOf(): FakeTimers {
+	installedTimers ??= installFakeTimers();
+	return installedTimers;
+}
+
+/*
+ * 每个用例结束还原全局：用例失败也还原（`afterEach` 照跑），
+ * 否则后面的用例会拿到上一个用例的假件。
+ */
+afterEach(() => {
+	installedTimers?.restore();
+	installedTimers = undefined;
+});
+
 const flush = (): Promise<void> =>
 	new Promise<void>((resolve) => {
 		setImmediate(resolve);
@@ -96,8 +194,7 @@ function harnessOf(initialAgents: readonly AgentFake[] = []): Harness {
 	let agents: readonly AgentFake[] = initialAgents;
 
 	const listeners = new Set<() => void>();
-	const intervals: TimerEntry[] = [];
-	const timeouts: TimerEntry[] = [];
+	const { intervals, timeouts } = fakeTimersOf();
 	const disposers: (() => void)[] = [];
 
 	const bus = {
@@ -112,35 +209,39 @@ function harnessOf(initialAgents: readonly AgentFake[] = []): Harness {
 		},
 	};
 
-	const ctx: ApplyContext = {
-		taskboard3Core: {
-			listWorkspaces: () => [{ id: 'ws-1' }],
-			list: () => cards,
+	/**
+	 * 假 ctx —— **只暴露本行声明过的成员，读别的就抛**。
+	 *
+	 * 真实 Cordis 的 `Context` 是代理：读一个没 `inject` 的服务名会抛
+	 * `cannot get property "<名字>" without inject`，`??` 救不了它 —— 2026-11-28
+	 * 的 bug 正是这样绕过了普通对象假 ctx 的测试。这里照真实行为把「读不认识
+	 * 的成员」变成抛错：以后再往 `apply` 里塞 `ctx.<新东西>` 而没同步 `inject`，
+	 * 这些用例会立刻红，而不是等真实 profile 启动才报 `1 entry did not activate`。
+	 */
+	const ctx: ApplyContext = new Proxy(
+		{
+			taskboard3Core: {
+				listWorkspaces: () => [{ id: 'ws-1' }],
+				list: () => cards,
+			},
+			taskboard3Bus: bus,
+			/* `agents` 只能在用时惰性取（apply 时可能还没注册）。 */
+			get: (serviceName: string) =>
+				serviceName === 'agents' ? { list: () => agents } : undefined,
+			effect: (effect: () => () => void) => {
+				/* 与 Cordis 一致：execute 立刻调用，返回值才是 disposer。 */
+				disposers.push(effect());
+			},
+		} satisfies ApplyContext,
+		{
+			get(target, key, receiver) {
+				if (typeof key === 'string' && Object.hasOwn(target, key)) {
+					return Reflect.get(target, key, receiver);
+				}
+				throw new Error(`cannot get property "${String(key)}" without inject`);
+			},
 		},
-		taskboard3Bus: bus,
-		/* `agents` 只能在用时惰性取（apply 时可能还没注册）。 */
-		get: (serviceName) => (serviceName === 'agents' ? { list: () => agents } : undefined),
-		effect: (effect) => {
-			/* 与 Cordis 一致：execute 立刻调用，返回值才是 disposer。 */
-			disposers.push(effect());
-		},
-		setInterval: (fn, ms) => {
-			const handle = {};
-			intervals.push({ fn, ms, handle });
-			return handle;
-		},
-		clearInterval: (handle) => {
-			removeEntry(intervals, handle);
-		},
-		setTimeout: (fn, ms) => {
-			const handle = {};
-			timeouts.push({ fn, ms, handle });
-			return handle;
-		},
-		clearTimeout: (handle) => {
-			removeEntry(timeouts, handle);
-		},
-	};
+	);
 
 	return {
 		ctx,
