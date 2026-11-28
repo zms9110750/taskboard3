@@ -130,10 +130,20 @@ const DRAWER_VARIANT = DRAWER_VARIANTS[DRAWER_DEFAULT_VARIANT_ID];
  *
  * ⚠ 必须在 slots 服务可用之后调（`client.tsx` 的 `apply(ctx)` 里就可以）。
  *
+ * ## 已核实（`2026-11-28`，源码级）：这里**不泄漏**
+ *
+ * `ctx.slots.inject` 内部第一句就是 `ctx.effect`
+ * （`dsh-client-ui-renderer/lib/client.js:1368-1370`），factory 返回的 disposer 挂在该槽
+ * 「声明寿命」的 effect 上：owner 坍缩时拆、恢复时重装（同文件 `:1394`）、插件卸载时随
+ * 外层 controller 一起清（`:1424-1426`）。
+ *
+ * ⇒ 裸调丢掉返回值的唯一代价是「少了提前手动停的能力」。
+ * **「统一写法」降级为风格选择**：与 `client.tsx` 的 `ctx.effect(...)` 写法不一致只是风格，
+ * 两种都能工作，不必为「统一」去改。
+ *
  * @param ctx 客户端上下文
  * @param options 内容 + 形态
  */
-// TODO(审查): 这里两处 `ctx.slots.inject(...)` 裸调并丢掉 disposer，与 client.tsx:184-253 的 `ctx.effect(...)` 写法不一致；`ctx.slots.inject` 是否自动随 owner 清理未核实 ⇒ 可能是卸载/重装时条目泄漏。可直接统一成一种写法（需先确认 Cordis 语义）。
 export function registerDrawerSlots(ctx: Context, options: DrawerSlotOptions): void {
 	const variant = options.variant ?? DRAWER_DEFAULT_VARIANT_ID;
 	const title = options.title ?? '任务板';

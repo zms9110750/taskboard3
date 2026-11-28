@@ -58,3 +58,8 @@
 
 同日运作模式裁定：lead 只做设计与派发，实操派给子 AI（便宜模型），
 本地仅编译验证，测试一律 GitHub 手动 CI。
+
+同日补充裁定（PR 流程）：**每个 PR 前必须先开 issue 描述问题**——
+issue link 相关 issue / 讨论，PR body link issue（如同真实 GitHub 开发流程；
+无任务描述记录时用 GitHub issue 描述整个过程）。已落 AGENTS §8.7。
+首个按此流程运转的 issue：[#30](https://github.com/zms9110750/taskboard3/issues/30)（Cordis 核实后的 TODO 落档）。
