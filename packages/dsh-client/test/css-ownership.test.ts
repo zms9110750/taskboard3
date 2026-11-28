@@ -146,9 +146,19 @@ void test('SECTION_CSS 非空，且关键规则在（只剩 markdown / 降级 JS
 	for (const rule of ['.md', '.md pre.md-code', '.payload-box']) {
 		assert.ok(SECTION_FROM_NEW.includes(rule), `缺少关键规则：${rule}`);
 	}
-	/* issue #59 / #60：章节外壳与 ask 已搬走，这里不许再出现（两套样式会漂） */
+	/* issue #59 / #60：章节外壳与 ask 已搬走，这里不许再出现（两套样式会漂）。
+	 *
+	 * ⚠ 判的是**规则**，不是注释：`section-css.ts` 的文件头/段首注释里为了讲清
+	 *   "这两套已删"会把 `.section-block` 写成字面量，直接 `includes` 会误伤
+	 *   （CI run #48 就是这样挂的）。所以先把 CSS 注释剥掉再查。
+	 */
+	const sectionRulesOnly = SECTION_FROM_NEW.replace(/\/\*[\s\S]*?\*\//g, '');
 	for (const gone of ['.section-block', '.ask-option']) {
-		assert.equal(SECTION_FROM_NEW.includes(gone), false, `章节样式应只在 SECTION_SHELL_CSS：${gone}`);
+		assert.equal(
+			sectionRulesOnly.includes(gone),
+			false,
+			`章节样式应只在 SECTION_SHELL_CSS：${gone}`,
+		);
 	}
 });
 
