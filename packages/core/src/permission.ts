@@ -37,10 +37,21 @@
  * ```
  * effective(templateRef) =
  *     BASE_TOOLS
+ *   ∪ unclaimed                      ← 未领取：没有工作卡时也生效
  *   ∪ common                         ← 通用：所有工作卡都生效
- *   ∪ ⋃{ groups[g] | ref ∈ groupMembers[g] }   ← 组：批量设置
- *   ∪ templates[ref]                  ← 独立：只对该模板
+ *   ∪ ⋃{ toolsOf(g) | ref ∈ groupMembers[g] }  ← 组：批量设置
+ *   ∪ templates[ref]                 ← 独立：只对该模板
  * ```
+ *
+ * `toolsOf(g)` 的**来源有两种**（issue #66）：
+ *
+ * | 情况 | 组的工具集 |
+ * |---|---|
+ * | 有图（`graph.groups` 非空） | **图上的包含闭包**（直接含 ∪ 被含组，递归） |
+ * | 无图（旧数据 / 从没建过图） | `store.groups[g]` 的增量（旧行为，原样保留） |
+ *
+ * ⇒ 并集语义**一点没变**，变的只是「组的工具集从哪来」。旧数据没有
+ *   `toolGraph:v1` 键 ⇒ 走第二行，一个字都不受影响。
  *
  * ## 「组」不是特殊机制，就是批量设置
  *
@@ -103,6 +114,8 @@
  * ---
  */
 
+import type { ToolGraphDoc } from './tool-graph-doc.ts';
+import { groupToolClosure, hasToolGraph } from './tool-graph-doc.ts';
 
 /*
  * ⚠ 清单先写成**裸字面量 + `as const`**，再导出 widened 版本。
@@ -286,6 +299,14 @@ export interface ToolPolicyStore {
 	readonly groupMembers: Readonly<Record<string, readonly string[]>>;
 	/** **独立档**：`templateRef` → 增量。 */
 	readonly templates: Readonly<Record<string, ToolPolicyDelta>>;
+	/**
+	 * **组图快照**（kv 键 `toolGraph:v1`，与四档策略**分开存**）。
+	 *
+	 * ⚠ 它不是「档位」—— 但 `effectiveToolsOf` 必须同时看图和策略：
+	 *   有图时「组的工具集」来自图的包含闭包，无图时才回退 `groups[g]`。
+	 *   由 `getToolPolicies()` 一并带出，**旧调用方不传 = 无图 = 旧行为**。
+	 */
+	readonly graph?: ToolGraphDoc;
 }
 
 /** 空策略（全部档位为空）。 */
@@ -357,11 +378,26 @@ export function effectiveToolsOf(store: ToolPolicyStore, templateRef: string): r
 	for (const tool of store.common) out.add(tool);
 
 	/*
-	 * 组档：只要这个 templateRef 在某个组的成员里，那个组的增量就生效。
+	 * 组档：只要这个 templateRef 在某个组的成员里，那个组的工具就生效。
 	 * 多个组同时命中 ⇒ 全部叠加（组之间没有优先级，都是增量）。
+	 *
+	 * ## 组的工具集从哪来（issue #66）
+	 *
+	 * | 情况 | 来源 |
+	 * |---|---|
+	 * | 有图（`graph.groups` 非空） | 图上的**包含闭包**（直接含 ∪ 被含组，递归） |
+	 * | 无图 | `groups[groupName]` 的增量 —— **旧行为，逐字保留** |
+	 *
+	 * ⚠ 有图时**不再读 `groups[groupName]`**：图是组的唯一真值，两边都读
+	 *   会让「图上删掉的工具」靠旧增量偷偷复活 —— 那是最难查的一类静默错误。
 	 */
+	const graph = store.graph !== undefined && hasToolGraph(store.graph) ? store.graph : undefined;
 	for (const [groupName, members] of Object.entries(store.groupMembers)) {
 		if (!members.includes(templateRef)) continue;
+		if (graph !== undefined) {
+			for (const tool of groupToolClosure(graph, groupName)) out.add(tool);
+			continue;
+		}
 		const delta = store.groups[groupName];
 		if (delta === undefined) continue;
 		for (const tool of delta) out.add(tool);

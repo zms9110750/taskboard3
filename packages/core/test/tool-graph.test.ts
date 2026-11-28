@@ -26,8 +26,8 @@ import {
 	layoutGraph,
 	orthogonalPath,
 	topoLayers,
-} from '../src/pure/tool-graph.ts';
-import type { ToolGraph } from '../src/pure/tool-graph.ts';
+} from '../src/tool-graph.ts';
+import type { ToolGraph } from '../src/tool-graph.ts';
 
 /** 造一个组节点。 */
 function group(id: string, label = id): { id: string; kind: 'group'; label: string; x: number; y: number } {

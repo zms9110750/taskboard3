@@ -10,6 +10,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./tool-graph": {
+      "types": "./lib/types/tool-graph.d.ts",
+      "default": "./lib/tool-graph.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
