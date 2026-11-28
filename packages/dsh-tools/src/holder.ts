@@ -17,16 +17,20 @@
  * const name = ctx.subagents.namesOf(caller).self;   // 'lead' / 'reviewer/checker'
  * ```
  *
- * ## 三条回落（每一条都有理由，不是「防一手」）
+ * ## 只认名字：拿不到名字 ⇒ 无 holder（`''`）
  *
- * | 情况 | 回落 | 为什么 |
- * |---|---|---|
- * | `exec.agent` 缺席 | `'unknown'` | 工具可以被程序化调用（不经模型），那时没有 agent |
- * | `subagents` 服务不存在 | `agent.id` | 没有 subagent 环境的 profile（单 agent 场景）也该能用任务板 |
- * | `namesOf` 抛错 | `agent.id` | agent 不在 subagent 树里时官方实现就抛 —— UUID 仍是**唯一且稳定**的标识 |
+ * issue #42 Bug 2 + lead `2026-11-28` 裁定（fail-safe）：`subagents` 服务缺席、
+ * `namesOf` 抛错、`self` 空、以及 `exec.agent` 缺席 —— 一律返回 `''`，
+ * **不回落 `agent.id`（UUID），也不再用 `'unknown'` 退化哨兵**。
  *
- * ⚠ 三种回落都**不编名字**：`agent.id` 是 DSH 给的真标识，
- *   而「猜一个名字」会让两个不同的 agent 撞到同一个 holder —— 那比报错坏。
+ * 理由：
+ * - 卡只以名字（`namesOf.self`）被领取 —— UUID 存进卡里既不可读，也会和
+ *   guard 的读语义错位（「领了卡但权限不生效」的静默错误）；
+ * - 权限系统**宁可按「无持有卡」判，也不猜一个 UUID**。身份解析不了时应当
+ *   **不能领卡**（`@taskboard/tools` 的 transition 会以 needHolder 明确失败），
+ *   而不是把卡存进一个 guard 永远匹配不到的 UUID / 退化身份。
+ *
+ * ⚠ 返回值只有两种：**名字**或 `''`（无 holder）。不再有 `'unknown'` 哨兵。
  *
  * ## 为什么 `subagents` 用最小结构接口
  *
@@ -49,30 +53,36 @@ export interface SubagentsLike {
 
 /** `exec` 的最小形状（`ToolRunContext` 的字段子集）。 */
 export interface ExecLike {
+	/**
+	 * ⚠ `id` 仍如实保留（`exec.agent` 的实际字段），但 issue #42 Bug 2 之后
+	 *   **holder 不再用它回落** —— 拿不到名字就是无 holder，不猜 UUID。
+	 */
 	readonly agent?: { readonly id?: string } | undefined;
 }
 
 /**
  * 取 holder 名字。
  *
- * @param subagents `ctx.subagents`；可缺席（见文件头的回落表）
+ * @param subagents `ctx.subagents`；可缺席（缺席 ⇒ `''`，见文件头）
  * @param exec 工具执行上下文
- * @returns `'lead'` / `'reviewer/checker'` / agent UUID / `'unknown'`
+ * @returns `'lead'` / `'reviewer/checker'` / `''`（拿不到身份）
  */
 export function holderOf(subagents: unknown, exec: unknown): string {
-	/* ① 没有 agent 上下文（程序化调用 / standalone）⇒ 不知道是谁。 */
+	/* ① 没有 agent 上下文（程序化调用 / standalone）⇒ 无 holder（'unknown' 已删除）。 */
 	const agent = agentOf(exec);
-	if (agent === undefined) return 'unknown';
+	if (agent === undefined) return '';
 
-	/* ② 没有 subagents 服务 ⇒ 用 UUID。它唯一、稳定，只是不好看。 */
-	if (!hasNamesOf(subagents)) return idOf(agent);
+	/* ② 没有 subagents 服务 ⇒ 拿不到名字 ⇒ 无 holder（issue #42 Bug 2）。 */
+	if (!hasNamesOf(subagents)) return '';
 
-	/* ③ 有服务但 agent 不在 subagent 树里 ⇒ 官方实现会抛 ⇒ 回落 UUID。 */
+	/* ③ 有服务但 agent 不在 subagent 树里 ⇒ 官方实现会抛 ⇒ 同样无 holder。 */
 	try {
-		return subagents.namesOf(agent).self;
+		const name = subagents.namesOf(agent).self;
+		if (typeof name === 'string' && name !== '') return name;
 	} catch {
-		return idOf(agent);
+		/* 不在树里 ⇒ 无 holder。不编名字，也不猜 UUID（issue #42 Bug 2）。 */
 	}
+	return '';
 }
 
 /** 从 `exec` 取 agent（缺席时 `undefined`）。 */
@@ -81,12 +91,6 @@ function agentOf(exec: unknown): { readonly id?: string } | undefined {
 	const agent = (exec as { agent?: unknown }).agent;
 	if (typeof agent !== 'object' || agent === null) return undefined;
 	return agent as { readonly id?: string };
-}
-
-/** 取 agent 的 UUID；缺席时回落 `'unknown'`。 */
-function idOf(agent: { readonly id?: string }): string {
-	const id = agent.id;
-	return typeof id === 'string' && id !== '' ? id : 'unknown';
 }
 
 /** 判断对象是否有可用的 `namesOf`。 */

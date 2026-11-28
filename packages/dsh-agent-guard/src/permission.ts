@@ -72,20 +72,23 @@ import { judgeToolCall, readToolGuardLevelOf, type ToolGuardKv } from './tool-gu
 /**
  * `ctx.subagents` 的最小形状 —— 本文件只用到 `namesOf`。
  *
- * ⚠ 与 `holder.ts` 的 `SubagentsLike` **故意不合并**：
- *   两者现在字段相同，但用途不同（holder 用名字落库、guard 用名字找持有卡）。
- *   合并会让「只是要个名字」的地方被迫接受更多方法。
+ * ⚠ 与 `@taskboard/dsh-tools` 的 `SubagentsLike` 形状相同但**不合并**：
+ *   issue #42 Bug 2 之后本包的 `holderOf` 刻意 fail-safe（拿不到名字 ⇒ `''`，
+ *   不回落 UUID），而 dsh-tools 版在「服务缺席 / 抛错」时仍回落 UUID ——
+ *   直接复用它的 `holderOf` 会把这个差异带回来。两份语义的完整收敛待跨包决定。
  *
  * ⚠ `namesOf` 会**抛错**（agent 不在任何 subagent 树里）⇒ 调用方必须 try/catch。
  */
-// TODO(审查): 这条「与 holder.ts 的 SubagentsLike 故意不合并」的理由已被推翻：@taskboard/dsh-tools 的
-//   holder.ts 存在且导出 holderOf，本包应直接复用而不是维护第二份。需用户决定：删掉本接口并 import
-//   dsh-tools 的类型（依赖方向本来就允许）。
 export interface PermissionSubagentsLike {
 	namesOf(agent: unknown): { readonly self: string };
 }
 
-/** 从 `exec` 取 agent（缺席时 `undefined`）。 */
+/**
+ * 从 `exec` 取 agent（缺席时 `undefined`）。
+ *
+ * ⚠ `id` 仍如实保留在形状里（`exec.agent` 的实际字段），但 issue #42 Bug 2 之后
+ *   **holder 不再用它回落** —— 拿不到名字就是无 holder，不猜 UUID。
+ */
 interface AgentLike {
 	readonly id?: string;
 	readonly session?: unknown;
@@ -107,36 +110,42 @@ function hasSubagents(value: unknown): value is PermissionSubagentsLike {
 /**
  * 取本次调用的 holder（卡片持有者标识）。
  *
- * 三条回落与 `holder.ts` 完全一致 —— **必须一致**，否则
- * 「claim 时存的 holder」和「guard 时找的 holder」会对不上，
- * 表现是「领了卡但权限不生效」这种静默错误。
+ * ## 只认名字；拿不到名字 ⇒ 无 holder（`''`）—— issue #42 Bug 2（lead 裁定）
+ *
+ * 两条曾经的回落都已删除：
+ * - `namesOf` 空串 / 缺席 / 抛错时回落 `agent.id`（UUID）—— 卡只以名字被领取，
+ *   UUID 永远查不到已领卡（死语义），且一旦有人在 UUID 下领卡就会和 tools 写语义错位；
+ * - `exec.agent` 缺席时回落 `'unknown'` —— 退化身份（guard 永不匹配、程序化调用方共享），
+ *   同样不该能领卡（claim 走 needHolder 明确失败）。
+ *
+ * ⇒ 统一到 fail-safe 的 `''`：权限系统**宁可按「无持有卡」判**，不猜 UUID、也不用退化哨兵。
+ * `heldWorkCardsOf('')` 直接返回空数组（见下面该函数的第一条分支），不会误匹配任何卡。
+ *
+ * ⚠ 与 `@taskboard/dsh-tools` 的 `holder.ts` 语义已一致（服务缺席 / 抛错 / 空 self /
+ *   agent 缺席都是 `''`）。
  *
  * @param subagents `ctx.subagents`；可缺席（无 subagent 的 profile）
  * @param exec 工具执行上下文
  * @param agent 已经解析过的 `exec.agent`（可选）。`createPermissionGuard` 自己解析过一次，
  *   传进来避免对同一个 `exec` 解析两遍；省略时内部仍从 `exec` 解析（向后兼容）。
  */
-// TODO(审查): 与 @taskboard/dsh-tools holder.ts 的 holderOf 有一处行为分歧：namesOf 返回空 self 时，
-//   本函数回落 agent.id，而 dsh-tools 版直接返回 ''。claim 用 dsh-tools 写、guard 用本函数读 ⇒ 空 self
-//   的 agent 领卡后 holder 对不上，权限静默不生效（推断 root 的 self 为空，未核实）。需用户决定语义后
-//   两边只留一份（建议直接复用 dsh-tools 的 holderOf）。
 export function holderOf(
 	subagents: unknown,
 	exec: unknown,
 	agent: AgentLike | undefined = agentOf(exec),
 ): string {
-	if (agent === undefined) return 'unknown';
+	/* ① 没有 agent 上下文（程序化调用）⇒ 无 holder（'unknown' 哨兵已删除）。 */
+	if (agent === undefined) return '';
 
-	const id = typeof agent.id === 'string' && agent.id !== '' ? agent.id : 'unknown';
-	if (!hasSubagents(subagents)) return id;
+	if (!hasSubagents(subagents)) return '';
 
 	try {
 		const name = subagents.namesOf(agent).self;
 		if (typeof name === 'string' && name !== '') return name;
 	} catch {
-		/* 不在树里 ⇒ 回落 UUID。**不编名字** —— 猜名字会让两个 agent 撞到同一个 holder。 */
+		/* 不在树里 ⇒ 无 holder。**不编名字，也不猜 UUID**（见上）。 */
 	}
-	return id;
+	return '';
 }
 
 /* ────────────────────────── 持有卡 ────────────────────────── */
@@ -162,6 +171,7 @@ export function heldWorkCardsOf(
 	taskboard: Taskboard,
 	holder: string,
 ): { readonly cards: readonly Card[]; readonly workspaceId: string } {
+	/* `'unknown'` 是旧数据兼容：历史程序化领取可能写入过它，仍按无卡判（fail-safe）。 */
 	if (holder === '' || holder === 'unknown') return { cards: [], workspaceId: '' };
 
 	const workspace = taskboard.listWorkspaces(false)[0];

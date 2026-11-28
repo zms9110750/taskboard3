@@ -197,17 +197,22 @@ export interface PermissionFacts {
  * | # | 条件 | 结果 |
  * |---|---|---|
  * | ④ | `toolLevel === 'off'` | **放行** |
- * | ⑤ | `toolName ∈ POLICY_TOOLS` | `manage-edit` ⇒ 放行；否则拒绝 |
- * | ⑥ | `toolName ∈ BASE_TOOLS` | **放行** |
- * | ⑦ | `heldCards` 为空 | 拒绝 |
- * | ⑧ | `heldCards` 多于一张 | 拒绝 |
- * | ⑨ | `toolName ∈ effectiveToolsOf(那张卡的模板)` | **放行** |
- * | ⑩ | 否则 | 拒绝 |
+ * | ⑤ | `toolName === 'taskboard_tool_policy_read'` | **放行**（只读，无门槛） |
+ * | ⑥ | `toolName ∈ POLICY_TOOLS` | `manage-edit` ⇒ 放行；否则拒绝 |
+ * | ⑦ | `toolName ∈ BASE_TOOLS` | **放行** |
+ * | ⑧ | `heldCards` 为空 | 拒绝 |
+ * | ⑨ | `heldCards` 多于一张 | 拒绝 |
+ * | ⑩ | `toolName ∈ effectiveToolsOf(那张卡的模板)` | **放行** |
+ * | ⑪ | 否则 | 拒绝 |
  *
  * ⚠ 第一段必须在第二段之前 —— 正交语义的实现。`toolLevel === 'off'`
  *   只说明「宿主不管理工具」，不等于「用户放开了领卡」。
  *
- * ⚠ ⑤ 在 ⑥ 之前 —— 权限管理工具能改写权限本身（等于「给自己发权限」）。
+ * ⚠ ⑤ 是**读**：永远放行；⑥ 是**写**：必须 `manage-edit`。
+ *   只读工具没有门槛（`tool-policy-read.ts:13-14` 自述），不放行会让用户
+ *   连「当前档位是什么」都查不了，无法自我诊断（issue #42 Bug 1）。
+ *
+ * ⚠ ⑥ 在 ⑦ 之前 —— 权限管理工具能改写权限本身（等于「给自己发权限」）。
  *
  * ⚠ 没持有卡 / 多张卡 / 卡不授予 —— 三种拒绝的理由必须不同，AI 才能决定下一步。
  */
@@ -244,6 +249,18 @@ export function judgeToolCall(input: ToolCallJudgement, facts: PermissionFacts):
 	/* ── 第二段：其它工具。只看 toolLevel。 ── */
 
 	if (toolLevel === 'off') return ALLOW;
+
+	/*
+	 * 读：无门槛（issue #42 Bug 1）；写：manage-edit。
+	 *
+	 * `taskboard_tool_policy_read` 只读不写（`tool-policy-read.ts:13-14`：
+	 * 「读：无门槛，只看得到」），但它不在 BASE / POLICY / EXECUTION / READONLY
+	 * 任何一个集合里 —— 不在这里单独放行就会落到 ⑧「没持卡 ⇒ 拒绝」，
+	 * 用户连当前档位都查不了，无法自我诊断。
+	 *
+	 * 写工具 `taskboard_tool_policy` 照旧走下面的 `isPolicyTool` 分支。
+	 */
+	if (toolName === 'taskboard_tool_policy_read') return ALLOW;
 
 	if (isPolicyTool(toolName)) {
 		if (toolLevel === 'manage-edit') return ALLOW;

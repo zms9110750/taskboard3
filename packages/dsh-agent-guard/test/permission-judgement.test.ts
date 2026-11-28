@@ -485,7 +485,7 @@ interface MatrixCase {
 }
 
 /**
- * 3 档 cardLevel × 3 档 toolLevel × 7 个关键工具 / 状态组合，全表走一遍。
+ * 3 档 cardLevel × 3 档 toolLevel × 9 个关键工具 / 状态组合，全表走一遍。
  *
  * ⚠ 这里的 `allow` 是**从规则表抄下来的独立重述**，不是调用被测实现算出来的
  *   —— 否则矩阵只是把同一段代码跑两遍，验不出任何东西。
@@ -500,19 +500,22 @@ const MATRIX_CASES: readonly MatrixCase[] = [
 	/* ③ adopt：只看 cardLevel。 */
 	{ toolName: 'taskboard_adopt', allow: (cardLevel) => cardLevel === 'adopt' },
 
-	/* ④ 权限管理工具：只看 toolLevel（off 在 ⑤ 先放行；manage-edit 放开）。 */
+	/* ④ 权限管理工具（写）：只看 toolLevel（off 先放行；manage-edit 放开）。 */
 	{
 		toolName: 'taskboard_tool_policy',
 		allow: (_cardLevel, toolLevel) => toolLevel === 'off' || toolLevel === 'manage-edit',
 	},
 
-	/* ⑤ BASE 工具（非领卡类）：manage / manage-edit 放行；off 也放行。 */
+	/* ⑤ 权限管理工具（读）：无门槛，任何轴组合都放行（issue #42 Bug 1）。 */
+	{ toolName: 'taskboard_tool_policy_read', allow: () => true },
+
+	/* ⑥ BASE 工具（非领卡类）：manage / manage-edit 放行；off 也放行。 */
 	{ toolName: 'taskboard_cards', allow: () => true },
 
-	/* ⑥ 执行类 + 无卡：只有 off 放行。 */
+	/* ⑦ 执行类 + 无卡：只有 off 放行。 */
 	{ toolName: 'bash', allow: (_cardLevel, toolLevel) => toolLevel === 'off' },
 
-	/* ⑦ 执行类 + 拿卡 + 模板授予：off 放行，manage / manage-edit 也放行。 */
+	/* ⑧ 执行类 + 拿卡 + 模板授予：off 放行，manage / manage-edit 也放行。 */
 	{
 		toolName: 'bash',
 		heldCards: [{ templateRef: 'writeCode' }],
@@ -520,7 +523,7 @@ const MATRIX_CASES: readonly MatrixCase[] = [
 		allow: () => true,
 	},
 
-	/* ⑧ 执行类 + 拿卡 + 模板没授予：只有 off 放行。 */
+	/* ⑨ 执行类 + 拿卡 + 模板没授予：只有 off 放行。 */
 	{
 		toolName: 'bash',
 		heldCards: [{ templateRef: 'writeCode' }],

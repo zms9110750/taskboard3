@@ -24,7 +24,7 @@
  *
  * | ctx 字段 | 来源 | 说明 |
  * |---|---|---|
- * | `holder` | `holderOf(deps.subagents, exec)` | 与 v1 同一实现（`src/holder.ts`）：subagent 名字 → UUID → unknown 三条回落 |
+ * | `holder` | `holderOf(deps.subagents, exec)` | 与 v1 同一实现（`src/holder.ts`）：subagent 名字优先；agent 缺席 / 拿不到名字 ⇒ `''`（issue #42 Bug 2：不回落 UUID、无 'unknown' 哨兵） |
  * | `canManageToolPolicies` | `deps.isManageEdit()` | 由 `@taskboard/dsh-agent-guard` 的插件行决定：`packages/dsh-agent-guard/src/index.ts` 的 `service.isManageEdit` 读该包 kv 的三档位（`readToolGuardLevelOf(kv) === 'manage-edit'`）。本包**不 import 那一行**（关掉它不能让本行崩）；服务缺席 ⇒ 一律 `false` |
  *
  * ⚠ **不注入 `resolveDefaultWorkspace` / `activeWorkspaceId`**：用户 `2026-11-22`
@@ -100,8 +100,9 @@ export interface ToolDeps {
 	/**
 	 * `ctx.subagents` —— 用来取当前 agent 的**名字**（holder）。
 	 *
-	 * ⚠ 可以是 `undefined`：没有 subagent 环境的 profile 也该能用任务板。
-	 *   那时 holder 回落 `agent.id`（UUID）。见 `src/holder.ts`。
+	 * ⚠ 可以是 `undefined`：没有 subagent 环境的 profile 仍能用读取类工具；
+	 *   但 holder 为 `''`（无 holder，issue #42 Bug 2：不回落 UUID）⇒
+	 *   claim / release 等需要身份的动作会以 needHolder 明确失败。见 `src/holder.ts`。
 	 */
 	readonly subagents?: unknown;
 	/**

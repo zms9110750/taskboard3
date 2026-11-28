@@ -56,9 +56,6 @@
  * TODO(审查): package.json:30-37 把 peer `@deepseek-ai/dsh-tools` 标成 optional，但 src/tools.ts 经
  *   @taskboard/dsh-tools 运行时必然 require 它 ⇒ 缺它时本包不是降级而是 import 失败。
  *   可直接改：改必选 peer，或 tools.ts 动态导入降级；发布口径需用户确认。
- * TODO(审查): test/guard.test.ts:174-176 断言「namesOf 返回空串 ⇒ 回落 agent.id」，正是与 dsh-tools
- *   holderOf 的分歧行为（见 permission.ts 内 TODO）。两版 holder 尚未统一，**断言先不改**；
- *   统一后这条要么随实现删，要么移到 dsh-tools 的 holder 测试里。
  * TODO(审查): 两个工具的 hosts:['dsh'] 过滤与 adaptDefinitions 的 schema 转换在本包零覆盖（测试用假
  *   defineTool 直接调 handler）。可直接改：补一条经真实 adaptDefinitions 的 schema 形状断言。
  * TODO(审查): lib/.tsbuildinfo#2 是产物目录里的旁路残留（tsconfig:7 指定 ./lib/.tsbuildinfo）。
@@ -147,7 +144,8 @@ export interface ApplyContext {
 	 *
 	 * 用户 `2026-11-27` 裁定：身份（subagents）不再走 `ctx.get` + 手写形状检测，
 	 * 改走 DI —— 服务出现时更新 cell、消失时清空，guard 每次判定读当前值
-	 * （修复旧实现「服务晚到就永久拿不到，holder 永远回落 UUID」的问题）。
+	 * （修复旧实现「服务晚到就永久拿不到，holder 永远回落 UUID」的问题 ——
+	 * 注意 issue #42 Bug 2 之后已不再回落 UUID，拿不到名字就是**无 holder**）。
 	 */
 	inject?(
 		deps: readonly string[],
@@ -185,7 +183,7 @@ export function apply(ctx: ApplyContext, _config: Config = {}): void {
 	 * · guard 每次判定都读 cell 的**当前值**（`resolveSubagents`）—— 晚激活的
 	 *   subagents 也能被看到，不再有「晚到就永久拿不到」。
 	 * · 没有 `ctx.inject`（假 ctx / 老宿主）⇒ cell 一直是 `undefined`，
-	 *   holder 回落 `agent.id` —— 与旧行为里「没有 subagents 服务」一致。
+	 *   holder 拿不到名字 ⇒ **无 holder**（issue #42 Bug 2：不回落 `agent.id`）。
 	 */
 	let subagentsCell: unknown;
 	ctx.inject?.(['subagents'], (scope) => {

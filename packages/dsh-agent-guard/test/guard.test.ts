@@ -5,7 +5,7 @@
  *
  * | 层 | 测什么 | 为什么分开 |
  * |---|---|---|
- * | `holderOf` | 卡片持有者标识怎么取 | 三条回落，且必须与 `holder.ts` 一致 |
+ * | `holderOf` | 卡片持有者标识怎么取 | 只认名字；拿不到名字 ⇒ 无 holder（`''`），不回落 UUID（issue #42 Bug 2） |
  * | `heldWorkCardsOf` | 收集持有的工作卡 | 「只查第一个空间」这个已知限制的后果 |
  * | `createPermissionGuard` | 端到端：两条正交轴的档位组合 | 真正的行为 |
  * | 依赖面 | `judgeToolCall` 收到什么、**不**读什么 | 防止「悄悄又接回 DSH 预设」 |
@@ -161,43 +161,49 @@ describe('holderOf', () => {
 		assert.equal(holderOf(subagentsOf('reviewer/checker'), execOf({ agent: { id: 'uuid' } })), 'reviewer/checker');
 	});
 
-	it('agent 缺席 ⇒ unknown', () => {
-		assert.equal(holderOf(subagentsOf('lead'), execOf({})), 'unknown');
+	it('agent 缺席 ⇒ 无 holder（空串，不猜身份；issue #42）', () => {
+		assert.equal(holderOf(subagentsOf('lead'), execOf({})), '');
 	});
 
-	it('没有 subagents 服务 ⇒ 回落 agent.id', () => {
-		assert.equal(holderOf(undefined, execOf({ agent: { id: 'solo-uuid' } })), 'solo-uuid');
+	it('没有 subagents 服务 ⇒ 无 holder（不猜 UUID；issue #42 Bug 2）', () => {
+		assert.equal(holderOf(undefined, execOf({ agent: { id: 'solo-uuid' } })), '');
 	});
 
-	it('namesOf 抛错 ⇒ 回落 agent.id（不编名字）', () => {
+	it('namesOf 抛错 ⇒ 无 holder（不猜 UUID；issue #42 Bug 2）', () => {
 		const subagents: PermissionSubagentsLike = {
 			namesOf() {
 				throw new Error('not in tree');
 			},
 		};
-		assert.equal(holderOf(subagents, execOf({ agent: { id: 'self-uuid' } })), 'self-uuid');
+		assert.equal(holderOf(subagents, execOf({ agent: { id: 'self-uuid' } })), '');
 	});
 
 	/*
-	 * ⚠ 这条钉的是**本包私有 holderOf** 的语义：空名字 ⇒ 回落 agent.id。
+	 * ⚠ issue #42 Bug 2（lead 裁定：统一到 fail-safe 的 `''`）。
 	 *
-	 * `@taskboard/dsh-tools` 的 `holderOf`（`src/holder.ts`）没有这一条 ——
-	 * `namesOf` 返回 `''` 时它直接返回 `''`。两版尚未统一：claim 由 dsh-tools 写、
-	 * guard 由本函数读，空 self 的 agent 会出现「领了卡但权限不生效」的静默错误。
+	 * 本包 holderOf 曾经在 namesOf 空串 / 缺席 / 抛错时回落 `agent.id`（UUID）；
+	 * 但卡只会以 `namesOf.self`（名字）被领取 ⇒ UUID 回落**永远查不到已领卡**，
+	 * 是死语义 + 地雷（有人在 UUID 下领卡时 guard 与 tools 的读写语义就会错位）。
 	 *
-	 * 见 `src/permission.ts` 里 `holderOf` 上的 TODO(审查)（待用户决定语义后合并成一份）。
-	 * **断言不改**：它现在如实反映本包的行为，改掉就等于假装统一已经发生。
+	 * ⇒ 现在三种拿不到名字的情况都当作**无 holder**，判定走「无持有卡」路径
+	 *   （`heldWorkCardsOf('')` 直接返回空数组，不会误匹配）。
 	 */
-	it('namesOf 返回空串 ⇒ 回落 agent.id（本包私有语义，与 dsh-tools 版有分歧）', () => {
-		assert.equal(holderOf(subagentsOf(''), execOf({ agent: { id: 'u' } })), 'u');
+	it('namesOf 返回空串 ⇒ 无 holder（不回落 agent.id；issue #42 Bug 2）', () => {
+		assert.equal(holderOf(subagentsOf(''), execOf({ agent: { id: 'u' } })), '');
 	});
 
-	it('subagents 形状不全（没有 namesOf）⇒ 当成没有服务', () => {
-		assert.equal(holderOf({ rootOf: () => ({ id: 'x' }) }, execOf({ agent: { id: 'u' } })), 'u');
+	it('namesOf 的 self 缺席（非字符串）⇒ 无 holder（不回落 agent.id）', () => {
+		/* 类型声明保证不了运行时形状：显式模拟 self 缺失，钉住回落分支。 */
+		const subagents = { namesOf: () => ({}) } as unknown as PermissionSubagentsLike;
+		assert.equal(holderOf(subagents, execOf({ agent: { id: 'u' } })), '');
 	});
 
-	it('agent.id 为空 ⇒ unknown', () => {
-		assert.equal(holderOf(undefined, execOf({ agent: { id: '' } })), 'unknown');
+	it('subagents 形状不全（没有 namesOf）⇒ 无 holder', () => {
+		assert.equal(holderOf({ rootOf: () => ({ id: 'x' }) }, execOf({ agent: { id: 'u' } })), '');
+	});
+
+	it('agent 存在但 id 为空 ⇒ 无 holder（id 已不参与判定）', () => {
+		assert.equal(holderOf(undefined, execOf({ agent: { id: '' } })), '');
 	});
 });
 
@@ -233,7 +239,7 @@ describe('heldWorkCardsOf', () => {
 		assert.equal(cards.length, 0, '草稿 / 提交态不算「领取了工作」');
 	});
 
-	it('holder 为空或 unknown ⇒ 空数组（不查）', () => {
+	it('holder 为空（或旧数据 unknown）⇒ 空数组（不查）', () => {
 		assert.deepEqual(heldWorkCardsOf(tb(), '').cards, []);
 		assert.deepEqual(heldWorkCardsOf(tb(), 'unknown').cards, []);
 	});
@@ -327,6 +333,21 @@ describe('createPermissionGuard', () => {
 		assert.ok(verdict?.includes('工作卡'), `理由应说清要领卡：${verdict}`);
 	});
 
+	it('⚠ holder 为空串 ⇒ 按无持有卡判（空 self 不猜 UUID；issue #42 Bug 2）', async () => {
+		/*
+		 * 布置一张被 `lead` 持有的卡，但 namesOf 返回空串。
+		 * 若旧语义回落 agent.id，而这里 agent.id 恰好是 `lead`，
+		 * guard 就会「找到」这张卡、走进「模板不授予」分支；
+		 * 新语义把空 self 当无 holder ⇒ 必须走「没有持有任何工作卡」。
+		 */
+		await writeToolGuardLevel(store, 'manage');
+		await claimedWorkCard('空 self 领的卡', 'lead');
+		const guard = guardOf({ subagents: subagentsOf('') });
+		const verdict = guard(exec('bash', 'lead'));
+		assert.notEqual(verdict, undefined, '空 holder 没有卡，bash 该被拒');
+		assert.ok(verdict?.includes('没有持有任何工作卡'), `应走无卡路径，而不是按 agent.id 找卡：${verdict}`);
+	});
+
 	it('toolLevel=manage + 持有卡但独立档没有 ⇒ 拒绝', async () => {
 		await writeToolGuardLevel(store, 'manage');
 		await claimedWorkCard('要写代码', 'lead');
@@ -374,6 +395,24 @@ describe('createPermissionGuard', () => {
 		assert.equal(guard(exec('bash')), undefined, '卡在组里 ⇒ 组增量生效');
 	});
 
+	it('⚠ 只读权限工具：manage + 未持卡也放行（读：无门槛；issue #42 Bug 1）', async () => {
+		/*
+		 * `taskboard_tool_policy_read` 不在 BASE / POLICY / EXECUTION / READONLY
+		 * 任何集合里 —— 修复前会落到「没持卡 ⇒ 拒绝」，用户连当前档位都查不了。
+		 */
+		await writeToolGuardLevel(store, 'manage');
+		const guard = guardOf({ subagents: subagentsOf('lead') });
+		assert.equal(guard(exec('taskboard_tool_policy_read')), undefined, '读工具不该要求持卡');
+	});
+
+	it('⚠ 写权限工具：manage（无 manage-edit）仍拒绝（读放行不连带写；issue #42 Bug 1 回归）', async () => {
+		await writeToolGuardLevel(store, 'manage');
+		const guard = guardOf({ subagents: subagentsOf('lead') });
+		const verdict = guard(exec('taskboard_tool_policy'));
+		assert.notEqual(verdict, undefined, '写工具仍受 manage-edit 管');
+		assert.ok(verdict?.includes('允许编辑档位权限'), `理由该指向那一档：${verdict}`);
+	});
+
 	it('⚠ 权限管理工具：manage 拒、manage-edit 放行', async () => {
 		await writeToolGuardLevel(store, 'manage');
 		let guard = guardOf({ subagents: subagentsOf('lead') });
@@ -388,7 +427,7 @@ describe('createPermissionGuard', () => {
 
 	it('⚠ 即使把权限工具写进 common 增量，manage 下仍拒绝', async () => {
 		/*
-		 * core 的判定 ⑤ 在 ⑥（BASE）与四档之前 —— 这是**结构性**保护。
+		 * core 的判定 ⑥ 在 ⑦（BASE）与四档之前 —— 这是**结构性**保护。
 		 * 这里从 dsh 侧确认：把权限工具配进 common 也绕不过去。
 		 */
 		await writeToolGuardLevel(store, 'manage');
@@ -504,7 +543,7 @@ describe('createPermissionGuard', () => {
 			resolveSubagents: () => cell,
 		});
 
-		/* cell 空 ⇒ 回落 agent.id（同「没有 subagents 服务」）。 */
+		/* cell 空 ⇒ 无 holder（issue #42 Bug 2：不再猜 agent.id）⇒ 按无卡判。 */
 		await writeToolGuardLevel(store, 'manage');
 		assert.ok(guard(exec('bash', 'uuid-1')) !== undefined, 'manage 且无持有卡应拒');
 
@@ -513,9 +552,9 @@ describe('createPermissionGuard', () => {
 		const verdictWithService = guard(exec('bash', 'uuid-1'));
 		assert.ok(verdictWithService !== undefined, '无持有卡仍应拒（只是 holder 名字变了）');
 
-		/* 服务消失 ⇒ 回落 agent.id，判定照常走。 */
+		/* 服务消失 ⇒ 无 holder，判定照常走（仍是「无卡 ⇒ 拒」）。 */
 		cell = undefined;
-		assert.ok(guard(exec('bash', 'uuid-1')) !== undefined, 'cell 清空后回落 agent.id，不影响档位判定');
+		assert.ok(guard(exec('bash', 'uuid-1')) !== undefined, 'cell 清空后按无 holder 判，不影响档位判定');
 	});
 });
 
