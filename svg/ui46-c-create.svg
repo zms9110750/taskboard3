@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="820" viewBox="0 0 1180 820" font-family="Segoe UI, Microsoft YaHei, sans-serif">
+  <rect x="1" y="1" width="1178" height="818" rx="18" fill="#ffffff" stroke="#d0d7de"/>
+
+  <text x="40" y="50" font-size="22" font-weight="700" fill="#1f2328">46-C · 建卡与章节编辑 · 组件拆分提案</text>
+  <text x="40" y="76" font-size="13" fill="#59636e">对应 #59 建卡编辑内容没有 CSS / #60 建卡期与草稿期的章节 CSS 不是同一套</text>
+
+  <!-- 现状 -->
+  <text x="40" y="112" font-size="14" font-weight="700" fill="#1f2328">① 现状：两套渲染，看起来是两个产品</text>
+
+  <rect x="40" y="126" width="536" height="210" rx="12" fill="#fff5f5" stroke="#cf222e"/>
+  <text x="56" y="150" font-size="12" font-weight="700" fill="#a40e26">建卡页（截图 10）</text>
+  <rect x="56" y="162" width="504" height="158" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="70" y="184" font-size="11" fill="#59636e">1  需要回答的问题            内容类型：选项（ask）▾</text>
+  <line x1="70" y1="194" x2="546" y2="194" stroke="#eaeef2"/>
+  <text x="70" y="212" font-size="11" fill="#1f2328">问题组 1 / 1 [删除这组]</text>
+  <rect x="70" y="220" width="90" height="20" rx="3" fill="#ffffff" stroke="#8c959f"/><text x="76" y="234" font-size="10" fill="#1f2328">问题</text>
+  <rect x="166" y="220" width="120" height="20" rx="3" fill="#ffffff" stroke="#8c959f"/><text x="172" y="234" font-size="10" fill="#59636e">这个问题？</text>
+  <rect x="292" y="220" width="90" height="20" rx="3" fill="#ffffff" stroke="#8c959f"/><text x="298" y="234" font-size="10" fill="#59636e">灰字提示</text>
+  <text x="70" y="258" font-size="11" fill="#1f2328">选项　◉ 单选 ○ 多选</text>
+  <rect x="70" y="266" width="100" height="20" rx="3" fill="#ffffff" stroke="#8c959f"/><text x="76" y="280" font-size="10" fill="#59636e">选项文字</text>
+  <rect x="176" y="266" width="110" height="20" rx="3" fill="#ffffff" stroke="#8c959f"/><text x="182" y="280" font-size="10" fill="#59636e">说明（可空）</text>
+  <rect x="292" y="266" width="18" height="20" rx="3" fill="#ffffff" stroke="#8c959f"/><text x="297" y="280" font-size="10" fill="#59636e">×</text>
+  <rect x="70" y="292" width="86" height="20" rx="3" fill="#ffffff" stroke="#8c959f"/><text x="76" y="306" font-size="10" fill="#1f2328">+ 添加选项</text>
+  <text x="56" y="338" font-size="11" fill="#a40e26">无章节容器、无内边距、无标签语义 —— 裸 input 堆叠</text>
+
+  <rect x="600" y="126" width="540" height="210" rx="12" fill="#f0fff4" stroke="#1a7f37"/>
+  <text x="616" y="150" font-size="12" font-weight="700" fill="#0f5323">详情页（截图 11）</text>
+  <rect x="616" y="162" width="508" height="158" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <rect x="630" y="174" width="480" height="112" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="646" y="196" font-size="11" fill="#1f2328">需要回答的问题</text>
+  <rect x="716" y="184" width="40" height="16" rx="8" fill="#eaeef2"/><text x="724" y="196" font-size="9" fill="#59636e">选项</text>
+  <text x="646" y="218" font-size="11" font-weight="600" fill="#1f2328">这个问题</text>
+  <rect x="860" y="206" width="46" height="16" rx="8" fill="#ffffff" stroke="#d0d7de"/><text x="868" y="218" font-size="9" fill="#59636e">未选择</text>
+  <rect x="646" y="228" width="440" height="22" rx="6" fill="#ddf4ff" stroke="#1f6feb"/>
+  <circle cx="660" cy="239" r="4" fill="#1f6feb"/><text x="672" y="243" font-size="10" fill="#1f2328">你好</text>
+  <rect x="646" y="256" width="440" height="22" rx="6" fill="#ffffff" stroke="#d0d7de"/>
+  <circle cx="660" cy="267" r="4" fill="none" stroke="#8c959f"/><text x="672" y="271" font-size="10" fill="#1f2328">你好啊</text>
+  <text x="616" y="338" font-size="11" fill="#0f5323">章节卡、圆角选项行、选中高亮、徽章 —— 完整样式</text>
+
+  <text x="600" y="112" font-size="14" font-weight="700" fill="#1f2328">　</text>
+
+  <!-- 目标 -->
+  <text x="40" y="374" font-size="14" font-weight="700" fill="#1f2328">② 目标：一个 SectionShell，三种 mode，一套 CSS</text>
+
+  <!-- SectionShell -->
+  <rect x="40" y="390" width="600" height="66" rx="12" fill="#fbf7ff" stroke="#8250df" stroke-width="1.8" stroke-dasharray="7 4"/>
+  <text x="58" y="416" font-size="14" font-weight="700" font-family="Consolas, monospace" fill="#8250df">SectionShell</text>
+  <text x="58" y="436" font-size="11" fill="#59636e">章节外壳：序号 + 标题 + 类型徽章 + 容器样式（唯一一套）</text>
+  <text x="58" y="452" font-size="11" fill="#59636e">mode: <tspan font-family="Consolas, monospace">edit</tspan> / <tspan font-family="Consolas, monospace">interactive</tspan> / <tspan font-family="Consolas, monospace">readonly</tspan></text>
+
+  <path d="M 70 456 L 70 620" stroke="#afb8c1" stroke-width="1.4"/>
+
+  <!-- SectionHead -->
+  <rect x="90" y="470" width="550" height="52" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <path d="M 70 496 L 90 496" stroke="#afb8c1" stroke-width="1.4"/>
+  <text x="106" y="492" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">SectionHead</text>
+  <text x="106" y="510" font-size="11" fill="#59636e">序号圆点 + 章节名 + 内容类型（仅 edit 可改）+ 提示文字</text>
+
+  <!-- SectionBody -->
+  <rect x="90" y="532" width="550" height="52" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <path d="M 70 558 L 90 558" stroke="#afb8c1" stroke-width="1.4"/>
+  <text x="106" y="554" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">SectionBody</text>
+  <text x="106" y="572" font-size="11" fill="#59636e">插槽：按 action 类型渲染下面三种编辑器之一</text>
+
+  <!-- editors -->
+  <rect x="130" y="594" width="160" height="48" rx="9" fill="#ffffff" stroke="#8250df" stroke-dasharray="5 3"/>
+  <text x="144" y="614" font-size="11" font-weight="600" font-family="Consolas, monospace" fill="#8250df">AskEditor</text>
+  <text x="144" y="632" font-size="10" fill="#59636e">问题组 / 选项 / 自填</text>
+
+  <rect x="302" y="594" width="150" height="48" rx="9" fill="#ffffff" stroke="#8250df" stroke-dasharray="5 3"/>
+  <text x="316" y="614" font-size="11" font-weight="600" font-family="Consolas, monospace" fill="#8250df">TextEditor</text>
+  <text x="316" y="632" font-size="10" fill="#59636e">正文 + 灰字</text>
+
+  <rect x="464" y="594" width="176" height="48" rx="9" fill="#ffffff" stroke="#8250df" stroke-dasharray="5 3"/>
+  <text x="478" y="614" font-size="11" font-weight="600" font-family="Consolas, monospace" fill="#8250df">MarkdownEditor</text>
+  <text x="478" y="632" font-size="10" fill="#59636e">源码 + 预览切换</text>
+
+  <path d="M 130 542 L 130 594" stroke="#afb8c1" stroke-width="1.2" stroke-dasharray="3 3"/>
+  <path d="M 377 542 L 377 594" stroke="#afb8c1" stroke-width="1.2" stroke-dasharray="3 3"/>
+  <path d="M 552 542 L 552 594" stroke="#afb8c1" stroke-width="1.2" stroke-dasharray="3 3"/>
+
+  <!-- 三处调用 -->
+  <text x="676" y="374" font-size="14" font-weight="700" fill="#1f2328">③ 三处调用同一组件</text>
+
+  <rect x="676" y="390" width="464" height="60" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="692" y="414" font-size="12" font-weight="700" fill="#1f2328">CardCreatePage</text>
+  <text x="692" y="434" font-size="11" fill="#59636e">mode = edit（可改类型、可增删问题组）</text>
+
+  <rect x="676" y="458" width="464" height="60" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="692" y="482" font-size="12" font-weight="700" fill="#1f2328">CardDetailPage · 未终结</text>
+  <text x="692" y="502" font-size="11" fill="#59636e">mode = interactive（选项可点、文本可改）</text>
+
+  <rect x="676" y="526" width="464" height="60" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="692" y="550" font-size="12" font-weight="700" fill="#1f2328">CardDetailPage · 终结态</text>
+  <text x="692" y="570" font-size="11" fill="#59636e">mode = readonly（同一样式，只禁用交互）</text>
+
+  <rect x="676" y="600" width="464" height="106" rx="12" fill="#fff8f0" stroke="#d4a72c"/>
+  <text x="692" y="624" font-size="12" font-weight="700" fill="#7d4e00">为什么这样拆能根治 #60</text>
+  <text x="692" y="646" font-size="11" fill="#59636e">样式只存在于 SectionShell（一个 CSS 类），</text>
+  <text x="692" y="666" font-size="11" fill="#59636e">三个页面 / 三种 mode 共用 ⇒ 不存在"两套 CSS"。</text>
+  <text x="692" y="688" font-size="11" fill="#59636e">要改章节外观，只有一处可改，改一处三处生效。</text>
+
+  <rect x="676" y="720" width="464" height="62" rx="12" fill="#f0f6ff" stroke="#1f6feb"/>
+  <text x="692" y="744" font-size="12" font-weight="700" fill="#0a3069">验收（#59 / #60）</text>
+  <text x="692" y="766" font-size="11" fill="#59636e">同一章节在 建卡 / 草稿 / 详情 三处的外边距、内边距、圆角、字号、主色一致</text>
+
+  <text x="40" y="688" font-size="12" font-weight="700" fill="#1f2328">本图请求确认的点：</text>
+  <text x="40" y="710" font-size="12" fill="#59636e">1. 建卡页章节区是否就是「左栏元信息 + 右栏章节列表」这种两栏（截图 10 的布局）？</text>
+  <text x="40" y="730" font-size="12" fill="#59636e">2. 章节的「内容类型」下拉在 edit 期可改、interactive 期隐藏 —— 是否同意？</text>
+  <text x="40" y="758" font-size="11" fill="#8250df">※ 未确认前不动代码；确认后每项单独开分支，分支内测试通过才合 main。</text>
+</svg>
