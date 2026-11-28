@@ -77,15 +77,14 @@ export const TECHTREE_CSS = `
 .tb3t-card.is-unread-ai{border-right-width:4px;border-right-color:var(--accent,#2563eb)}
 .tb3t-card.is-draft:hover{border-color:var(--card-border,#9aa1ad)}
 .tb3t-card.is-draft.is-selected{border-color:var(--accent,#2563eb)}
-.tb3t-card__top{display:flex;align-items:center;gap:4px;min-width:0;height:16px}
+.tb3t-card__top{display:flex;align-items:center;gap:4px;min-width:0;height:22px}
 .tb3t-card__spacer{flex:1 1 auto;min-width:2px}
 .tb3t-card__warn{flex:0 0 auto;color:#ef4444;font-size:9px;line-height:1}
 .tb3t-card__title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;font-weight:600;line-height:1.35;color:var(--text,#1f2328);word-break:break-word}
 .tb3t-card .card-id{font-size:11px;flex:0 0 auto}
 .tb3t-card .badge{flex:0 1 auto;min-width:0;max-width:76px;padding:0 4px;font-size:9.5px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* StatusCell 在卡片里：圆点 + 中文名（用户：不只靠颜色） */
-.tb3t-card .task-card__status{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;font-size:9px;color:var(--text-weak,#9aa1ad);white-space:nowrap}
-.tb3t-card .task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42px}
+/* 状态按钮在卡片里：圆点 + 中文名 + 边框（用户：不只靠颜色）。高度 / 字号在
+   .tb3t-card .status-button 里收紧（见 renderers/status-button-css.ts） */
 
 /* ── 页脚：状态图例 + 布局警告 ── */
 .tb3t-footer{flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:6px 12px;border-top:1px solid var(--border,#eef0f3);background:var(--bg-soft,#fafbfc);font-size:11px;color:var(--text-secondary,#6b7280)}

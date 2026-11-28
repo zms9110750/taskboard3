@@ -44,7 +44,8 @@ import type { ReactNode } from 'react';
 
 import { cardTimes, fmtDateTime, isDraftStatus, kindTone, unreadSides } from '../pure/card-view.ts';
 import type { Card } from '../types.ts';
-import { StatusCell } from './StatusCell.tsx';
+import { StatusButton } from './StatusButton.tsx';
+import { taskStateOf } from './status-button-model.ts';
 
 /** 组件属性。 */
 export interface CardRowProps {
@@ -94,7 +95,19 @@ export function CardRow(props: CardRowProps): ReactNode {
 			{/* 左：正方形（编号 / 状态 上下两行） */}
 			<span className="task-card__square">
 				<span className={`task-card__square-id card-id card-id--${tone}`}>{card.id}</span>
-				<StatusCell status={card.status} compact />
+				{/*
+				 * 状态用独立组件（#63），不再是这里手拼的「圆点 + 文案」。
+				 *
+				 * ⚠ `interactive={false}`：整行本身是 `<button>`（点它是**选卡**），
+				 *   状态里再嵌一个 `<button>` 是非法 HTML。只读态仍保留按钮外形 +
+				 *   `disabledReason`（点不了、但看得出是个控件）。
+				 */}
+				<StatusButton
+					status={taskStateOf(card.status)}
+					size="sm"
+					interactive={false}
+					disabledReason="在详情里改状态"
+				/>
 			</span>
 
 			{/* 右：三个 label 横排 + 标题 + 时间 */}

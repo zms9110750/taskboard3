@@ -17,7 +17,7 @@
  * | 科技树 | `TechTree` | `view=tree` 时占满列表栏；原样传 cards / 选中 / 筛选（判决在 `pure/tree-filter.ts`）|
  * | 分隔条 | `SplitHandle` | 收它上报的列表比例、写成 `flex-basis` |
  * | 详情 | `CardDetail` | 传 labels / 回调；**不碰**它的显示判决 |
- * | 状态菜单 | `StatusMenu` | 锚点是详情里那个状态格（`[data-meta="status"]`）|
+ * | 状态菜单 | `StatusMenu` | 锚点是详情头的 `StatusButton` 所在状态格（`CardDetail.onStatusOpen` 回传）|
  *
  * ## 受控 vs 自持
  *
@@ -53,10 +53,9 @@
  *
  * ## 设计图里没有画、但必须有的东西
  *
- * - **状态菜单的触发点**：设计图详情里的状态是「圆点 + 文字」（`StatusCell`，
- *   定稿组件里它就是不可点的）。菜单必须有个锚点 ⇒ 这里**不新增按钮**，
- *   用事件委托把详情里的状态格变成触发器（`.tb3w-detail [data-meta="status"]`），
- *   CSS 给它 hover 底色 + `⌄` 角标。改的是**样式钩子**，没改 `CardDetail` 的行为。
+ * - **状态菜单的触发点**：详情头的状态是**独立组件 `StatusButton`**（#62 / #63）——
+ *   它自己有边框 / hover / 后缀 `▾`，点起来通过 `CardDetail.onStatusOpen`
+ *   把锚点交上来。本组件**不再**用事件委托 + CSS 假角标（那两样已删）。
  * - **空详情 / 空列表**：设计图没画空态，但页面必须有。
  *
  * ## 相对导入带后缀
@@ -65,7 +64,7 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
-import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { GROUP_LABELS, TASK_STATES, buttonsOf, isTaskState, statesInGroup } from '@taskboard/protocol';
 import type { StatusGroup } from '@taskboard/protocol';
@@ -483,22 +482,6 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 		props.onSelect(cardId);
 	};
 
-	/**
-	 * 详情里的状态格 → 打开状态菜单。
-	 *
-	 * 为什么是事件委托而不是给 `CardDetail` 加 prop：它是**已定稿**组件，
-	 * 状态在它里面是不可点的 `StatusCell`。这里只读它的 DOM 钩子
-	 * `[data-meta="status"]`（`DetailHead` 自己写的），不改它的结构。
-	 */
-	const onDetailClick = (event: ReactMouseEvent<HTMLElement>): void => {
-		if (selectedCard === null) return;
-		const target = event.target;
-		if (!(target instanceof HTMLElement)) return;
-		const statusCell = target.closest('[data-meta="status"]');
-		if (!(statusCell instanceof HTMLElement)) return;
-		setMenu({ cardId: selectedCard.id, anchor: statusCell });
-	};
-
 	/*
 	 * 拖过之后才写内联 style；没拖过让 CSS 说话（宽 2:1.2、窄 52%）。
 	 *
@@ -529,7 +512,7 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 	 * @param card 当前选中的卡（已非空）
 	 */
 	const renderDetail = (card: Card): ReactNode => (
-		<aside className="tb3w-detail" style={detailStyle} data-detail-pane onClick={onDetailClick}>
+		<aside className="tb3w-detail" style={detailStyle} data-detail-pane>
 			<CardDetail
 				card={card}
 				templateLabel={templateLabel(card.template.ref)}
@@ -549,8 +532,9 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 					 * CardDetail → 这里`，中间全不带事件对象（那些组件只上报
 					 * 「被点了」）。
 					 *
-					 * ⇒ 照 `onDetailClick` 查 `[data-meta="status"]` 的同一套路：
-					 *   详情区一次只画一张卡 ⇒ `[data-action-kind="derive"]`
+					 * ⇒ 和 `onStatusOpen` 一样，回调只上报「被点了」，锚点由
+					 *   页面层自己拿：详情区一次只画一张卡 ⇒
+					 *   `[data-action-kind="derive"]`
 					 *   在本实例内唯一 ⇒ 查它拿锚点（**限定在 rootRef 内**，见上）。
 					 */
 					const anchor =
@@ -569,6 +553,13 @@ export function Workspace(props: WorkspaceProps): ReactNode {
 				}}
 				onNoteChange={(text) => {
 					props.onNoteChange?.(card.id, text);
+				}}
+				/*
+				 * 状态按钮 → 菜单。锚点是 `DetailHead` 里那个状态格（它自己 ref 住），
+				 * 本组件只把「哪张卡 + 锚点」记进 `menu`；菜单本身仍然由 `StatusMenu` 画。
+				 */
+				onStatusOpen={(anchor) => {
+					setMenu({ cardId: card.id, anchor });
 				}}
 				{...(props.onSectionChange === undefined
 					? {}

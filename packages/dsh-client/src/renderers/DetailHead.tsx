@@ -54,12 +54,14 @@
  * 2. `DetailAction.kind` → 一个回调。
  */
 
+import { useRef } from 'react';
 import type { ReactNode } from 'react';
 
 import type { DetailAction, DetailHeadView, DetailMetaItem } from '../pure/card-detail.ts';
 import type { RelationsView } from '../pure/relations-block.ts';
 import { RelationPanel, type RelationDeriveAction } from './RelationPanel.tsx';
-import { StatusCell } from './StatusCell.tsx';
+import { StatusButton } from './StatusButton.tsx';
+import { taskStateOf } from './status-button-model.ts';
 
 /** 组件属性。 */
 export interface DetailHeadProps {
@@ -89,6 +91,17 @@ export interface DetailHeadProps {
 	readonly onExpand: (() => void) | undefined;
 	/** 兄弟归组面板（用户 2026-11-24：放在关系区里点选成组）。 */
 	readonly siblingGroups: ReactNode | undefined;
+	/**
+	 * 点状态按钮 —— 打开状态菜单。
+	 *
+	 * 参数是**锚点元素**（状态格 `<span class="detail-status-col">`）：
+	 * 菜单是 `position: fixed` 浮层，`StatusMenu` 要拿它量坐标。
+	 * `undefined` ⇒ 状态渲染成不可点（预览 / 回归场景），带 `disabledReason`。
+	 *
+	 * ⚠ 必选但可为 `undefined`（`exactOptionalPropertyTypes` 下不能用 `?:` 传
+	 *   一个「可能 undefined」的值，理由同 `onClose`）。
+	 */
+	readonly onStatusOpen: ((anchor: HTMLElement) => void) | undefined;
 }
 
 /**
@@ -96,13 +109,21 @@ export interface DetailHeadProps {
  *
  * ⚠ `onClose` / `onExpand` 的类型是 `(() => void) | undefined` 而**不是** `?: () => void`
  *   —— `exactOptionalPropertyTypes: true` 下，往可选属性上显式传一个「可能 undefined」
- *   的值会报错（`StatusCell` 的 `size={undefined}` 就是被这条抓住的）。
+ *   的值会报错（历史上 `size={undefined}` 就是这么被抓住的）。
  *   写成「必选但可为 undefined」就不用条件展开，调用点也不会传错。
  *
  * @param props 见 `DetailHeadProps`
  */
 export function DetailHead(props: DetailHeadProps): ReactNode {
 	const head = props.head;
+
+	/*
+	 * 状态按钮的锚点 —— 菜单是 fixed 浮层，`StatusMenu` 要拿这个格子的矩形定位。
+	 * 用 ref 而不是事件对象：`StatusButton` 的回调只上报「被点了」（不传 DOM），
+	 * 这样组件本身仍然不认识菜单 / 定位。
+	 */
+	const statusColRef = useRef<HTMLSpanElement>(null);
+	const onStatusOpen = props.onStatusOpen;
 
 	/** `DetailAction.kind` → 回调。**唯一**的机械映射（没有第二个判据）。 */
 	const runAction = (action: DetailAction): void => {
@@ -164,8 +185,25 @@ export function DetailHead(props: DetailHeadProps): ReactNode {
 			 *   不随后面 label 变宽而漂移（用户 `2026-11-18` 的根因）。
 			 */}
 			<div className="detail-meta" data-detail-meta>
-				<span className="detail-status-col" data-meta="status" title="当前状态">
-					<StatusCell status={head.status.status} />
+				<span ref={statusColRef} className="detail-status-col" data-meta="status">
+					{onStatusOpen === undefined ? (
+						/* 预览 / 回归场景：没接菜单 ⇒ 只读态（仍是按钮外形 + 原因） */
+						<StatusButton
+							status={taskStateOf(head.status.status)}
+							size="md"
+							interactive={false}
+							disabledReason="当前场景没有接状态菜单"
+						/>
+					) : (
+						<StatusButton
+							status={taskStateOf(head.status.status)}
+							size="md"
+							onOpen={() => {
+								const anchor = statusColRef.current;
+								if (anchor !== null) onStatusOpen(anchor);
+							}}
+						/>
+					)}
 				</span>
 				{head.meta.map((item) => (
 					<MetaItem key={item.kind} item={item} />

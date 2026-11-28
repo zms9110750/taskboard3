@@ -155,10 +155,19 @@ check(
 	normal.indexOf('tb3t-card__top') < normal.indexOf('tb3t-card__title'),
 );
 contains('有编号 .card-id + 类别色', normal, 'class="card-id card-id--design"');
-contains('有类别 badge', normal, 'badge badge--design');
-contains('有领域 badge', normal, 'badge badge--domain');
+/*
+ * 用户 `2026-11-20`：「label 只显示模板的 label」⇒ 类别 / 领域两个 badge 不再画。
+ * （这两条断言是那次裁定之前留下的，已过时 —— 底线上就是红的，本次一并改正。）
+ */
+notContains('不画类别 badge（用户 2026-11-20 裁定）', normal, 'badge badge--design');
+notContains('不画领域 badge（用户 2026-11-20 裁定）', normal, 'badge badge--domain');
 contains('有模板 badge（传了 templateLabel）', normal, 'badge badge--template');
-contains('有状态单元格 .task-card__status.is-compact', normal, 'task-card__status is-compact');
+contains(
+	'状态是独立 StatusButton（#63，不再手拼圆点 + 文案）',
+	normal,
+	'class="status-button status-button--sm status-button--working is-static"',
+);
+contains('状态按钮带只读原因（title + aria-description）', normal, 'aria-description="在详情里改状态"');
 contains('状态中文名在（处理中）', normal, '>处理中<');
 contains('状态圆点是 6px', normal, 'width:6px;height:6px');
 contains('标题在', normal, '分层：拓扑排序 + 排行');
@@ -203,7 +212,7 @@ contains('环上的卡 data-card-warning="cycle"', cycle, 'data-card-warning="cy
 
 const noTemplate = render({ templateLabel: '' });
 notContains('缺 templateLabel ⇒ 不画模板 badge', noTemplate, 'badge--template');
-contains('缺 templateLabel 仍保留类别 + 领域', noTemplate, 'badge badge--domain');
+notContains('缺 templateLabel 也没有类别 / 领域 badge（本组件不画它们）', noTemplate, 'class="badge');
 
 const noKind = render({ kindLabel: '' });
 notContains('缺 kindLabel ⇒ 不画类别 badge', noKind, 'badge badge--design');
@@ -211,14 +220,14 @@ contains('缺 kindLabel 仍保留模板 badge', noKind, 'badge--template');
 
 const noLabels = render({ kindLabel: '', templateLabel: '' });
 eq(
-	'两个 label 都缺 ⇒ 只剩 1 个 badge（领域）',
+	'两个 label 都缺 ⇒ 一个 badge 都不画',
 	countOf(noLabels, 'class="badge'),
-	1,
+	0,
 );
 
-/* 长领域名不截断在 DOM 层（省略号是 CSS） */
+/* 领域名压根不进 TreeCard 的 DOM（领域 badge 已按用户 2026-11-20 的裁定删掉） */
 const longDomain = render({ card: card({ template: { ref: 'decision', kind: 'design', domain: '一个非常非常长的领域名称' } }) });
-contains('长领域名原样在 DOM 里（省略号靠 CSS）', longDomain, '一个非常非常长的领域名称');
+notContains('长领域名不进 DOM（领域 badge 不存在）', longDomain, '一个非常非常长的领域名称');
 
 /* ══════════════════════════════════════════════════════════════
  * ⑤ 长标题 / 9 状态

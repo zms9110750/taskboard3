@@ -95,7 +95,7 @@ export interface DetailLabels {
  *   所以这里只描述「画什么」，不含「点了干什么」。
  */
 export interface DetailStatusView {
-	/** A2A 状态全名（`TASK_STATE_*`），`StatusCell` 用它判颜色。 */
+	/** A2A 状态全名（`TASK_STATE_*`），`StatusButton` 用它判颜色。 */
 	readonly status: string;
 	/** 中文名。 */
 	readonly text: string;

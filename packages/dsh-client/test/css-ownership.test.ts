@@ -48,6 +48,7 @@ import { FALLBACK_CSS as FALLBACK_FROM_NEW } from '../src/renderers/fallback-css
 import { SEARCHBOX_CSS as SEARCHBOX_FROM_NEW } from '../src/renderers/searchbox-css.ts';
 import { SECTION_CSS as SECTION_FROM_NEW } from '../src/renderers/section-css.ts';
 import { SIBLING_GROUPS_CSS as SIBLING_GROUPS_FROM_NEW } from '../src/renderers/sibling-groups-css.ts';
+import { STATUS_BUTTON_CSS as STATUS_BUTTON_FROM_NEW } from '../src/renderers/status-button-css.ts';
 import {
 	CARD_ACTION_CSS as CARD_ACTION_FROM_STYLES,
 	CREATE_CSS as CREATE_FROM_STYLES,
@@ -58,6 +59,7 @@ import {
 	SEARCHBOX_CSS as SEARCHBOX_FROM_STYLES,
 	SECTION_CSS as SECTION_FROM_STYLES,
 	SIBLING_GROUPS_CSS as SIBLING_GROUPS_FROM_STYLES,
+	STATUS_BUTTON_CSS as STATUS_BUTTON_FROM_STYLES,
 } from '../src/styles.ts';
 
 /* ══════════════════════════════════════════════════════════
@@ -106,6 +108,19 @@ void test('styles.ts 与组件目录里的是同一份（CARD_ACTION_CSS）', ()
 
 void test('styles.ts 与组件目录里的是同一份（SIBLING_GROUPS_CSS）', () => {
 	assert.equal(SIBLING_GROUPS_FROM_STYLES, SIBLING_GROUPS_FROM_NEW);
+});
+
+void test('styles.ts 与组件目录里的是同一份（STATUS_BUTTON_CSS）', () => {
+	assert.equal(STATUS_BUTTON_FROM_STYLES, STATUS_BUTTON_FROM_NEW);
+	/* #62：按钮必须有边框 + 可点反馈，不是「圆点 + 文字」 */
+	for (const rule of [
+		'.tb3w-root .status-button{',
+		'border:1px solid var(--status-button-border',
+		'.tb3w-root .status-button.is-interactive:hover',
+		'.tb3w-root .status-button:focus-visible',
+	]) {
+		assert.ok(STATUS_BUTTON_FROM_NEW.includes(rule), `缺少关键规则：${rule}`);
+	}
 });
 
 /* ══════════════════════════════════════════════════════════
