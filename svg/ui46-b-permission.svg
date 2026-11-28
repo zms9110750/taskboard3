@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="880" viewBox="0 0 1180 880" font-family="Segoe UI, Microsoft YaHei, sans-serif">
+  <rect x="1" y="1" width="1178" height="878" rx="18" fill="#ffffff" stroke="#d0d7de"/>
+
+  <text x="40" y="50" font-size="22" font-weight="700" fill="#1f2328">46-B · 工具权限页 · 组件拆分提案</text>
+  <text x="40" y="76" font-size="13" fill="#59636e">对应 #53 白分组不可选 / #54 更窄且标题被挡 / #55 工具非全集 / #56 授权页分组无折叠 / #57 无法选中编辑 / #58 写着不连后端</text>
+
+  <text x="40" y="112" font-size="14" font-weight="700" fill="#1f2328">① 组件树（紫虚线 = 新增；灰实线 = 现有抽出）</text>
+
+  <!-- 页面壳 -->
+  <rect x="40" y="126" width="600" height="50" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <text x="56" y="148" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">ToolPermissionPage</text>
+  <text x="56" y="166" font-size="11" fill="#59636e">页面壳：只做布局与数据装配，不画业务细节</text>
+
+  <path d="M 60 176 L 60 700" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+
+  <!-- HeaderStrip -->
+  <rect x="80" y="188" width="560" height="48" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
+  <path d="M 60 212 L 80 212" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="96" y="208" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#8250df">HeaderStrip</text>
+  <text x="96" y="226" font-size="11" fill="#59636e">标题 + 真实保存状态（已保存 / 保存中 / 失败重试）—— 替掉"暂不持久化"黄条</text>
+
+  <!-- TabBar -->
+  <rect x="80" y="248" width="560" height="44" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <path d="M 60 270 L 80 270" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="96" y="268" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">TabBar</text>
+  <text x="96" y="284" font-size="11" fill="#59636e">编组 / 授权（两个固定 Tab，不做成按钮组花活）</text>
+
+  <!-- GroupRail -->
+  <rect x="80" y="304" width="560" height="48" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <path d="M 60 328 L 80 328" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="96" y="324" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">GroupRail</text>
+  <text x="96" y="342" font-size="11" fill="#59636e">左栏：GroupList（组行 + 成员数） + NewGroupButton</text>
+
+  <!-- GroupRow -->
+  <rect x="120" y="362" width="520" height="44" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
+  <path d="M 100 350 L 100 384 L 120 384" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="136" y="380" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#8250df">GroupRow</text>
+  <text x="136" y="397" font-size="11" fill="#59636e">可选中：选中态 = 左侧竖条 + 底色 + 加粗；双击改名</text>
+
+  <!-- GraphCanvas -->
+  <rect x="80" y="418" width="560" height="48" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <path d="M 60 442 L 80 442" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="96" y="438" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">GraphCanvas</text>
+  <text x="96" y="456" font-size="11" fill="#59636e">中栏：ColumnHeader ×3 + EdgeLayer + ZoomBar + 节点</text>
+
+  <!-- GroupNode / ToolNode -->
+  <rect x="120" y="476" width="250" height="56" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
+  <path d="M 100 464 L 100 504 L 120 504" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="136" y="496" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#8250df">GroupNode</text>
+  <text x="136" y="514" font-size="11" fill="#59636e">紫底 · 可选中</text>
+
+  <rect x="390" y="476" width="250" height="56" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <text x="406" y="496" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">ToolNode</text>
+  <text x="406" y="514" font-size="11" fill="#59636e">白底 · 成员位 · 只读</text>
+
+  <!-- ToolPicker -->
+  <rect x="80" y="548" width="560" height="48" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <path d="M 60 572 L 80 572" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="96" y="568" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">ToolPicker</text>
+  <text x="96" y="586" font-size="11" fill="#59636e">右栏：SearchBox + ToolRow（复选框 + 名称 + 来源：宿主/任务板）</text>
+
+  <rect x="120" y="606" width="520" height="44" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
+  <path d="M 100 594 L 100 628 L 120 628" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="136" y="624" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#8250df">ToolRow</text>
+  <text x="136" y="641" font-size="11" fill="#59636e">清单必须来自 GET /api/tools 全量；行内标注 source，不硬编码</text>
+
+  <!-- AuthRail -->
+  <rect x="80" y="660" width="560" height="48" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
+  <path d="M 60 684 L 80 684" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="96" y="680" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">AuthRail（授权 Tab 左栏）</text>
+  <text x="96" y="698" font-size="11" fill="#59636e">= FoldGroup（复用 46-A） × 3：档位块 / 模板块 / 每个领域块</text>
+
+  <!-- ═════════ 右：三条修法 ═════════ -->
+  <text x="676" y="112" font-size="14" font-weight="700" fill="#1f2328">② 可选中有哪几类对象（#53 #57）</text>
+
+  <rect x="676" y="126" width="464" height="120" rx="12" fill="#f0f6ff" stroke="#1f6feb"/>
+  <text x="692" y="150" font-size="12" font-weight="700" fill="#0a3069">可选中（3 类）</text>
+  <text x="692" y="172" font-size="11" fill="#59636e">· GroupNode（画布上的紫色组）</text>
+  <text x="692" y="192" font-size="11" fill="#59636e">· TierRow（授权页的档位）</text>
+  <text x="692" y="212" font-size="11" fill="#59636e">· TemplateRow（授权页的模板）</text>
+  <text x="692" y="234" font-size="11" fill="#1f6feb">选中后：右栏切换到「该对象的可编辑项」，而不是什么都不发生</text>
+
+  <rect x="676" y="258" width="464" height="104" rx="12" fill="#f6f8fa" stroke="#8c959f"/>
+  <text x="692" y="282" font-size="12" font-weight="700" fill="#1f2328">不可选中（只读成员位）</text>
+  <text x="692" y="304" font-size="11" fill="#59636e">· ToolNode（画布 L1/L2 上的白色工具卡）</text>
+  <text x="692" y="324" font-size="11" fill="#59636e">处理：降不透明度 + cursor: not-allowed + 悬停提示</text>
+  <text x="692" y="346" font-size="11" fill="#bf8700">「为什么点不动」必须说出来，不能沉默</text>
+
+  <text x="676" y="394" font-size="14" font-weight="700" fill="#1f2328">③ 宽度与标题（#54）</text>
+
+  <rect x="676" y="408" width="464" height="96" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="692" y="432" font-size="11" fill="#59636e">同类节点统一 min-width，标题强制单行：</text>
+  <rect x="692" y="444" width="150" height="34" rx="8" fill="#f6f8fa" stroke="#57606a"/>
+  <text x="704" y="466" font-size="11" fill="#1f2328">L0 组 · 3 成员</text>
+  <rect x="854" y="444" width="150" height="34" rx="8" fill="#f6f8fa" stroke="#57606a"/>
+  <text x="866" y="466" font-size="11" fill="#1f2328">L1 组 · 2 成员</text>
+  <text x="692" y="494" font-size="11" fill="#59636e">超出用 ellipsis（…），绝不允许标题被裁掉或消失</text>
+
+  <text x="676" y="534" font-size="14" font-weight="700" fill="#1f2328">④ 工具全集（#55）</text>
+
+  <rect x="676" y="548" width="464" height="86" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="692" y="572" font-size="11" fill="#59636e">来源：宿主 GET /api/tools（与守卫判定同一份数据）</text>
+  <text x="692" y="594" font-size="11" fill="#59636e">每行显示 source：宿主 / 任务板；数量与接口返回值实时对照</text>
+  <text x="692" y="616" font-size="11" fill="#1a7f37">✓ 验收：与接口返回集合逐项相等（少一个 / 多一个都算失败）</text>
+
+  <text x="676" y="662" font-size="14" font-weight="700" fill="#1f2328">⑤ 持久化（#58）</text>
+
+  <rect x="676" y="676" width="464" height="104" rx="12" fill="#fff8f0" stroke="#d4a72c"/>
+  <text x="692" y="700" font-size="11" fill="#59636e">现状：能改但不保存，顶部还写着"暂不持久化"。</text>
+  <text x="692" y="722" font-size="11" fill="#59636e">目标：组图 / 档位 / 模板授权改动落到宿主存储；</text>
+  <text x="692" y="742" font-size="11" fill="#59636e">HeaderStrip 显示真实状态；保存失败可重试。</text>
+  <text x="692" y="764" font-size="11" fill="#bf8700">在后端接通之前：整页禁用 + 一条明确说明，而不是"能改但不算数"。</text>
+
+  <text x="676" y="806" font-size="12" font-weight="700" fill="#1f2328">本图请求确认的点：</text>
+  <text x="676" y="828" font-size="11" fill="#59636e">1. 组图是否就是"组嵌套组"的 DAG（画布三层 L0/L1/L2 是否符合你的预期）？</text>
+  <text x="676" y="848" font-size="11" fill="#59636e">2. 授权页"档位/模板"选中后，编辑区放右栏还是弹层？</text>
+
+  <text x="40" y="748" font-size="12" font-weight="700" fill="#1f2328">关键约束</text>
+  <text x="40" y="770" font-size="11" fill="#59636e">· 折叠一律用 46-A 的 FoldGroup / FoldBanner，不另写一套（#56）。</text>
+  <text x="40" y="790" font-size="11" fill="#59636e">· 页面不自己发请求散落各处：数据装配集中在 ToolPermissionPage。</text>
+  <text x="40" y="810" font-size="11" fill="#59636e">· 无"不连接后端"的中间态：要么通，要么明确禁用。</text>
+  <text x="40" y="840" font-size="11" fill="#8250df">※ 未确认前不动代码；确认后每项单独开分支，分支内测试通过才合 main。</text>
+</svg>
