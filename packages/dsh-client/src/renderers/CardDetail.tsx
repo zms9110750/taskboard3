@@ -191,7 +191,7 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 						这张卡的模板没有章节。
 					</div>
 				) : (
-					sections.map((one) => {
+					sections.map((one, index) => {
 						/*
 						 * 每章各自判：md / 未知永远只读；text / ask 看卡状态。
 						 * 父层没接线（`onSectionChange` 缺省）时也不假装能改。
@@ -219,6 +219,7 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 								key={key}
 								sectionId={one.sectionId}
 								section={one.section}
+								index={index + 1}
 								phase={phase}
 								readonly={!editable}
 								{...(onChange === undefined || !editable

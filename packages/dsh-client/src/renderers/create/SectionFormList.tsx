@@ -3,17 +3,14 @@
  *
  * ## 三种编辑区从哪来
  *
- * 本文件**不重复实现** text / markdown / ask 的编辑器，而是复用
- * `src/renderers/` 里已有的渲染组件（`Section`）。那些组件现在是**只读渲染**，
- * 所以「编辑」这一层由本目录的 `SectionEditor*` 提供。
+ * 本文件**不重复实现** text / markdown / ask 的编辑器：
  *
- * ⚠ **阶段说明**：目前 `src/renderers/create/` 只带 text / markdown 的编辑器
- * （ask 编辑器还在 `dev/components/create/` 里，等左栏变体定稿后一起迁）。
- * 遇到 `ask` 时渲染一个**明确的占位**（「ask 编辑器待迁入」），不假装它能用。
+ * - text / markdown：共用 `textarea.tb3-sec__textarea`（与详情页**同一套**控件样式）
+ * - ask：`SectionEditorAsk`（题目 / 选项 / 单选多选 / 灰字），
+ *   它用的是与 `AskSection` 同一套 `.tb3-ask*` 类（issue #59 / #60）
  *
- * ## 为什么占位而不是直接不渲染
- *
- * 不渲染的话，用户会以为「这个模板没有这一章」。占位说清了「有这一章但编辑器还没好」。
+ * 章节外壳由 `SectionFormItem` → `SectionShell` 统一（`.tb3-sec*`），
+ * 与详情页共用 `section-shell-css.ts`。
  */
 
 import type { ReactNode } from 'react';
@@ -93,7 +90,7 @@ function SectionEditor(props: {
 	/* text / markdown 共用同一个编辑框：差别只在渲染，不在输入。 */
 	return (
 		<textarea
-			className={`tb3cc-sec__input tb3cc-sec__input--${section.kind}`}
+			className={`tb3-sec__textarea${section.kind === 'markdown' ? ' is-mono' : ''}`}
 			value={valueOf(section.payload)}
 			placeholder={section.hint}
 			rows={section.kind === 'markdown' ? 6 : 3}

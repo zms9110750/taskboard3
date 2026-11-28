@@ -13,7 +13,8 @@
  *
  * ```
  * src/renderers/searchbox-css.ts          SEARCHBOX_CSS
- * src/renderers/section-css.ts            SECTION_CSS
+ * src/renderers/section-css.ts            SECTION_CSS（markdown / 降级 JSON）
+ * src/renderers/section-shell-css.ts      SECTION_SHELL_CSS（章节外壳 + ask 控件）
  * src/renderers/fallback-css.ts           FALLBACK_CSS
  * src/renderers/create/create-css.ts      CREATE_CSS
  * src/renderers/create/create-shell-css.ts CREATE_SHELL_CSS
@@ -47,6 +48,7 @@ import { DRAWER_CSS as DRAWER_FROM_NEW } from '../src/renderers/drawer-css.ts';
 import { FALLBACK_CSS as FALLBACK_FROM_NEW } from '../src/renderers/fallback-css.ts';
 import { SEARCHBOX_CSS as SEARCHBOX_FROM_NEW } from '../src/renderers/searchbox-css.ts';
 import { SECTION_CSS as SECTION_FROM_NEW } from '../src/renderers/section-css.ts';
+import { SECTION_SHELL_CSS as SECTION_SHELL_FROM_NEW } from '../src/renderers/section-shell-css.ts';
 import { SIBLING_GROUPS_CSS as SIBLING_GROUPS_FROM_NEW } from '../src/renderers/sibling-groups-css.ts';
 import { STATUS_BUTTON_CSS as STATUS_BUTTON_FROM_NEW } from '../src/renderers/status-button-css.ts';
 import {
@@ -58,6 +60,7 @@ import {
 	FALLBACK_CSS as FALLBACK_FROM_STYLES,
 	SEARCHBOX_CSS as SEARCHBOX_FROM_STYLES,
 	SECTION_CSS as SECTION_FROM_STYLES,
+	SECTION_SHELL_CSS as SECTION_SHELL_FROM_STYLES,
 	SIBLING_GROUPS_CSS as SIBLING_GROUPS_FROM_STYLES,
 	STATUS_BUTTON_CSS as STATUS_BUTTON_FROM_STYLES,
 } from '../src/styles.ts';
@@ -72,6 +75,10 @@ void test('styles.ts 与组件目录里的是同一份（SEARCHBOX_CSS）', () =
 
 void test('styles.ts 与组件目录里的是同一份（SECTION_CSS）', () => {
 	assert.equal(SECTION_FROM_STYLES, SECTION_FROM_NEW);
+});
+
+void test('styles.ts 与组件目录里的是同一份（SECTION_SHELL_CSS）', () => {
+	assert.equal(SECTION_SHELL_FROM_STYLES, SECTION_SHELL_FROM_NEW);
 });
 
 void test('styles.ts 与组件目录里的是同一份（FALLBACK_CSS）', () => {
@@ -134,10 +141,43 @@ void test('SEARCHBOX_CSS 非空，且关键规则在', () => {
 	}
 });
 
-void test('SECTION_CSS 非空，且关键规则在', () => {
-	assert.ok(SECTION_FROM_NEW.length > 5000, `CSS 太短（${SECTION_FROM_NEW.length}）`);
-	for (const rule of ['.section-block', '.ask-option', '.payload-box']) {
+void test('SECTION_CSS 非空，且关键规则在（只剩 markdown / 降级 JSON）', () => {
+	assert.ok(SECTION_FROM_NEW.length > 2000, `CSS 太短（${SECTION_FROM_NEW.length}）`);
+	for (const rule of ['.md', '.md pre.md-code', '.payload-box']) {
 		assert.ok(SECTION_FROM_NEW.includes(rule), `缺少关键规则：${rule}`);
+	}
+	/* issue #59 / #60：章节外壳与 ask 已搬走，这里不许再出现（两套样式会漂） */
+	for (const gone of ['.section-block', '.ask-option']) {
+		assert.equal(SECTION_FROM_NEW.includes(gone), false, `章节样式应只在 SECTION_SHELL_CSS：${gone}`);
+	}
+});
+
+void test('SECTION_SHELL_CSS 非空，且三处共用的类都在', () => {
+	assert.ok(SECTION_SHELL_FROM_NEW.length > 4000, `CSS 太短（${SECTION_SHELL_FROM_NEW.length}）`);
+	for (const rule of [
+		'.tb3-sec{',
+		'.tb3-sec__head{',
+		'.tb3-sec__index{',
+		'.tb3-sec__title{',
+		'.tb3-sec__type{',
+		'.tb3-sec__body{',
+		'.tb3-sec--readonly{',
+		'.tb3-ask__option{',
+		'.tb3-ask__custom{',
+	]) {
+		assert.ok(SECTION_SHELL_FROM_NEW.includes(rule), `缺少关键规则：${rule}`);
+	}
+	/* 三种 mode 只影响可交互性 —— readonly 那条不许改变盒子 / 字号 / 颜色 */
+	const readonlyRule = SECTION_SHELL_FROM_NEW.slice(
+		SECTION_SHELL_FROM_NEW.indexOf('.tb3-sec--readonly{'),
+		SECTION_SHELL_FROM_NEW.indexOf('}', SECTION_SHELL_FROM_NEW.indexOf('.tb3-sec--readonly{')),
+	);
+	for (const visual of ['padding', 'margin', 'border-radius', 'font-size', 'background', 'color']) {
+		assert.equal(
+			readonlyRule.includes(visual),
+			false,
+			`.tb3-sec--readonly 不许改视觉属性 ${visual}：${readonlyRule}`,
+		);
 	}
 });
 
@@ -175,6 +215,7 @@ void test('CSS 里没有反引号（会把外层模板字符串截断 ⇒ TS1005
 	const all = {
 		SEARCHBOX_CSS: SEARCHBOX_FROM_NEW,
 		SECTION_CSS: SECTION_FROM_NEW,
+		SECTION_SHELL_CSS: SECTION_SHELL_FROM_NEW,
 		FALLBACK_CSS: FALLBACK_FROM_NEW,
 		CREATE_CSS: CREATE_FROM_NEW,
 		DRAWER_CSS: DRAWER_FROM_NEW,

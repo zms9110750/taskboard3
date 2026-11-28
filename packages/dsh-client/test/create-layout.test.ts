@@ -29,7 +29,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { CREATE_CSS } from '../src/styles.ts';
+import { CREATE_CSS, SECTION_SHELL_CSS } from '../src/styles.ts';
 
 /** 取某条选择器的规则体（粗提取，够用）。 */
 function ruleOf(css: string, selector: string): string {
@@ -250,12 +250,17 @@ describe('CREATE_CSS —— 满屏布局的不变量', () => {
 		assert.match(body, /flex:\s*1\s+1\s+auto/, body);
 	});
 
-	it('⚠ ask 的占位**不用红色**（是「待实现」不是「出错」）', () => {
-		const pending = ruleOf(CREATE_CSS, '.tb3cc-sec__pending').toLowerCase();
+	it('⚠ 章节的空态占位**不用红色**（是「还没填」不是「出错」）', () => {
+		/*
+		 * issue #59 / #60 之后章节外观只剩 SECTION_SHELL_CSS（SectionShell）。
+		 * 空态占位 `.tb3-sec__placeholder` 出现在 text / markdown / ask 三处，
+		 * 它是「模板没给内容」，不是校验错误 ⇒ 不许用危险色。
+		 */
+		const placeholder = ruleOf(SECTION_SHELL_CSS, '.tb3-sec__placeholder').toLowerCase();
 		assert.equal(
-			pending.includes('danger') || pending.includes('red'),
+			placeholder.includes('danger') || placeholder.includes('red'),
 			false,
-			`ask 占位不该用危险色 —— 它是「还没做」，不是「出错」。实际：${pending}`,
+			`章节空态占位不该用危险色 —— 它是「还没填」，不是「出错」。实际：${placeholder}`,
 		);
 	});
 

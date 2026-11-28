@@ -460,7 +460,7 @@ console.log('\n═══ 抽屉 400 高：纵向间距真的收紧了（不只�
      */
     const meta = document.querySelector('.tb3cc-tpl-hint__meta');
     const right = document.querySelector('.tb3cc-page__right');
-    const secs = [...right.querySelectorAll('.tb3cc-sec')];
+    const secs = [...right.querySelectorAll('.tb3-sec')];
     const rr = right.getBoundingClientRect();
     return {
       top: pad('.tb3cc-page__top'),

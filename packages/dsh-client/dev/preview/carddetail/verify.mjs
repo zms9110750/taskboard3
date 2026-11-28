@@ -184,22 +184,25 @@ const readPanel = (key) =>
     })),
     /*
      * 章节节点现在是定稿 Section：data-section-id / data-section-kind /
-     * data-section-readonly 是它自己写的钩子；空 text 用
-     * .section-block__placeholder，正文用 .section-block__text。
+     * data-section-readonly 是它自己写的钩子。
+     * text 的正文在只读态是 <textarea>（保留框形状）⇒ 读 value，不是 textContent。
      */
     sections: [...box.querySelectorAll('[data-section-id]')].map(n => {
-      const label = n.querySelector('.section-block__label-text');
-      const text = n.querySelector('.section-block__text');
-      const placeholder = n.querySelector('.section-block__placeholder');
-      const ask = n.querySelector('.ask');
+      const label = n.querySelector('.tb3-sec__title');
+      const text = n.querySelector('.tb3-sec__text');
+      const textarea = n.querySelector('.tb3-sec__textarea');
+      const placeholder = n.querySelector('.tb3-sec__placeholder');
+      const ask = n.querySelector('.tb3-ask');
       const firstOption = n.querySelector('[data-ask-option]');
       return {
         id: n.dataset.sectionId,
         kind: n.dataset.sectionKind,
         readonly: n.dataset.sectionReadonly,
         label: label === null ? null : label.textContent,
-        text: text === null ? null : text.textContent,
-        placeholder: placeholder === null ? null : placeholder.textContent.trim(),
+        text: textarea !== null ? textarea.value : (text === null ? null : text.textContent),
+        placeholder: placeholder !== null
+          ? placeholder.textContent.trim()
+          : (textarea === null ? null : textarea.placeholder),
         hasMd: n.querySelector('.md') !== null,
         hasMdHeading: n.querySelector('.md h3') !== null,
         hasMdCode: n.querySelector('.md pre.md-code') !== null,
@@ -207,7 +210,7 @@ const readPanel = (key) =>
         askInteractive: ask === null ? null : ask.dataset.askInteractive,
         askOptions: n.querySelectorAll('[data-ask-option]').length,
         firstOptionTag: firstOption === null ? null : firstOption.tagName,
-        hasUnknown: n.querySelector('.section-block__unknown') !== null,
+        hasUnknown: n.querySelector('.tb3-sec__unknown') !== null,
         unknownToggle: n.querySelector('[data-json-toggle]') === null
           ? null
           : n.querySelector('[data-json-toggle]').textContent,
@@ -261,7 +264,7 @@ const clearEvents = () => ev(`document.querySelector('[data-clear-log]').click()
 console.log('\n═══ ① ⭐ 标题独占一行 ═══');
 {
 	const panes = await ev(`document.querySelectorAll('.detail').length`);
-	expect('九个详情面板都渲染了（1 活 + 8 场景）', panes, 9);
+	expect('十一个详情面板都渲染了（1 活 + 8 场景 + 2 三处同源）', panes, 11);
 
 	const many = await readPanel('many-history');
 	expect('标题文字正确', many.title, '把详情面板重做成「标题独占一行、备注常驻」');
@@ -410,7 +413,7 @@ console.log('\n═══ ③ ⭐ 没有「正文」二字 ═══');
 		['text', 'markdown', 'ask', 'text', 'unknown'],
 	);
 	const [goal, design, questions, record, unregistered] = panel.sections;
-	expect('text：正文用 .section-block__text 且保留换行', goal.text.includes('\n'), true);
+	expect('text：正文在只读框里且保留换行', goal.text.includes('\n'), true);
 	expect(
 		'markdown：.md 容器 + 标题 + 代码块',
 		[design.hasMd, design.hasMdHeading, design.hasMdCode],
@@ -419,7 +422,7 @@ console.log('\n═══ ③ ⭐ 没有「正文」二字 ═══');
 	expect('ask：两组选项都渲染出来了', questions.askOptions, 6);
 	expect('⭐ ask 只读：选项是 div（不假装能点的 button）', questions.firstOptionTag, 'DIV');
 	expect('⭐ ask 只读：data-ask-interactive=false', questions.askInteractive, 'false');
-	expect('空 text ⇒「（空）」占位', record.placeholder, '（空）');
+	expect('空 text ⇒ 只读框为空（不冒充有内容）', record.text, '');
 	expect(
 		'⚠ 未注册 $type ⇒ 降级成可展开的原始 JSON',
 		[unregistered.kind, unregistered.hasUnknown, String(unregistered.unknownToggle).includes('未注册的动作')],
@@ -647,6 +650,104 @@ console.log('\n═══ ⑧ DOM 契约（别的组件/测试要依赖的钩子�
     return marks.map(m => { const el = box.querySelector(m); return el === null ? -1 : [...box.children].indexOf(el); });
   })()`);
 	expect('⭐ 顺序：head → 章节 → 备注 → 历史（备注在历史上方）', order, [0, 1, 2, 3]);
+}
+
+/* ══════════════════════════════════════════════════════════ */
+console.log('\n═══ ⑨ ⭐ 三处同源：建卡 / 草稿 / 终结（issue #59 / #60）═══');
+{
+	/*
+	 * 用户 2026-11-28：
+	 * > 「编辑内容没有适用CSS」
+	 * > 「在草稿页面有CSS。说明建卡编辑期间和草稿编辑期间没有使用同一个CSS」
+	 *
+	 * ⇒ 同一章节类型（ask）在**三处**各渲染一次（`main.tsx` 的 `Parity`），
+	 *   逐项读 `getComputedStyle` 的 padding / border-radius / font-size / margin。
+	 *   建卡那一份**故意不在 `.tb3w-root` 里** —— 样式若借了工作区变量就会立刻不等。
+	 */
+	const SELECTORS = [
+		'.tb3-sec',
+		'.tb3-sec__head',
+		'.tb3-sec__index',
+		'.tb3-sec__title',
+		'.tb3-sec__type',
+		'.tb3-sec__body',
+		'.tb3-ask',
+		'.tb3-ask__group',
+		'.tb3-ask__qrow',
+		'.tb3-ask__question',
+		'.tb3-ask__option',
+		'.tb3-ask__option-body',
+		'.tb3-ask__option-label',
+		'.tb3-ask__option-desc',
+		'.tb3-ask__option--custom',
+	];
+
+	const readStyles = (context) =>
+		ev(`(() => {
+      const root = document.querySelector('[data-shell-context="${context}"]');
+      if (!root) return null;
+      const styles = {};
+      for (const sel of ${JSON.stringify(SELECTORS)}) {
+        const el = root.querySelector(sel);
+        if (el === null) { styles[sel] = null; continue; }
+        const cs = getComputedStyle(el);
+        styles[sel] = {
+          padding: [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft],
+          radius: [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius],
+          fontSize: cs.fontSize,
+          margin: [cs.marginTop, cs.marginRight, cs.marginBottom, cs.marginLeft],
+        };
+      }
+      const shell = root.querySelector('.tb3-sec');
+      return {
+        className: shell === null ? null : shell.className,
+        mode: shell === null ? null : shell.dataset.sectionMode,
+        readonlyAttr: shell === null ? null : shell.dataset.sectionReadonly,
+        styles,
+      };
+    })()`);
+
+	const create = await readStyles('create');
+	const draft = await readStyles('draft');
+	const ended = await readStyles('ended');
+
+	expect(
+		'三个上下文都渲染出来了',
+		[create !== null, draft !== null, ended !== null],
+		[true, true, true],
+	);
+
+	const outer = (one) => (one === null || one.className === null ? null : one.className.split(/\s+/).includes('tb3-sec'));
+	expect('⭐ 三处外层 class 都是 tb3-sec', [outer(create), outer(draft), outer(ended)], [true, true, true]);
+	expect('⭐ 旧外壳类名彻底消失', [
+		[create, draft, ended].every((one) => one.className === null || !/tb3cc-sec|section-block/.test(one.className)),
+	], [true]);
+	expect(
+		'三种 mode：建卡 edit / 草稿 interactive / 终结 readonly',
+		[create.mode, draft.mode, ended.mode],
+		['edit', 'interactive', 'readonly'],
+	);
+	expect(
+		'data-section-readonly 只由 mode 决定',
+		[create.readonlyAttr, draft.readonlyAttr, ended.readonlyAttr],
+		['false', 'false', 'true'],
+	);
+
+	for (const sel of SELECTORS) {
+		const values = [create.styles[sel], draft.styles[sel], ended.styles[sel]];
+		const same = values.every((one) => one !== null && JSON.stringify(one) === JSON.stringify(values[0]));
+		expect(`⭐ ${sel} 三处计算值逐项相等（padding / radius / font-size / margin）`, same, true);
+		if (same) {
+			const one = values[0];
+			console.log(
+				`     ${sel}  padding=${one.padding.join(' ')}  radius=${one.radius[0]}  font-size=${one.fontSize}  margin=${one.margin.join(' ')}`,
+			);
+		} else {
+			['create', 'draft', 'ended'].forEach((name, index) => {
+				console.log(`     ${name} ${JSON.stringify(values[index])}`);
+			});
+		}
+	}
 }
 
 console.log('\n═══ JS 错误 ═══');

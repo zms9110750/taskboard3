@@ -31,7 +31,7 @@ if (EDGE === undefined) {
 	process.exit(2);
 }
 
-const HERE = 'X:/temp/dsh/开发/taskboard3/packages/dsh-client/dev/preview/text';
+const HERE = import.meta.dirname;
 const PAGE = nodePath.join(HERE, 'index.html');
 const PORT = 9611;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -145,7 +145,7 @@ check(
 );
 
 /* 改折叠区里的 input ⇒ summary 必须跟着变 */
-await evalJs(setValue(`${CREATE} .section-block__decl-input`, '改过的灰字 ABC'));
+await evalJs(setValue(`${CREATE} .tb3-sec__decl-input`, '改过的灰字 ABC'));
 await sleep(200);
 check(
 	'改 input 后 summary 跟着变',
@@ -154,7 +154,7 @@ check(
 );
 check(
 	'改 input 后 input 自己也是新值',
-	await evalJs(`document.querySelector('${CREATE} .section-block__decl-input').value`),
+	await evalJs(`document.querySelector('${CREATE} .tb3-sec__decl-input').value`),
 	'改过的灰字 ABC',
 );
 
@@ -164,22 +164,22 @@ check(
 
 console.log('\n② create 改正文 ⇒ active / ended 同步');
 
-await evalJs(setValue(`${CREATE} .section-block__textarea`, 'create 里写的新正文'));
+await evalJs(setValue(`${CREATE} .tb3-sec__textarea`, 'create 里写的新正文'));
 await sleep(250);
 
 check(
 	'active 的正文跟着变',
-	await evalJs(`document.querySelector('${ACTIVE} .section-block__textarea').value`),
+	await evalJs(`document.querySelector('${ACTIVE} .tb3-sec__textarea').value`),
 	'create 里写的新正文',
 );
 check(
 	'active 的灰字（placeholder）也跟着变',
-	await evalJs(`document.querySelector('${ACTIVE} .section-block__textarea').getAttribute('placeholder')`),
+	await evalJs(`document.querySelector('${ACTIVE} .tb3-sec__textarea').getAttribute('placeholder')`),
 	'改过的灰字 ABC',
 );
 check(
 	'ended 的正文跟着变',
-	await evalJs(`document.querySelector('${ENDED} .section-block__textarea').value`),
+	await evalJs(`document.querySelector('${ENDED} .tb3-sec__textarea').value`),
 	'create 里写的新正文',
 );
 
@@ -191,12 +191,12 @@ console.log('\n③ ended 只读');
 
 check(
 	'ended 的 textarea 是 readonly',
-	await evalJs(`document.querySelector('${ENDED} .section-block__textarea').readOnly`),
+	await evalJs(`document.querySelector('${ENDED} .tb3-sec__textarea').readOnly`),
 	true,
 );
 check(
 	'create / active 的 textarea 可写',
-	await evalJs(`[document.querySelector('${CREATE} .section-block__textarea').readOnly, document.querySelector('${ACTIVE} .section-block__textarea').readOnly]`),
+	await evalJs(`[document.querySelector('${CREATE} .tb3-sec__textarea').readOnly, document.querySelector('${ACTIVE} .tb3-sec__textarea').readOnly]`),
 	[false, false],
 );
 
@@ -206,16 +206,16 @@ check(
 
 console.log('\n④ active 改正文 ⇒ create / ended 同步');
 
-await evalJs(setValue(`${ACTIVE} .section-block__textarea`, 'active 改的正文'));
+await evalJs(setValue(`${ACTIVE} .tb3-sec__textarea`, 'active 改的正文'));
 await sleep(250);
 check(
 	'create 的正文跟着变',
-	await evalJs(`document.querySelector('${CREATE} .section-block__textarea').value`),
+	await evalJs(`document.querySelector('${CREATE} .tb3-sec__textarea').value`),
 	'active 改的正文',
 );
 check(
 	'ended 的正文跟着变',
-	await evalJs(`document.querySelector('${ENDED} .section-block__textarea').value`),
+	await evalJs(`document.querySelector('${ENDED} .tb3-sec__textarea').value`),
 	'active 改的正文',
 );
 

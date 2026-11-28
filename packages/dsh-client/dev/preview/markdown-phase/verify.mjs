@@ -25,7 +25,7 @@ if (EDGE === undefined) {
 	process.exit(2);
 }
 
-const HERE = 'X:/temp/dsh/开发/taskboard3/packages/dsh-client/dev/preview/markdown-phase';
+const HERE = import.meta.dirname;
 const PAGE = nodePath.join(HERE, 'index.html');
 const PORT = 9622;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -121,20 +121,20 @@ console.log('\n① create：源码框 + 「查看预览」');
 
 check(
 	'create 有源码框',
-	await evalJs(`document.querySelectorAll('${CREATE} .section-block__textarea').length`),
+	await evalJs(`document.querySelectorAll('${CREATE} .tb3-sec__textarea').length`),
 	1,
 );
 check(
 	'create 有「查看预览」按钮',
-	await evalJs(`document.querySelector('${CREATE} .section-block__actions button').textContent.trim()`),
+	await evalJs(`document.querySelector('${CREATE} .tb3-sec__actions button').textContent.trim()`),
 	'查看预览',
 );
 
-await evalJs(`(document.querySelector('${CREATE} .section-block__actions button').click(), true)`);
+await evalJs(`(document.querySelector('${CREATE} .tb3-sec__actions button').click(), true)`);
 await sleep(250);
 check(
 	'点开后源码框消失',
-	await evalJs(`document.querySelectorAll('${CREATE} .section-block__textarea').length`),
+	await evalJs(`document.querySelectorAll('${CREATE} .tb3-sec__textarea').length`),
 	0,
 );
 check(
@@ -144,11 +144,11 @@ check(
 );
 check(
 	'按钮文案变成「回源码」',
-	await evalJs(`document.querySelector('${CREATE} .section-block__actions button').textContent.trim()`),
+	await evalJs(`document.querySelector('${CREATE} .tb3-sec__actions button').textContent.trim()`),
 	'← 回源码',
 );
 
-await evalJs(`(document.querySelector('${CREATE} .section-block__actions button').click(), true)`);
+await evalJs(`(document.querySelector('${CREATE} .tb3-sec__actions button').click(), true)`);
 await sleep(250);
 
 /* ══════════════════════════════════════════════════════════
@@ -157,7 +157,7 @@ await sleep(250);
 
 console.log('\n② 改源码 ⇒ active / ended 同步');
 
-await evalJs(setValue(`${CREATE} .section-block__textarea`, '## 新标题 AAA\n\n正文一段。'));
+await evalJs(setValue(`${CREATE} .tb3-sec__textarea`, '## 新标题 AAA\n\n正文一段。'));
 await sleep(300);
 
 check(
@@ -179,17 +179,17 @@ console.log('\n③ active / ended 只读');
 
 check(
 	'active 没有源码框',
-	await evalJs(`document.querySelectorAll('${ACTIVE} .section-block__textarea').length`),
+	await evalJs(`document.querySelectorAll('${ACTIVE} .tb3-sec__textarea').length`),
 	0,
 );
 check(
 	'ended 没有源码框',
-	await evalJs(`document.querySelectorAll('${ENDED} .section-block__textarea').length`),
+	await evalJs(`document.querySelectorAll('${ENDED} .tb3-sec__textarea').length`),
 	0,
 );
 check(
 	'active / ended 没有「查看预览」按钮',
-	await evalJs(`document.querySelectorAll('${ACTIVE} .section-block__actions button, ${ENDED} .section-block__actions button').length`),
+	await evalJs(`document.querySelectorAll('${ACTIVE} .tb3-sec__actions button, ${ENDED} .tb3-sec__actions button').length`),
 	0,
 );
 

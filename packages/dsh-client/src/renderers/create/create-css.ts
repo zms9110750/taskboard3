@@ -78,22 +78,12 @@ export const CREATE_CSS = `
 
 .tb3cc-sec-list{display:flex;flex-direction:column;gap:12px}
 .tb3cc-sec-list__empty{color:var(--dsw-alias-text-secondary,#8a919c);padding:24px 0}
-.tb3cc-sec{border:1px solid var(--dsw-alias-border-secondary,#e4e7ec);border-radius:10px;background:var(--dsw-alias-bg-primary,#fff);overflow:hidden}
-.tb3cc-sec.has-error{border-color:var(--dsw-alias-border-danger,#f0a8a8)}
-.tb3cc-sec__head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 13px;background:var(--dsw-alias-bg-secondary,#fafbfc);border-bottom:1px solid var(--dsw-alias-border-secondary,#eef1f5)}
-.tb3cc-sec__title{display:flex;align-items:center;gap:8px;min-width:0}
-.tb3cc-sec__no{flex:0 0 auto;width:19px;height:19px;border-radius:50%;background:var(--dsw-alias-bg-tertiary,#e4e7ec);color:var(--dsw-alias-text-secondary,#4b5563);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
-.tb3cc-sec__label{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tb3cc-sec__kind{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}
-.tb3cc-sec__kind-label{color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px;white-space:nowrap}
-.tb3cc-sec__kind-select{padding:4px 8px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:7px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);font-size:12px;outline:none;font-family:inherit}
-.tb3cc-sec__kind-select:focus{border-color:var(--dsw-alias-brand-primary,#2563eb)}
-.tb3cc-sec__body{padding:12px 13px}
-.tb3cc-sec__error{padding:7px 13px;background:var(--dsw-alias-bg-danger,#fdf2f2);border-top:1px solid var(--dsw-alias-border-danger,#f7d4d4);color:var(--dsw-alias-text-danger,#b91c1c);font-size:12px}
-.tb3cc-sec__input{width:100%;padding:9px 11px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;resize:vertical;outline:none;color:var(--dsw-alias-text-primary,#1f2328);line-height:1.6;font-family:inherit;font-size:13px;box-sizing:border-box}
-.tb3cc-sec__input:focus{border-color:var(--dsw-alias-brand-primary,#2563eb)}
-.tb3cc-sec__input--markdown{font-family:Consolas,"Courier New",monospace;font-size:12px;line-height:1.65}
-.tb3cc-sec__pending{padding:12px 13px;border-radius:8px;background:var(--dsw-alias-bg-secondary,#f4f5f7);border:1px dashed var(--dsw-alias-border-primary,#d7dbe2);color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px;line-height:1.55}
+/*
+ * ⚠ 这里曾经有一整段 .tb3cc-sec*（章节卡 / 头行 / 类型下拉 / 正文内边距 /
+ *   裸 input / 错误行）。issue #59 / #60 之后**章节外观只剩 SectionShell 的
+ *   .tb3-sec* **（CSS 在 src/renderers/section-shell-css.ts）——
+ *   那一段是**删掉**的，不是被覆盖。别再往这里加章节样式。
+ */
 
 .tb3cc-actions{display:flex;align-items:center;justify-content:space-between;padding:10px 18px}
 .tb3cc-actions__msg{color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px}
@@ -300,8 +290,6 @@ export const CREATE_CSS = `
   .tb3cc-actions{padding:6px 14px}
   .tb3cc-btn{padding:4px 12px;font-size:12px}
   .tb3cc-sec-list{gap:8px}
-  .tb3cc-sec__head{padding:6px 10px}
-  .tb3cc-sec__body{padding:8px 10px}
   .tb3cc-leftcol{gap:10px}
   .tb3cc-tfield{gap:8px}
   /* 模板说明块在矮容器里只留一句话，省掉「编号前缀 / 共 N 段」那行 */

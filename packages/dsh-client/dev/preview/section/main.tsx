@@ -165,6 +165,7 @@ function Live(props: LiveProps): React.ReactNode {
 				<Section
 					sectionId="whyThis"
 					section={section}
+					index={1}
 					readonly={readonlyState}
 					onEdit={(id) => props.onEvent(`edit:${id}`)}
 					onAsk={ask}
@@ -265,6 +266,7 @@ function Matrix(props: LiveProps): React.ReactNode {
 					<Section
 						sectionId={one.key}
 						section={one.section}
+						index={1}
 						readonly={one.readonly}
 						{...(one.withCallbacks
 							? {
