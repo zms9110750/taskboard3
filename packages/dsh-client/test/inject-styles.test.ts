@@ -201,6 +201,7 @@ describe('injectStyles() 逐段哨兵', () => {
 	const EXPECTED_SEGMENTS = [
 		'CREATE_CSS',
 		'WORKSPACE_CSS',
+		'STATUS_BUTTON_CSS',
 		'SECTION_CSS',
 		'SEARCHBOX_CSS',
 		'DRAWER_CSS',

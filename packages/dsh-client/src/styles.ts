@@ -311,10 +311,11 @@ export const WORKSPACE_CSS = `
 .tb3w-detail{flex:1.2 1 0;display:flex;flex-direction:column;min-width:300px;max-width:460px;min-height:0}
 .tb3w-detail > .detail{flex:1 1 auto;min-height:0;overflow-y:auto}
 .tb3w-detail__empty{flex:1 1 auto;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:10px;background:var(--bg-card);color:var(--text-weak);font-size:12px}
-/* 详情里的状态 = 状态菜单的触发器（设计图没画胶囊，见 V3 报告） */
-.tb3w-detail [data-meta="status"]{position:relative;cursor:pointer;border-radius:5px}
-.tb3w-detail [data-meta="status"]:hover{background:var(--bg-hover)}
-.tb3w-detail [data-meta="status"]::after{content:"⌄";position:absolute;top:50%;right:-3px;transform:translateY(-50%);font-size:9px;color:var(--text-weak);opacity:.85}
+/*
+ * ⚠ 状态触发器（[data-meta="status"]）的 hover 底色 / ⌄ 角标已删：
+ *   #62 起状态是**真的 StatusButton**（自带边框 / hover / 后缀 ▾），
+ *   再在外层 span 上画一遍就是两份视觉。
+ */
 .tb3w-root[data-detail="closed"] .tb3w-split,.tb3w-root[data-detail="closed"] .tb3w-detail{display:none}
 
 /* ══════════════════════════════════════════════════════════
@@ -397,7 +398,7 @@ export const WORKSPACE_CSS = `
 .tb3w-root .filter-box__sep{padding:0 2px;font-size:12px;color:#cbd5e1;user-select:none}
 .tb3w-root .filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
 
-/* ── 状态圆点 / 编号 / 徽章（StatusCell 系） ── */
+/* ── 状态圆点 / 编号 / 徽章（StatusButton 系） ── */
 .tb3w-root .dot{display:inline-block;flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--state-unspecified-dot)}
 .tb3w-root .dot--unspecified{background:var(--state-unspecified-dot)}
 .tb3w-root .dot--submitted{background:var(--state-submitted-dot)}
@@ -421,12 +422,9 @@ export const WORKSPACE_CSS = `
 .tb3w-root .badge--domain{background:#f3f4f6;color:var(--text-secondary)}
 .tb3w-root .badge--template{background:#eef1f5;color:var(--text-secondary)}
 /*
- * ⚠ 非紧凑态的 .task-card__status 原先只存在于旧面板的 CSS（.status-line 那段），
- *   V3 的详情头部用到了它 ⇒ 这里补一条基础规则（**样式钩子，不改组件行为**）。
+ * ⚠ .task-card__status 系（StatusCell）已随 #63 退役 —— 状态由
+ *   StatusButton 统一渲染，样式在 renderers/status-button-css.ts。
  */
-.tb3w-root .task-card__status{display:inline-flex;align-items:center;gap:4px;min-width:0;font-size:11.5px;color:var(--text-secondary)}
-.tb3w-root .task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tb3w-root .task-card__status.is-compact{flex:0 0 auto;align-items:center;gap:3px;font-size:9px;color:var(--text-weak)}
 
 /* ── CardRow ── */
 .tb3w-root .task-card{display:flex;align-items:stretch;gap:0;width:100%;margin-bottom:6px;padding:8px 12px;border:2px solid var(--card-border,#9aa1ad);border-radius:8px;background:var(--bg-card);color:inherit;font-family:inherit;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
@@ -437,7 +435,7 @@ export const WORKSPACE_CSS = `
 .tb3w-root .task-card.is-draft.is-selected{border-color:var(--accent)}
 .tb3w-root .task-card.is-unread-user{border-left-width:4px;border-left-color:var(--warn);padding-left:10px}
 .tb3w-root .task-card.is-unread-ai{border-right-width:4px;border-right-color:var(--accent);padding-right:10px}
-.tb3w-root .task-card__square{flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0}
+.tb3w-root .task-card__square{flex:0 0 auto;min-width:46px;display:flex;flex-direction:column;justify-content:center;gap:2px}
 .tb3w-root .task-card__square-id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;letter-spacing:-.2px}
 .tb3w-root .task-card__body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;min-width:0}
 .tb3w-root .task-card__line{display:flex;align-items:center;gap:6px;min-width:0}
@@ -657,11 +655,13 @@ import { DERIVE_MENU_CSS } from './renderers/derive-menu-css.ts';
  */
 import { CARD_ACTION_CSS } from './renderers/workspace/card-action-css.ts';
 import { SIBLING_GROUPS_CSS } from './renderers/sibling-groups-css.ts';
+/* 状态按钮（#62 / #63）的 CSS —— 用户 2026-11-22「CSS 必须跟着组件走」，同一形态。 */
+import { STATUS_BUTTON_CSS } from './renderers/status-button-css.ts';
 
 export { TECHTREE_CSS };
 export { SEARCHBOX_CSS, SECTION_CSS };
 
-export { CARD_ACTION_CSS, CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS, SIBLING_GROUPS_CSS };
+export { CARD_ACTION_CSS, CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS, SIBLING_GROUPS_CSS, STATUS_BUTTON_CSS };
 
 
 
@@ -693,6 +693,7 @@ export interface StyleSegment {
 export const STYLE_SEGMENTS = [
 	{ name: 'CREATE_CSS', css: CREATE_CSS, sentinel: '.tb3cc-page' },
 	{ name: 'WORKSPACE_CSS', css: WORKSPACE_CSS, sentinel: '.tb3w-root' },
+	{ name: 'STATUS_BUTTON_CSS', css: STATUS_BUTTON_CSS, sentinel: '.status-button' },
 	{ name: 'SECTION_CSS', css: SECTION_CSS, sentinel: '.section-block' },
 	{ name: 'SEARCHBOX_CSS', css: SEARCHBOX_CSS, sentinel: '.search-box' },
 	{ name: 'DRAWER_CSS', css: DRAWER_CSS, sentinel: '.tb3d-panel' },

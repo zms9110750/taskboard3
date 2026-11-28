@@ -8,7 +8,7 @@ import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { CardRow } from '../../src/renderers/CardRow.tsx';
-import { StatusCell } from '../../src/renderers/StatusCell.tsx';
+import { StatusButton } from '../../src/renderers/StatusButton.tsx';
 import { StatusDot } from '../../src/renderers/StatusDot.tsx';
 import type { Card } from '../../src/types.ts';
 
@@ -142,7 +142,7 @@ function App(): React.ReactNode {
 	return (
 		<div className="preview">
 			<header className="pv-head">
-				<h1>CardRow / StatusCell / StatusDot</h1>
+				<h1>CardRow / StatusButton / StatusDot</h1>
 				<p>左侧正方形（编号 / 状态）+ 右侧三个 label 横排 + 标题 + 最后动过</p>
 			</header>
 
@@ -193,7 +193,7 @@ function App(): React.ReactNode {
 							<code style={{ fontSize: 10, color: '#9aa1ad' }}>
 								{status.replace('TASK_STATE_', '')}
 							</code>
-							<StatusCell status={status} />
+							<StatusButton status={status} size="sm" onOpen={() => undefined} />
 						</div>
 					))}
 				</div>

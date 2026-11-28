@@ -256,24 +256,55 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
  * 总宽度同时收了 20px（58 + 8 → 46 + 0）。
  */
 .task-card{gap:0}
-.task-card__status.is-compact{align-items:center}
 
 /* ── 左侧正方形：编号在上、状态在下 ── */
+/*
+ * 宽度**不再钉死 46px**：状态从「圆点 + 文字」变成带边框的 StatusButton 之后
+ * 比 46px 宽（#62 / #63）。`min-width` 保住原来的下限，内容更宽就让它撑开
+ * —— 硬钉 46px 会让按钮压到右边的 label 上。
+ */
 .task-card__square{
-  flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
-  min-width:0;
+  flex:0 0 auto;min-width:46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
 }
 .task-card__square-id{
   font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+
 /*
- * 正方形里的状态：9px、点线间距 3px（不是 4px）—— 46px 宽要塞下「需要信息」四个字。
- * 4 字 × 9px + 点 6px + 间距 3px = 45px，刚好。
+ * 正方形里的状态按钮：高度收到 20px、9px 字（列表行密度）。
+ * 值照抄 `src/renderers/status-button-css.ts` 的上下文规则，改那边时这里跟着改。
  */
-.task-card__status.is-compact{
-  flex:0 0 auto;font-size:9px;gap:3px;color:var(--text-weak);
+.task-card__square .status-button{
+  align-self:flex-start;height:20px;padding:0 5px;gap:3px;border-radius:5px;font-size:9px;
 }
+
+/* ── StatusButton（预览用副本；产品样式在 src/renderers/status-button-css.ts） ── */
+.status-button{
+  display:inline-flex;flex:0 0 auto;align-items:center;gap:5px;
+  height:24px;padding:0 8px;
+  border:1px solid var(--status-button-border,#cbd5e1);border-radius:8px;
+  background:var(--bg-card);color:var(--text-secondary);
+  font-family:inherit;font-size:11.5px;line-height:1;white-space:nowrap;text-align:left;
+  transition:background .12s,border-color .12s;
+}
+.status-button--md{height:28px;padding:0 9px;font-size:12px}
+.status-button__label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-button__caret{flex:0 0 auto;font-size:9px;line-height:1;color:#9aa1ad}
+.status-button.is-static{cursor:default}
+.status-button.is-interactive{cursor:pointer}
+.status-button.is-interactive:hover{background:#eef1f5}
+.status-button.is-interactive:active{background:#e7e9ee}
+.status-button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.status-button--unspecified{--status-button-border:#9ca3af}
+.status-button--submitted{--status-button-border:#111827}
+.status-button--working{--status-button-border:#06b6d4}
+.status-button--inputRequired{--status-button-border:#eab308}
+.status-button--authRequired{--status-button-border:#a855f7}
+.status-button--completed{--status-button-border:#10b981}
+.status-button--failed{--status-button-border:#ef4444}
+.status-button--canceled{--status-button-border:#92400e}
+.status-button--rejected{--status-button-border:#f97316}
 
 /* ── 右侧：一行 ── */
 .task-card__body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}

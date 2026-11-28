@@ -1,5 +1,5 @@
 /**
- * 验证 CardRow / StatusCell / StatusDot。
+ * 验证 CardRow / StatusButton / StatusDot。
  *
  * node dev/preview/verify.mjs
  */
@@ -91,8 +91,8 @@ const readRows = () => ev(`(() => {
   return rows.map(r => {
     const square = r.querySelector('.task-card__square');
     const id = r.querySelector('.task-card__square-id');
-    const status = r.querySelector('.task-card__status-label');
-    const dot = r.querySelector('.task-card__status .dot');
+    const status = r.querySelector('.status-button__label');
+    const dot = r.querySelector('.status-button .dot');
     const when = r.querySelector('.task-card__when');
     const cs = getComputedStyle(r);
     return {
@@ -149,7 +149,7 @@ const geo = await ev(`(() => {
   const r = document.querySelectorAll('.task-card')[1];
   const sq = r.querySelector('.task-card__square');
   const id = r.querySelector('.task-card__square-id');
-  const st = r.querySelector('.task-card__status');
+  const st = r.querySelector('.status-button');
   const idR = id.getBoundingClientRect();
   const stR = st.getBoundingClientRect();
   return {
@@ -162,7 +162,7 @@ const geo = await ev(`(() => {
   };
 })()`);
 console.log('  ', JSON.stringify(geo));
-expect('正方形固定 46px', geo.squareW, 46);
+expect('正方形至少 46px（状态按钮撑宽，不再钉死）', geo.squareW >= 46, true);
 expect('⚠ 状态在编号下面（top 更大）', geo.statusTop > geo.idTop, true);
 expect('⚠ 两者左对齐（同一竖列）', geo.sameLeft, true);
 expect('最后动过 90px', geo.whenW, 90);

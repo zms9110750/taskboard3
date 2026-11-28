@@ -117,6 +117,13 @@ export interface CardDetailProps {
 	readonly onExpand?: () => void;
 	/** 兄弟归组面板（用户 2026-11-24：放在关系折叠区里点选成组）。 */
 	readonly siblingGroups?: ReactNode;
+	/**
+	 * 点详情头的状态按钮 —— 打开状态菜单（#62 / #63）。
+	 *
+	 * 省略 ⇒ 状态按钮渲染成只读（预览 / 回归场景），不假装能点。
+	 * 参数是锚点元素，由 `Workspace` 用来给 `StatusMenu` 定位。
+	 */
+	readonly onStatusOpen?: (anchor: HTMLElement) => void;
 }
 
 /**
@@ -169,6 +176,7 @@ export function CardDetail(props: CardDetailProps): ReactNode {
 				onClose={props.onClose}
 				onExpand={props.onExpand}
 				siblingGroups={props.siblingGroups}
+				onStatusOpen={props.onStatusOpen}
 			/>
 
 			{/*

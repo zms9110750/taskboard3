@@ -24,7 +24,7 @@
  *  │   ├ span.badge.badge--domain                     ← 领域
  *  │   ├ span.badge.badge--template                   ← 模板（templateLabel 为空时不画）
  *  │   ├ span.tb3t-card__spacer
- *  │   └ StatusCell(.task-card__status.is-compact)    ← 状态圆点 + 中文名
+ *  │   └ StatusButton(.status-button.is-static)      ← 状态按钮（#63，圆点 + 中文名 + 边框）
  *  └ span.tb3t-card__title
  * ```
  *
@@ -44,10 +44,11 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 
-import { isDraftStatus, kindTone, unreadSides } from '../pure/card-view.ts';
+import { isDraftStatus, isEndedStatus, kindTone, unreadSides } from '../pure/card-view.ts';
 import type { TreeLayoutWarning } from '../pure/tree-layout.ts';
 import type { Card } from '../types.ts';
-import { StatusCell } from './StatusCell.tsx';
+import { StatusButton } from './StatusButton.tsx';
+import { taskStateOf } from './status-button-model.ts';
 
 /**
  * 布局警告（孤儿 / 环）。
@@ -160,8 +161,20 @@ export function TreeCard(props: TreeCardProps): ReactNode {
 					</span>
 				)}
 				<span className="tb3t-card__spacer" />
-				{/* 状态：圆点 + 中文名（用户 `2026-11-19`：不只靠颜色） */}
-				<StatusCell compact status={card.status} />
+				{/*
+				 * 状态：独立组件（#63）。树卡根节点也是 `<button>` ⇒ 里面不能再嵌按钮，
+				 * 所以是只读态；`disabledReason` 按是否收尾（冻结）给不同说法。
+				 */}
+				<StatusButton
+					status={taskStateOf(card.status)}
+					size="sm"
+					interactive={false}
+					disabledReason={
+						isEndedStatus(card.status)
+							? '卡已收尾（冻结），状态不能再改'
+							: '在详情里改状态'
+					}
+				/>
 			</span>
 			<span className="tb3t-card__title">{card.title}</span>
 		</button>
