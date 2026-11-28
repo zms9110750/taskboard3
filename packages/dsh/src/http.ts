@@ -36,7 +36,7 @@
  *   将来它提供了再抽，**现在不要**在 dsh 里再造一层抽象。
  */
 
-import type { CardActionLevel, SearchCondition, Taskboard } from '@taskboard/core';
+import type { CardActionLevel, SearchCondition, Taskboard, ToolPolicyScopeInput } from '@taskboard/core';
 import { BASE_TOOLS, CARD_ACTION_OPTIONS, isAdoptTransition, missingRenderers } from '@taskboard/core';
 import type { ToolGuardKv, ToolGuardLevel } from '@taskboard/dsh-agent-guard';
 import {
@@ -212,6 +212,73 @@ function str(body: unknown, key: string): string | undefined {
 function rawField(body: unknown, key: string): unknown {
 	if (typeof body !== 'object' || body === null) return undefined;
 	return (body as Record<string, unknown>)[key];
+}
+
+/**
+ * body 里的**可选字符串数组**。
+ *
+ * | 输入 | 结果 |
+ * |---|---|
+ * | 字段没给 | `{ ok: true, value: undefined }` |
+ * | `["bash"]` | `{ ok: true, value: ["bash"] }` |
+ * | `"bash"` / `[1]` / `null` | `{ ok: false }` ⇒ 调用方答 400 |
+ *
+ * 判据：**不静默忽略**。把 `"bash"` 当没给，会让「用户以为加上了、实际没加」
+ * 变成 200 + 空操作 —— 那是最难查的一类失败（AGENTS 3.6 / 3.10）。
+ */
+function optionalStringList(
+	raw: unknown,
+): { readonly ok: true; readonly value: readonly string[] | undefined } | { readonly ok: false } {
+	if (raw === undefined) return { ok: true, value: undefined };
+	if (!Array.isArray(raw)) return { ok: false };
+	if (!raw.every((one): one is string => typeof one === 'string')) return { ok: false };
+	return { ok: true, value: raw };
+}
+
+/**
+ * 「模板授权」页的数据形状 —— **GET 与 PUT 成功后的回声共用一份**。
+ *
+ * ⚠ 不导出、不第二处拼：PUT 如果自己再拼一遍，GET 与 PUT 的回声迟早漂
+ *   （AGENTS 3.6：第二份真值）。
+ */
+interface ToolPolicyView {
+	readonly baseTools: readonly string[];
+	readonly unclaimed: readonly string[];
+	readonly common: readonly string[];
+	readonly groups: readonly { readonly name: string; readonly tools: readonly string[] }[];
+	readonly groupMembers: readonly { readonly group: string; readonly templates: readonly string[] }[];
+	readonly templates: readonly { readonly templateRef: string; readonly tools: readonly string[] }[];
+	readonly effective: readonly { readonly templateRef: string; readonly tools: readonly string[] }[];
+}
+
+/**
+ * 组装「模板授权」页的视图：**所有真值都从 core 来**。
+ *
+ * - `effective` 由 `taskboard.effectiveToolsOf()` 算（BASE ∪ 未领取 ∪ common ∪
+ *   命中的组 ∪ 独立档；有组图时组的工具集是**包含闭包**）
+ * - 各档增量原样摊平（客户端要按来源分组展示，光有生效集拆不出来）
+ */
+function toolPolicyViewOf(taskboard: Taskboard): ToolPolicyView {
+	const store = taskboard.getToolPolicies();
+	const templates = taskboard.listTemplates();
+	return {
+		baseTools: toArrays(BASE_TOOLS),
+		unclaimed: toArrays(store.unclaimed),
+		common: toArrays(store.common),
+		groups: Object.entries(store.groups).map(([name, tools]) => ({ name, tools: toArrays(tools) })),
+		groupMembers: Object.entries(store.groupMembers).map(([group, refs]) => ({
+			group,
+			templates: toArrays(refs),
+		})),
+		templates: Object.entries(store.templates).map(([templateRef, tools]) => ({
+			templateRef,
+			tools: toArrays(tools),
+		})),
+		effective: templates.map((one) => ({
+			templateRef: one.ref,
+			tools: toArrays(taskboard.effectiveToolsOf(one.ref)),
+		})),
+	};
 }
 
 /* ────────────────────────── 两条正交轴的档位 ────────────────────────── */
@@ -552,9 +619,10 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 		return;
 	}
 
-	/* ── GET /api/tool-policy —— 工具权限策略的**只读**视图（给「模板授权」页） ──
+	/* ── GET / PUT /api/tool-policy —— 工具权限策略（「模板授权」页） ──
 	 *
 	 * 用户 `2026-11-24`：「什么模板对应什么工具可用还没有界面。」
+	 * 用户 `2026-11-28`（issue #66）：读**和写**都要有 —— 页面要能选中 / 编辑。
 	 *
 	 * ## 为什么 `effective` 由服务端算
 	 *
@@ -568,33 +636,120 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	 * 「这个模板的工具里，哪些来自 BASE、哪些来自通用档 / 组档 / 独立档」——
 	 * 这需要每个档的原始增量，光有 `effective` 拆不出来。
 	 *
-	 * ⚠ 只读：本轮不做写入（写策略仍走 AI 工具 `taskboard_tool_policy_*`）。
+	 * ## 写入（PUT，issue #66）
+	 *
+	 * body = `{ tier? | templateRef?, allow?, remove? }`，与 AI 工具
+	 * `taskboard_tool_policy` **同语义、同一条 core 路径**
+	 * （`taskboard.setToolPolicyScope`）：
+	 *
+	 * - 二选一（`tier` / `templateRef`）由 core 判；
+	 * - BASE 硬底线、并集 / 交集语义也在 core；
+	 * - 这里只做 JSON → 入参的搬运 + 形状校验（`allow` / `remove` 必须是字符串数组）。
+	 *
+	 * ⇒ 成功回**更新后的视图**（与 GET 同形），客户端不用再拉一次。
+	 *
 	 * ⚠ 不进 `/api/state`：那是 AI / MCP 也会看的通道；这是 UI 专用视图。
 	 */
 	if (tail === '/tool-policy') {
-		if (method !== 'GET') return sendMethodNotAllowed(res, 'GET');
-		/* 鉴权已经在 `route()` 开头统一做过（`rejected()` 先于任何路径判断）。 */
-		const store = taskboard.getToolPolicies();
-		const templates = taskboard.listTemplates();
-		sendOk(res, {
-			baseTools: toArrays(BASE_TOOLS),
-			unclaimed: toArrays(store.unclaimed),
-			common: toArrays(store.common),
-			groups: Object.entries(store.groups).map(([name, tools]) => ({ name, tools: toArrays(tools) })),
-			groupMembers: Object.entries(store.groupMembers).map(([group, refs]) => ({
-				group,
-				templates: toArrays(refs),
-			})),
-			templates: Object.entries(store.templates).map(([templateRef, tools]) => ({
-				templateRef,
-				tools: toArrays(tools),
-			})),
-			effective: templates.map((one) => ({
-				templateRef: one.ref,
-				tools: toArrays(taskboard.effectiveToolsOf(one.ref)),
-			})),
-		});
-		return;
+		if (method === 'GET') {
+			/* 鉴权已经在 `route()` 开头统一做过（`rejected()` 先于任何路径判断）。 */
+			sendOk(res, toolPolicyViewOf(taskboard));
+			return;
+		}
+		if (method === 'PUT') {
+			const body = await readJson(req);
+
+			const allow = optionalStringList(rawField(body, 'allow'));
+			const remove = optionalStringList(rawField(body, 'remove'));
+			for (const [key, parsed] of [
+				['allow', allow],
+				['remove', remove],
+			] as const) {
+				if (parsed.ok) continue;
+				sendFailure(
+					res,
+					failure(ErrorCode.FIELD_REQUIRED, `${key} 必须是字符串数组。`, {
+						issues: [{ path: `/${key}`, message: '必须是字符串数组' }],
+					}),
+					400,
+				);
+				return;
+			}
+
+			const tierRaw = rawField(body, 'tier');
+			const templateRef = str(body, 'templateRef');
+			/*
+			 * `tier` 的**取值范围不在这里校验** —— core 的 `setToolPolicyScope`
+			 * 是唯一一处（连「只能是 unclaimed / claimed」的文案都在那边）。
+			 * 这里只做 JSON → 类型的搬运，所以这个断言不会掩盖「值非法」：
+			 * 非法值 core 会拒绝。
+			 */
+			const input: ToolPolicyScopeInput = {
+				...(tierRaw === undefined ? {} : { tier: tierRaw as 'unclaimed' | 'claimed' }),
+				...(templateRef === undefined ? {} : { templateRef }),
+				...(allow.ok && allow.value !== undefined ? { allow: allow.value } : {}),
+				...(remove.ok && remove.value !== undefined ? { remove: remove.value } : {}),
+			};
+
+			const changed = await taskboard.setToolPolicyScope(input);
+			if (!changed.ok) return sendFailure(res, changed);
+
+			sendOk(res, toolPolicyViewOf(taskboard));
+			return;
+		}
+		return sendMethodNotAllowed(res, 'GET, PUT');
+	}
+
+	/* ── GET / PUT /api/tool-graph —— 工具组图（组 / 组包含组） ──
+	 *
+	 * 用户 `2026-11-28`（issue #66）：组图从「UI 的内存状态」升级成
+	 * **后端真值**（落 kv `toolGraph:v1`），刷新 / 重开页面改动还在。
+	 *
+	 * ## 校验在 core，不在本文件
+	 *
+	 * 路由只把 JSON body 原样交给 `taskboard.setToolGraph()`：形状 / 组名重复 /
+	 * 非组出边 / 自环 / 重复边 / **成环（带环路径）** / 悬空组引用全部由 core 判
+	 * —— 复用 `tool-graph.ts` 那一份环检测。将来 AI 工具写图走同一个方法，
+	 * 不会出现「路由拒了、工具放行」。
+	 *
+	 * ## 400 的形状
+	 *
+	 * 信封仍是本文件统一的 `Failure`（`{ ok:false, code, message, issues?, detail? }`），
+	 * **图的判定码落在 `detail.code`**（`CYCLE` / `SELF_LOOP` / `DUPLICATE` /
+	 * `NOT_GROUP` / `MISSING_NODE` / `BAD_SHAPE` / `DUPLICATE_GROUP`）；
+	 * 成环时 `detail.cycle` 是首尾闭合的环路径。
+	 *
+	 * ⚠ 为什么不写 `{ error: { code } }`：`@taskboard/protocol` 的 `Failure`
+	 *   明确禁止那个形状（见 `error.ts` 文件头），且 `code` 是**闭集合**、
+	 *   没有 `CYCLE` 这类图错误码 —— 所以判定码进 `detail`，不另造一套信封。
+	 */
+	if (tail === '/tool-graph') {
+		if (method === 'GET') {
+			sendOk(res, taskboard.getToolGraph());
+			return;
+		}
+		if (method === 'PUT') {
+			const body = await readJson(req);
+			const saved = await taskboard.setToolGraph(body);
+			if (!saved.ok) {
+				sendFailure(
+					res,
+					failure(ErrorCode.FIELD_REQUIRED, saved.message, {
+						issues: [{ path: saved.path, message: saved.message }],
+						detail: {
+							code: saved.code,
+							...(saved.cycle === undefined ? {} : { cycle: saved.cycle }),
+						},
+					}),
+					400,
+				);
+				return;
+			}
+			/* 回**落库后的图**（规范化过：组名 trim、column 缺省补 0）。 */
+			sendOk(res, saved.doc);
+			return;
+		}
+		return sendMethodNotAllowed(res, 'GET, PUT');
 	}
 
 	/* ── GET / POST /api/permission —— 读写两条正交轴的档位 ──
@@ -812,8 +967,10 @@ async function route(req: ReadableIncoming, res: OutgoingLike, deps: RouteDeps):
 	 *
 	 * ⇒ 没有一个「改权限」的内存开关。现在的形态是两条正交轴（`2026-11-19`）：
 	 *   · **档位**读写 → `GET/POST /api/permission`（本文件上面那一段）；
-	 *   · **四档策略** → AI 工具 `taskboard_tool_policy_*`，只由宿主轴
-	 *     `manage-edit` 放行。
+	 *   · **四档策略** → `GET/PUT /api/tool-policy`（上面那一段，UI 用）
+	 *     与 AI 工具 `taskboard_tool_policy`（只由宿主轴 `manage-edit` 放行）——
+	 *     两边**同一个 core 方法**（`setToolPolicyScope`），不是两套规则。
+	 *   · **工具组图** → `GET/PUT /api/tool-graph`（上面那一段）。
 	 *
 	 * 所以原来的 `GET /api/policy-edit` 与 `POST /api/policy-edit/toggle`
 	 * 两个端点连同 core 的内存开关一起删掉了。不要往回加。

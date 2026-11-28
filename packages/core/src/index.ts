@@ -56,6 +56,14 @@ import {
 	type UpdatesResult,
 } from './updates.ts';
 import {
+	EMPTY_TOOL_GRAPH,
+	TOOL_GRAPH_KEY,
+	toolGraphCorruptKeyOf,
+	validateToolGraphDoc,
+	type ToolGraphDoc,
+	type ToolGraphDocResult,
+} from './tool-graph-doc.ts';
+import {
 	adoptCard,
 	claimCard,
 	judgeClaim,
@@ -206,6 +214,51 @@ function cleanDelta(delta: readonly string[]): readonly string[] {
 /** 清洗名字（组名 / 模板 ref）。 */
 function cleanName(name: string): string {
 	return name.trim();
+}
+
+/** 启动时读组图的结果。 */
+interface ToolGraphCache {
+	/** 可用的图（判据见 `tool-graph-doc.ts`）。 */
+	readonly doc: ToolGraphDoc;
+	/** 坏值的原样 + 备份键；`undefined` = kv 里没有坏值。 */
+	readonly corrupt?: { readonly raw: string; readonly backupKey: string };
+}
+
+/**
+ * 从**不可信**的 kv 值读组图（issue #66）。
+ *
+ * | 情况 | 结果 |
+ * |---|---|
+ * | 键不存在 | 空图，**不告警**（旧 profile 的正常状态） |
+ * | 不是合法 JSON | 空图 + **warn**，原值记下来等备份 |
+ * | 不是合法图（成环 / 形状错） | 空图 + **warn**，原值记下来等备份 |
+ *
+ * ⚠ 这里**不写任何东西**：坏值原样留在主键里，等用户第一次保存时
+ *   先备份到 `toolGraph:corrupt:<时间戳>` 再覆盖（见 `saveToolGraph`）。
+ *   启动就改 kv 会让「只是打开了一次页面」变成一次数据丢失。
+ */
+function readToolGraphCache(raw: string | undefined, nowMs: number): ToolGraphCache {
+	if (raw === undefined) return { doc: EMPTY_TOOL_GRAPH };
+
+	const corrupt = (reason: string): ToolGraphCache => {
+		const backupKey = toolGraphCorruptKeyOf(nowMs);
+		console.warn(
+			`[taskboard3-core] kv「${TOOL_GRAPH_KEY}」不是合法的工具组图（${reason}），` +
+				`已按空图启动；原值会在下次写入前备份到「${backupKey}」，不会被直接覆盖。`,
+		);
+		return { doc: EMPTY_TOOL_GRAPH, corrupt: { raw, backupKey } };
+	};
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw) as unknown;
+	} catch {
+		return corrupt('不是合法 JSON');
+	}
+
+	const checked = validateToolGraphDoc(parsed);
+	if (!checked.ok) return corrupt(checked.message);
+	return { doc: checked.doc };
 }
 
 /**
@@ -457,6 +510,37 @@ export interface Taskboard {
 	 * @returns 该 scope 的**新配置**（不含 BASE）+ 生效/忽略明细
 	 */
 	setToolPolicyScope(input: ToolPolicyScopeInput): Promise<{ readonly ok: true; readonly change: ToolPolicyScopeChange } | Failure>;
+
+	/* ── 工具组图（issue #66：组 / 组包含组 的后端真值） ── */
+
+	/**
+	 * 读**整张工具组图**（kv 键 `toolGraph:v1`）。
+	 *
+	 * 键不存在 ⇒ 空图（`groups: []` / `edges: []`），**不是错误**
+	 * —— 旧 profile 本来就没有这张图。
+	 *
+	 * ⚠ 返回**冻结**的文档：缓存直接交出去，改它等于改缓存。
+	 */
+	getToolGraph(): ToolGraphDoc;
+
+	/**
+	 * 整图覆盖写入（`PUT /api/tool-graph` 与将来的 AI 工具共用）。
+	 *
+	 * ## 校验在 core（与所有写方法同一条不变量）
+	 *
+	 * 路由只把 JSON body 原样交进来 —— 形状 / 组名重复 / 非组出边 /
+	 * 自环 / 重复边 / 成环 / 悬空组引用**全部在这里判**，判定复用
+	 * `tool-graph.ts` 那份环检测（一份实现，不重写）。
+	 * 拒绝时**不落库**。
+	 *
+	 * ## 坏数据的保护
+	 *
+	 * 启动时发现 kv 里的图坏了 ⇒ 空图 + warn（不许 500）；用户第一次
+	 * 保存时**先**把坏值备份到 `toolGraph:corrupt:<时间戳>`，**再**覆盖。
+	 *
+	 * @param raw 不可信的 body / 文档 —— 形状判定全在本方法内
+	 */
+	setToolGraph(raw: unknown): Promise<ToolGraphDocResult>;
 
 	/* ── UI 权限档位（持久化在 kv；默认见 permission.ts） ── */
 
@@ -839,6 +923,34 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 	};
 
 	/*
+	 * ── 工具组图缓存（kv：`toolGraph:v1`，issue #66） ──
+	 *
+	 * 与 `toolPolicies` 同一模式：**初值从 kv 读一次**，写入时同步更新缓存 + 写回。
+	 *
+	 * 缓存理由更强：`effectiveToolsOf` 在**每次工具调用**（guard）里都要读它，
+	 * 每次 `kvGet` + `JSON.parse` + 校验不值得。
+	 *
+	 * ⚠ 坏值只**记着**不动 —— 等用户第一次保存时先备份再覆盖（`saveToolGraph`）。
+	 */
+	const graphCache = readToolGraphCache(store.kvGet(TOOL_GRAPH_KEY), now());
+	let toolGraph: ToolGraphDoc = graphCache.doc;
+	let corruptToolGraph = graphCache.corrupt;
+
+	/**
+	 * 把组图整体写回 kv。
+	 *
+	 * ⚠ **先备份坏值、再覆盖**：备份写失败时异常直接往上抛 ⇒ 主键保持原样
+	 *   （不会出现「备份没成功但坏数据已被新图盖掉」）。
+	 */
+	const saveToolGraph = async (): Promise<void> => {
+		if (corruptToolGraph !== undefined) {
+			await store.kvSet(corruptToolGraph.backupKey, corruptToolGraph.raw);
+			corruptToolGraph = undefined;
+		}
+		await store.kvSet(TOOL_GRAPH_KEY, JSON.stringify(toolGraph));
+	};
+
+	/*
 	 * ── UI 权限档位缓存 ──
 	 *
 	 * 与 `toolPolicies` 同一个模式：**初值从 kv 读一次**，写入时同步更新缓存 + 写回。
@@ -1060,6 +1172,11 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			 * 浅拷贝（与缓存注释一致）：`unclaimed` / `common` 与各映射的**值数组**
 			 * 都是冻结的，所以换一层容器对象 + 换一层映射即可防止调用方改到缓存；
 			 * 不必深拷贝。
+			 *
+			 * ⚠ `graph` 一起带出去（issue #66）：`effectiveToolsOf` 要用它算组的
+			 *   包含闭包；而 `getToolPolicies()` 是 guard 拿策略的唯一入口
+			 *   （`dsh-agent-guard/src/permission.ts`）⇒ 不带它，guard 与页面
+			 *   会对「同一个模板有哪些工具」给出两个答案。
 			 */
 			return {
 				unclaimed: toolPolicies.unclaimed,
@@ -1067,11 +1184,13 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 				groups: { ...toolPolicies.groups },
 				groupMembers: { ...toolPolicies.groupMembers },
 				templates: { ...toolPolicies.templates },
+				graph: toolGraph,
 			};
 		},
 
 		effectiveToolsOf(templateRef) {
-			return effectiveToolsOf(toolPolicies, templateRef);
+			/* 组的工具集来源要图（有图 = 闭包，无图 = `groups[g]`，见 permission.ts）。 */
+			return effectiveToolsOf({ ...toolPolicies, graph: toolGraph }, templateRef);
 		},
 
 		// TODO(审查): v1 三方法（setCommonPolicy / setGroupPolicy / setTemplatePolicy）与 v2 setToolPolicyScope 并存且写同一缓存 ⇒ 两套会各自演化；建议注明是 v2 的薄包装，可直接改。
@@ -1245,6 +1364,29 @@ export function createTaskboard(options: TaskboardOptions): Taskboard {
 			delete toolPolicies.groupMembers[name];
 			await saveToolPolicies();
 			return { ok: true };
+		},
+
+		/* ── 工具组图（issue #66） ── */
+
+		getToolGraph() {
+			/*
+			 * 直接交冻文档：`validateToolGraphDoc` 的产出（含 `EMPTY_TOOL_GRAPH`）
+			 * 每一层都 `Object.freeze` 过，调用方改不动缓存。
+			 */
+			return toolGraph;
+		},
+
+		async setToolGraph(raw) {
+			/*
+			 * ⚠ **整图校验在这里**（不在路由）：AI 工具将来也会走同一个方法，
+			 *   两边各写一份校验，漏一条就是「路由拒了、工具放行」。
+			 */
+			const checked = validateToolGraphDoc(raw);
+			if (!checked.ok) return checked;
+
+			toolGraph = checked.doc;
+			await saveToolGraph();
+			return { ok: true, doc: toolGraph };
 		},
 
 		/* ── 两条轴的档位 ── */
@@ -1797,6 +1939,66 @@ export {
 	type ToolPolicyScopeInput,
 	type ToolPolicyStore,
 } from './permission.ts';
+
+/**
+ * 工具组图（纯逻辑：节点 / 包含边 / 环检测 / 拓扑分层布局）。
+ *
+ * ⚠ **实现只有一份**（issue #66）：UI 的 `@taskboard/dsh-permissions` 从这里
+ *   引用（可走子路径 `@taskboard/core/tool-graph`，避免包根把 yaml / node:fs
+ *   拖进浏览器包）；服务端写图前的校验也用它。
+ */
+export {
+	addEdge,
+	addNode,
+	ancestorGroups,
+	childrenOf,
+	connectedGroupCount,
+	cyclePathIfAdded,
+	DEFAULT_LAYOUT,
+	emptyGraph,
+	expandedToolIds,
+	firstCycle,
+	layoutGraph,
+	moveNode,
+	nodeOf,
+	orthogonalPath,
+	parentsOf,
+	pathBetween,
+	removeEdge,
+	removeNode,
+	topoLayers,
+	type AddEdgeErrorCode,
+	type AddEdgeResult,
+	type LayoutBox,
+	type LayoutOptions,
+	type ToolGraph,
+	type ToolGraphEdge,
+	type ToolGraphNode,
+	type TopoError,
+	type TopoResult,
+} from './tool-graph.ts';
+
+/**
+ * 工具组图的**落库文档**（kv `toolGraph:v1`）+ 校验 + 包含闭包（issue #66）。
+ *
+ * ⚠ 与上面那个模块分开：`tool-graph.ts` 是画布模型（有坐标 / 显示名），
+ *   这里才是持久化契约（只有组名 / 列号 / 包含边）。
+ */
+export {
+	EMPTY_TOOL_GRAPH,
+	GROUP_PREFIX,
+	TOOL_GRAPH_KEY,
+	TOOL_PREFIX,
+	groupToolClosure,
+	hasToolGraph,
+	toolGraphCorruptKeyOf,
+	toolGraphOf,
+	validateToolGraphDoc,
+	type ToolGraphDoc,
+	type ToolGraphDocErrorCode,
+	type ToolGraphDocResult,
+	type ToolGraphGroup,
+} from './tool-graph-doc.ts';
 
 /** 未读工具（卡上的字段 + 维护它的纯函数）。 */
 export {

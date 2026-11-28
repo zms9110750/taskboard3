@@ -24,13 +24,14 @@ import { createSqliteStore } from '@taskboard/io';
 import { createHandler, ROUTE_PREFIX, type RouteDeps } from '../src/http.ts';
 import type { OutgoingLike, ReadableIncoming } from '../src/types.ts';
 
-function makeReq(options: { method?: string; url: string }): ReadableIncoming {
+function makeReq(options: { method?: string; url: string; body?: unknown }): ReadableIncoming {
+	const chunks: string[] = options.body === undefined ? [] : [JSON.stringify(options.body)];
 	return {
 		method: options.method ?? 'GET',
 		url: options.url,
 		headers: { host: '127.0.0.1:3000' },
 		async *[Symbol.asyncIterator]() {
-			/* GET 无 body */
+			for (const chunk of chunks) yield chunk;
 		},
 	};
 }
@@ -80,6 +81,13 @@ interface ToolPolicyPayload {
 	readonly effective: readonly { readonly templateRef: string; readonly tools: readonly string[] }[];
 }
 
+/** 统一信封：成功看 `data`，失败看 `code`。 */
+interface ToolPolicyEnvelope {
+	readonly ok?: boolean;
+	readonly code?: string;
+	readonly data?: ToolPolicyPayload;
+}
+
 describe('GET /api/tool-policy（真 handler + 真 SQLite）', () => {
 	let dir = '';
 	let store: ReturnType<typeof createSqliteStore>;
@@ -93,11 +101,11 @@ describe('GET /api/tool-policy（真 handler + 真 SQLite）', () => {
 		...overrides,
 	});
 
-	const call = async (deps: RouteDeps, options: { method?: string; url: string }) => {
+	const call = async (deps: RouteDeps, options: { method?: string; url: string; body?: unknown }) => {
 		const handler = createHandler(deps);
 		const out = makeRes();
 		await handler(makeReq(options), out);
-		return { status: out.status(), json: out.json() as { ok?: boolean; data?: ToolPolicyPayload }, body: out.body() };
+		return { status: out.status(), json: out.json() as ToolPolicyEnvelope, body: out.body() };
 	};
 
 	before(async () => {
@@ -173,7 +181,7 @@ describe('GET /api/tool-policy（真 handler + 真 SQLite）', () => {
 		assert.equal(effective?.tools.includes('edit'), true);
 	});
 
-	it('POST ⇒ 405（本轮只读）', async () => {
+	it('POST ⇒ 405（写入走 PUT，issue #66）', async () => {
 		const out = await call(depsOf(), { method: 'POST', url: `${ROUTE_PREFIX}/api/tool-policy` });
 		assert.equal(out.status, 405);
 	});
@@ -183,5 +191,78 @@ describe('GET /api/tool-policy（真 handler + 真 SQLite）', () => {
 			url: `${ROUTE_PREFIX}/api/tool-policy`,
 		});
 		assert.equal(out.status, 401);
+	});
+
+	/* ── 写入（issue #66） ── */
+
+	const POLICY_URL = `${ROUTE_PREFIX}/api/tool-policy`;
+
+	it('PUT { tier: unclaimed, allow } ⇒ 200 + 更新后的视图；GET 能读回', async () => {
+		const put = await call(depsOf(), {
+			method: 'PUT',
+			url: POLICY_URL,
+			body: { tier: 'unclaimed', allow: ['web_search'] },
+		});
+		assert.equal(put.status, 200);
+		assert.equal(put.json.ok, true);
+		assert.ok(put.json.data?.unclaimed.includes('web_search'), '回声里就有刚写的档');
+
+		const get = await call(depsOf(), { url: POLICY_URL });
+		assert.ok(get.json.data?.unclaimed.includes('web_search'), '已落库，GET 能读回');
+	});
+
+	it('PUT { templateRef, allow / remove } ⇒ 改的是独立档（与 AI 工具同一个 core 方法）', async () => {
+		const ref = taskboard.listTemplates()[0]?.ref;
+		assert.ok(ref !== undefined);
+
+		const added = await call(depsOf(), {
+			method: 'PUT',
+			url: POLICY_URL,
+			body: { templateRef: ref, allow: ['edit'] },
+		});
+		assert.equal(added.status, 200);
+		let own = added.json.data?.templates.find((one) => one.templateRef === ref);
+		assert.ok(own?.tools.includes('edit'));
+
+		const removed = await call(depsOf(), {
+			method: 'PUT',
+			url: POLICY_URL,
+			body: { templateRef: ref, remove: ['edit'] },
+		});
+		assert.equal(removed.status, 200);
+		own = removed.json.data?.templates.find((one) => one.templateRef === ref);
+		assert.equal(own?.tools.includes('edit'), false, 'remove 生效');
+	});
+
+	it('PUT 二选一（tier + templateRef）⇒ 400（判定在 core）', async () => {
+		const ref = taskboard.listTemplates()[0]?.ref;
+		assert.ok(ref !== undefined);
+		const out = await call(depsOf(), {
+			method: 'PUT',
+			url: POLICY_URL,
+			body: { tier: 'claimed', templateRef: ref, allow: [] },
+		});
+		assert.equal(out.status, 400);
+		assert.equal(out.json.ok, false);
+	});
+
+	it('PUT 模板不存在 ⇒ 404', async () => {
+		const out = await call(depsOf(), {
+			method: 'PUT',
+			url: POLICY_URL,
+			body: { templateRef: '不存在的模板', allow: ['x'] },
+		});
+		assert.equal(out.status, 404);
+		assert.equal(out.json.code, 'TEMPLATE_NOT_FOUND');
+	});
+
+	it('PUT allow 不是数组 ⇒ 400（不静默当没给）', async () => {
+		const out = await call(depsOf(), {
+			method: 'PUT',
+			url: POLICY_URL,
+			body: { tier: 'unclaimed', allow: 'bash' },
+		});
+		assert.equal(out.status, 400);
+		assert.equal(out.json.code, 'FIELD_REQUIRED');
 	});
 });
