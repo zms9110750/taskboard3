@@ -88,7 +88,7 @@ function AskMark(props: {
 		 * ⇒ 空 span 保留只为**占位对齐**（14px），不画任何形状。
 		 */
 		return (
-			<span className="ask-option__mark ask-option__mark--check" aria-hidden="true">
+			<span className="tb3-ask__mark tb3-ask__mark--check" aria-hidden="true">
 				{props.picked ? '✓' : ''}
 			</span>
 		);
@@ -96,7 +96,7 @@ function AskMark(props: {
 	/* 可交互：圆圈（单选）/ 方框（多选） */
 	return (
 		<span
-			className="ask-option__mark ask-option__mark--box"
+			className="tb3-ask__mark tb3-ask__mark--box"
 			data-multi={String(props.multiSelect)}
 			aria-hidden="true"
 		/>
@@ -119,13 +119,16 @@ function AskMark(props: {
 function AskRow(props: {
 	/** 行的种类 —— 测试/样式用的稳定钩子，不参与行为判断。 */
 	readonly kind: 'option' | 'custom';
+	/** 选项文字 —— 只用于 `data-ask-option`（预览/测试的稳定钩子），不参与行为。 */
+	readonly optionLabel?: string;
 	readonly picked: boolean;
 	readonly multiSelect: boolean;
 	readonly readonly: boolean;
 	readonly onSelect?: () => void;
 	readonly children: ReactNode;
 }): ReactNode {
-	const className = ['ask-option'];
+	const className = ['tb3-ask__option'];
+	if (props.kind === 'custom') className.push('tb3-ask__option--custom');
 	if (props.picked) className.push('is-picked');
 	if (props.readonly) className.push('is-readonly');
 
@@ -136,6 +139,7 @@ function AskRow(props: {
 			className={className.join(' ')}
 			data-row-kind={props.kind}
 			data-picked={String(props.picked)}
+			{...(props.optionLabel === undefined ? {} : { 'data-ask-option': props.optionLabel })}
 			{...(interactive
 				? {
 						role: 'button',
@@ -175,15 +179,16 @@ export function AskOptionRow(props: {
 	return (
 		<AskRow
 			kind="option"
+			optionLabel={label}
 			picked={props.option.picked}
 			multiSelect={props.multiSelect}
 			readonly={props.readonly}
 			{...(props.onPick === undefined ? {} : { onSelect: () => props.onPick?.(label) })}
 		>
-			<span className="ask-option__body">
-				<span className="ask-option__label">{label}</span>
+			<span className="tb3-ask__option-body">
+				<span className="tb3-ask__option-label">{label}</span>
 				{props.option.description === '' ? null : (
-					<span className="ask-option__desc">{props.option.description}</span>
+					<span className="tb3-ask__option-desc">{props.option.description}</span>
 				)}
 			</span>
 		</AskRow>
@@ -248,8 +253,8 @@ export function AskCustomRow(props: {
 			{...(props.onAsk === undefined ? {} : { onSelect: () => props.onAsk?.({ type: 'custom-toggle' }) })}
 		>
 			{props.readonly ? (
-				<span className="ask-option__body">
-					<span className="ask-option__label">{stored === '' ? '（未填写）' : stored}</span>
+				<span className="tb3-ask__option-body">
+					<span className="tb3-ask__option-label">{stored === '' ? '（未填写）' : stored}</span>
 				</span>
 			) : (
 				<>
@@ -259,7 +264,7 @@ export function AskCustomRow(props: {
 					 */}
 					<button
 						type="button"
-						className="ask-option__custom-label"
+						className="tb3-ask__custom-label"
 						data-ask-custom-label
 						onClick={(event) => {
 							/* 别冒泡到 AskRow —— 否则会 toggle 两次（选中又取消）。 */
@@ -271,7 +276,7 @@ export function AskCustomRow(props: {
 					</button>
 					<input
 						type="text"
-						className="ask-group__custom"
+						className="tb3-ask__custom"
 						data-ask-custom
 						value={value}
 						/* 占位符就是空框里的灰字；不再重复「自己填」 */
@@ -325,17 +330,17 @@ export function AskGroupHead(props: {
 	const unset = props.group.pickedState === 'unset';
 
 	return (
-		<div className="ask-group__qrow">
+		<div className="tb3-ask__qrow">
 			{props.group.question === '' ? null : (
-				<div className="ask-group__question">{props.group.question}</div>
+				<div className="tb3-ask__question">{props.group.question}</div>
 			)}
 			{props.group.header === '' ? null : (
-				<div className="ask-group__header">{props.group.header}</div>
+				<div className="tb3-ask__header">{props.group.header}</div>
 			)}
 			{props.onClear === undefined ? null : (
 				<button
 					type="button"
-					className={`ghost-btn ask-group__state-btn${unset ? ' is-on' : ''}`}
+					className={`ghost-btn tb3-ask__state-btn${unset ? ' is-on' : ''}`}
 					title="把这一题重置成「未选择」"
 					onClick={props.onClear}
 				>
@@ -343,7 +348,7 @@ export function AskGroupHead(props: {
 				</button>
 			)}
 			{props.readonly ? (
-				<span className="ask-group__state-text">{askStateLabelOf(props.group)}</span>
+				<span className="tb3-ask__state-text">{askStateLabelOf(props.group)}</span>
 			) : null}
 		</div>
 	);
@@ -392,8 +397,8 @@ export function AskGroupCard(props: {
 
 	if (group.empty) {
 		return (
-			<div className="ask-group" data-ask-group-empty="1">
-				<div className="section-block__placeholder">还没有选项。</div>
+			<div className="tb3-ask__group" data-ask-group-empty="1">
+				<div className="tb3-sec__placeholder">还没有选项。</div>
 			</div>
 		);
 	}
@@ -403,7 +408,7 @@ export function AskGroupCard(props: {
 
 	return (
 		<div
-			className="ask-group"
+			className="tb3-ask__group"
 			data-ask-multi={String(shown.multiSelect)}
 			data-ask-state={shown.pickedState}
 			/*
@@ -418,7 +423,7 @@ export function AskGroupCard(props: {
 				{...(ask === undefined ? {} : { onClear: () => ask({ type: 'clear' }) })}
 			/>
 
-			<div className="ask-group__options">
+			<div className="tb3-ask__options">
 				{shown.options.map((option) => (
 					<AskOptionRow
 						key={option.label}
@@ -474,14 +479,14 @@ export function AskSection(props: AskSectionProps): ReactNode {
 
 	if (props.view.empty) {
 		return (
-			<div className="ask" data-ask-empty="1">
-				<div className="section-block__placeholder">这一章没有可显示的问题。</div>
+			<div className="tb3-ask" data-ask-empty="1" data-ask-interactive="false">
+				<div className="tb3-sec__placeholder">这一章没有可显示的问题。</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="ask" data-ask-readonly={String(!interactive)}>
+		<div className="tb3-ask" data-ask-readonly={String(!interactive)} data-ask-interactive={String(interactive)}>
 			{props.view.groups.map((group, index) => (
 				<AskGroupCard
 					key={index}

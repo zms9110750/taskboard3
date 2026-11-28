@@ -151,14 +151,14 @@ function check(name, actual, expected) {
 /** active 栏（第 2 个 .as-col）。 */
 const ACTIVE = '.as-grid .as-col:nth-child(2)';
 /** active 栏第 gi 组（1-based）的 DOM 表达式。 */
-const G = (gi) => `document.querySelectorAll('${ACTIVE} .ask-group')[${gi - 1}]`;
+const G = (gi) => `document.querySelectorAll('${ACTIVE} .tb3-ask__group')[${gi - 1}]`;
 /** 某一组每一行的选中状态。 */
 const rowsOf = (gi) =>
-	`[...(${G(gi)}).querySelectorAll('.ask-option')].map(function(row){return {kind: row.dataset.rowKind, picked: row.classList.contains('is-picked')}})`;
+	`[...(${G(gi)}).querySelectorAll('.tb3-ask__option')].map(function(row){return {kind: row.dataset.rowKind, picked: row.classList.contains('is-picked')}})`;
 /** 点某一组第 ri 行。 */
-const clickRow = (gi, ri) => `((${G(gi)}).querySelectorAll('.ask-option')[${ri}].click(), true)`;
+const clickRow = (gi, ri) => `((${G(gi)}).querySelectorAll('.tb3-ask__option')[${ri}].click(), true)`;
 /** 点某一组的「未选择」。 */
-const clickClear = (gi) => `((${G(gi)}).querySelector('.ask-group__state-btn').click(), true)`;
+const clickClear = (gi) => `((${G(gi)}).querySelector('.tb3-ask__state-btn').click(), true)`;
 
 /* ══════════════════════════════════════════════════════════
    ① 单选组：点自填框
@@ -247,7 +247,7 @@ check('点未选择 ⇒ 整组清空', await evalJs(rowsOf(2)), [
 ]);
 check(
 	'点未选择后按钮亮起（.is-on）',
-	await evalJs(`(${G(2)}).querySelector('.ask-group__state-btn').classList.contains('is-on')`),
+	await evalJs(`(${G(2)}).querySelector('.tb3-ask__state-btn').classList.contains('is-on')`),
 	true,
 );
 
@@ -328,7 +328,7 @@ check('多选：空文字点自填 ⇒ 仍是未选择（没有变「已选 0 �
 ]);
 check(
 	'多选：空文字点自填后「未选择」按钮仍亮着',
-	await evalJs(`(${G(2)}).querySelector('.ask-group__state-btn').classList.contains('is-on')`),
+	await evalJs(`(${G(2)}).querySelector('.tb3-ask__state-btn').classList.contains('is-on')`),
 	true,
 );
 
@@ -341,25 +341,25 @@ console.log('\n未选择按钮样式');
 /* 重新点一次，确保按钮处于 is-on（前面的用例会改状态）。 */
 await evalJs(clickClear(2));
 await sleep(120);
-check('按钮确实带着 is-on', await evalJs(`(${G(2)}).querySelector('.ask-group__state-btn').className`), 'ghost-btn ask-group__state-btn is-on');
+check('按钮确实带着 is-on', await evalJs(`(${G(2)}).querySelector('.tb3-ask__state-btn').className`), 'ghost-btn tb3-ask__state-btn is-on');
 
 check(
 	'未选择按钮亮起 = 蓝边框（inset box-shadow 里有 brand 蓝）',
-	await evalJs(`getComputedStyle((${G(2)}).querySelector('.ask-group__state-btn')).boxShadow.indexOf('rgb(37, 99, 235)') >= 0`),
+	await evalJs(`getComputedStyle((${G(2)}).querySelector('.tb3-ask__state-btn')).boxShadow.indexOf('rgb(37, 99, 235)') >= 0`),
 	true,
 );
 /* 蓝字：只要求是蓝色系（品牌蓝在预览里可能被主题变量覆写成 #2e63d9）。 */
 check(
 	'未选择按钮亮起 = 蓝字',
 	await evalJs(`(function(){
-		const m = getComputedStyle((${G(2)}).querySelector('.ask-group__state-btn')).color.match(/\\d+/g).map(Number);
+		const m = getComputedStyle((${G(2)}).querySelector('.tb3-ask__state-btn')).color.match(/\\d+/g).map(Number);
 		return m[2] > 150 && m[0] < 120;
 	})()`),
 	true,
 );
 check(
 	'未选择按钮不是蓝底（背景透明）',
-	await evalJs(`getComputedStyle((${G(2)}).querySelector('.ask-group__state-btn')).backgroundColor`),
+	await evalJs(`getComputedStyle((${G(2)}).querySelector('.tb3-ask__state-btn')).backgroundColor`),
 	'rgba(0, 0, 0, 0)',
 );
 /* ══════════════════════════════════════════════════════════
@@ -401,17 +401,17 @@ console.log('\n冻结态');
 const ENDED = '.as-grid .as-col:nth-child(3)';
 check(
 	'冻结态选中行有 is-readonly',
-	await evalJs(`document.querySelector('${ENDED} .ask-option.is-picked').classList.contains('is-readonly')`),
+	await evalJs(`document.querySelector('${ENDED} .tb3-ask__option.is-picked').classList.contains('is-readonly')`),
 	true,
 );
 check(
 	'冻结态选中行有左侧竖线（::before 宽 3px）',
-	await evalJs(`getComputedStyle(document.querySelector('${ENDED} .ask-option.is-picked'), '::before').width`),
+	await evalJs(`getComputedStyle(document.querySelector('${ENDED} .tb3-ask__option.is-picked'), '::before').width`),
 	'3px',
 );
 check(
 	'冻结态没有可点的未选择按钮',
-	await evalJs(`document.querySelectorAll('${ENDED} .ask-group__state-btn').length`),
+	await evalJs(`document.querySelectorAll('${ENDED} .tb3-ask__state-btn').length`),
 	0,
 );
 
@@ -427,9 +427,9 @@ console.log('\n自填框 · 输入即选中（issue #61）');
 /** 某一组整组的选中快照（行 / 三态 / 徽章 / 输入框文字）。 */
 const snapshotOf = (gi) => `(function(){
 	const group = ${G(gi)};
-	const badge = group.querySelector('.ask-group__state-btn');
+	const badge = group.querySelector('.tb3-ask__state-btn');
 	return {
-		rows: [...group.querySelectorAll('.ask-option')].map(function(row){
+		rows: [...group.querySelectorAll('.tb3-ask__option')].map(function(row){
 			return { kind: row.dataset.rowKind, picked: row.classList.contains('is-picked') };
 		}),
 		state: group.dataset.askState,
@@ -454,9 +454,9 @@ const focusIn = (gi, text) => `(async function(){
 	const group = ${G(gi)};
 	const input = group.querySelector('[data-ask-custom]');
 	const snap = function(){
-		const badge = group.querySelector('.ask-group__state-btn');
+		const badge = group.querySelector('.tb3-ask__state-btn');
 		return {
-			rows: [...group.querySelectorAll('.ask-option')].map(function(row){
+			rows: [...group.querySelectorAll('.tb3-ask__option')].map(function(row){
 				return { kind: row.dataset.rowKind, picked: row.classList.contains('is-picked') };
 			}),
 			state: group.dataset.askState,
@@ -544,7 +544,7 @@ check('单选 · 只聚焦后失焦 ⇒ 什么都没变（不落库）', await e
 });
 check(
 	'单选 · 只聚焦没打字 ⇒ payload 一个字节都没动（冻结栏没有选中行）',
-	await evalJs(`document.querySelectorAll('${ENDED} .ask-group')[0].querySelectorAll('.ask-option.is-picked').length`),
+	await evalJs(`document.querySelectorAll('${ENDED} .tb3-ask__group')[0].querySelectorAll('.tb3-ask__option.is-picked').length`),
 	0,
 );
 
@@ -611,9 +611,9 @@ check('单选 · 失焦后选中仍在（不闪回）', await evalJs(snapshotOf(
 check(
 	'单选 · 失焦后文字真的进了 payload（冻结栏显示 444）',
 	await evalJs(`(function(){
-		const group = document.querySelectorAll('${ENDED} .ask-group')[0];
-		const row = group.querySelector('.ask-option.is-picked');
-		return row === null ? null : row.querySelector('.ask-option__label').textContent;
+		const group = document.querySelectorAll('${ENDED} .tb3-ask__group')[0];
+		const row = group.querySelector('.tb3-ask__option.is-picked');
+		return row === null ? null : row.querySelector('.tb3-ask__option-label').textContent;
 	})()`),
 	'444',
 );
@@ -658,8 +658,8 @@ check('多选 · 失焦后共存仍在（不闪回）', await evalJs(snapshotOf(
 check(
 	'多选 · 落库后计数 = 2（选项 1 + 自填）',
 	await evalJs(`(function(){
-		const group = document.querySelectorAll('${ENDED} .ask-group')[1];
-		return group.querySelector('.ask-group__state-text').textContent;
+		const group = document.querySelectorAll('${ENDED} .tb3-ask__group')[1];
+		return group.querySelector('.tb3-ask__state-text').textContent;
 	})()`),
 	'已选 2',
 );

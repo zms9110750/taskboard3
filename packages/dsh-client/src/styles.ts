@@ -472,7 +472,8 @@ export const WORKSPACE_CSS = `
 /*
  * ⚠ 这里曾经有 .detail-section / __label / __body / __empty —— 它们只服务
  *   CardDetail 里的占位组件 SectionStub。2026-11-20 章节改用定稿 Section
- *   （.section-block 那一套在 SECTION_CSS 里）⇒ 这几条已删，别再加回来。
+ *   （章节外观现在只有 SECTION_SHELL_CSS 的 .tb3-sec*，issue #59 / #60）
+ *   ⇒ 这几条已删，别再加回来。
  */
 .tb3w-root .detail-empty{font-size:12px;color:var(--text-weak)}
 .tb3w-root .detail-note{display:flex;flex-direction:column;gap:5px;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fbfcfd}
@@ -646,6 +647,9 @@ import { TECHTREE_CSS } from './pure/techtree-css.ts';
  * 这里 import 同一份再拼进 injectStyles()，并转发 export 给现有 import 方。 */
 import { SEARCHBOX_CSS } from './renderers/searchbox-css.ts';
 import { SECTION_CSS } from './renderers/section-css.ts';
+/* 章节外壳 + ask 控件的**唯一一套** CSS（SectionShell）—— issue #59 / #60。
+ * 它不加 .tb3w-root 作用域（建卡页可能不在工作区根节点下），所以单独一段。 */
+import { SECTION_SHELL_CSS } from './renderers/section-shell-css.ts';
 /* 派生子任务浮窗的 CSS —— 用户 2026-11-22「CSS 必须跟着组件走」，同一形态。 */
 import { DERIVE_MENU_CSS } from './renderers/derive-menu-css.ts';
 /*
@@ -659,7 +663,7 @@ import { SIBLING_GROUPS_CSS } from './renderers/sibling-groups-css.ts';
 import { STATUS_BUTTON_CSS } from './renderers/status-button-css.ts';
 
 export { TECHTREE_CSS };
-export { SEARCHBOX_CSS, SECTION_CSS };
+export { SEARCHBOX_CSS, SECTION_CSS, SECTION_SHELL_CSS };
 
 export { CARD_ACTION_CSS, CREATE_SHELL_CSS, DERIVE_MENU_CSS, DRAWER_CSS, FALLBACK_CSS, SIBLING_GROUPS_CSS, STATUS_BUTTON_CSS };
 
@@ -694,7 +698,8 @@ export const STYLE_SEGMENTS = [
 	{ name: 'CREATE_CSS', css: CREATE_CSS, sentinel: '.tb3cc-page' },
 	{ name: 'WORKSPACE_CSS', css: WORKSPACE_CSS, sentinel: '.tb3w-root' },
 	{ name: 'STATUS_BUTTON_CSS', css: STATUS_BUTTON_CSS, sentinel: '.status-button' },
-	{ name: 'SECTION_CSS', css: SECTION_CSS, sentinel: '.section-block' },
+	{ name: 'SECTION_CSS', css: SECTION_CSS, sentinel: '.md' },
+	{ name: 'SECTION_SHELL_CSS', css: SECTION_SHELL_CSS, sentinel: '.tb3-sec' },
 	{ name: 'SEARCHBOX_CSS', css: SEARCHBOX_CSS, sentinel: '.search-box' },
 	{ name: 'DRAWER_CSS', css: DRAWER_CSS, sentinel: '.tb3d-panel' },
 	{ name: 'CREATE_SHELL_CSS', css: CREATE_SHELL_CSS, sentinel: '.tb3w-create' },

@@ -203,6 +203,7 @@ describe('injectStyles() 逐段哨兵', () => {
 		'WORKSPACE_CSS',
 		'STATUS_BUTTON_CSS',
 		'SECTION_CSS',
+		'SECTION_SHELL_CSS',
 		'SEARCHBOX_CSS',
 		'DRAWER_CSS',
 		'CREATE_SHELL_CSS',

@@ -28,7 +28,9 @@ import { createRoot } from 'react-dom/client';
 import { initRenderers } from '../../../src/init-renderers.ts';
 
 import { relationsOf, statusGroupOf } from '../../../src/pure/relations-block.ts';
+import type { CreateDraft } from '../../../src/pure/create-types.ts';
 import { CardDetail } from '../../../src/renderers/CardDetail.tsx';
+import { CardCreate } from '../../../src/renderers/create/CardCreate.tsx';
 import { injectStyles } from '../../../src/styles.ts';
 import type { Card, CardSection, HistoryEntry } from '../../../src/types.ts';
 
@@ -343,6 +345,127 @@ function Matrix(props: LiveProps): React.ReactNode {
 	);
 }
 
+/* ── ②b 三处同源对比（issue #59 / #60） ── */
+
+/**
+ * 同一章节类型（ask）在**三处**各渲染一次，供 CDP 逐项读 `getComputedStyle`：
+ *
+ * | 上下文 | 组件 | shell mode | 是否在 .tb3w-root 里 |
+ * |---|---|---|---|
+ * | 建卡 | `CardCreate`（真组件） | `edit` | **不在**（故意）|
+ * | 草稿 | `CardDetail`（draft 状态） | `interactive` | 在 |
+ * | 终结 | `CardDetail`（completed 状态） | `readonly` | 在 |
+ *
+ * ⚠ 建卡那份**故意不套 `.tb3w-root`**：建卡页在预览里就是脱离工作区根节点渲染的，
+ *   如果样式依赖 `.tb3w-root` 的变量，这里会立刻长出不同的 padding / 字号。
+ */
+const PARITY_ASK = {
+	$type: 'ask',
+	items: [
+		{
+			header: '样式来源',
+			question: '这一章用哪套样式？',
+			multi_select: false,
+			options: [
+				{ label: '同一套 SectionShell', description: '建卡 / 草稿 / 终结共用一个外壳' },
+				{ label: '两套各写一份', description: '会漂成截图 10 那样' },
+				{ label: '没有样式', description: '裸 input 堆叠' },
+			],
+			placeholder: '其它（自己填）…',
+		},
+	],
+};
+
+/** 建卡草稿：一章 ask。 */
+const PARITY_DRAFT: CreateDraft = {
+	title: '三处同源对比',
+	templateRef: 'question',
+	parentId: '',
+	relations: [],
+	note: '',
+	sections: [
+		{
+			sectionId: 'question',
+			label: '需要回答的问题',
+			hint: '这一章在建卡页是可编辑的',
+			kind: 'ask',
+			payload: PARITY_ASK,
+		},
+	],
+};
+
+/** 详情用的章节表（和建卡草稿的 payload 是同一份）。 */
+const PARITY_SECTIONS: Readonly<Record<string, CardSection>> = {
+	question: { label: '需要回答的问题', payload: PARITY_ASK },
+};
+
+const noopVoid = (): void => {};
+
+function Parity(): React.ReactNode {
+	const draftCard = card({ status: S.draft, sections: PARITY_SECTIONS, note: '' });
+	const endedCard = card({ status: S.completed, sections: PARITY_SECTIONS, note: '' });
+
+	return (
+		<section className="pv-block" data-shell-parity>
+			<h2>②b 三处同源：建卡 / 草稿 / 终结（同一章节类型 = ask）</h2>
+			<p className="pv-note" style={{ marginTop: 0 }}>
+				issue #59 / #60：这三个 `.tb3-sec` 必须由**同一份 CSS** 给出同样的
+				padding / border-radius / font-size / margin。断言在 <code>verify.mjs</code>。
+			</p>
+			<div className="pv-parity">
+				<div className="pv-parity__col" data-shell-context="create">
+					<div className="pv-parity__label">建卡（mode=edit，**不在** .tb3w-root 里）</div>
+					<div className="pv-parity__stage pv-parity__stage--create">
+						<CardCreate
+							draft={PARITY_DRAFT}
+							onChange={noopVoid}
+							errors={[]}
+							leftPane={<div />}
+							onSubmit={noopVoid}
+							onCancel={noopVoid}
+						/>
+					</div>
+				</div>
+
+				<div className="pv-parity__col" data-shell-context="draft">
+					<div className="pv-parity__label">草稿（mode=interactive）</div>
+					<div className="pv-parity__stage pv-parity__stage--detail tb3w-root pv-shell">
+						<CardDetail
+							card={draftCard}
+							templateLabel="提问"
+							kindLabel="设计"
+							onTransition={noopVoid}
+							onAddRelation={noopVoid}
+							onDerive={noopVoid}
+							onNoteChange={noopVoid}
+							onSectionChange={noopVoid}
+							onClose={noopVoid}
+							onExpand={noopVoid}
+						/>
+					</div>
+				</div>
+
+				<div className="pv-parity__col" data-shell-context="ended">
+					<div className="pv-parity__label">终结（mode=readonly）</div>
+					<div className="pv-parity__stage pv-parity__stage--detail tb3w-root pv-shell">
+						<CardDetail
+							card={endedCard}
+							templateLabel="提问"
+							kindLabel="设计"
+							onTransition={noopVoid}
+							onAddRelation={noopVoid}
+							onDerive={noopVoid}
+							onNoteChange={noopVoid}
+							onClose={noopVoid}
+							onExpand={noopVoid}
+						/>
+					</div>
+				</div>
+			</div>
+		</section>
+	);
+}
+
 /* ── ③ 事件日志 ── */
 
 function App(): React.ReactNode {
@@ -363,6 +486,7 @@ function App(): React.ReactNode {
 
 			<Live onEvent={push} />
 			<Matrix onEvent={push} />
+			<Parity />
 
 			<section className="pv-block">
 				<h2>③ 回调日志（点了什么就是什么）</h2>

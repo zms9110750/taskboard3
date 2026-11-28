@@ -68,6 +68,7 @@ function Phase(props: {
 				<Section
 					sectionId={`${props.phase}-text`}
 					section={{ label: LABEL, payload: props.payload }}
+					index={1}
 					phase={props.phase}
 					readonly={!editable}
 					{...(editable ? { onChange: (_id: string, patch: Record<string, unknown>) => props.onPatch(patch) } : {})}

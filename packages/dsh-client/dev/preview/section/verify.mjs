@@ -213,24 +213,30 @@ const readLive = () =>
 /** 读某个静态场景的 DOM 全貌。 */
 const readScenario = (key) =>
 	ev(`(() => {
-  const box = document.querySelector('[data-scenario="${key}"] .section-block');
+  const box = document.querySelector('[data-scenario="${key}"] .tb3-sec');
   if (!box) return null;
-  const labelEl = box.querySelector('.section-block__label');
+  const labelEl = box.querySelector('.tb3-sec__head');
   const options = [...box.querySelectorAll('[data-ask-option]')];
+  const textarea = box.querySelector('.tb3-sec__textarea');
+  const textEl = box.querySelector('.tb3-sec__text');
+  const placeholderEl = box.querySelector('.tb3-sec__placeholder');
   return {
     kind: box.dataset.sectionKind,
     readonly: box.dataset.sectionReadonly === 'true',
     sectionId: box.dataset.sectionId,
     hasLabelRow: labelEl !== null,
-    label: labelEl ? labelEl.querySelector('.section-block__label-text').textContent : null,
-    text: box.querySelector('.section-block__text') ? box.querySelector('.section-block__text').textContent : null,
-    placeholder: box.querySelector('.section-block__placeholder') ? box.querySelector('.section-block__placeholder').textContent : null,
+    label: labelEl ? labelEl.querySelector('.tb3-sec__title').textContent : null,
+    /* text 在只读态是 <textarea>（保留框形状）⇒ 正文读 value，不是 textContent。 */
+    text: textarea !== null ? textarea.value : (textEl === null ? null : textEl.textContent),
+    placeholder: placeholderEl !== null
+      ? placeholderEl.textContent
+      : (textarea === null ? null : textarea.placeholder),
     mdStrong: [...box.querySelectorAll('.md strong')].map(e => e.textContent),
     mdCode: [...box.querySelectorAll('.md code')].map(e => e.textContent),
     mdBoldTags: box.querySelectorAll('.md b, .md img, .md script').length,
     mdText: box.querySelector('.md') ? box.querySelector('.md').textContent : null,
     askState: box.querySelector('[data-ask-state-label]') ? box.querySelector('[data-ask-state-label]').dataset.askStateLabel : null,
-    askStateText: box.querySelector('.ask-group__state-text') ? box.querySelector('.ask-group__state-text').textContent : null,
+    askStateText: box.querySelector('.tb3-ask__state-text') ? box.querySelector('.tb3-ask__state-text').textContent : null,
     askOptionCount: options.length,
     askOptions: options.map(o => ({ label: o.dataset.askOption, picked: o.dataset.picked === 'true', tag: o.tagName })),
     askOptionTags: [...new Set(options.map(o => o.tagName))],
@@ -248,7 +254,7 @@ const readScenario = (key) =>
 /* ══════════════════════════════════════════════════════════ */
 console.log('\n═══ ① 章节名用模板给的 label（不编容器词）═══');
 {
-	const boxes = await ev(`document.querySelectorAll('.section-block').length`);
+	const boxes = await ev(`document.querySelectorAll('.tb3-sec').length`);
 	/* 1 个活的 + 18 个场景 = 19 */
 	expect('十九个 Section 都渲染了（1 活 + 18 场景）', boxes, 19);
 
@@ -270,7 +276,8 @@ console.log('\n═══ ② text：保留换行，空态用 placeholder ══�
 	expect('缩进保留', filled.text.includes('\t缩进'), true);
 
 	const emptyReadonly = await readScenario('text-empty-readonly');
-	expect('⭐ 只读空态 = 「（空）」', emptyReadonly.placeholder, '（空）');
+	expect('⭐ 只读空态：框里没有内容', emptyReadonly.text, '');
+	expect('⭐ 只读空态：灰字仍是模板给的', emptyReadonly.placeholder, '选什么架构，为什么');
 
 	const emptyEditable = await readScenario('text-empty-editable');
 	expect(
@@ -278,7 +285,7 @@ console.log('\n═══ ② text：保留换行，空态用 placeholder ══�
 		emptyEditable.placeholder,
 		'选什么架构，为什么',
 	);
-	await shotOf(`document.querySelector('[data-scenario="text-empty-editable"] .section-block')`, '02-text.png');
+	await shotOf(`document.querySelector('[data-scenario="text-empty-editable"] .tb3-sec')`, '02-text.png');
 }
 
 console.log('\n═══ ③ markdown：只有 strong + code，HTML 当文字 ═══');
@@ -299,7 +306,7 @@ console.log('\n═══ ③ markdown：只有 strong + code，HTML 当文字 �
 
 	const mdEmpty = await readScenario('markdown-empty');
 	expect('markdown 空态 = placeholder', mdEmpty.placeholder, '把要保留的资料放在这里');
-	await shotOf(`document.querySelector('[data-scenario="markdown-filled"] .section-block')`, '03-markdown.png');
+	await shotOf(`document.querySelector('[data-scenario="markdown-filled"] .tb3-sec')`, '03-markdown.png');
 }
 
 console.log('\n═══ ④ ask：真实 6 选项 + picked 三态 ═══');
@@ -356,7 +363,7 @@ console.log('\n═══ ⑤ ask：options 为空也要能画 ═══');
 	expect(
 		'header 文字画出来了',
 		await ev(
-			`document.querySelector('[data-scenario="ask-header-only"] .ask-group__header').textContent`,
+			`document.querySelector('[data-scenario="ask-header-only"] .tb3-ask__header').textContent`,
 		),
 		'要问的问题',
 	);
@@ -370,7 +377,7 @@ console.log('\n═══ ⑤ ask：options 为空也要能画 ═══');
 	expect(
 		'⭐ 不白屏（有 DOM，不是空 box）',
 		await ev(
-			`document.querySelector('[data-scenario="ask-empty-shell"] .section-block__content').children.length > 0`,
+			`document.querySelector('[data-scenario="ask-empty-shell"] .tb3-sec__body').children.length > 0`,
 		),
 		true,
 	);
@@ -409,7 +416,7 @@ console.log('\n═══ ⑦ ⭐ 真点选项：回调 + 父层改 payload + 界
 	expect('⭐ 父层 payload 的 picked 变成 ["望文生义"]', (await readLive()).picked, '["望文生义"]');
 	expect(
 		'⭐ 徽标变成「单选·已选 1」',
-		await ev(`document.querySelector('[data-live] .ask-group__state-text').textContent`),
+		await ev(`document.querySelector('[data-live] .tb3-ask__state-text').textContent`),
 		'单选·已选 1',
 	);
 	expect(
@@ -444,7 +451,7 @@ console.log('\n═══ ⑧ ⭐ 点「都不要」：picked 变 []（不是删�
 	expect('⭐ picked 变成 [] —— 不是 null（两种回答要分得开）', (await readLive()).picked, '[]');
 	expect(
 		'⭐ 徽标变成「都不要」',
-		await ev(`document.querySelector('[data-live] .ask-group__state-text').textContent`),
+		await ev(`document.querySelector('[data-live] .tb3-ask__state-text').textContent`),
 		'都不要',
 	);
 	await shot('08-live-none.png');
@@ -488,7 +495,7 @@ console.log('\n═══ ⑩ ⭐ 只读：点了什么都不发 ═══');
 	);
 
 	/* 点整章（只读）、点选项（已变成 div）—— 都不该派发任何东西 */
-	await click(`document.querySelector('[data-live] .section-block')`);
+	await click(`document.querySelector('[data-live] .tb3-sec')`);
 	await sleep(250);
 	await click(`document.querySelector('[data-live] [data-ask-option="望文生义"]')`);
 	await sleep(250);
@@ -504,19 +511,19 @@ console.log('\n═══ ⑩ ⭐ 只读：点了什么都不发 ═══');
 console.log('\n═══ ⑪ ⭐ 点章节上报 onEdit（组件不判能不能编辑）═══');
 {
 	await clearEvents();
-	await click(`document.querySelector('[data-scenario="text-empty-editable"] .section-block')`);
+	await click(`document.querySelector('[data-scenario="text-empty-editable"] .tb3-sec')`);
 	await sleep(300);
 	expect('⭐ 可编辑 text ⇒ 派发 edit:<sectionId>', await readEvents(), [
 		'text-empty-editable/edit:text-empty-editable',
 	]);
 
 	await clearEvents();
-	await click(`document.querySelector('[data-scenario="text-filled-readonly"] .section-block')`);
+	await click(`document.querySelector('[data-scenario="text-filled-readonly"] .tb3-sec')`);
 	await sleep(300);
 	expect('⭐ 只读 ⇒ 点它不派发 edit', await readEvents(), []);
 
 	await clearEvents();
-	await click(`document.querySelector('[data-scenario="text-nocb"] .section-block')`);
+	await click(`document.querySelector('[data-scenario="text-nocb"] .tb3-sec')`);
 	await sleep(300);
 	expect('⭐ 可编辑但父层没接 onEdit ⇒ 也不派发（不假装能编辑）', await readEvents(), []);
 }
@@ -558,11 +565,11 @@ console.log('\n═══ ⑫ 未知 $type / 脏数据降级 ═══');
 console.log('\n═══ ⑬ DOM 契约（其他组件要依赖的钩子）═══');
 {
 	const hooks = await ev(`(() => {
-    const box = document.querySelector('[data-scenario="ask-unset"] .section-block');
+    const box = document.querySelector('[data-scenario="ask-unset"] .tb3-sec');
     return {
-      block: box.classList.contains('section-block'),
-      hasContent: box.querySelector('.section-block__content') !== null,
-      hasLabel: box.querySelector('.section-block__label') !== null,
+      block: box.classList.contains('tb3-sec'),
+      hasContent: box.querySelector('.tb3-sec__body') !== null,
+      hasLabel: box.querySelector('.tb3-sec__head') !== null,
       kindAttr: box.dataset.sectionKind,
       readonlyAttr: box.dataset.sectionReadonly,
       sectionIdAttr: box.dataset.sectionId,
@@ -570,7 +577,7 @@ console.log('\n═══ ⑬ DOM 契约（其他组件要依赖的钩子）═�
       stateAttr: box.querySelector('[data-ask-state-label]').dataset.askStateLabel,
     };
   })()`);
-	expect('根 class = section-block', hooks.block, true);
+	expect('根 class = tb3-sec', hooks.block, true);
 	expect('内容容器存在', hooks.hasContent, true);
 	expect('标题容器存在', hooks.hasLabel, true);
 	expect('data-section-kind 可读', hooks.kindAttr, 'ask');
@@ -587,7 +594,7 @@ console.log('\n═══ ⑭ 空态 / 重置 ═══');
 	expect('⭐ 重置后回到「未选择」', (await readLive()).picked, 'null');
 	expect(
 		'徽标回到「未选择」',
-		await ev(`document.querySelector('[data-live] .ask-group__state-text').textContent`),
+		await ev(`document.querySelector('[data-live] .tb3-ask__state-text').textContent`),
 		'未选择',
 	);
 	await shot('11-reset.png');

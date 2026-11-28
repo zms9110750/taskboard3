@@ -46,6 +46,7 @@ import { AskSection } from './AskSection.tsx';
 import type { AskAction } from '../pure/section.ts';
 import { Markdown } from './Markdown.tsx';
 import { rendererOf, type RendererProps } from '../render-registry.ts';
+import { SectionShell } from './SectionShell.tsx';
 
 /** 组件属性（任务描述给的那一份，一个不多一个不少）。 */
 export interface SectionProps {
@@ -53,6 +54,8 @@ export interface SectionProps {
 	readonly sectionId: string;
 	/** 卡上的章节（`{ label, payload }`）。 */
 	readonly section: CardSection;
+	/** 章节序号（1 起，画在外壳的圆点里）。 */
+	readonly index: number;
 	/**
 	 * 生命周期相位（用户 2026-11-21 采纳）：
 	 * `create` = 草稿 / `active` = 进行·搁置 / `ended` = 完成。
@@ -126,46 +129,32 @@ export function Section(props: SectionProps): ReactNode {
 		props.onEdit?.(props.sectionId);
 	};
 
-	const className = ['section-block'];
-	if (readonlyFlag) className.push('is-readonly');
-	if (clickToEdit) className.push('is-editable');
-
+	/*
+	 * 三处（建卡 / 详情未终结 / 详情终结）共用 `SectionShell` —— 唯一一套章节外观。
+	 * mode 只影响可交互性：终结态给 `readonly`，其余给 `interactive`。
+	 */
 	return (
-		<div
-			className={className.join(' ')}
-			data-section-id={props.sectionId}
-			data-section-kind={view.kind}
-			data-section-readonly={String(readonlyFlag)}
-			onClick={clickToEdit ? openEditor : undefined}
+		<SectionShell
+			index={props.index}
+			title={label}
+			mode={readonlyFlag ? 'readonly' : 'interactive'}
+			sectionId={props.sectionId}
+			kind={view.kind}
+			/* 空 label 不画标题行（也不画类型徽章）—— 用户 2026-11-15 的要求。 */
+			{...(label === '' ? {} : { typeLabel: KIND_LABEL[view.kind] })}
+			{...(clickToEdit ? { onClick: openEditor } : {})}
 		>
-			{/*
-			 * ① 章节名用模板给的 label。**空 label 不画那一行** ——
-			 *   画一个空标题只会让人以为「这一章没名字」，而事实是「本来就没有名字」。
-			 */}
-			{label === '' ? null : (
-				<div className="section-block__label">
-					<span className="section-block__label-text">{label}</span>
-					{/* 内容类型：已建卡/草稿里只显示、不可改（用户 2026-11-22）。 */}
-					<span className="section-block__kind" data-section-kind-label={view.kind}>
-						{KIND_LABEL[view.kind] ?? view.kind}
-					</span>
-					{clickToEdit ? <span className="section-block__edit-hint">编辑</span> : null}
-				</div>
-			)}
-
-			<div className="section-block__content">
-				<SectionContent
-					view={view}
-					section={section}
-					sectionId={props.sectionId}
-					phase={phase}
-					readonly={readonlyFlag}
-					rawPayload={section.payload}
-					{...(props.onChange === undefined ? {} : { onChange: props.onChange })}
-					{...(props.onAsk === undefined ? {} : { onAsk: props.onAsk })}
-				/>
-			</div>
-		</div>
+			<SectionContent
+				view={view}
+				section={section}
+				sectionId={props.sectionId}
+				phase={phase}
+				readonly={readonlyFlag}
+				rawPayload={section.payload}
+				{...(props.onChange === undefined ? {} : { onChange: props.onChange })}
+				{...(props.onAsk === undefined ? {} : { onAsk: props.onAsk })}
+			/>
+		</SectionShell>
 	);
 }
 
@@ -210,7 +199,7 @@ function SectionContent(props: SectionContentProps): ReactNode {
 function UnknownBlock(props: { readonly title: string; readonly json: string }): ReactNode {
 	const [open, setOpen] = useState(false);
 	return (
-		<div className="section-block__unknown">
+		<div className="tb3-sec__unknown">
 			<button
 				type="button"
 				className="ghost-btn"
@@ -285,9 +274,9 @@ export function TextBlock(props: {
 	/* ended（或父层没接线）：只读 textarea（候选 2 —— 保留框形状）。 */
 	if (!editable) {
 		return (
-			<div className="section-block__field">
+			<div className="tb3-sec__field">
 				<textarea
-					className="section-block__textarea is-readonly"
+					className="tb3-sec__textarea is-readonly"
 					value={view.value}
 					placeholder={view.placeholder}
 					rows={Math.max(2, view.value.split('\n').length)}
@@ -301,9 +290,9 @@ export function TextBlock(props: {
 	/* active：单框 + 灰字 = placeholder（候选 1）。 */
 	if (props.phase === 'active') {
 		return (
-			<div className="section-block__field">
+			<div className="tb3-sec__field">
 				<textarea
-					className="section-block__textarea"
+					className="tb3-sec__textarea"
 					value={draft}
 					placeholder={view.placeholder}
 					rows={Math.max(2, draft.split('\n').length)}
@@ -322,9 +311,9 @@ export function TextBlock(props: {
 
 	/* create：正文 textarea + 灰字折叠区（候选 3）。 */
 	return (
-		<div className="section-block__field">
+		<div className="tb3-sec__field">
 			<textarea
-				className="section-block__textarea"
+				className="tb3-sec__textarea"
 				value={draft}
 				rows={Math.max(2, draft.split('\n').length)}
 				onFocus={() => {
@@ -336,13 +325,13 @@ export function TextBlock(props: {
 				onBlur={commitValue}
 				data-section-phase="create"
 			/>
-			<details className="section-block__decl">
+			<details className="tb3-sec__decl">
 				<summary>
 					声明（灰字）：
 					{placeholderDraft === '' ? '（未设置）' : placeholderDraft}
 				</summary>
 				<input
-					className="section-block__decl-input"
+					className="tb3-sec__decl-input"
 					value={placeholderDraft}
 					placeholder="清空正文后，框里显示这句灰字"
 					onFocus={() => {
@@ -382,22 +371,22 @@ export function MarkdownBlock(props: {
 
 	if (!editable) {
 		if (view.empty) {
-			return <div className="section-block__placeholder">{view.placeholder}</div>;
+			return <div className="tb3-sec__placeholder">{view.placeholder}</div>;
 		}
 		return <Markdown source={view.source} />;
 	}
 
 	return (
-		<div className="section-block__field">
+		<div className="tb3-sec__field">
 			{preview ? (
 				view.empty ? (
-					<div className="section-block__placeholder">{view.placeholder}</div>
+					<div className="tb3-sec__placeholder">{view.placeholder}</div>
 				) : (
 					<Markdown source={view.source} />
 				)
 			) : (
 				<textarea
-					className="section-block__textarea is-mono"
+					className="tb3-sec__textarea is-mono"
 					value={view.source}
 					placeholder={view.placeholder}
 					rows={Math.max(4, view.source.split('\n').length)}
@@ -412,7 +401,7 @@ export function MarkdownBlock(props: {
 					data-section-phase={props.phase}
 				/>
 			)}
-			<div className="section-block__actions">
+			<div className="tb3-sec__actions">
 				<button
 					type="button"
 					className="ghost-btn"
