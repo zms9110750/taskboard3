@@ -3,6 +3,12 @@
     <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f6feb"/>
     </marker>
+    <marker id="a4p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8250df"/>
+    </marker>
+    <marker id="a4g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8c959f"/>
+    </marker>
   </defs>
   <rect x="1" y="1" width="1178" height="758" rx="18" fill="#ffffff" stroke="#d0d7de"/>
 
@@ -16,73 +22,78 @@
   <text x="56" y="148" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">AskSection</text>
   <text x="56" y="166" font-size="11" fill="#59636e">章节级：一串问题组 + 章节标题 / 类型徽章</text>
 
-  <path d="M 60 176 L 60 500" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 176 L 60 438" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
 
   <rect x="80" y="188" width="480" height="50" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
-  <path d="M 60 213 L 80 213" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 213 L 80 213" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="96" y="210" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">AskGroupCard</text>
   <text x="96" y="228" font-size="11" fill="#59636e">单个问题：题干 + 选项集合 + 自填行</text>
 
   <rect x="120" y="250" width="440" height="46" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.3"/>
-  <path d="M 100 238 L 100 273 L 120 273" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 100 238 L 100 273 L 120 273" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="136" y="270" font-size="11" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">AskGroupHead</text>
   <text x="136" y="287" font-size="11" fill="#59636e">题号 + 题干 + 「未选择」徽章（组级状态）</text>
 
   <rect x="120" y="306" width="440" height="46" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.3"/>
-  <path d="M 100 294 L 100 329 L 120 329" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 100 294 L 100 329 L 120 329" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="136" y="326" font-size="11" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">AskOptionRow</text>
   <text x="136" y="343" font-size="11" fill="#59636e">普通选项：标记 + 标题 + 说明，整行可点</text>
 
   <rect x="120" y="362" width="440" height="76" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
-  <path d="M 100 350 L 100 400 L 120 400" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 100 350 L 100 400 L 120 400" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="136" y="382" font-size="11" font-weight="700" font-family="Consolas, monospace" fill="#8250df">AskCustomRow</text>
   <text x="136" y="400" font-size="11" fill="#59636e">自填行（本次改动核心）</text>
   <rect x="136" y="408" width="150" height="20" rx="5" fill="#ffffff" stroke="#1f6feb"/>
   <text x="144" y="422" font-size="10" fill="#59636e">AskMark + AskInput</text>
 
-  <rect x="300" y="452" width="260" height="46" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
-  <path d="M 100 438 L 100 475 L 300 475" stroke="#afb8c1" stroke-width="1.4"/>
-  <text x="316" y="472" font-size="11" font-weight="700" font-family="Consolas, monospace" fill="#8250df">AskMark</text>
-  <text x="316" y="489" font-size="11" fill="#59636e">圆圈 / 方框 / 勾（单选 / 多选 / 已选）</text>
+  <rect x="120" y="450" width="440" height="46" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
+  <path d="M 100 438 L 100 473 L 120 473" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
+  <text x="136" y="470" font-size="11" font-weight="700" font-family="Consolas, monospace" fill="#8250df">AskMark</text>
+  <text x="136" y="487" font-size="11" fill="#59636e">圆圈 / 方框 / 勾（单选 / 多选 / 已选）</text>
 
   <!-- 状态机 -->
   <text x="600" y="112" font-size="14" font-weight="700" fill="#1f2328">② 组级状态机（一个问题的三种状态）</text>
 
-  <rect x="600" y="126" width="540" height="374" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+  <rect x="600" y="126" width="540" height="382" rx="12" fill="#ffffff" stroke="#d0d7de"/>
 
   <!-- 未选择 -->
-  <circle cx="690" cy="196" r="40" fill="#ffffff" stroke="#8c959f" stroke-width="1.6"/>
-  <text x="690" y="192" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2328">未选择</text>
-  <text x="690" y="210" font-size="10" text-anchor="middle" fill="#59636e">初始</text>
+  <circle cx="700" cy="300" r="42" fill="#ffffff" stroke="#8c959f" stroke-width="1.6"/>
+  <text x="700" y="296" font-size="12" font-weight="700" text-anchor="middle" fill="#1f2328">未选择</text>
+  <text x="700" y="314" font-size="10" text-anchor="middle" fill="#59636e">初始态</text>
 
   <!-- 选中选项 -->
-  <circle cx="930" cy="170" r="44" fill="#f0f6ff" stroke="#1f6feb" stroke-width="1.8"/>
-  <text x="930" y="166" font-size="12" font-weight="700" text-anchor="middle" fill="#0a3069">选中选项</text>
-  <text x="930" y="184" font-size="10" text-anchor="middle" fill="#59636e">custom = ''</text>
+  <circle cx="978" cy="196" r="42" fill="#f0f6ff" stroke="#1f6feb" stroke-width="1.8"/>
+  <text x="978" y="192" font-size="12" font-weight="700" text-anchor="middle" fill="#0a3069">选中选项</text>
+  <text x="978" y="210" font-size="10" text-anchor="middle" fill="#59636e">custom = ''</text>
 
   <!-- 选中自填 -->
-  <circle cx="930" cy="382" r="46" fill="#fbf7ff" stroke="#8250df" stroke-width="1.8"/>
-  <text x="930" y="376" font-size="12" font-weight="700" text-anchor="middle" fill="#6e40c9">选中自填</text>
-  <text x="930" y="394" font-size="10" text-anchor="middle" fill="#59636e">custom = 文本</text>
+  <circle cx="978" cy="392" r="44" fill="#fbf7ff" stroke="#8250df" stroke-width="1.8"/>
+  <text x="978" y="388" font-size="12" font-weight="700" text-anchor="middle" fill="#6e40c9">选中自填</text>
+  <text x="978" y="406" font-size="10" text-anchor="middle" fill="#59636e">custom = 文本</text>
 
-  <!-- 箭头 -->
-  <line x1="730" y1="186" x2="884" y2="176" stroke="#1f6feb" stroke-width="1.6" marker-end="url(#a4)"/>
-  <text x="762" y="166" font-size="10" fill="#1f6feb">点击某选项</text>
+  <!-- 箭头 1: 未选择 → 选中选项 -->
+  <path d="M 743 282 L 932 214" stroke="#1f6feb" stroke-width="1.8" fill="none" marker-end="url(#a4)"/>
+  <circle cx="840" cy="248" r="11" fill="#1f6feb"/>
+  <text x="840" y="252" font-size="11" font-weight="700" text-anchor="middle" fill="#ffffff">1</text>
 
-  <line x1="906" y1="212" x2="700" y2="228" stroke="#8c959f" stroke-width="1.6" marker-end="url(#a4)" stroke-dasharray="4 3"/>
-  <text x="716" y="248" font-size="10" fill="#59636e">再点一次取消</text>
+  <!-- 箭头 2: 选中选项 → 选中自填 -->
+  <path d="M 978 242 L 978 344" stroke="#8250df" stroke-width="2.6" fill="none" marker-end="url(#a4p)"/>
+  <circle cx="978" cy="294" r="12" fill="#8250df"/>
+  <text x="978" y="298" font-size="11" font-weight="700" text-anchor="middle" fill="#ffffff">2</text>
 
-  <line x1="906" y1="345" x2="732" y2="238" stroke="#8c959f" stroke-width="1.4" marker-end="url(#a4)" stroke-dasharray="4 3"/>
-  <text x="742" y="300" font-size="10" fill="#59636e">清空自填且失焦</text>
+  <!-- 箭头 3: 选中自填 → 未选择 -->
+  <path d="M 934 386 L 746 322" stroke="#8c959f" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#a4g)"/>
+  <circle cx="842" cy="354" r="11" fill="#8c959f"/>
+  <text x="842" y="358" font-size="11" font-weight="700" text-anchor="middle" fill="#ffffff">3</text>
 
-  <line x1="890" y1="212" x2="916" y2="336" stroke="#8250df" stroke-width="2" marker-end="url(#a4)"/>
-  <text x="800" y="290" font-size="10" fill="#6e40c9">聚焦或输入自填框</text>
-  <text x="800" y="306" font-size="9" fill="#6e40c9">（本次修的就是这条边：必须即时）</text>
-
-  <line x1="884" y1="376" x2="734" y2="212" stroke="#8c959f" stroke-width="1.2" marker-end="url(#a4)" stroke-dasharray="3 3"/>
-
-  <text x="620" y="452" font-size="11" fill="#59636e">不变式：同一组内「选中选项」与「选中自填」互斥；单选时选新的自动清旧的。</text>
-  <text x="620" y="472" font-size="11" fill="#59636e">「未选择」不是一个选项，而是"没有任何选中"这个状态本身。</text>
+  <!-- 图例 -->
+  <line x1="620" y1="452" x2="1120" y2="452" stroke="#eaeef2" stroke-width="1" fill="none"/>
+  <text x="620" y="472" font-size="11" fill="#1f2328">① 点击某选项 ⇒ 选中该选项</text>
+  <text x="620" y="492" font-size="11" fill="#1f2328">③ 清空自填并失焦 ⇒ 回到未选择</text>
+  <text x="878" y="472" font-size="11" fill="#6e40c9">② 聚焦 / 输入自填框 ⇒ 选中自填　★本次修复</text>
+  <text x="878" y="492" font-size="11" fill="#1f2328">④ 再次点击已选项 ⇒ 取消该选中</text>
+  <text x="620" y="514" font-size="10" fill="#59636e">不变式：同一组内「选中选项」与「选中自填」互斥；单选时选新的自动清旧的。</text>
+  <text x="620" y="532" font-size="10" fill="#59636e">「未选择」不是一个可选项，而是"没有任何选中"这个状态本身。</text>
 
   <!-- 现在 vs 目标 -->
   <text x="40" y="536" font-size="14" font-weight="700" fill="#1f2328">③ 现在 vs 目标（#61 的修法）</text>
@@ -104,5 +115,5 @@
   <text x="40" y="712" font-size="12" font-weight="700" fill="#1f2328">本图请求确认的点：</text>
   <text x="40" y="734" font-size="12" fill="#59636e">1. 聚焦（还没输入）就切到自填，还是必须键入第一个字符才切？我倾向「聚焦即切」。</text>
 
-  <text x="700" y="712" font-size="11" fill="#8250df">※ 未确认前不动代码；确认后开分支，分支内测试通过才合 main。</text>
+  <text x="700" y="734" font-size="11" fill="#8250df">※ 未确认前不动代码；确认后开分支，分支内测试通过才合 main。</text>
 </svg>

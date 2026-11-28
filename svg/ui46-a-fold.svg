@@ -72,7 +72,7 @@
   <text x="696" y="200" font-size="14" font-weight="600" fill="#1f2328">根卡组</text>
   <line x1="762" y1="195" x2="1040" y2="195" stroke="#d0d7de" stroke-width="1" stroke-dasharray="3 3"/>
   <text x="1054" y="200" font-size="13" fill="#59636e">5 张</text>
-  <text x="676" y="222" font-size="11" fill="#bf8700">✗ 无华而不实的填充</text>
+  <text x="676" y="222" font-size="11" fill="#bf8700">✗ 无底色、无外框</text>
 
   <!-- 展开态 -->
   <rect x="644" y="252" width="496" height="238" rx="12" fill="#ffffff" stroke="#d0d7de"/>
@@ -121,7 +121,7 @@
   <rect x="644" y="664" width="496" height="112" rx="12" fill="#fff8f0" stroke="#d4a72c"/>
   <text x="660" y="688" font-size="12" font-weight="700" fill="#7d4e00">④ 展开不能改变横幅自身位置（#49）</text>
   <text x="660" y="710" font-size="11" fill="#59636e">• 横幅在文档流里：禁止 position:absolute / 负 margin / transform</text>
-  <text x="660" y="730" font-size="11" fill="#59636e">• 展开只改变 FollowBody 的高度 ⇒ 后续内容整体下移</text>
+  <text x="660" y="730" font-size="11" fill="#59636e">• 展开只改变 FoldBody 的高度 ⇒ 后续内容整体下移</text>
   <text x="660" y="750" font-size="11" fill="#59636e">• 角标由 CardFrame 用 inset 定位：bottom/right 固定内距，不叠边框</text>
 
   <text x="44" y="700" font-size="12" font-weight="700" fill="#1f2328">本图请求确认的点：</text>

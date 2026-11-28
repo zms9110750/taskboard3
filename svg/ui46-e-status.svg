@@ -42,20 +42,20 @@
   <text x="58" y="338" font-size="14" font-weight="700" font-family="Consolas, monospace" fill="#8250df">StatusButton</text>
   <text x="58" y="358" font-size="11" fill="#59636e">唯一入口：圆点 + 文案 + 边框 + 箭头；点击打开 StatusMenu</text>
 
-  <path d="M 70 374 L 70 520" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 70 374 L 70 520" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
 
   <rect x="90" y="388" width="510" height="46" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.3"/>
-  <path d="M 70 411 L 90 411" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 70 411 L 90 411" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="106" y="409" font-size="11" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">StatusDot</text>
   <text x="106" y="426" font-size="11" fill="#59636e">只吃状态值 → 颜色（9 状态 9 档色，已有）</text>
 
   <rect x="90" y="444" width="510" height="46" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.3"/>
-  <path d="M 70 467 L 90 467" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 70 467 L 90 467" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="106" y="465" font-size="11" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">StatusLabel</text>
   <text x="106" y="482" font-size="11" fill="#59636e">文案唯一来源：protocol 的 STATE_LABELS</text>
 
   <rect x="90" y="500" width="510" height="46" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.3"/>
-  <path d="M 70 523 L 90 523" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 70 523 L 90 523" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="106" y="521" font-size="11" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">StatusMenu（独立弹层）</text>
   <text x="106" y="538" font-size="11" fill="#59636e">可转移目标列表；不可转移则整条菜单禁用并说明原因</text>
 

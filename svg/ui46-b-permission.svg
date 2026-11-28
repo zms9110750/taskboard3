@@ -11,41 +11,41 @@
   <text x="56" y="148" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">ToolPermissionPage</text>
   <text x="56" y="166" font-size="11" fill="#59636e">页面壳：只做布局与数据装配，不画业务细节</text>
 
-  <path d="M 60 176 L 60 700" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 176 L 60 700" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
 
   <!-- HeaderStrip -->
   <rect x="80" y="188" width="560" height="48" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
-  <path d="M 60 212 L 80 212" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 212 L 80 212" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="96" y="208" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#8250df">HeaderStrip</text>
   <text x="96" y="226" font-size="11" fill="#59636e">标题 + 真实保存状态（已保存 / 保存中 / 失败重试）—— 替掉"暂不持久化"黄条</text>
 
   <!-- TabBar -->
   <rect x="80" y="248" width="560" height="44" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
-  <path d="M 60 270 L 80 270" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 270 L 80 270" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="96" y="268" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">TabBar</text>
   <text x="96" y="284" font-size="11" fill="#59636e">编组 / 授权（两个固定 Tab，不做成按钮组花活）</text>
 
   <!-- GroupRail -->
   <rect x="80" y="304" width="560" height="48" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
-  <path d="M 60 328 L 80 328" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 328 L 80 328" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="96" y="324" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">GroupRail</text>
   <text x="96" y="342" font-size="11" fill="#59636e">左栏：GroupList（组行 + 成员数） + NewGroupButton</text>
 
   <!-- GroupRow -->
   <rect x="120" y="362" width="520" height="44" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
-  <path d="M 100 350 L 100 384 L 120 384" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 100 350 L 100 384 L 120 384" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="136" y="380" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#8250df">GroupRow</text>
   <text x="136" y="397" font-size="11" fill="#59636e">可选中：选中态 = 左侧竖条 + 底色 + 加粗；双击改名</text>
 
   <!-- GraphCanvas -->
   <rect x="80" y="418" width="560" height="48" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
-  <path d="M 60 442 L 80 442" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 442 L 80 442" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="96" y="438" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">GraphCanvas</text>
   <text x="96" y="456" font-size="11" fill="#59636e">中栏：ColumnHeader ×3 + EdgeLayer + ZoomBar + 节点</text>
 
   <!-- GroupNode / ToolNode -->
   <rect x="120" y="476" width="250" height="56" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
-  <path d="M 100 464 L 100 504 L 120 504" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 100 464 L 100 504 L 120 504" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="136" y="496" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#8250df">GroupNode</text>
   <text x="136" y="514" font-size="11" fill="#59636e">紫底 · 可选中</text>
 
@@ -55,18 +55,18 @@
 
   <!-- ToolPicker -->
   <rect x="80" y="548" width="560" height="48" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
-  <path d="M 60 572 L 80 572" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 572 L 80 572" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="96" y="568" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">ToolPicker</text>
   <text x="96" y="586" font-size="11" fill="#59636e">右栏：SearchBox + ToolRow（复选框 + 名称 + 来源：宿主/任务板）</text>
 
   <rect x="120" y="606" width="520" height="44" rx="10" fill="#fbf7ff" stroke="#8250df" stroke-width="1.6" stroke-dasharray="6 4"/>
-  <path d="M 100 594 L 100 628 L 120 628" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 100 594 L 100 628 L 120 628" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="136" y="624" font-size="12" font-weight="700" font-family="Consolas, monospace" fill="#8250df">ToolRow</text>
   <text x="136" y="641" font-size="11" fill="#59636e">清单必须来自 GET /api/tools 全量；行内标注 source，不硬编码</text>
 
   <!-- AuthRail -->
   <rect x="80" y="660" width="560" height="48" rx="10" fill="#f6f8fa" stroke="#57606a" stroke-width="1.4"/>
-  <path d="M 60 684 L 80 684" stroke="#afb8c1" stroke-width="1.4"/>
+  <path d="M 60 684 L 80 684" stroke="#afb8c1" stroke-width="1.4" fill="none"/>
   <text x="96" y="680" font-size="13" font-weight="700" font-family="Consolas, monospace" fill="#1f2328">AuthRail（授权 Tab 左栏）</text>
   <text x="96" y="698" font-size="11" fill="#59636e">= FoldGroup（复用 46-A） × 3：档位块 / 模板块 / 每个领域块</text>
 
