@@ -21,6 +21,10 @@
  * ⇒ 两条硬规则：
  *   ① **自动计算只产 `AUTO_STATES`**（四个非终结态），由 `recomputeTargetOf` 保证；
  *   ② **终结态只能靠按钮进**，由 `judgeTransition` 的按钮表保证。
+ *
+ * 外加一条**类别边界**（issue #34）：重算目标必须 ∈ `autoTargetsOf(kind, from)`
+ * —— design 只接受「需要信息 / 需要授权」，record 的自动可达集为空（不监听子任务）。
+ * 越过边界就不转移，见 `recomputeOne`。
  */
 
 import type { Failure, TransitionRejectReason } from '@taskboard/protocol';
@@ -29,6 +33,7 @@ import {
 	DRAFT,
 	ErrorCode,
 	TaskState,
+	autoTargetsOf,
 	failure,
 	isEndedState,
 	judgeTransition,
@@ -517,7 +522,25 @@ export interface RecomputeStep {
 /**
  * 对一张卡做一次重算（纯函数）。
  *
- * @returns `null` 表示不需要改（状态已一致 / 卡是草稿或终结态 / 没有子卡）
+ * ## 类别约束（issue #34）
+ *
+ * 算出的目标还必须落在**该类别、该源状态**的自动可达集里
+ * （`autoTargetsOf`，与 `judgeTransition({ trigger: 'auto', … })` 同一条通路，
+ * 不另立判定）：
+ *
+ * | 类别 | 重算实际能达 |
+ * |---|---|
+ * | `goal` | 提交 / 处理中 / 需要信息 / 需要授权（子任务推父卡，行为不变）|
+ * | `work` | 提交 / 需要信息 / 需要授权（`处理中` 只能领取，不由重算产生）|
+ * | `design` | 需要信息 / 需要授权 —— 子任务「进行中」**不会**把设计父卡推成
+ *   提交或处理中；父卡保持原状态，等调研子任务结束回到需要授权 |
+ * | `record` | **无**：自动可达集为空 ⇒ 任何重算都不动它。这是用户 `#12`
+ *   「记录不监听子任务、只由人工推进」的落地 |
+ *
+ * 不满足 ⇒ 返回 `null`（**保持原状态**），`recomputeChain` 照旧沿 `parent` 链继续上溯。
+ *
+ * @returns `null` 表示不需要改（状态已一致 / 卡是草稿或终结态 / 没有子卡 /
+ *          目标不在该类别的自动可达集里）
  */
 export function recomputeOne(card: Card, cards: readonly Card[], at: number): RecomputeStep | null {
 	/*
@@ -536,6 +559,17 @@ export function recomputeOne(card: Card, cards: readonly Card[], at: number): Re
 
 	const to = recomputeTargetOf(children);
 	if (to === card.status) return null;
+
+	/*
+	 * **类别约束**：重算的候选来自 `recomputeTargetOf`（四个非终结态），
+	 * 但不是每个类别都能自动到达这四个 —— 目标是「子任务推父卡」的通用结论，
+	 * 可达集是**用户矩阵按类别裁定的边界**（`protocol/transition.ts` 的
+	 * `AUTO_TARGETS_BY_KIND`）。越过边界 ⇒ 不转移、**保持原状态**。
+	 *
+	 * 直接复用 `autoTargetsOf`（`judgeTransition` 的 auto 分支读的也是它），
+	 * 不再复制一份判定条件 —— 两张表漂移时这里会跟着一起变。
+	 */
+	if (!autoTargetsOf(card.template.kind, card.status).includes(to)) return null;
 
 	return {
 		card: withHistory(
