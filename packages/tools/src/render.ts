@@ -17,7 +17,7 @@
  *   拼路径要先用 `taskboard_raw_card` 看原始 JSON（用户裁决 #5）。
  */
 
-import type { Card, CardUnread, TransitionAdvice } from '@taskboard/core';
+import type { Card, CardUnread, KindDef, TransitionAdvice } from '@taskboard/core';
 import { groupOf, labelOf, type TaskState } from '@taskboard/protocol';
 import { textOfAction } from '@taskboard/core';
 
@@ -144,4 +144,78 @@ export function renderAdvice(advice: TransitionAdvice, holder: string | undefine
 
 	lines.push('', '执行方式：把目标状态 id 填进 to 再调一次（例如 to=TASK_STATE_WORKING）。');
 	return lines.join('\n');
+}
+
+/* ──────────────── 建卡回执的「下一步」：按类别 / 领域动态补 ──────────────── */
+
+/**
+ * 领域定义的结构形状。
+ *
+ * `core` 没有从包根导出 `DomainDef`（它只是 `domains()` 返回类型的一部分），
+ * 所以这里声明结构形状：结构上满足即可，**不复制实现**。
+ */
+export interface DomainView {
+	readonly id: string;
+	readonly displayName: string;
+	readonly description: string;
+}
+
+/**
+ * 按 id 或显示名找领域定义。
+ *
+ * 卡上的 `template.domain` 是**模板里的原文**：内置模板写的是中文显示名
+ * （「核心」/「代码」），第三方也可以写注册表 id。两种都认；
+ * 认不出返回 `undefined`，由调用方如实说「注册表里没有」，**不编描述**。
+ */
+export function findDomain(domains: readonly DomainView[], name: string): DomainView | undefined {
+	return domains.find((one) => one.id === name) ?? domains.find((one) => one.displayName === name);
+}
+
+/** 类别引用文案：名字取自注册表；未注册就只给 id，不猜名字。 */
+function kindRef(def: KindDef | undefined, id: string): string {
+	return def === undefined ? `kind=${id} 的卡` : `「${def.displayName}」卡（kind=${def.id}）`;
+}
+
+/**
+ * 「这个类别下一张卡通常是什么」（#15 附加项② / issue #35）。
+ *
+ * ## 为什么有四条按 id 的分支
+ *
+ * 这四句是**行为**（下一张卡该开什么），不是词表：类别显示名与说明仍然从
+ * `KindRegistry`（`KindDef.displayName` / `description`）取；
+ * 交叉引用的目标类别（`work` / `record`）也先按 id 去注册表解析再取显示名 ——
+ * 注册表内容变了，回执跟着变，不会留在工具层一份硬编码文案。
+ *
+ * 未知类别（第三方 `register` 的）**不猜语义**，只按 `KindDef` 自己声明的
+ * `needsClaim` / `reopenable` 给一条保守提示。
+ */
+export function kindNextStepText(kind: KindDef, findKind: (id: string) => KindDef | undefined): string {
+	const work = kindRef(findKind('work'), 'work');
+	const record = kindRef(findKind('record'), 'record');
+	switch (kind.id) {
+		case 'goal':
+			return `目标确立后，建${work}执行它。`;
+		case 'design':
+			return `等用户确认方向后，再建${work}执行它。`;
+		case 'work':
+			return `完成后要有交付记录：建${record}作证据。`;
+		case 'record':
+			return '确认后作为证据存档。';
+		default:
+			if (kind.needsClaim) return `完成后要有交付记录：建${record}作证据。`;
+			if (kind.reopenable) return `方向/目标明确后，再建${work}执行它。`;
+			return '确认后作为证据存档。';
+	}
+}
+
+/**
+ * 领域的回执文案 —— **只补一句注册表里的描述**。
+ *
+ * 领域不参与任何判定（`core/src/template/domains.ts`：纯展示 + 筛选），
+ * 所以这里不给它编行为提示；没注册的领域也不编描述。
+ */
+export function domainText(domain: DomainView | undefined, raw: string): string {
+	if (domain === undefined) return `领域「${raw}」：领域注册表里没有它，未提供描述。`;
+	if (domain.description === '') return `领域（${domain.displayName}）`;
+	return `领域（${domain.displayName}）：${domain.description}`;
 }

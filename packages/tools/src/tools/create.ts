@@ -9,6 +9,10 @@
  * > 建卡要先看定义（#4）；没模板时提示先用 #4；加 title 参数。
  * 裁决 #11：
  * > 创建以后返回模板描述里面的「下一步」+ 模板分类的描述。
+ * Issue #35（#15 附加项②）：
+ * > 「下一步」还要按**所建卡的类别 / 领域**给动态提示：类别说明与领域说明从
+ * > core 的 `kinds()` / `domains()` 注册表取；「下一张卡」引用的类别名也从
+ * > 注册表取，不在工具层另造第三份词表。
  *
  * ## 关系数组
  *
@@ -34,6 +38,7 @@ import type { ErrorCode } from '@taskboard/protocol';
 
 import { resolveWorkspace, objectOf, str } from '../context.ts';
 import { inputFailure, failureResult, nextStepFor } from '../failure.ts';
+import { domainText, findDomain, kindNextStepText } from '../render.ts';
 import { okText } from '../schema.ts';
 import type { TaskboardToolHandler } from '../types.ts';
 import {
@@ -137,12 +142,24 @@ export function createCreateTool(deps: ToolDeps): ReturnType<typeof defineTool> 
 		// 状态改名/加状态时这行不会跟着变（词汇层又一份副本）。可直接改：改成 stateText(card.status)。
 			`模板：${card.template.ref}（分类 ${card.template.kind} / 领域 ${card.template.domain}）；状态：未指定（TASK_STATE_UNSPECIFIED）`,
 		];
-		/* 用户裁决 #11：返回模板描述里的「下一步」+ 分类描述。 */
+		/* 用户裁决 #11：返回模板描述里的「下一步」。 */
 		// TODO(审查): description 为空就回退展示 usage（两个语义不同的字段二选一），而 definitions.ts 的模板详情是两者并列显示。
 		// 同一份模板元数据两处解释不一致。需用户定口径；改法很轻。
 		if (template !== undefined && template.description !== '') lines.push('', `下一步：${template.description}`);
 		else if (template !== undefined && template.usage !== '') lines.push('', `模板用法：${template.usage}`);
-		if (kind !== undefined && kind.description !== '') lines.push('', `分类（${kind.displayName}）：${kind.description}`);
+
+		/*
+		 * Issue #35（#15 附加项②）：在模板自己的「下一步」之后，按**这张卡的
+		 * 类别 / 领域**补动态提示。文案全部从 core 的注册表取（类别说明、领域
+		 * 说明、以及「下一张卡」引用的类别名），工具层不另造词表。
+		 */
+		if (kind !== undefined) {
+			const kindBlock: string[] = [];
+			if (kind.description !== '') kindBlock.push(`分类（${kind.displayName}）：${kind.description}`);
+			kindBlock.push(`下一张卡通常：${kindNextStepText(kind, (id) => taskboard.kinds().get(id))}`);
+			lines.push('', ...kindBlock);
+		}
+		lines.push('', domainText(findDomain(taskboard.domains().list(), card.template.domain), card.template.domain));
 
 		const sections = Object.entries(card.sections);
 		lines.push('', `章节（${sections.length} 个）：`);

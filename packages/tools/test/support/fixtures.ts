@@ -107,9 +107,13 @@ export interface Fixture {
 
 /** 建一个测试板（默认 DSH 视角，全部工具可见）。 */
 export async function makeFixture(
-	options: { readonly cardLevel?: CardActionLevel } = {},
+	options: { readonly cardLevel?: CardActionLevel; readonly builtinKinds?: boolean } = {},
 ): Promise<Fixture> {
-	const tb = createTaskboard({ store: createMemoryStore() });
+	const tb = createTaskboard({
+		store: createMemoryStore(),
+		/* `exactOptionalPropertyTypes`：只在显式关内置类别时才传，不传 undefined。 */
+		...(options.builtinKinds === false ? { builtinKinds: false } : {}),
+	});
 	for (const one of TEMPLATES) tb.templates().register(one);
 	const created = await tb.createWorkspace('测试空间');
 	if (!created.ok) throw new Error(`建空间失败：${created.message}`);

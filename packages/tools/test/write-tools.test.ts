@@ -33,6 +33,114 @@ describe('taskboard_create', () => {
 		assert.equal(made?.relations.links[0]?.to, dep);
 	});
 
+	it('不同类别的回执给出不同的「下一张卡」提示（#15 附加项②）', async () => {
+		const fixture = await makeFixture();
+		const goal = await runOk(fixture, 'taskboard_create', { title: '目标卡', templateRef: 't-goal' });
+		const design = await runOk(fixture, 'taskboard_create', { title: '设计卡', templateRef: 't-design' });
+		const work = await runOk(fixture, 'taskboard_create', { title: '工作卡', templateRef: 't-work' });
+		const record = await runOk(fixture, 'taskboard_create', {
+			title: '记录卡',
+			templateRef: 'blank',
+			kind: 'record',
+			domain: '核心',
+		});
+
+		assert.ok(goal.includes('下一张卡通常：目标确立后，建「工作」卡（kind=work）执行它。'), goal);
+		assert.ok(design.includes('下一张卡通常：等用户确认方向后，再建「工作」卡（kind=work）执行它。'), design);
+		assert.ok(work.includes('下一张卡通常：完成后要有交付记录：建「记录」卡（kind=record）作证据。'), work);
+		assert.ok(record.includes('下一张卡通常：确认后作为证据存档。'), record);
+		/* 四类互不相同 —— 否则「按类别动态」就是空话。 */
+		assert.ok(!goal.includes('等用户确认方向后'), goal);
+		assert.ok(!design.includes('目标确立后'), design);
+		assert.ok(!record.includes('目标确立后'), record);
+
+		/* 分类 / 领域说明都来自 core 的注册表。 */
+		assert.ok(work.includes('分类（工作）：实际动手做的任务。领取它就是拿到执行权限。'), work);
+		assert.ok(work.includes('领域（核心）：任务板本身、协作方式、方法论。'), work);
+	});
+
+	it('回执动态文案来自 kinds()/domains() 注册表：改注册表 ⇒ 回执跟着变', async () => {
+		const fixture = await makeFixture();
+
+		const stopKind = fixture.tb.kinds().register({
+			id: 'probe',
+			displayName: '探针甲',
+			letter: 'P',
+			description: '第一版类别说明。',
+			reopenable: false,
+			needsClaim: false,
+		});
+		const first = await runOk(fixture, 'taskboard_create', {
+			title: '甲卡',
+			templateRef: 'blank',
+			kind: 'probe',
+			domain: '核心',
+		});
+		assert.ok(first.includes('分类（探针甲）：第一版类别说明。'), first);
+
+		stopKind();
+		fixture.tb.kinds().register({
+			id: 'probe',
+			displayName: '探针乙',
+			letter: 'P',
+			description: '第二版类别说明。',
+			reopenable: false,
+			needsClaim: false,
+		});
+		const second = await runOk(fixture, 'taskboard_create', {
+			title: '乙卡',
+			templateRef: 'blank',
+			kind: 'probe',
+			domain: '核心',
+		});
+		assert.ok(second.includes('分类（探针乙）：第二版类别说明。'), second);
+		assert.ok(!second.includes('第一版类别说明'), second);
+
+		/* 领域同理：回执里只补注册表里的那一句描述。 */
+		const domains = fixture.tb.domains();
+		const stopDomain = domains.register({
+			id: 'probe-domain',
+			displayName: '试验',
+			description: '第一版领域说明。',
+		});
+		const beforeDomain = await runOk(fixture, 'taskboard_create', {
+			title: '甲域卡',
+			templateRef: 'blank',
+			kind: 'goal',
+			domain: '试验',
+		});
+		assert.ok(beforeDomain.includes('领域（试验）：第一版领域说明。'), beforeDomain);
+
+		stopDomain();
+		domains.register({ id: 'probe-domain', displayName: '试验', description: '第二版领域说明。' });
+		const afterDomain = await runOk(fixture, 'taskboard_create', {
+			title: '乙域卡',
+			templateRef: 'blank',
+			kind: 'goal',
+			domain: '试验',
+		});
+		assert.ok(afterDomain.includes('领域（试验）：第二版领域说明。'), afterDomain);
+		assert.ok(!afterDomain.includes('第一版领域说明'), afterDomain);
+	});
+
+	it('「下一张卡」引用的类别名也取自注册表，不是硬编码', async () => {
+		/* 关掉内置类别，用自己的同 id 类别改名换描述 —— 回执必须跟着变。 */
+		const fixture = await makeFixture({ builtinKinds: false });
+		for (const kind of [
+			{ id: 'goal', displayName: '目标甲', letter: 'G', description: '目标说明。', reopenable: true, needsClaim: false },
+			{ id: 'design', displayName: '设计甲', letter: 'D', description: '设计说明。', reopenable: true, needsClaim: false },
+			{ id: 'work', displayName: '执行甲', letter: 'W', description: '工作说明。', reopenable: false, needsClaim: true },
+			{ id: 'record', displayName: '存档甲', letter: 'R', description: '记录说明。', reopenable: false, needsClaim: false },
+		]) {
+			fixture.tb.kinds().register(kind);
+		}
+
+		const goal = await runOk(fixture, 'taskboard_create', { title: '目标卡', templateRef: 't-goal' });
+		assert.ok(goal.includes('建「执行甲」卡（kind=work）'), `目标卡的下一步应引用注册表里的 work 名：\n${goal}`);
+		const work = await runOk(fixture, 'taskboard_create', { title: '工作卡', templateRef: 't-work' });
+		assert.ok(work.includes('建「存档甲」卡（kind=record）'), `工作卡的下一步应引用注册表里的 record 名：\n${work}`);
+	});
+
 	it('parent 关系写成派生父卡', async () => {
 		const fixture = await makeFixture();
 		const parent = await seedCard(fixture, 't-goal', '父卡');
