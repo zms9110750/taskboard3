@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f6feb"/>
+      <stop offset="100%" stop-color="#238636"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="480" height="240" rx="16" fill="#0d1117"/>
+
+  <rect x="24" y="24" width="200" height="80" rx="12" fill="url(#g1)"/>
+  <text x="40" y="60" font-family="Segoe UI, sans-serif" font-size="18" fill="#ffffff">渐变 + 圆角</text>
+  <text x="40" y="88" font-family="Segoe UI, sans-serif" font-size="13" fill="#c9d1d9">gradient / rounded rect</text>
+
+  <circle cx="360" cy="64" r="36" fill="none" stroke="#d29922" stroke-width="4"/>
+  <path d="M330 64 L390 64" stroke="#d29922" stroke-width="4" stroke-linecap="round"/>
+  <path d="M360 34 L360 94" stroke="#d29922" stroke-width="4" stroke-linecap="round"/>
+
+  <rect x="24" y="136" width="432" height="80" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text x="40" y="168" font-family="Segoe UI, sans-serif" font-size="14" fill="#e6edf3">如果这段文字和上面的渐变方块都显示正常，说明 SVG 渲染成功</text>
+  <text x="40" y="196" font-family="Consolas, monospace" font-size="13" fill="#7d8590">svg/render-test.svg · 480x240</text>
+</svg>
