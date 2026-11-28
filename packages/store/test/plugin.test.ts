@@ -14,7 +14,7 @@
  * 2. 提供的 store 真能读写（不是空壳）
  * 3. 按空间隔离
  * 4. kv 读写与删除
- * 5. 卸载清理真的关掉了库（不是只登记了一个函数）
+ * 5. 卸载清理真的关掉了库，且 disposer **返回 close() 的 Promise**（issue #32）
  * 6. dataDir 缺失 / 空串会在激活时抛错，而不是穿透到 io 深处才炸
  *
  * ⚠ **不再测试「提供了 search」** —— 搜索已并入 core 并强耦合，
@@ -40,17 +40,17 @@ import type { ApplyContext, Config } from '../src/index.ts';
 /** 假上下文：记录 provide 与 effect 的调用。 */
 function fakeContext(): ApplyContext & {
 	provided: Map<string, unknown>;
-	cleanups: (() => void)[];
+	cleanups: (() => void | Promise<void>)[];
 } {
 	const provided = new Map<string, unknown>();
-	const cleanups: (() => void)[] = [];
+	const cleanups: (() => void | Promise<void>)[] = [];
 	return {
 		provided,
 		cleanups,
 		provide<T>(name: string, api: T): void {
 			provided.set(name, api);
 		},
-		effect(effect: () => (() => void) | void, _label?: string): void {
+		effect(effect: () => (() => void | Promise<void>) | void, _label?: string): void {
 			const cleanup = effect();
 			if (typeof cleanup === 'function') cleanups.push(cleanup);
 		},
@@ -119,10 +119,10 @@ describe('store 插件', () => {
 		apply(testCtx(), { dataDir });
 	});
 
-	afterEach(() => {
-		/* 用例可能已经手动跑过 cleanup（关闭幂等，再跑一次不会抛）。 */
+	afterEach(async () => {
+		/* 用例可能已经手动跑过 cleanup（关闭幂等，再跑一次不会抛）。disposer 返回 Promise，等它。 */
 		if (ctx !== undefined) {
-			for (const cleanup of ctx.cleanups) cleanup();
+			for (const cleanup of ctx.cleanups) await cleanup();
 		}
 		if (dataDir !== undefined) {
 			rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
@@ -180,7 +180,8 @@ describe('store 插件', () => {
 
 		const [cleanup] = context.cleanups;
 		assert.ok(cleanup, '没有登记清理函数');
-		cleanup();
+		/* 故意不 await：这里钉的是 `close()` 的同步部分（`db.close()` 没有 await）。 */
+		void cleanup();
 
 		/* 关掉之后再操作必须失败 —— 只断言 `typeof cleanup === 'function'` 证明不了关库。 */
 		assert.throws(
@@ -196,6 +197,30 @@ describe('store 插件', () => {
 		assert.doesNotThrow(
 			() => rmSync(closedDir, { recursive: true, force: true }),
 			'关闭后库文件应能立刻删除（Windows EBUSY 窗口）',
+		);
+	});
+
+	it('effect 的 disposer 返回 Promise，await 后库已关（issue #32）', async () => {
+		const context = testCtx();
+		const store = storeOf(context);
+		assert.equal(context.cleanups.length, 1, '应当只登记一个 effect');
+
+		const [disposer] = context.cleanups;
+		assert.ok(disposer, '没有登记 disposer');
+
+		/*
+		 * Cordis 只在 disposer **返回** Promise 时才 await 它（`fiber.ts:720-730`）。
+		 * 所以这里必须把返回值取出来 await —— 若源码写成 `void store.close().catch(...)`，
+		 * disposer 返回 `undefined`，下面这条会红。
+		 */
+		const closing = disposer();
+		assert.ok(closing instanceof Promise, 'disposer 必须返回 close() 的 Promise（否则卸载不等关库）');
+		await closing;
+
+		/* await 之后库必须真的关了，而不是只把 Promise 造出来。 */
+		assert.throws(
+			() => store.loadAll('after-await-close'),
+			/database is not open|statement has been finalized/,
 		);
 	});
 

@@ -59,7 +59,8 @@
 // TODO(审查): [patch] cordis.patch.yml:18-23 的 !!js dshHomePath('taskboard3') 自认未实测；DSH 文档（composition-reference.md:17）形式合法，
 //   但本仓从未验证。可直接改：装一次确认并删「未验证」注释；失败则回落显式路径（默认值需用户决定）。
 // TODO(审查): [patch] 若 @taskboard/bundle 的 patch 已含本行，本包 cordis.patch.yml 是死文件。需 lead 确认装配归属。
-// TODO(审查): [test] plugin.test.ts:35-51 假 ctx 复制「provide 同步 / effect 立即执行 / disposer 同步」假设，与真 Cordis 的偏差抓不到。
+// TODO(审查): [test] plugin.test.ts:35-51 假 ctx 仍复制「provide 同步 / effect 立即执行」假设，与真 Cordis 的
+//   其它偏差抓不到（「disposer 返回 Promise」已在 #32 改为 await，不再靠假设）。
 //   可直接改：加 type-only Plugin 契约断言，或一个真 Cordis 冒烟测试。
 // TODO(审查): [test] 无重复激活/HMR 测试：apply 两次会开两个 SQLite 连接、provide 两次；框架是否 dispose-before-apply 未验证。
 // TODO(审查): [架构建议] 若只服务 DSH：评估 ctx.storageDomain（open/get/closeAll）托管 SQLite，替代 @taskboard/io + 自管 close；
@@ -132,25 +133,22 @@ export function apply(ctx: ApplyContext, config: Config): void {
 	 *
 	 * 为什么用 `effect` 而不是让调用方自己管：库句柄是**这一行**打开的，
 	 * 就该由这一行关。换实现时，新实现自己登记自己的清理 —— 上层不用改。
+	 *
+	 * ⚠ **disposer 要把 `close()` 的 Promise 返回出去**（issue #32）。Cordis 只在
+	 *   disposer *返回* Promise 时才 await 它：`Fiber._unload()` 里
+	 *   `await Promise.all(this._disposables.clear().map(… await runDisposable(dispose) …))`，
+	 *   失败被 catch 后交给 `ctx.logger.error`（源码级核实：`cordis/src/fiber.ts:712-730`，
+	 *   其中等待在 :720-730；disposer 类型 `Disposable<T> = () => T` 见 :74，
+	 *   effect 的两个重载见 :421-423）。
+	 *
+	 *   写成 `void store.close().catch(…)` 的后果有两层：卸载不等关库完成 ⇒ Windows 上
+	 *   紧接着删数据目录会撞 EBUSY 窗口；自己 catch 还会把失败吞成一行 console，
+	 *   Cordis 想记也记不到（它自己的 catch 会走 `ctx.logger.error`）。
+	 *
+	 *   `close()` 已幂等（`io/src/sqlite.ts` 的 `closed` 标志），所以 Cordis 卸载与
+	 *   测试清理各调一次都安全。
 	 */
-	ctx.effect(() => () => {
-		/*
-		 * `close()` 是异步的。**Cordis 会 await disposer 返回的 Promise** —— `Fiber._unload()`
-		 * 里 `await Promise.all(this._disposables.clear()…)` 并发等待、`catch` 后 `ctx.logger.error`
-		 * （`cordis/src/fiber.ts:720-728`；注册反序在 `utils.ts` 的 `DisposableList.clear()`，
-		 * 但那是**发起序**，不保证完成序）。
-		 *
-		 * ⚠ 早先这里写的「Cordis 的 disposer 不保证被 await」是**事实错误**：真正的问题在我们
-		 *   自己 —— disposer **不返回** Promise 时 Cordis 才没东西可等（fire-and-forget）。
-		 *   `dsh-core` 的同类 disposer 已改成 `() => () => taskboard.close()`
-		 *   （`dsh-core/src/index.ts:219`）；**本行仍自己 `catch`**（下面的写法），所以卸载不等
-		 *   关库完成。必须接住拒绝：否则是一个未处理的 Promise rejection，可能让进程退出，
-		 *   而真正的关闭失败会被完全吞掉。
-		 */
-		void store.close().catch((error: unknown) => {
-			console.error('[taskboard3/store] 关闭 SQLite 失败：', error);
-		});
-	}, 'taskboard3-store: close database');
+	ctx.effect(() => () => store.close(), 'taskboard3-store: close database');
 
 	ctx.provide<CardStore>(STORE_SERVICE, store);
 }
