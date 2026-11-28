@@ -10,6 +10,7 @@
  * | 释放 | 只移除自己；列表空了才回提交 |
  * | 通用转移 | 判定拒绝时**不写盘**；判定通过时写状态 + history |
  * | **重算** | 子处理中 → 父处理中；子全要授权 → 父要授权；**父卡永远不是终结态** |
+ * | 重算 | **类别约束**：design 不被推到提交/处理中、record 不被重算（issue #34） |
  * | 重算 | 递归两层；遇到环不死循环 |
  *
  * ## 为什么这些用例能跑得这么快
@@ -523,6 +524,113 @@ describe('沿树重算（自动计算永不产出终结态）', () => {
 		const parentCard = adopted.recomputed.find((one) => one.id === parent);
 		assert.ok(parentCard !== undefined, '父卡应当被重算');
 		assert.equal(parentCard.status, TaskState.AUTH_REQUIRED);
+	});
+
+	it('★ design 父卡：子任务「进行中」保持原状态，不被推到「提交」（issue #34）', async () => {
+		tb.templates().register(makeTemplate('t-design-rc', 'design'));
+
+		const parentResult = await tb.create({
+			workspaceId: ws,
+			templateRef: 't-design-rc',
+			title: '设计父卡',
+			actor: 'user',
+		});
+		assert.ok(parentResult.ok);
+		const parent = parentResult.card.id;
+		const adoptedParent = await tb.adopt(ws, parent, 'user');
+		assert.ok(adoptedParent.ok);
+		/* design 采纳 ⇒ 需要授权（design 自动可达集里的一个）。 */
+		assert.equal(adoptedParent.card.status, TaskState.AUTH_REQUIRED);
+
+		const childResult = await tb.create({
+			workspaceId: ws,
+			templateRef: 't-work',
+			title: '调研子任务',
+			relations: { parent },
+			actor: 'user',
+		});
+		assert.ok(childResult.ok);
+		const child = childResult.card.id;
+
+		/* 子任务「提交」：普通规则会算成 SUBMITTED，但 design 的可达集不含它。 */
+		const adoptedChild = await tb.adopt(ws, child, 'user');
+		assert.ok(adoptedChild.ok);
+		const afterChildAdopt = await tb.get(ws, parent);
+		assert.ok(afterChildAdopt.ok);
+		assert.equal(
+			afterChildAdopt.card.status,
+			TaskState.AUTH_REQUIRED,
+			'子任务「提交」不该把设计父卡推到「提交」',
+		);
+
+		/* 子任务「进行中」：普通规则会算成 WORKING，design 的可达集同样不含它。 */
+		const claimed = await tb.claim(ws, child, 'user', 'loop-design-rc');
+		assert.ok(claimed.ok, JSON.stringify(claimed));
+		assert.equal(claimed.card.status, TaskState.WORKING);
+		assert.equal(
+			claimed.recomputed.some((one) => one.id === parent),
+			false,
+			'design 的自动可达集不含「处理中」⇒ 父卡不该被重算',
+		);
+
+		const afterClaim = await tb.get(ws, parent);
+		assert.ok(afterClaim.ok);
+		assert.equal(afterClaim.card.status, TaskState.AUTH_REQUIRED, '子任务进行中时设计父卡保持原状态');
+
+		/* 子任务结束（终结态）：普通规则会算成 SUBMITTED，design 仍不接受。 */
+		const ended = await tb.transition(ws, child, TaskState.COMPLETED, 'button');
+		assert.ok(ended.ok, JSON.stringify(ended));
+		const afterEnd = await tb.get(ws, parent);
+		assert.ok(afterEnd.ok);
+		assert.equal(afterEnd.card.status, TaskState.AUTH_REQUIRED, '子任务结束后设计父卡仍保持原状态');
+	});
+
+	it('★ record 父卡：自动可达集为空 ⇒ 任何重算都不动它（issue #34 / #12）', async () => {
+		tb.templates().register(makeTemplate('t-record-rc', 'record'));
+
+		const parentResult = await tb.create({
+			workspaceId: ws,
+			templateRef: 't-record-rc',
+			title: '记录父卡',
+			actor: 'user',
+		});
+		assert.ok(parentResult.ok);
+		const parent = parentResult.card.id;
+		const adoptedParent = await tb.adopt(ws, parent, 'user');
+		assert.ok(adoptedParent.ok);
+		assert.equal(adoptedParent.card.status, TaskState.AUTH_REQUIRED);
+
+		const childResult = await tb.create({
+			workspaceId: ws,
+			templateRef: 't-work',
+			title: '记录的子任务',
+			relations: { parent },
+			actor: 'user',
+		});
+		assert.ok(childResult.ok);
+		const child = childResult.card.id;
+		await tb.adopt(ws, child, 'user');
+
+		const claimed = await tb.claim(ws, child, 'user', 'loop-record-rc');
+		assert.ok(claimed.ok, JSON.stringify(claimed));
+		assert.equal(
+			claimed.recomputed.some((one) => one.id === parent),
+			false,
+			'记录不监听子任务 ⇒ 不该被重算',
+		);
+
+		/* 子任务结束 ⇒ 普通规则会算成「提交」，但 record 的自动可达集为空。 */
+		const ended = await tb.transition(ws, child, TaskState.COMPLETED, 'button');
+		assert.ok(ended.ok, JSON.stringify(ended));
+
+		const parentNow = await tb.get(ws, parent);
+		assert.ok(parentNow.ok);
+		assert.equal(
+			parentNow.card.status,
+			TaskState.AUTH_REQUIRED,
+			'记录卡的状态只能由人工推进，重算不能改它',
+		);
+		assert.notEqual(parentNow.card.status, TaskState.SUBMITTED, '记录卡不允许自动落到「提交」');
 	});
 
 	it('★ 子任务处于 4 个终结态中的任一个 ⇒ 父卡都不进终结态', async () => {
