@@ -21,6 +21,24 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   background:var(--bg);color:var(--text);font-size:13px;line-height:1.6}
 #root{min-height:100%}
 
+/*
+ * ── `.tb3w-root` 外壳（2026-11-22）──
+ *
+ * 产品 CSS 全部挂在 `.tb3w-root` 作用域下（`src/styles.ts` 的约定），
+ * 单组件预览里没有这个根节点 ⇒ 规则全不命中。所以每个把真组件放进来的
+ * 预览都要在**最外层**包一个 `<div className="tb3w-root pv-shell">`。
+ *
+ * 但产品里的 `.tb3w-root` 是「撑满 tab」的（`height:100%` + `overflow:hidden`），
+ * 预览页是按内容高度撑开、整页滚动的 —— 这两个意图冲突。
+ * ⇒ 只在外壳上改这三条，**不改产品规则**（产品里仍然是撑满 + 裁切）。
+ */
+/*
+ * ⚠ 用 `.tb3w-root.pv-shell`（两个类）压过产品那条单类的 `.tb3w-root`
+ *   —— 产品 CSS 是 `injectStyles()` 运行时追加的 `<style>`，在静态 <style>
+ *   之后 ⇒ 同特异性时它会赢。两个类才有确定优先级，不靠注入顺序。
+ */
+.tb3w-root.pv-shell{display:block;height:auto;min-height:0;overflow:visible}
+
 .preview{max-width:1180px;margin:0 auto;padding:28px 26px 60px}
 .pv-head h1{margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:-.01em}
 .pv-head p{margin:0;color:var(--text-secondary);font-size:12px}
@@ -244,24 +262,55 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
  * 总宽度同时收了 20px（58 + 8 → 46 + 0）。
  */
 .task-card{gap:0}
-.task-card__status.is-compact{align-items:center}
 
 /* ── 左侧正方形：编号在上、状态在下 ── */
+/*
+ * 宽度**不再钉死 46px**：状态从「圆点 + 文字」变成带边框的 StatusButton 之后
+ * 比 46px 宽（#62 / #63）。`min-width` 保住原来的下限，内容更宽就让它撑开
+ * —— 硬钉 46px 会让按钮压到右边的 label 上。
+ */
 .task-card__square{
-  flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
-  min-width:0;
+  flex:0 0 auto;min-width:46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
 }
 .task-card__square-id{
   font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+
 /*
- * 正方形里的状态：9px、点线间距 3px（不是 4px）—— 46px 宽要塞下「需要信息」四个字。
- * 4 字 × 9px + 点 6px + 间距 3px = 45px，刚好。
+ * 正方形里的状态按钮：高度收到 20px、9px 字（列表行密度）。
+ * 值照抄 `src/renderers/status-button-css.ts` 的上下文规则，改那边时这里跟着改。
  */
-.task-card__status.is-compact{
-  flex:0 0 auto;font-size:9px;gap:3px;color:var(--text-weak);
+.task-card__square .status-button{
+  align-self:flex-start;height:20px;padding:0 5px;gap:3px;border-radius:5px;font-size:9px;
 }
+
+/* ── StatusButton（预览用副本；产品样式在 src/renderers/status-button-css.ts） ── */
+.status-button{
+  display:inline-flex;flex:0 0 auto;align-items:center;gap:5px;
+  height:24px;padding:0 8px;
+  border:1px solid var(--status-button-border,#cbd5e1);border-radius:8px;
+  background:var(--bg-card);color:var(--text-secondary);
+  font-family:inherit;font-size:11.5px;line-height:1;white-space:nowrap;text-align:left;
+  transition:background .12s,border-color .12s;
+}
+.status-button--md{height:28px;padding:0 9px;font-size:12px}
+.status-button__label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-button__caret{flex:0 0 auto;font-size:9px;line-height:1;color:#9aa1ad}
+.status-button.is-static{cursor:default}
+.status-button.is-interactive{cursor:pointer}
+.status-button.is-interactive:hover{background:#eef1f5}
+.status-button.is-interactive:active{background:#e7e9ee}
+.status-button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.status-button--unspecified{--status-button-border:#9ca3af}
+.status-button--submitted{--status-button-border:#111827}
+.status-button--working{--status-button-border:#06b6d4}
+.status-button--inputRequired{--status-button-border:#eab308}
+.status-button--authRequired{--status-button-border:#a855f7}
+.status-button--completed{--status-button-border:#10b981}
+.status-button--failed{--status-button-border:#ef4444}
+.status-button--canceled{--status-button-border:#92400e}
+.status-button--rejected{--status-button-border:#f97316}
 
 /* ── 右侧：一行 ── */
 .task-card__body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
@@ -858,7 +907,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	// \0rolldown/runtime.js
 	var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod, mod.exports), cb = null), mod.exports);
-	// ../../node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react.development.js
+	// node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react.development.js
 	/**
 	* @license React
 	* react.development.js
@@ -1637,11 +1686,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
 		})();
 	}));
-	// ../../node_modules/.pnpm/react@19.3.1/node_modules/react/index.js
+	// node_modules/.pnpm/react@19.3.1/node_modules/react/index.js
 	var require_react = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_development();
 	}));
-	// ../../node_modules/.pnpm/scheduler@0.28.0/node_modules/scheduler/cjs/scheduler.development.js
+	// node_modules/.pnpm/scheduler@0.28.0/node_modules/scheduler/cjs/scheduler.development.js
 	/**
 	* @license React
 	* scheduler.development.js
@@ -1883,11 +1932,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
 		})();
 	}));
-	// ../../node_modules/.pnpm/scheduler@0.28.0/node_modules/scheduler/index.js
+	// node_modules/.pnpm/scheduler@0.28.0/node_modules/scheduler/index.js
 	var require_scheduler = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_scheduler_development();
 	}));
-	// ../../node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom.development.js
+	// node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom.development.js
 	/**
 	* @license React
 	* react-dom.development.js
@@ -2075,11 +2124,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
 		})();
 	}));
-	// ../../node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/index.js
+	// node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/index.js
 	var require_react_dom = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_dom_development();
 	}));
-	// ../../node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.development.js
+	// node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.development.js
 	/**
 	* @license React
 	* react-dom-client.development.js
@@ -17671,11 +17720,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
 		})();
 	}));
-	// ../../node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/client.js
+	// node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/client.js
 	var require_client = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_dom_client_development();
 	}));
-	// src/pure/permission-view.ts
+	// packages/dsh-permissions/src/pure/permission-view.ts
 	var import_react = require_react();
 	var import_client = require_client();
 	Object.freeze({
@@ -17756,7 +17805,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		if (axisLevelOf(state.snapshot, axis) === value) return false;
 		return axisOptionsOf(state.snapshot, axis).some((one) => one.value === value);
 	}
-	// ../../node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.development.js
+	// node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.development.js
 	/**
 	* @license React
 	* react-jsx-runtime.development.js
@@ -17967,7 +18016,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			};
 		})();
 	}));
-	// src/renderers/PermissionPanel.tsx
+	// packages/dsh-permissions/src/renderers/PermissionPanel.tsx
 	var import_jsx_runtime = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_jsx_runtime_development();
 	})))();
@@ -18238,6 +18287,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	function PermissionPanel(props) {
 		const state = props.state;
 		const visibleAxes = props.axes === void 0 ? AXES : AXES.filter((meta) => props.axes?.includes(meta.key));
+		const onlyAxis = visibleAxes.length === 1 ? visibleAxes[0] : void 0;
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 			className: "tb3perm",
 			"data-panel": "permission",
@@ -18251,7 +18301,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						children: "任务板权限"
 					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 						className: "tb3perm__intro",
-						children: visibleAxes.length === 1 ? "选一档，点哪一档就立刻保存，没有「保存」按钮。" : "两条互相独立的轴，各选一档。点哪一档就立刻保存，没有「保存」按钮。"
+						children: onlyAxis === void 0 ? "两条互相独立的轴，各选一档。点哪一档就立刻保存，没有「保存」按钮。" : "选一档，点哪一档就立刻保存，没有「保存」按钮。"
 					})]
 				}),
 				state.phase === "loading" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LoadingView, { axes: visibleAxes }) : null,
@@ -18269,10 +18319,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						state,
 						onSelect: props.onSelect
 					}, meta.key)),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("footer", {
+					onlyAxis === void 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("footer", {
 						className: "tb3perm__foot",
 						"data-foot": "1",
-						children: visibleAxes.length === 1 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: "这一档管「AI 能不能领工作卡 / 能不能自己采纳草稿」。任何宿主都生效（MCP 也管它）。" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
 							"两条轴互不覆盖：",
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "卡片动作档位" }),
 							"管「AI 能不能领卡 / 采纳草稿」，",
@@ -18281,1833 +18331,1775 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "tb3perm__foot-sub",
 							children: "宿主把工具管控关掉时，领卡仍然受卡片动作档位管 —— 两条轴分开判定，谁都不替代谁。"
-						})] })
-					})
+						})]
+					}) : null
 				] }) : null
 			]
 		});
 	}
-	// src/pure/drawer-view.ts
+	// packages/dsh-client/lib/fold-pill.js
 	/**
-	* 抽屉（V5 重做）的**纯逻辑** —— 零 React、零 DOM、零网络。
+	* 折叠组件（`FoldPill` / `FoldRect`）的**唯一一份** CSS。
 	*
-	* ## 为什么整个重做
+	* ## 为什么单独成文件
 	*
-	* V4 交的是「1200 × 400、居中于工作区、挂 `shell.overlay` 的浮层」。
-	* 用户 `2026-11-20` 否了：**方向全错**。真实设计是：
+	* 用户 `2026-11-28`（issue #56）：权限链的授权页要**复用**同一个折叠组件，
+	* 而 `@taskboard/dsh-permissions` 是独立包。组件本体通过
+	* `@taskboard/dsh-client/fold-pill` 子路径导出（见 `fold-pill-public.ts`），
+	* 样式也必须能跟着走 —— 否则复用了组件却只得到一颗没样式的按钮。
 	*
-	* ```
-	*    ┌──────────────────────────────┐
-	*    │  抽屉面板（从输入框上方向外展开）│  ← 宽度 = 输入框宽，高度 ≈ 屏幕一半
-	*    └──────────────────────────────┘
-	*            ↑ 面板底边贴输入框上边缘
-	*  ┌─┐ ┌────────────────────────┬───┐
-	*  │▣│ │ 发消息或创建任务…        │ ➤ │  ← 正方形入口在输入框左外侧、和 + 同一行
-	*  └─┘ └────────────────────────┴───┘
-	* ```
+	* ⇒ 从 `sibling-groups-css.ts` 里抽出这一段，两边 **import 同一份字符串**：
 	*
-	* ## ⚠ 挂载点证据（对运行中的 DSH `app.asar` 复核过，`2026-11-20`）
-	*
-	* 不是猜的 —— 下面每条都能在 `B:\DeepSeek Harness\0.2.2-rc2\resources\app.asar`
-	* 里按原文搜到（本文件只引原文，不引行号：asar 里没有行号）：
-	*
-	* | 搜索串 | 原文 | 结论 |
-	* |---|---|---|
-	* | `conversation.input.left` | "Compact controls at the left of the composer tool row; fixed overlays must portal to the document body…" | **入口按钮**挂这里（list / session）|
-	* | `conversation.input.overlay` | "Floating entries rendered inside the resident composer card…" | **抽屉面板**挂这里（list / session）|
-	* | `conversation.input.overlay` 的实例 | `scope.slots.inject('conversation.input.overlay', () => scope.slots.register({name, id:'command-popup', order:1, locale:NS, inject:sessionId => …}, PopupSelectView))` | 斜杠命令菜单的写法 —— 本包照抄 |
-	* | `overlayAnchor` | `.GRgSLq_overlayAnchor{height:0;position:absolute;inset:0 0 auto}` + 注释 "entries position themselves against the card (bottom: 100% + gap)" | 面板底边 = 卡片上边 + gap，**宽度 = 卡片宽** |
-	* | `.GRgSLq_card` | `…display:flex;position:relative` | 卡片是 `position:relative` ⇒ 入口按钮可以 absolute 贴到卡片左外侧 |
-	* | `.GRgSLq_row` | `…padding:2px 8px 6px;…display:flex` | composer 工具行（`+` / 权限 / 左槽 / 右槽 / 发送）|
-	* | `.GRgSLq_tools` | `…gap:12px`；`.GRgSLq_add{width:28px;height:28px}` | `+` 是 28px 圆钮 ⇒ 入口正方形与它对中心 |
-	*
-	* ⇒ **不用 `shell.overlay`**（那是整帧浮层，会横跨窗口；V4 就是这么错的）。
-	*
-	* ## 这个文件管什么 / 不管什么
-	*
-	* | 管 | 不管（在组件 / CSS 里）|
+	* | 谁 | 怎么用 |
 	* |---|---|
-	* | 3 个候选形态的**数值表**（图标 / 间距 / 圆角 / 高度 / 遮罩 / 动画）| 怎么画 SVG、怎么排 DOM（`Drawer.tsx`）|
-	* | 「高度 ≈ 屏幕一半」的**具体公式**（`min(50vh, 480px)` 或 `50vh`）| CSS 字符串（`styles.ts` 由本文件插值生成）|
-	* | 开合状态机 + 共享 store（两个槽必须看同一个 `open`）| `useSyncExternalStore` 怎么接（组件里一行）|
-	* | Esc / 点外部的**判决** | DOM 事件监听怎么挂（组件的 effect）|
-	* | 面板内容的压缩间距表（数值单一来源）| 具体覆盖哪些类（`DRAWER_CSS` 里插值）|
+	* | `dsh-client` | `sibling-groups-css.ts` 插值进 `SIBLING_GROUPS_CSS`，再由 `styles.ts` 注入 |
+	* | `dsh-permissions` | `styles.ts` 直接拼进自己的 `<style>` |
 	*
-	* ## 为什么 3 个形态都留在产品代码里
+	* ⚠ **不要复制这段 CSS 到第二个文件** —— 那是「复制折叠组件」的另一种形态：
+	*   两处样式各自演化，改一处只在一边生效，而且没有任何测试会红。
 	*
-	* 用户原话：「组件要把所有候选形态给我过目」「我没有授权你选哪一个实现」。
-	* ⇒ **不能替用户选**。三个形态各是一份完整的数值配置，组件按 `variant` prop 渲染；
-	* 预览页三列并排给他看，他挑了之后只改 `DRAWER_DEFAULT_VARIANT_ID`。
+	* ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**（会被当成字符串结束）。
 	*/
-	/**
-	* 面板高度 = 屏幕高 × 这个比例（用户原话「高度 ≈ 屏幕一半」）。
-	*
-	* ⚠ 这是**用户给的规格**，不是我们量出来的（CDP 不可用，量不了）。
-	*   它的可信度来自「用户原话」这一层，不来自测量 —— 报告里会写明。
-	*/
-	const DRAWER_HEIGHT_RATIO = .5;
-	/** 候选形态 id。`a` / `b` / `c` 对应预览页三列。 */
-	const DRAWER_VARIANT_IDS = [
-		"a",
-		"b",
-		"c"
-	];
-	/**
-	* 三个候选形态 —— **每组是一个完整组合**，不是在一个基线上换一个数。
-	*
-	* | 形态 | 图标 | 间距 | 圆角 | 高度 | 阴影 | 遮罩 | 动画 |
-	* |---|---|---|---|---|---|---|---|
-	* | A `a` | ▣ 方块 | 0（紧贴）| 0（贴边）| `min(50vh, 480px)` | 无 | 无 | 无 |
-	* | B `b` | ▲ 上箭头 | 6px | 12px | `min(50vh, 480px)` | 轻 | 无 | 180ms 上滑 |
-	* | C `c` | ⋯ 三点 | 12px | 16px | `50vh` | 强 | 半透明 | 180ms 上滑 |
-	*
-	* ⚠ 用 `satisfies` 而不是类型标注：少一个形态 / 多一个形态都让 `tsc` 红
-	*   （AGENTS 3.7；`Object.freeze` 当实参会关掉多余属性检查）。
-	*   深冻结由 `freezeVariants` 做（`Object.freeze` 是浅的）。
-	*/
-	const DRAWER_VARIANTS = freezeVariants({
-		a: {
-			id: "a",
-			label: "A · 贴边",
-			summary: "▣ 方块 · 间距 0 · 无圆角 · min(50vh,480px) · 无遮罩 · 无动画",
-			icon: "square",
-			gapPx: 0,
-			radiusPx: 0,
-			heightMode: "capped-half",
-			shadow: "none",
-			mask: false,
-			animated: false
-		},
-		b: {
-			id: "b",
-			label: "B · 圆角",
-			summary: "▲ 上箭头 · 间距 6px · 圆角 12px · min(50vh,480px) · 轻阴影 · 180ms 上滑",
-			icon: "arrow-up",
-			gapPx: 6,
-			radiusPx: 12,
-			heightMode: "capped-half",
-			shadow: "soft",
-			mask: false,
-			animated: true
-		},
-		c: {
-			id: "c",
-			label: "C · 重阴影 + 遮罩",
-			summary: "⋯ 三点 · 间距 12px · 圆角 16px · 50vh · 强阴影 · 半透明遮罩 · 180ms 上滑",
-			icon: "dots",
-			gapPx: 12,
-			radiusPx: 16,
-			heightMode: "half",
-			shadow: "strong",
-			mask: true,
-			animated: true
-		}
-	});
-	/**
-	* 深冻结一张「形态表」：外层 + 每个形态都钉住（`Object.freeze` 是浅的）。
-	*
-	* @param table 形态表
-	*/
-	function freezeVariants(table) {
-		for (const value of Object.values(table)) if (typeof value === "object" && value !== null) Object.freeze(value);
-		return Object.freeze(table);
-	}
-	/** 数值 → `Npx`。 */
-	function px$1(value) {
-		return `${String(value)}px`;
-	}
-	/**
-	* 面板高度（CSS 表达式）—— **只用真实视口单位**。
-	*
-	* 用户 `2026-11-20` 明确否掉了预览里那种「模拟屏高」的变量：
-	* 「莫写着模拟屏高。然后用高而窄的放抽屉面板做什么」。
-	* ⇒ 这里只允许 `vh` / `min(…, 480px)`，**不允许任何自定义变量去替代视口单位**。
-	*/
-	function drawerHeightCssOf(variant) {
-		const half = `${String(DRAWER_HEIGHT_RATIO * 100)}vh`;
-		return variant.heightMode === "capped-half" ? `min(${half}, ${px$1(480)})` : half;
-	}
-	/** 阴影档 → CSS 值。 */
-	function drawerShadowCssOf(shadow) {
-		switch (shadow) {
-			case "none": return "none";
-			case "soft": return "0 10px 24px rgb(15 23 42 / 16%)";
-			case "strong": return "0 22px 48px rgb(15 23 42 / 32%)";
-		}
-	}
-	/**
-	* 面板的几何声明（CSS 声明串，落在 `.tb3d-panel[data-drawer-variant="…"]` 里）。
-	*
-	* 四件事：贴输入框上边缘（`bottom:calc(100% + gap)`）、圆角、高度、阴影；
-	* 有动画的形态再追加 `animation`。
-	*
-	* @param variant 形态
-	*/
-	function drawerPanelCssOf(variant) {
-		const parts = [
-			`bottom:calc(100% + ${px$1(variant.gapPx)})`,
-			`border-radius:${px$1(variant.radiusPx)}`,
-			`height:${drawerHeightCssOf(variant)}`,
-			`box-shadow:${drawerShadowCssOf(variant.shadow)}`
-		];
-		if (variant.animated) parts.push("animation:tb3d-rise .18s ease-out");
-		return parts.join(";");
-	}
-	/**
-	* 入口正方形的定位声明。
-	*
-	* - `left = -(边长 + 缝)`：正方形**右边缘**正好落在卡片左边线上
-	*   （`position:absolute` 的包含块是 composer 卡片 —— asar 原文
-	*   `.GRgSLq_card{…position:relative}`；本组件由 `conversation.input.left`
-	*   槽渲染在工具行里，所以卡片就是最近的定位祖先）。
-	* - `top`：**顶边对齐输入框顶边**（用户 `2026-11-20`）。不是 `bottom`
-	*   —— 旧版的「和 `+` 垂直居中」已被否掉。
-	*/
-	function drawerEntryCssOf() {
-		return [
-			`left:${px$1(-32)}`,
-			`top:${px$1(4)}`,
-			`width:${px$1(32)}`,
-			`height:${px$1(32)}`
-		].join(";");
-	}
-	/** 遮罩的声明（CSS 声明串；只有 `mask: true` 的形态才渲染遮罩）。 */
-	function drawerMaskCssOf() {
-		return "position:fixed;inset:0;background:rgb(15 23 42 / 28%)";
-	}
-	Object.freeze({ open: false });
-	Object.freeze({ open: true });
-	/** 抽屉内容的压缩间距表（单一来源；CSS 插值读这里）。 */
-	const DRAWER_COMPACT_SPACING = Object.freeze({
-		headerHeight: 36,
-		pagePadY: 6,
-		pagePadX: 12,
-		toolbarGap: 0,
-		mainGap: 6,
-		listHeadPadTop: 6,
-		listHeadPadBottom: 4,
-		listBodyPadTop: 4,
-		listBodyPadBottom: 8,
-		listBodyPadX: 12,
-		cardGap: 4,
-		cardPadY: 6,
-		detailPadY: 8,
-		detailPadX: 12,
-		detailGap: 7,
-		sectionGap: 8,
-		listWidth: 320
-	});
-	// src/pure/techtree-css.ts
-	/**
-	* 科技树的样式 —— 前缀 `tb3t-`（唯一，不跟 `tb3-*` / `tb3cc-*` / `tb3w-*` 混）。
-	*
-	* ## ⚠ 为什么单独一个 `.ts` 文件
-	*
-	* CSS 是**纯字符串**，但它得被两处用：
-	*
-	* ```
-	* src/renderers/TechTree.tsx   ← 组件自己 injectTechTreeStyles() 时用
-	* src/styles.ts                ← 产品注入 injectStyles() 时拼进去
-	* ```
-	*
-	* 而 `styles.ts` **不能 import `.tsx`**：`node --test` 直接跑 TS 源码（规则 6），
-	* Node 的类型剥离只认 `.ts`，import `.tsx` 会抛 `ERR_UNKNOWN_FILE_EXTENSION` ——
-	* `test/create-layout.test.ts` 从 `styles.ts` import `CREATE_CSS`，
-	* 一旦 `styles.ts` import 了 `.tsx`，整个测试文件就挂。
-	*
-	* 所以曾经是**两份复制**（`styles.ts` 一份、`TechTree.tsx` 一份），
-	* 靠人肉保证一致 —— 那是本仓库明令禁止的形态（AGENTS 3.6：改动不能被测试发现）。
-	*
-	* 现在两份都从这里 import ⇒ **物理上不可能漂移**。
-	*
-	* ## ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**
-	*/
-	const TECHTREE_CSS = `
-/* ── 根：填满父容器；画布滚动，页脚常驻 ── */
-.tb3t-root{display:flex;flex-direction:column;height:100%;min-height:0;background:transparent;color:var(--text,#16181d);font-size:12px;line-height:1.5}
-.tb3t-scroll{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;position:relative}
-.tb3t-stage{position:relative;flex:0 0 auto}
+	/** 胶囊 + 容器矩形。 */
+	const FOLD_PILL_CSS = `
+/* ── 折叠组件（FoldPill / FoldRect） ──
+ *
+ * 用户 2026-11-28 的裁定：
+ * - 胶囊折叠/展开都在，而且两态完全一样（没有 is-collapsed 的 dashed / 换色）；
+ * - 虚线矩形容器只在展开时存在（FoldRect 收起直接返回 null）；
+ * - 展开时矩形顶边被胶囊压住：负 margin-top = 胶囊半高（16px）。
+ */
+.tb3-fold-group{position:absolute}
+.tb3-fold-pill{
+  box-sizing:border-box;position:relative;z-index:5;
+  display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;
+  border:1px solid #a78bfa;border-radius:16px;background:#ede9fe;color:#4c1d95;
+  font-family:inherit;font-size:11.5px;font-weight:600;line-height:1;cursor:pointer;text-align:left;
+  box-shadow:0 1px 2px rgb(109 40 217 / 12%);
+}
+.tb3-fold-pill:hover{background:#e4ddfd;border-color:#5b21b6}
+.tb3-fold-pill:focus-visible{outline:2px solid #2563eb;outline-offset:1px}
+.tb3-fold-pill__caret{font-size:17px;font-weight:700;line-height:1;color:#6d28d9;flex:0 0 auto}
+.tb3-fold-pill__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tb3-fold-pill__count{margin-left:auto;font-size:10.5px;color:#7c3aed;flex:0 0 auto}
 
-/* ── 列背景 + 列头 ── */
-.tb3t-band{position:absolute;border-radius:12px;background:var(--bg-soft,#f9fafb);pointer-events:none}
-.tb3t-band__title{position:absolute;left:0;right:0;top:9px;text-align:center;font-size:11.5px;font-weight:600;color:var(--text-weak,#9ca3af);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-/* ── 线层 ── */
-.tb3t-links{position:absolute;left:0;pointer-events:none;overflow:visible}
-.tb3t-edge{fill:none;stroke-width:2;stroke-linecap:round;stroke:#5b6472;transition:opacity .12s ease,stroke-width .12s ease}
-.tb3t-edge--derives{stroke:#5b6472}
-.tb3t-edge--dependsOn{stroke:#a16207}
-.tb3t-edge--supersedes{stroke:#6d28d9}
-.tb3t-edge--constrains{stroke:#b91c1c}
-.tb3t-edge--related{stroke:#15803d;stroke-dasharray:4 3}
-.tb3t-edge--references{stroke:#6b7280;stroke-dasharray:4 3}
-/* 用户 2026-11-19：hover 时无关的边淡到 25% */
-.tb3t-edge.is-dim{opacity:0.25}
-/* 相连的边：加粗 + 加深（光晕单独一层） */
-.tb3t-edge.is-active{stroke-width:3;opacity:1}
-.tb3t-edge-glow{fill:none;stroke-width:10;stroke-linecap:round;opacity:0.16;filter:blur(2px)}
-.tb3t-edge-label{font-size:10px;font-weight:700;text-anchor:middle;paint-order:stroke;stroke:#ffffff;stroke-width:3.5;stroke-linejoin:round}
-.tb3t-edge-label--derives{fill:#5b6472}
-.tb3t-edge-label--dependsOn{fill:#a16207}
-.tb3t-edge-label--supersedes{fill:#6d28d9}
-.tb3t-edge-label--constrains{fill:#b91c1c}
-.tb3t-edge-label--related{fill:#15803d}
-.tb3t-edge-label--references{fill:#6b7280}
-
-/* ── 箭头（尖端贴目标卡边：refX=9 让三角形顶点正好落在路径终点） ── */
-.tb3t-arrow path{stroke:none}
-.tb3t-arrow--derives path{fill:#5b6472}
-.tb3t-arrow--dependsOn path{fill:#a16207}
-.tb3t-arrow--supersedes path{fill:#6d28d9}
-.tb3t-arrow--constrains path{fill:#b91c1c}
-.tb3t-arrow--related path{fill:#15803d}
-.tb3t-arrow--references path{fill:#6b7280}
-
-/* ── 卡片 ── */
-.tb3t-card{position:absolute;display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:2px solid var(--card-border,#9aa1ad);border-radius:10px;background:var(--bg-card,#fff);color:inherit;font-family:inherit;text-align:left;cursor:pointer;overflow:hidden;box-shadow:0 1px 2px rgb(15 23 42 / 7%);transition:border-color .12s,background .12s,box-shadow .12s}
-.tb3t-card:hover{background:#fbfcfe;border-color:#cbd5e1}
-.tb3t-card.is-selected{border-color:var(--accent,#2563eb);box-shadow:0 0 0 4px rgb(37 99 235 / 16%),0 1px 2px rgb(15 23 42 / 7%)}
-/* 草稿：无可见边框，但保留 2px 占位（用户 2026-11-10：草稿无边框） */
-.tb3t-card.is-draft{border-color:transparent;box-shadow:none}
-/* 用户 2026-11-21：用户未读=左，AI 未读=右（跟列表卡同一套判决）*/
-.tb3t-card.is-unread-user{border-left-width:4px;border-left-color:var(--warn,#d97706)}
-.tb3t-card.is-unread-ai{border-right-width:4px;border-right-color:var(--accent,#2563eb)}
-.tb3t-card.is-draft:hover{border-color:var(--card-border,#9aa1ad)}
-.tb3t-card.is-draft.is-selected{border-color:var(--accent,#2563eb)}
-.tb3t-card__top{display:flex;align-items:center;gap:4px;min-width:0;height:16px}
-.tb3t-card__spacer{flex:1 1 auto;min-width:2px}
-.tb3t-card__warn{flex:0 0 auto;color:#ef4444;font-size:9px;line-height:1}
-.tb3t-card__title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;font-weight:600;line-height:1.35;color:var(--text,#1f2328);word-break:break-word}
-.tb3t-card .card-id{font-size:11px;flex:0 0 auto}
-.tb3t-card .badge{flex:0 1 auto;min-width:0;max-width:76px;padding:0 4px;font-size:9.5px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* StatusCell 在卡片里：圆点 + 中文名（用户：不只靠颜色） */
-.tb3t-card .task-card__status{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;font-size:9px;color:var(--text-weak,#9aa1ad);white-space:nowrap}
-.tb3t-card .task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42px}
-
-/* ── 页脚：状态图例 + 布局警告 ── */
-.tb3t-footer{flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:6px 12px;border-top:1px solid var(--border,#eef0f3);background:var(--bg-soft,#fafbfc);font-size:11px;color:var(--text-secondary,#6b7280)}
-.tb3t-footer__states{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;min-width:0}
-.tb3t-footer__label{color:var(--text-weak,#9ca3af)}
-.tb3t-footer__state{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-.tb3t-footer__warn{margin-left:auto;color:var(--text-weak,#9aa1ad);white-space:nowrap}
-.tb3t-footer__warn.has-warning{color:#b45309}
-
-/* ── 空态 ── */
-.tb3t-empty{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:40px 16px;color:var(--text-weak,#9aa1ad);font-size:12.5px;text-align:center}
-
-/* ── 关系图例（工具栏里用） ── */
-.tb3t-legend{display:flex;align-items:center;flex-wrap:wrap;gap:2px 12px;font-size:11px;color:var(--text-secondary,#5f6673)}
-.tb3t-legend__item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-.tb3t-legend__item[data-rel="derives"]{color:#5b6472}
-.tb3t-legend__item[data-rel="dependsOn"]{color:#a16207}
-.tb3t-legend__item[data-rel="supersedes"]{color:#6d28d9}
-.tb3t-legend__item[data-rel="constrains"]{color:#b91c1c}
-.tb3t-legend__item[data-rel="related"]{color:#15803d}
-.tb3t-legend__item[data-rel="references"]{color:#6b7280}
-.tb3t-legend__svg{flex:0 0 auto;display:block;overflow:visible}
-.tb3t-legend__path{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-.tb3t-legend__head{fill:currentColor;stroke:none}
-.tb3t-legend__item[data-rel="related"] .tb3t-legend__path{stroke-dasharray:4 3}
-.tb3t-legend__item[data-rel="references"] .tb3t-legend__path{stroke-dasharray:4 3}
+/* 容器矩形：只有展开才存在 */
+.tb3-fold-rect{
+  box-sizing:border-box;position:relative;
+  border:1px dashed #c4b5fd;border-radius:12px;background:#f5f3ff;
+  /* 顶边被胶囊压住：负的 margin-top = 胶囊半高，使矩形顶边落在胶囊中线上 */
+  margin-top:-16px;padding-top:24px;
+}
+.tb3-fold-rect__body{position:relative;width:100%}
 `;
-	// src/styles.ts
+	// packages/dsh-permissions/src/renderers/permission-css.ts
 	/**
-	* 抽屉的纵向间距**数值表**从纯逻辑模块 import —— 单一来源。
+	* PermissionPanel 的产品样式 —— **跟着组件走**（用户 2026-11-22 裁决）。
 	*
-	* ⚠ 为什么 CSS 不自己写死这些数：`DRAWER_CSS` 用这张表**插值生成**，
-	*   于是「间距是多少」只在 `pure/drawer-view.ts` 里有一份；
-	*   改了表，CSS 跟着变，单测也能断言。反例：CSS 写死一份、报告里再写一份，
-	*   两边漂了没人发现（这个仓库已经踩过「文档写的数和实现漂了」）。
+	* ## 从哪来的
+	*
+	* 原来这 437 行躺在 dev/preview/permission/style.css 里，文件头写着：
+	*
+	* > 「这份 CSS 现在是**预览样式**，还没并入 src/styles.ts。
+	* >   组件先在预览里定稿，确认后把 .tb3perm-* 那一段搬进 src/styles.ts
+	* >   并挂到真实面板上。」
+	*
+	* ⇒ 现在面板要接进产品（composer 里的权限框），所以搬进来了。
+	*
+	* ## 0 处预览专属变量
+	*
+	* 搬之前核过：这 437 行里 var(--bg-card) / var(--border) / var(--accent)
+	* 这类**预览共享变量出现 0 次** —— 全部是 var(--perm-*)（本段自己定义，
+	* 兜底值是宿主 token var(--dsw-alias-*, 兜底色)）。所以搬进来不会缺变量。
+	*
+	* ## 为什么是模板字符串
+	*
+	* rolldown 不支持 CSS 打包（[UNSUPPORTED_FEATURE] Bundling CSS is no longer supported），
+	* 所以全仓的组件样式都是 TS 字符串常量 + injectStyles() 插一个 style 元素。
+	*
+	* ⚠ 本文件是模板字符串 —— **注释里不能出现反引号**（会提前结束字符串，TS1005）。
 	*/
-	/**
-	* 样式 —— **一个 CSS 字符串，运行时注入一次**。
-	*
-	* ## 为什么不用 `.css` 文件 + CSS Modules
-	*
-	* DSH 的客户端插件产物必须是**一个** JS 文件（`lib/client.js`）。
-	* 用 `.css` 文件会：
-	*   · 让 bundler 产出独立的 `style.css`（宿主的模块加载器不会去取它）；
-	*   · 需要 `@tsdown/css` 插件 + CSS Modules 类型声明 + 额外的构建复杂度。
-	*
-	* ⇒ 把 CSS 写成 TS 字符串常量，在 `apply()` 里插一个 `<style>`。
-	*   产物仍然是一个 JS，零额外依赖，也顺便满足「纯 TS」的要求。
-	*
-	* ## 颜色全部走宿主主题 token
-	*
-	* `--dsw-alias-*` 由宿主主题插件写在 `body` 上；浅色/深色切换自动跟随。
-	* **本文件不出现任何字面色值**（除了 `rgb(0 0 0 / 20%)` 的阴影，
-	* 它在两套主题下都成立）。
-	*
-	* ## 类名前缀
-	*
-	* 全部带 `tb3-` 前缀，避免与宿主或其他插件的类名相撞。
-	*/
-	/** 注入用的 `<style>` 元素的 id（重复注入时用它去重）。 */
-	const STYLE_ID = "taskboard3-styles";
-	/** 数值 → `Npx`（模板字符串里复用）。 */
-	function px(value) {
-		return `${String(value)}px`;
-	}
-	/**
-	* 建卡页的样式 —— **单独一段，前缀 `tb3cc-`**。
-	*
-	* ## 为什么不并进下面那张主表
-	*
-	* 主表的类名是 `tb3-*`，是**任务板面板内部**的（tab 里那套）。建卡页是一整页
-	* （顶栏 / 左右两栏 / 底栏）—— 两套样式的作用域不同。
-	*
-	* ⇒ 分开：出问题时能一眼看出「这条规则属于建卡页还是面板内」。
-	*
-	* ## ⚠ 建卡页**填满它的父容器**（`height:100%` + `container-type:size`）
-	*
-	* 早期版本是 `position:fixed; inset:0`（「铺满浏览器」）。用户 `2026-11-19` 给了
-	* 三个真实尺寸（工作区 570×920 / 抽屉 1200×400 / 全屏 1600×1000）之后那就不成立了：
-	* **fixed 会脱离父容器**，挂在窄 tab 里也按整个窗口铺开。
-	* 现在靠 `container-type:size` 做容器查询，父容器给多高就多高。
-	*
-	* ## ⚠ 关键：`.tb3cc-page__body { min-height: 0 }`
-	*
-	* flex 子元素默认 `min-height: auto`，会被内容撑高 ⇒ 子元素的
-	* `overflow-y: auto` **永远不生效** ⇒ 整页滚动、顶栏底栏跟着滚走。
-	* 这是 flex 里最常见的坑，加注释钉住。
-	*/
-	const CREATE_CSS = `
-/*
- * ── 页面本体：**填满父容器**，不是铺满浏览器 ──
- *
- * 用户 2026-11-19 给了三个真实尺寸，旧版这里是 position:fixed + inset:0：
- *
- * | 场景 | 尺寸 |
- * |---|---|
- * | 工作区 | 570 × 920（窄、高）|
- * | 抽屉 | 1200 × 400（宽、矮）|
- * | 全屏 | 1600 × 1000（都够）|
- *
- * ⚠ position:fixed 会脱离父容器 —— 挂在 570 宽的 tab 里也按整个浏览器窗口铺开，
- *   左右两栏被挤扁。⇒ 必须改成 height:100% 撑满父容器。
- *
- * ⚠ container-type:size 要求父容器给高度 —— 父层没高度时页会**塌成 0**。
- *   预览里挂载点给了固定尺寸的舞台；产品里 tab body 必须是 height:100%。
- *   这一条由 test/create-layout.test.ts 的反向断言 + 预览的三个尺寸舞台共同守护。
- *
- * ⚠ size 而不是 inline-size：要能同时查**宽**和**高**（两个维度是两件事，
- *   见下面两条 @container）。
- *
- * ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**（会提前结束字符串）。
- */
-.tb3cc-page{container-type:size;container-name:tb3cc;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-primary,#fff);font-size:13px;line-height:1.5}
-.tb3cc-page__top{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--dsw-alias-border-secondary,#e4e7ec)}
-.tb3cc-page__title{font-size:16px;margin:0}
-.tb3cc-page__close{border:none;background:transparent;font-size:20px;line-height:1;color:var(--dsw-alias-text-secondary,#8a919c);padding:2px 8px;border-radius:6px;cursor:pointer}
-.tb3cc-page__close:hover{background:var(--dsw-alias-bg-secondary,#f1f3f6)}
-.tb3cc-page__body{flex:1 1 auto;display:flex;min-height:0}
-.tb3cc-page__left{flex:0 0 320px;padding:16px 18px;border-right:1px solid var(--dsw-alias-border-secondary,#e4e7ec);background:var(--dsw-alias-bg-secondary,#fafbfc);overflow-y:auto}
-.tb3cc-page__right{flex:1 1 auto;padding:16px 20px;overflow-y:auto;min-width:0}
-.tb3cc-page__foot{flex:0 0 auto;border-top:1px solid var(--dsw-alias-border-secondary,#e4e7ec);background:var(--dsw-alias-bg-secondary,#fafbfc)}
+	const PERMISSION_CSS = `
+.tb3perm {
+	/* 宿主主题 token + 兜底色（预览里走兜底） */
+	--perm-fg: var(--dsw-alias-text-primary, #16181d);
+	--perm-fg-2: var(--dsw-alias-text-secondary, #5f6673);
+	--perm-fg-3: var(--dsw-alias-text-tertiary, #9aa1ad);
+	--perm-border: var(--dsw-alias-border-secondary, #e7e9ee);
+	--perm-border-strong: var(--dsw-alias-border-primary, #d7dbe2);
+	--perm-bg: var(--dsw-alias-bg-primary, #fff);
+	--perm-bg-soft: var(--dsw-alias-bg-secondary, #fafbfc);
+	--perm-accent: var(--dsw-alias-brand-primary, #2563eb);
+	--perm-accent-strong: var(--dsw-alias-brand-hover, #1d4ed8);
+	--perm-accent-soft: #eff6ff;
+	--perm-danger: var(--dsw-alias-text-danger, #b91c1c);
+	--perm-danger-bg: var(--dsw-alias-bg-danger, #fdf2f2);
+	--perm-danger-border: var(--dsw-alias-border-danger, #f3c9c9);
 
-.tb3cc-sec-list{display:flex;flex-direction:column;gap:12px}
-.tb3cc-sec-list__empty{color:var(--dsw-alias-text-secondary,#8a919c);padding:24px 0}
-.tb3cc-sec{border:1px solid var(--dsw-alias-border-secondary,#e4e7ec);border-radius:10px;background:var(--dsw-alias-bg-primary,#fff);overflow:hidden}
-.tb3cc-sec.has-error{border-color:var(--dsw-alias-border-danger,#f0a8a8)}
-.tb3cc-sec__head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 13px;background:var(--dsw-alias-bg-secondary,#fafbfc);border-bottom:1px solid var(--dsw-alias-border-secondary,#eef1f5)}
-.tb3cc-sec__title{display:flex;align-items:center;gap:8px;min-width:0}
-.tb3cc-sec__no{flex:0 0 auto;width:19px;height:19px;border-radius:50%;background:var(--dsw-alias-bg-tertiary,#e4e7ec);color:var(--dsw-alias-text-secondary,#4b5563);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
-.tb3cc-sec__label{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tb3cc-sec__kind{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}
-.tb3cc-sec__kind-label{color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px;white-space:nowrap}
-.tb3cc-sec__kind-select{padding:4px 8px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:7px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);font-size:12px;outline:none;font-family:inherit}
-.tb3cc-sec__kind-select:focus{border-color:var(--dsw-alias-brand-primary,#2563eb)}
-.tb3cc-sec__body{padding:12px 13px}
-.tb3cc-sec__error{padding:7px 13px;background:var(--dsw-alias-bg-danger,#fdf2f2);border-top:1px solid var(--dsw-alias-border-danger,#f7d4d4);color:var(--dsw-alias-text-danger,#b91c1c);font-size:12px}
-.tb3cc-sec__input{width:100%;padding:9px 11px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;resize:vertical;outline:none;color:var(--dsw-alias-text-primary,#1f2328);line-height:1.6;font-family:inherit;font-size:13px;box-sizing:border-box}
-.tb3cc-sec__input:focus{border-color:var(--dsw-alias-brand-primary,#2563eb)}
-.tb3cc-sec__input--markdown{font-family:Consolas,"Courier New",monospace;font-size:12px;line-height:1.65}
-.tb3cc-sec__pending{padding:12px 13px;border-radius:8px;background:var(--dsw-alias-bg-secondary,#f4f5f7);border:1px dashed var(--dsw-alias-border-primary,#d7dbe2);color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px;line-height:1.55}
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	width: 100%;
+	max-width: 760px;
+	color: var(--perm-fg);
+	font-family:
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		'Microsoft YaHei',
+		sans-serif;
+	font-size: 13px;
+	line-height: 1.5;
+}
+.tb3perm *,
+.tb3perm *::before,
+.tb3perm *::after {
+	box-sizing: border-box;
+}
 
-.tb3cc-actions{display:flex;align-items:center;justify-content:space-between;padding:10px 18px}
-.tb3cc-actions__msg{color:var(--dsw-alias-text-secondary,#6b7280);font-size:12px}
-.tb3cc-actions__err{color:var(--dsw-alias-text-danger,#b91c1c)}
-.tb3cc-actions__buttons{display:flex;gap:8px}
+/* ── 标题 / 一句说明 ── */
+.tb3perm__head {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+.tb3perm__title {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+.tb3perm__intro {
+	margin: 0;
+	color: var(--perm-fg-2);
+	font-size: 12px;
+	line-height: 1.65;
+}
 
-.tb3cc-btn{padding:6px 16px;border-radius:7px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#2b3138);font-weight:500;font-family:inherit;font-size:13px;cursor:pointer}
-.tb3cc-btn:hover:not(:disabled){background:var(--dsw-alias-bg-secondary,#f6f7f9)}
-.tb3cc-btn:disabled{opacity:.55;cursor:default}
-.tb3cc-btn--primary{background:var(--dsw-alias-text-primary,#1f2328);border-color:var(--dsw-alias-text-primary,#1f2328);color:var(--dsw-alias-bg-primary,#fff)}
-.tb3cc-btn--primary:hover:not(:disabled){opacity:.88}
+/* ══════════════════════════════════════════════════════════
+   1. 一条轴 = 一张卡
+   ══════════════════════════════════════════════════════════ */
 
-.tb3cc-tpl-hint{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-secondary,#f6f8fb);border:1px solid var(--dsw-alias-border-secondary,#e6eaf0)}
-.tb3cc-tpl-hint.is-empty{border-style:dashed}
-.tb3cc-tpl-hint__empty{color:var(--dsw-alias-text-secondary,#a6adb8)}
-.tb3cc-tpl-hint__usage{color:var(--dsw-alias-text-secondary,#4b5563);margin-bottom:6px;font-size:12px;line-height:1.55}
-.tb3cc-tpl-hint__meta{display:flex;justify-content:space-between;gap:10px;color:var(--dsw-alias-text-secondary,#6b7280);font-size:11px;flex-wrap:wrap}
-.tb3cc-tpl-hint__meta b{color:var(--dsw-alias-text-primary,#1f2328)}
-.tb3cc-tpl-hint__meta code{font-family:var(--font-mono,Consolas,"Courier New",monospace);font-size:11px}
+.tb3perm__axis {
+	border: 1px solid var(--perm-border);
+	border-radius: 10px;
+	background: var(--perm-bg);
+	overflow: hidden;
+}
 
-/*
- * ── 左栏（定稿排法：标题 → 模板 → 父任务 → 关系|高级设置）──
- *
- * 宽度**不写在这里**：父层 .tb3cc-page__left 是 flex:0 0 320px。
- * 左栏组件撑满即可，写死宽度换个容器就错位。
- * ⚠ 这段在模板字符串里，注释里**不能出现反引号**（会提前结束字符串）。
- */
-.tb3cc-leftcol{display:flex;flex-direction:column;gap:16px}
-.tb3cc-field{display:flex;flex-direction:column;gap:5px}
-.tb3cc-label{font-size:12px;font-weight:600;color:var(--dsw-alias-text-secondary,#3d444d)}
-.tb3cc-req{color:var(--dsw-alias-text-danger,#dc2626)}
-.tb3cc-input{width:100%;padding:8px 11px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);outline:none;font-family:inherit;font-size:13px;box-sizing:border-box}
-.tb3cc-input:focus{border-color:var(--dsw-alias-brand-primary,#2563eb)}
-.tb3cc-input.has-error{border-color:var(--dsw-alias-border-danger,#f0a8a8)}
-.tb3cc-field-err{color:var(--dsw-alias-text-danger,#b91c1c);font-size:11px;line-height:1.5;margin-top:4px}
+.tb3perm__axis-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 11px 14px 9px;
+	border-bottom: 1px solid var(--perm-border);
+	background: var(--perm-bg-soft);
+}
+.tb3perm__axis-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--perm-fg);
+}
+/* ①② —— 19px 圆形编号，和建卡页的 section 编号同一视觉语言 */
+.tb3perm__axis-no {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 19px;
+	height: 19px;
+	border-radius: 50%;
+	background: var(--dsw-alias-bg-tertiary, #e4e7ec);
+	color: var(--perm-fg-2);
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 1;
+}
+.tb3perm__axis-current {
+	flex: 0 0 auto;
+	color: var(--perm-fg-3);
+	font-size: 11.5px;
+	white-space: nowrap;
+}
+.tb3perm__axis-current b {
+	color: var(--perm-accent);
+	font-weight: 600;
+}
 
-/* ── 模板 + 父任务（**分行**） ── */
-.tb3cc-tfield{display:flex;flex-direction:column;gap:12px}
-.tb3cc-tfield__cell{display:flex;flex-direction:column;gap:5px;min-width:0}
+/* 轴的一句话解释 */
+.tb3perm__axis-hint {
+	margin: 0;
+	padding: 9px 14px 0;
+	color: var(--perm-fg-3);
+	font-size: 11px;
+	line-height: 1.6;
+}
 
-/* ── 卡片选择器（combobox：输入即筛选，不是 select） ── */
-.tb3cc-picker{position:relative;width:100%}
-.tb3cc-picker__display{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 10px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);text-align:left;font-family:inherit;font-size:13px;cursor:pointer}
-.tb3cc-picker__display:hover{border-color:var(--dsw-alias-border-secondary,#b9bfc9)}
-.tb3cc-picker__display.is-open{border-color:var(--dsw-alias-brand-primary,#2563eb)}
-.tb3cc-picker__display.is-empty .tb3cc-picker__value{color:var(--dsw-alias-text-secondary,#a6adb8)}
-.tb3cc-picker__value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.tb3cc-picker__caret{flex:0 0 auto;color:var(--dsw-alias-text-secondary,#8a919c);font-size:11px}
-/*
- * 弹层挂在自己容器里（absolute），**不挂 body** ——
- * 永远在建卡页的叠层语境里，不会被 fixed 的页面裁掉。
- */
-.tb3cc-picker__pop{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;background:var(--dsw-alias-bg-primary,#fff);border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:9px;box-shadow:0 8px 24px rgb(0 0 0 / 14%);overflow:hidden}
-.tb3cc-picker__input{width:100%;padding:8px 11px;border:none;border-bottom:1px solid var(--dsw-alias-border-secondary,#eef1f5);outline:none;background:var(--dsw-alias-bg-secondary,#fafbfc);color:var(--dsw-alias-text-primary,#1f2328);font-family:inherit;font-size:13px;box-sizing:border-box}
-.tb3cc-picker__list{max-height:220px;overflow-y:auto;padding:4px}
-.tb3cc-picker__item{display:flex;align-items:baseline;gap:8px;width:100%;padding:6px 9px;border:none;border-radius:6px;background:transparent;text-align:left;color:var(--dsw-alias-text-primary,#1f2328);font-family:inherit;font-size:13px;cursor:pointer}
-.tb3cc-picker__item:hover{background:var(--dsw-alias-bg-secondary,#f1f3f6)}
-.tb3cc-picker__item--clear{color:var(--dsw-alias-text-secondary,#6b7280);font-style:italic}
-.tb3cc-picker__id{flex:0 0 auto;font-family:var(--font-mono,Consolas,"Courier New",monospace);font-size:11px;color:var(--dsw-alias-text-secondary,#6b7280);font-weight:700}
-.tb3cc-picker__title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.tb3cc-picker__empty{padding:10px;color:var(--dsw-alias-text-secondary,#8a919c);text-align:center}
+/* ══════════════════════════════════════════════════════════
+   2. 档位行（整行是 label；原生 radio 透明覆盖）
+   ══════════════════════════════════════════════════════════ */
 
-/* ── 模板三级联选弹层（独立组件 TemplatePickerPopover） ── */
-.tb3cc-tpick{position:relative;width:100%}
-.tb3cc-tpick__trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 10px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:8px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);text-align:left;font-family:inherit;font-size:13px;cursor:pointer}
-.tb3cc-tpick__trigger:hover{border-color:var(--dsw-alias-border-secondary,#b9bfc9)}
-.tb3cc-tpick__trigger.is-open{border-color:var(--dsw-alias-brand-primary,#2563eb)}
-.tb3cc-tpick__trigger.is-empty .tb3cc-tpick__value{color:var(--dsw-alias-text-secondary,#a6adb8)}
-.tb3cc-tpick__value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.tb3cc-tpick__caret{flex:0 0 auto;color:var(--dsw-alias-text-secondary,#8a919c);font-size:11px}
-/*
- * 三列弹层的宽度**大于 320px 左栏**是故意的：三列在 320 里每列只剩 ~100px，读不了。
- *
- * ⚠ 用 position:fixed + 由组件量触发器坐标（不是 absolute）——
- *   左栏 .tb3cc-page__left 是 overflow-y:auto 的滚动容器，会**裁掉**任何溢出的
- *   子元素。absolute 的后果实测：第三列被切掉一半 + 左栏底部冒出横向滚动条。
- */
-.tb3cc-tpick__pop{position:fixed;z-index:6;width:470px;max-width:calc(100vw - 48px);background:var(--dsw-alias-bg-primary,#fff);border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:10px;box-shadow:0 12px 32px rgb(0 0 0 / 16%);overflow:hidden}
-.tb3cc-tpick__cols{display:grid;grid-template-columns:104px 104px 1fr}
-.tb3cc-tpick__col{padding:6px;display:flex;flex-direction:column;gap:1px;min-width:0}
-.tb3cc-tpick__col + .tb3cc-tpick__col{border-left:1px solid var(--dsw-alias-border-secondary,#eef1f5)}
-/* 第三列（模板）占掉剩余宽度 —— 模板名比「领域 / 类别」长得多 */
-.tb3cc-tpick__col--wide{flex:1 1 auto}
-.tb3cc-tpick__col-head{padding:4px 8px 6px;color:var(--dsw-alias-text-secondary,#8a919c);font-size:11px;font-weight:600;letter-spacing:.04em}
-.tb3cc-tpick__opt{display:flex;align-items:center;gap:7px;width:100%;padding:6px 8px;border:none;border-radius:6px;background:transparent;text-align:left;color:var(--dsw-alias-text-primary,#1f2328);font-family:inherit;font-size:12.5px;cursor:pointer}
-.tb3cc-tpick__opt:hover{background:var(--dsw-alias-bg-secondary,#f1f3f6)}
-.tb3cc-tpick__opt.is-picked{background:var(--dsw-alias-bg-tertiary,#e8eefb);color:var(--dsw-alias-brand-primary,#1d4ed8);font-weight:600}
-.tb3cc-tpick__radio{flex:0 0 auto;font-size:9px;color:var(--dsw-alias-text-secondary,#b9bfc9);line-height:1}
-.tb3cc-tpick__opt.is-picked .tb3cc-tpick__radio{color:var(--dsw-alias-brand-primary,#2563eb)}
-.tb3cc-tpick__prefix{flex:0 0 auto;width:15px;text-align:center;font-family:var(--font-mono,Consolas,"Courier New",monospace);font-size:11px;font-weight:700;color:var(--dsw-alias-text-secondary,#8a919c)}
-.tb3cc-tpick__opt.is-picked .tb3cc-tpick__prefix{color:var(--dsw-alias-brand-primary,#1d4ed8)}
-.tb3cc-tpick__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.tb3cc-tpick__empty{padding:8px;color:var(--dsw-alias-text-secondary,#a6adb8);font-size:12px}
-/* 底部说明 —— 选中之后才出现（**选完不关弹层**就是为了看这块） */
-.tb3cc-tpick__foot{padding:10px 12px;border-top:1px solid var(--dsw-alias-border-secondary,#eef1f5);background:var(--dsw-alias-bg-secondary,#fafbfc);display:flex;flex-direction:column;gap:4px}
-.tb3cc-tpick__foot-idle{color:var(--dsw-alias-text-secondary,#a6adb8);font-size:12px}
-.tb3cc-tpick__foot-title{font-weight:700;color:var(--dsw-alias-text-primary,#1f2328);font-size:12.5px}
-.tb3cc-tpick__foot-domain{margin-left:8px;padding:0 6px;border-radius:4px;background:var(--dsw-alias-bg-tertiary,#eef1f5);color:var(--dsw-alias-text-secondary,#6b7280);font-size:10.5px;font-weight:600}
-.tb3cc-tpick__foot-usage{color:var(--dsw-alias-text-secondary,#4b5563);font-size:11.5px;line-height:1.55}
-.tb3cc-tpick__foot-meta{display:flex;justify-content:space-between;gap:10px;color:var(--dsw-alias-text-secondary,#6b7280);font-size:11px;flex-wrap:wrap;margin-top:2px}
-.tb3cc-tpick__foot-meta b{color:var(--dsw-alias-text-primary,#1f2328)}
-.tb3cc-tpick__foot-meta code{font-family:var(--font-mono,Consolas,"Courier New",monospace);font-size:11px}
+.tb3perm__opts {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 7px;
+}
 
-/* ── 关系 | 高级设置：两个标签按钮 + 共用折叠区 ── */
-.tb3cc-meta{display:flex;flex-direction:column;gap:10px}
-.tb3cc-meta__tabs{display:flex;gap:8px}
-.tb3cc-meta__tab{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:7px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-secondary,#4b5563);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
-.tb3cc-meta__tab:hover{border-color:var(--dsw-alias-border-secondary,#b9bfc9)}
-.tb3cc-meta__tab.is-on{background:var(--dsw-alias-text-primary,#1f2328);border-color:var(--dsw-alias-text-primary,#1f2328);color:var(--dsw-alias-bg-primary,#fff)}
-.tb3cc-meta__count{min-width:16px;padding:0 4px;border-radius:9px;background:var(--dsw-alias-bg-tertiary,#eef1f5);color:var(--dsw-alias-text-secondary,#6b7280);font-size:10px;text-align:center;line-height:16px}
-.tb3cc-meta__tab.is-on .tb3cc-meta__count{background:rgb(255 255 255 / 24%);color:var(--dsw-alias-bg-primary,#fff)}
-/* 折叠区 —— 两个面板共用这一块位置（同一时间只可能有一个存在） */
-.tb3cc-meta__panel{padding:11px 12px;border:1px solid var(--dsw-alias-border-secondary,#e4e7ec);border-radius:9px;background:var(--dsw-alias-bg-secondary,#fafbfc);display:flex;flex-direction:column;gap:9px}
-.tb3cc-meta__hint{color:var(--dsw-alias-text-secondary,#6b7280);font-size:11px;line-height:1.5}
-.tb3cc-meta__empty{color:var(--dsw-alias-text-secondary,#8a919c)}
-.tb3cc-meta__empty-hint{color:var(--dsw-alias-text-secondary,#a6adb8);font-size:11px}
-.tb3cc-meta__panel--empty{align-items:flex-start}
-.tb3cc-meta__rel-list{display:flex;flex-direction:column;gap:6px}
-.tb3cc-meta__rel-row{display:grid;grid-template-columns:72px minmax(0,1fr) 20px;gap:6px;align-items:center;min-width:0}
-.tb3cc-meta__rel-kind{padding:6px 2px;border:1px solid var(--dsw-alias-border-primary,#d7dbe2);border-radius:7px;background:var(--dsw-alias-bg-primary,#fff);color:var(--dsw-alias-text-primary,#1f2328);font-size:12px;outline:none;min-width:0;font-family:inherit}
-.tb3cc-meta__rel-del{border:none;background:transparent;color:var(--dsw-alias-text-secondary,#9aa1ad);font-size:13px;padding:0;border-radius:4px;cursor:pointer}
-.tb3cc-meta__rel-del:hover{color:var(--dsw-alias-text-danger,#dc2626)}
-.tb3cc-meta__rel-add{align-self:flex-start;padding:5px 11px;border-radius:7px;border:1px dashed var(--dsw-alias-border-primary,#c7ced8);background:transparent;color:var(--dsw-alias-text-secondary,#4b5563);font-size:12px;font-family:inherit;cursor:pointer}
-.tb3cc-meta__rel-add:hover{border-color:var(--dsw-alias-brand-primary,#2563eb);color:var(--dsw-alias-brand-primary,#2563eb)}
-
-/*
- * ══════════════════════════════════════════════════════════
- * 响应式：三个真实尺寸 —— **两个维度，不是三个宽度档**
- * ══════════════════════════════════════════════════════════
- *
- * 用户 2026-11-19 给的尺寸（产品里 CardCreate 会挂在三种容器里）：
- *
- * | 场景 | 尺寸 | 问题 |
- * |---|---|---|
- * | 工作区 | 570 × 920 | **横向**放不下左右分栏 ⇒ 堆叠 |
- * | 抽屉 | 1200 × 400 | **纵向**放不下那么多行 ⇒ 收紧间距（**不能堆叠**）|
- * | 全屏 | 1600 × 1000 | 都不用管 |
- *
- * ⚠ **判断依据是宽 / 高两个独立维度，不是面积。**
- *   抽屉 1200 宽 × 400 高 —— 面积只有全屏的 30%，但它**宽**，横排好看得很；
- *   一旦误判成「小 ⇒ 堆叠」，400 高里竖着塞两栏会死。
- *   ⇒ 宽的门槛管**结构**（堆叠），高的门槛管**间距**（收紧），两者互不推断。
- *
- * ⚠ 容器查询只写**有差异的**属性。没列到的属性继承上面的基础规则 ——
- *   否则「响应式」变成第二套样式表，改一处要改两遍。
- */
-
-/*
- * ── A. 窄（小于 700px）⇒ 上下堆叠 ──
- *
- * 门槛 700 的来由：左栏 320 + 右栏最小可用 340 + 边框 ≈ 660。
- * 低于 700 时右栏会被挤到放不下一列章节卡，那比堆叠更难用。
- */
-@container tb3cc (max-width: 700px) {
-  .tb3cc-page__body{flex-direction:column}
-  /*
-   * 堆叠后左栏在上、右栏在下。
-   *
-   * ## ⚠ 左栏上限是 70%，不是 46%（用户 2026-11-19 反馈后改的）
-   *
-   * 第一版给 46%，理由是「别让左栏把右栏挤没」。实测 570×920 下这是错的：
-   *
-   * | 左栏状态 | 内容自然高（含 padding）|
-   * |---|---|
-   * | 关系收起 | 341px |
-   * | 关系展开（空） | 457px |
-   * | 关系展开 + 1 行关联 | 471px |
-   *
-   * 46% ≈ 376px ⇒ **关系一展开左栏就出滚动条**。用户原话：
-   *
-   * > 「抽屉打滚动无所谓。但是工作区打滚动就不行。」
-   *
-   * ⇒ 左栏是**主输入区**，滚起来就看不到自己刚填的字段，这个代价不可接受。
-   *   70%（920 × 70% ≈ 573px）能放下「关系展开 + 5 行关联」，典型状态一律不滚。
-   *   右栏剩 30%（≈246px）—— 右栏本来就比视口长（要滚），少 130px 不影响它可用。
-   *
-   * ⚠ **抽屉（1200×400）走不到这条**：宽 1200 > 700 ⇒ 横排，左栏 400 高里滚是应该的
-   *   （高度就那么点，不滚看不完）。「滚不滚」的判据是**宽**（结构），不是高。
-   */
-  .tb3cc-page__left{flex:0 0 auto;max-height:70%;border-right:none;border-bottom:1px solid var(--dsw-alias-border-secondary,#e4e7ec)}
-  .tb3cc-page__right{flex:1 1 auto;min-height:0}
-
-  /*
-   * 窄容器里顺带把左栏的纵向间距收一点 —— 和 70% 是同一件事：
-   * 让左栏在 570×920 里**装得下**，而不是靠滚动条兜。
-   * 只动 gap，不动字号 / 结构（那属于「矮」那一维）。
-   */
-  .tb3cc-leftcol{gap:12px}
-  .tb3cc-tfield{gap:10px}
-  .tb3cc-meta{gap:8px}
+.tb3perm__opt {
+	position: relative;
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 9px 10px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	cursor: pointer;
+	transition:
+		background 0.12s,
+		border-color 0.12s;
+}
+.tb3perm__opt:hover {
+	background: var(--perm-bg-soft);
 }
 
 /*
- * ── B. 矮（< 560px）⇒ 收紧纵向间距（**结构不动**）──
- *
- * 门槛 560 的来由：顶栏 ~50 + 底栏 ~50 + 右栏至少要露出两章（~230×2）。
- * 抽屉 400 高 ⇒ 必须把垂直 padding / gap / 行高都压下来，否则一屏只能看半张章节卡。
+ * ⚠ 选中态用 'border-color + 浅蓝底'，**不用 outline**：
+ *   外层 '.tb3perm__axis' 是 'overflow: hidden'，outline 物理上会被裁掉。
  */
-@container tb3cc (max-height: 560px) {
-  .tb3cc-page__top{padding:6px 14px}
-  .tb3cc-page__title{font-size:14px}
-  .tb3cc-page__left{padding:10px 14px}
-  .tb3cc-page__right{padding:10px 14px}
-  .tb3cc-actions{padding:6px 14px}
-  .tb3cc-btn{padding:4px 12px;font-size:12px}
-  .tb3cc-sec-list{gap:8px}
-  .tb3cc-sec__head{padding:6px 10px}
-  .tb3cc-sec__body{padding:8px 10px}
-  .tb3cc-leftcol{gap:10px}
-  .tb3cc-tfield{gap:8px}
-  /* 模板说明块在矮容器里只留一句话，省掉「编号前缀 / 共 N 段」那行 */
-  .tb3cc-tpl-hint{padding:6px 9px}
-  .tb3cc-tpl-hint__usage{margin-bottom:0;font-size:11px}
-  .tb3cc-tpl-hint__meta{display:none}
+.tb3perm__opt.is-selected {
+	border-color: var(--perm-accent);
+	background: var(--perm-accent-soft);
+}
+.tb3perm__opt.is-selected:hover {
+	border-color: var(--perm-accent);
+	background: var(--perm-accent-soft);
+}
+/* 保存中：保持选中配色，但鼠标变成「等」 */
+.tb3perm__opt.is-busy {
+	cursor: progress;
+}
+/* 同一条轴在保存时，其它档位淡下去（不是「坏掉了」，是「等它回来」） */
+.tb3perm__opt.is-disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+.tb3perm__opt.is-disabled:hover {
+	background: transparent;
+}
+
+/*
+ * 原生 radio：透明覆盖整行 ⇒ 点击热区 = 整行，键盘 / 读屏语义免费拿到。
+ * ⚠ 不用 'display: none' —— 那样键盘和读屏都拿不到它。
+ */
+.tb3perm__opt-input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+.tb3perm__opt-input:disabled {
+	cursor: default;
+}
+/* 键盘聚焦：焦点环画在**圆点**上（input 本身不可见） */
+.tb3perm__opt-input:focus-visible + .tb3perm__mark {
+	outline: 2px solid color-mix(in srgb, var(--perm-accent) 45%, transparent);
+	outline-offset: 2px;
+}
+
+/* 视觉圆点：14px 环 → 选中变实心蓝 + 白色内点 */
+.tb3perm__mark {
+	position: relative;
+	flex: 0 0 auto;
+	width: 14px;
+	height: 14px;
+	margin-top: 2px;
+	border: 1.5px solid var(--perm-border-strong);
+	border-radius: 50%;
+	background: var(--perm-bg);
+	transition:
+		border-color 0.12s,
+		background 0.12s;
+}
+.tb3perm__opt.is-selected .tb3perm__mark {
+	border-color: var(--perm-accent);
+	background: var(--perm-accent);
+}
+.tb3perm__opt.is-selected .tb3perm__mark::after {
+	content: '';
+	position: absolute;
+	inset: 3px;
+	border-radius: 50%;
+	background: #fff;
+}
+
+/* ── 行内容 ── */
+.tb3perm__body {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.tb3perm__label-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+.tb3perm__label {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--perm-fg);
+}
+.tb3perm__opt.is-selected .tb3perm__label {
+	color: var(--perm-accent-strong);
+}
+.tb3perm__desc {
+	font-size: 11.5px;
+	color: var(--perm-fg-2);
+	line-height: 1.6;
+}
+
+/* 「当前」小胶囊 */
+.tb3perm__badge-current {
+	flex: 0 0 auto;
+	padding: 0 7px;
+	border-radius: 999px;
+	background: var(--dsw-alias-bg-tertiary, #dbeafe);
+	color: var(--perm-accent-strong);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 16px;
+	white-space: nowrap;
+}
+
+/* 「保存中…」—— 行尾，带转圈 */
+.tb3perm__pending {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	margin-left: auto;
+	padding-left: 8px;
+	color: var(--perm-accent);
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.tb3perm__spinner {
+	display: block;
+	animation: tb3perm-spin 0.8s linear infinite;
+}
+@keyframes tb3perm-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* ══════════════════════════════════════════════════════════
+   3. 保存失败横幅
+   ══════════════════════════════════════════════════════════ */
+
+.tb3perm__alert {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 9px 11px;
+	border: 1px solid var(--perm-danger-border);
+	border-radius: 8px;
+	background: var(--perm-danger-bg);
+	color: var(--perm-danger);
+	font-size: 12px;
+	line-height: 1.6;
+}
+.tb3perm__alert-icon {
+	flex: 0 0 auto;
+	margin-top: 3px;
+}
+.tb3perm__alert-msg {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.tb3perm__alert-close {
+	flex: 0 0 auto;
+	margin: -2px -2px 0 0;
+	padding: 0 4px;
+	border: 0;
+	border-radius: 4px;
+	background: none;
+	color: inherit;
+	font-family: inherit;
+	font-size: 15px;
+	line-height: 1.4;
+	cursor: pointer;
+	opacity: 0.7;
+}
+.tb3perm__alert-close:hover {
+	opacity: 1;
+	background: rgb(0 0 0 / 5%);
+}
+
+/* ══════════════════════════════════════════════════════════
+   4. 加载中（骨架）
+   ══════════════════════════════════════════════════════════ */
+
+.tb3perm__loading {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.tb3perm__skeleton {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 13px 14px 15px;
+	border: 1px solid var(--perm-border);
+	border-radius: 10px;
+	background: var(--perm-bg);
+}
+.tb3perm__sk-line {
+	height: 11px;
+	border-radius: 5px;
+	background: linear-gradient(90deg, #eef1f5 25%, #f7f9fb 50%, #eef1f5 75%);
+	background-size: 200% 100%;
+	animation: tb3perm-shimmer 1.2s linear infinite;
+}
+.tb3perm__sk-line--title {
+	width: 34%;
+	height: 13px;
+}
+@keyframes tb3perm-shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+
+/* ══════════════════════════════════════════════════════════
+   5. 加载失败（虚线 = 空态，不是错误卡片）
+   ══════════════════════════════════════════════════════════ */
+
+.tb3perm__load-error {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 9px;
+	padding: 20px 16px;
+	border: 1px dashed var(--perm-border-strong);
+	border-radius: 10px;
+	background: var(--perm-bg);
+}
+.tb3perm__load-error-head {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	color: var(--perm-danger);
+	font-size: 13px;
+	font-weight: 600;
+}
+.tb3perm__load-error-title {
+	font-weight: 600;
+}
+.tb3perm__load-error-msg {
+	margin: 0;
+	color: var(--perm-fg-2);
+	font-size: 12px;
+	line-height: 1.6;
+}
+.tb3perm__retry {
+	padding: 5px 14px;
+	border: 1px solid var(--perm-border-strong);
+	border-radius: 7px;
+	background: var(--perm-bg);
+	color: var(--perm-fg);
+	font-family: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	transition:
+		border-color 0.12s,
+		color 0.12s;
+}
+.tb3perm__retry:hover {
+	border-color: var(--perm-accent);
+	color: var(--perm-accent);
+}
+
+/* ══════════════════════════════════════════════════════════
+   6. 底部正交说明
+   ══════════════════════════════════════════════════════════ */
+
+.tb3perm__foot {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 10px 13px;
+	border: 1px dashed var(--perm-border-strong);
+	border-radius: 9px;
+	background: var(--perm-bg-soft);
+	color: var(--perm-fg-2);
+	font-size: 11.5px;
+	line-height: 1.7;
+}
+.tb3perm__foot b {
+	color: var(--perm-fg);
+}
+.tb3perm__foot-sub {
+	color: var(--perm-fg-3);
 }
 `;
+	// packages/dsh-permissions/src/renderers/permission-box-css.ts
 	/**
-	* 搜索框的样式 —— 前缀 `.search-box`（SearchBox 组件自带，类名不改）。
+	* 权限框的样式 —— composer 工具行里的**入口按钮** + 全屏页的**容器**。
 	*
-	* ## 从哪来
+	* ## 两半，各自归属
 	*
-	* SearchBox 的视觉细节原先只存在于 `dev/preview/searchbox/style.css`（那一份
-	* 仍给 SearchBox 自己的预览用）。V3 工作区要用它 ⇒ 在这里收口成产品样式，
-	* 和上面各组件「preview CSS → WORKSPACE_CSS」同一个做法。
-	*
-	* ## 和 preview 那份的差别（只有两处，都不是行为）
-	*
-	* 1. **作用域**：全部包在 `.tb3w-root` 下（类名保持原样，只加前缀 —— 同
-	*    `WORKSPACE_CSS` 的约定，避免 `.search-box` 这种通用名撞到宿主）。
-	* 2. **颜色**：用宿主 token + 兜底色（`var(--accent, #2563eb)` 这套），
-	*    兜底值就是 preview 里写的那个色值。焦点 / hover / disabled 都是**样式**，
-	*    判决（能不能提交）在 `src/pure/search-box.ts`，本段不碰。
-	*
-	* ⚠ 布局宽度由调用方决定（`WORKSPACE_CSS` 的 `.tb3w-filters__tail .search-box`）；
-	*   组件本身 `field` 是 `flex:1`，没有固定宽度 —— 这是 SearchBox 的设计，
-	*   本文件不改它。
-	*
-	* ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**。
-	*/
-	const SEARCHBOX_CSS = `
-.tb3w-root .search-box{display:flex;align-items:stretch;min-width:0}
-.tb3w-root .search-box__field{position:relative;display:flex;align-items:center;flex:1 1 auto;min-width:0;height:28px;border:1px solid var(--border,#e7e9ee);border-radius:8px;background:var(--bg-card,#fff);transition:border-color .12s,background .12s}
-.tb3w-root .search-box__field:focus-within{border-color:var(--accent,#2563eb)}
-.tb3w-root .search-box__icon{position:absolute;left:7px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--text-weak,#9aa1ad);cursor:pointer}
-/* 图标是按钮：hover 变深，禁用时不可点（它和「前往」是同一个 submit()） */
-.tb3w-root .search-box__icon:hover:not(:disabled){color:var(--accent,#2563eb)}
-.tb3w-root .search-box__icon:disabled{cursor:default;opacity:.55}
-/* 左内边距 30px = 图标左 9px + 图标 14px + 间距 7px —— 文字不会压到图标 */
-.tb3w-root .search-box__input{width:100%;height:100%;padding:0 10px 0 30px;border:0;border-radius:8px;outline:none;background:transparent;font-family:inherit;font-size:12.5px;line-height:1.5;color:var(--text,#16181d)}
-.tb3w-root .search-box__input::placeholder{color:var(--text-weak,#9aa1ad)}
-.tb3w-root .search-box__input:disabled{cursor:not-allowed}
-
-
-
-
-
-.tb3w-root .search-box[data-search-disabled='true'] .search-box__field{background:#f7f8fa;border-color:var(--border,#e7e9ee)}
-`;
-	/**
-	* 工作区（V3）的样式 —— 前缀 `tb3w-`。
-	*
-	* ## 它为什么单独一段
-	*
-	* 这是**拼装层**：六个已定稿组件（SpaceBar / FilterRow+FilterBox / CardRow /
-	* CardDetail / StatusMenu）的 CSS 原本只存在于各自的 `dev/preview/<组件>/style.css`
-	* 里。V3 是第一个**产品级**页面，所以在这里收口成一份：
-	*
-	* | 来源 | 类名 | 作用域 |
+	* | 段 | 归属 | 在哪 |
 	* |---|---|---|
-	* | 各组件的 preview CSS | `.space-bar` / `.filter-box` / `.task-card` / `.detail` / `.menu` … | 全部包在 `.tb3w-root` 下 |
-	* | StatusMenu 的浮层 | `.menu*` | 它 portal 到 `body` ⇒ 用 `[data-menu="status"]` 作用域 |
-	* | 本组件（拼装）| `.tb3w-*` | 新前缀，不跟 `tb3-*` / `tb3cc-*` 混 |
+	* | `.tb3perm` 面板本体（437 行）| `PermissionPanel` 组件 | `permission-css.ts` |
+	* | `.tb3pbox` 入口按钮 + 全屏壳 | 本文件 | 这里 |
 	*
-	* ⚠ **组件类名保持原样、只加作用域前缀** —— 已定稿组件的 DOM 是它们的
-	*   preview 验收过的，改类名等于让那些 CDP 断言失去意义。
+	* ## ⚠ 入口按钮**不用 absolute**
 	*
-	* ## 颜色全走宿主 token + 兜底色
+	* 用户截图里的红框位置：composer 工具行内、`完全权限 ▾` 右边。
+	* 那个位置是 `conversation.input.left` 槽的**正常文档流**（list 布局），
+	* 不是绝对定位区。
 	*
-	* 和 `CREATE_CSS` 同一手法：`var(--dsw-alias-*, 兜底)`。预览里没有宿主
-	* token ⇒ 用兜底色，也就是设计图上的那套颜色。
+	* ⚠ 不要照抄 `.tb3d-entry` 的 absolute —— 那个是**抽屉入口**，它贴到
+	*   卡片左外侧（`left:-32px`），是用户 2026-11-20 明确要的另一个位置。
+	*   两者槽相同但视觉位置不同：抽屉在卡片外，权限框在工具行内。
 	*
-	* ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**（会提前结束字符串）。
+	* ## 为什么宽度不写死
+	*
+	* 按钮文案是「不允许领卡 · 任务板不管理」这种，长度随档位变。
+	* 写死宽度会截断 ⇒ `white-space:nowrap` 让内容撑开，上限用 `max-width` 兜。
+	*
+	* ⚠ 本文件是模板字符串 —— 注释里不能出现反引号（会提前结束字符串，TS1005）。
 	*/
-	const WORKSPACE_CSS = `
+	const PERMISSION_BOX_CSS = `
 /* ══════════════════════════════════════════════════════════
-   0. 令牌 + 盒模型
+   1. 入口按钮（composer 工具行内，正常文档流）
    ══════════════════════════════════════════════════════════ */
-
-.tb3w-root, [data-menu="status"] {
-  --bg: var(--dsw-alias-bg-secondary, #f5f7fa);
-  --bg-card: var(--dsw-alias-bg-primary, #fff);
-  --bg-soft: var(--dsw-alias-bg-secondary, #fafbfc);
-  --bg-hover: var(--dsw-alias-bg-hover, #f3f4f6);
-  --border: var(--dsw-alias-border-secondary, #e7e9ee);
-  --border-strong: var(--dsw-alias-border-primary, #d7dbe2);
-	/*
-	 * 卡片 / 列表行的边框 —— 比 --border-strong 深一档。
-	 * 用户 2026-11-21：先加深（草稿的无边框才看得出来）；
-	 * 具体色值 / 要不要跟状态色同步，他之后定。
-	 */
-	--card-border: #9aa1ad;
-  --text: var(--dsw-alias-text-primary, #16181d);
-  --text-secondary: var(--dsw-alias-text-secondary, #5f6673);
-  --text-weak: var(--dsw-alias-text-tertiary, #9aa1ad);
-  /*
-   * 强调色 = **品牌蓝**。用户 2026-11-20 修正：
-   * 「改为用蓝色主题的。我让你用黑色是一些东西黑底白字。
-   *   你把面包屑做成黑色加粗字。这哪看的清他是可选的。」
-   *
-   * 上一版把 accent 改成正文色（黑）是理解错了 —— 结果面包屑选中态成了
-   * 黑色加粗字，看不出可点。黑色只用于**开关类**控件的激活态（黑底白字），
-   * 见 .space-chip.is-current / .space-action.is-on / .ghost-btn.is-active。
-   * 状态色（--state-*）不动，那是九状态语义色。
-   */
-  --accent: var(--dsw-alias-brand-primary, #2563eb);
-  --accent-strong: var(--dsw-alias-brand-hover, #1d4ed8);
-  --warn: #d97706;
-  --font-mono: ui-monospace, Consolas, "Courier New", monospace;
-  --fs-id: 11px;
-  --fs-badge: 10px;
-  --fs-body: 12.5px;
-  --state-unspecified-dot: #9ca3af;
-  --state-unspecified-fg: #6b7280;
-  --state-submitted-dot: #111827;
-  --state-submitted-fg: #111827;
-  --state-working-dot: #06b6d4;
-  --state-working-fg: #0e7490;
-  --state-inputRequired-dot: #eab308;
-  --state-inputRequired-fg: #a16207;
-  --state-authRequired-dot: #a855f7;
-  --state-authRequired-fg: #7e22ce;
-  --state-completed-dot: #10b981;
-  --state-completed-fg: #047857;
-  --state-failed-dot: #ef4444;
-  --state-failed-fg: #b91c1c;
-  --state-canceled-dot: #92400e;
-  --state-canceled-fg: #78350f;
-  --state-rejected-dot: #f97316;
-  --state-rejected-fg: #c2410c;
-  --kind-goal-fg: #7c3aed;
-  --kind-goal-bg: #f3e8ff;
-  --kind-design-fg: #2563eb;
-  --kind-design-bg: #dbeafe;
-  --kind-work-fg: #0891b2;
-  --kind-work-bg: #cffafe;
-  --kind-record-fg: #6b7280;
-  --kind-record-bg: #f3f4f6;
-}
-.tb3w-root, .tb3w-root *, [data-menu="status"], [data-menu="status"] *{box-sizing:border-box}
-
-/* ══════════════════════════════════════════════════════════
-   1. 拼装壳
-   ══════════════════════════════════════════════════════════ */
-
-.tb3w-root{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13px;line-height:1.5}
-.tb3w-page{container-type:size;container-name:tb3w;display:flex;flex-direction:column;height:100%;min-height:0;padding:16px 20px;overflow:hidden}
-.tb3w-chrome{flex:0 0 auto;display:flex;flex-direction:column;min-width:0}
-.tb3w-main{flex:1 1 auto;display:flex;flex-direction:row;min-height:0;min-width:0;margin-top:12px}
-
-/* ── 紧凑密度（data-density="compact"，用户 2026-11-20） ──
-   常驻的：任务计数 / 关系图例（只读装饰）、视图切换 / 新建（高频）
-   折叠的：空间 chip 行（点开才显示）、权限与约定、AI chip
-   目标：chrome 只占两行 —— 第 1 行工具、第 2 行筛选。 */
-.tb3w-space-wrap{position:relative;display:inline-flex}
-.tb3w-space-toggle{flex:0 0 auto;padding:3px 10px;border-radius:7px}
-/* 下拉面板：浮在内容上，不推挤布局（用户 2026-11-20）。40 个空间在面板内部滚动。 */
-.tb3w-space-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:min(560px,88vw);max-height:min(320px,60vh);overflow:auto;padding:8px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--bg-card,#fff);box-shadow:0 12px 32px rgb(15 23 42 / 16%)}
-.tb3w-space-pop > .space-bar{flex-wrap:wrap;padding:0}
-/*
- * 空间折叠栏（A 款）—— 用户 2026-11-22 选定：
- * 「点开以后是打开折叠的隐藏栏，不是悬浮窗」。
- * ⇒ 整行、推挤下面的筛选行（不是 absolute）。
- */
-.tb3w-space-fold{padding:8px 10px;margin-top:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-soft,#f9fafb)}
-.tb3w-space-fold > .space-bar{padding:0}
-.tb3w-root .tb3w-space-toggle.is-open{border-color:var(--accent);color:var(--accent);background:#eff6ff}
-
-/* SpaceBar 自己带 6px 上下 padding ⇒ 这里只补左右对齐 */
-.tb3w-chrome > .space-bar{padding-left:2px;padding-right:2px}
-
-/*
- * 行 1 的外层：工具栏 + 空间开关按钮并排。
- *
- * 用户 2026-11-20：「工作区组件只要一个工作区组件，不包括折叠工作区用的按钮」
- * ⇒ 开关按钮不进 WorkspaceToolbar，由 Workspace 在外面拼（见 Workspace.tsx）。
- */
-.tb3w-chrome__bar{display:flex;align-items:center;gap:8px;min-width:0}
-.tb3w-chrome__bar > .tb3w-toolbar{flex:1 1 auto;min-width:0}
-
-/* ── 工具栏：条数 / 图例 / 视图切换 / 新建 ── */
-.tb3w-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;min-width:0;margin-top:10px;padding:0 2px}
-.tb3w-toolbar__title{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
-.tb3w-toolbar__count{margin-left:4px;font-weight:400;color:var(--text-secondary)}
-.tb3w-toolbar__legend{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;order:2;min-width:0;font-size:11px;color:var(--text-secondary)}
-.tb3w-toolbar__legend-label{flex:0 0 auto;white-space:nowrap}
-.tb3w-legend__item{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-.tb3w-legend__line{display:inline-block;flex:0 0 auto;width:14px;height:2px;border-radius:1px;background:#5b6472}
-.tb3w-legend__line[data-rel="depends"]{background:#a16207}
-.tb3w-legend__line[data-rel="supersedes"]{background:#6d28d9}
-.tb3w-legend__line[data-rel="constrains"]{background:#b91c1c}
-.tb3w-legend__line[data-rel="related"]{height:0;border-top:2px dashed #15803d;background:none}
-.tb3w-legend__line[data-rel="references"]{height:0;border-top:2px dashed #6b7280;background:none}
-.tb3w-legend__hint{flex:0 0 auto;font-size:10px;color:#b6bec9;white-space:nowrap}
-.tb3w-legend__hint--short{display:none}
-.tb3w-toolbar__actions{display:flex;align-items:center;gap:8px;order:3;margin-left:auto;min-width:0}
-.tb3w-seg{display:inline-flex;align-items:center;padding:2px;border-radius:6px;background:var(--bg-hover)}
-.tb3w-seg__btn{padding:3px 10px;border:0;border-radius:5px;background:transparent;color:var(--text-secondary);font-family:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
-.tb3w-seg__btn.is-on{background:var(--text);color:#fff;font-weight:600}
-.tb3w-btn-primary{padding:4px 12px;border:1px solid var(--text);border-radius:6px;background:var(--text);color:#fff;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}
-.tb3w-btn-primary:hover{opacity:.88}
-
-/* ── 筛选区：3 个 FilterBox 独占一行；尾部（AI 计数 / 搜索）另起一行 ──
- *
- * 用户 2026-11-20：
- * 「筛选按钮是有弹出的文档流的。把别人挤走了怎么办」
- * 「我要他参与文档流。所以他要独立一行」
- *
- * ⇒ 筛选按钮**参与文档流**（展开是撑宽这一行，不是浮层盖住别人），
- *   所以必须独占一行 —— 行 1 只有筛选按钮，行 2 才是尾部。
- *   这样展开/收起只改行 1 的宽度与高度，不会把搜索框挤走。
- *
- * ⚠ .tb3w-chrome 是 column flex，两行天然各占一行；这里去掉 spacer
- *   （它原来把尾部推到行 1 的右边）并让尾部强制换行。
- */
-.tb3w-filters{flex:1 0 100%;min-width:0;margin-top:8px}
-.tb3w-filters .filter-row__spacer{display:none}
-.tb3w-filters__tail{flex:0 1 auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;margin-left:auto}
-.tb3w-ai-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
-.tb3w-ai-chip b{font-weight:600;color:var(--text)}
-/* 未读筛选按钮：可点 + 选中态（用户 2026-11-21 要「两个筛选按钮」）*/
-.tb3w-ai-chip{cursor:pointer;font:inherit;font-size:10.5px;border-color:var(--card-border,#9aa1ad)}
-.tb3w-ai-chip:hover{background:#f1f3f6}
-.tb3w-ai-chip.is-on{border-color:var(--accent);background:#eff6ff;color:var(--accent)}
-.tb3w-ai-chip.is-on b{color:var(--accent)}
-/*
- * 尾部搜索框 = 定稿的 SearchBox（类名 .search-box，样式在 SEARCHBOX_CSS）。
- * 这里只管**布局**：宽版固定 250px（和原来的行内输入框同宽），窄版整行。
- */
-.tb3w-filters__tail .search-box{flex:0 0 auto;width:200px}
-
-/* ── 左栏：列表 ── */
-.tb3w-list{flex:2 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.tb3w-list__head{flex:0 0 auto;display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:11px 14px 7px}
-.tb3w-list__title{font-size:12.5px;font-weight:600;color:var(--text)}
-.tb3w-list__title em{font-style:normal;font-weight:400;color:var(--text-secondary)}
-.tb3w-list__sort{flex:0 0 auto;font-size:11px;color:var(--text-weak)}
-/*
- * 列表的列名行。设计图里只在宽版出现（窄版把纵向空间让给行本身）。
- * 三列与 CardRow 的几何对齐：46px 正方形 + 12px gap ≈ 58（首列给到 190 是为了
- * 把「分类 · 领域 · 模板」对齐到 label 起点），最后一列 90px 对齐「最后动过」。
- */
-.tb3w-list__cols{flex:0 0 auto;display:grid;grid-template-columns:190px 150px minmax(0,1fr) 90px;gap:0;padding:0 14px 5px;border-bottom:1px solid #eef1f5;font-size:8.5px;color:#b6bec9}
-.tb3w-list__cols span:last-child{text-align:right}
-.tb3w-list__body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px 14px 12px}
-.tb3w-list__empty{padding:28px 8px;text-align:center;font-size:12px;color:var(--text-weak)}
-
-/*
- * 科技树视图 —— 用定稿的 TechTree（类名 tb3t-*，CSS 在 TECHTREE_CSS）。
- * 它的根是 height:100% 的 flex 列（画布自己滚、页脚常驻）⇒ 这里只给一个
- * 「撑满列表栏」的容器。min-height:0 是 flex 里让子元素内部滚动的必要条件
- * （同 .tb3w-list__body 的理由）。
- */
-.tb3w-tree{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
-.tb3w-tree > .tb3t-root{flex:1 1 auto;min-height:0}
-
-/* ── 分隔条：可拖（宽版竖 / 窄版横） ── */
-.tb3w-split{position:relative;display:flex;flex:0 0 20px;align-items:center;justify-content:center;cursor:col-resize;user-select:none;touch-action:none}
-.tb3w-split__line{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #cbd5e1}
-.tb3w-split__grip{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-size:10px}
-
-/* ── 右栏：详情 ── */
-.tb3w-detail{flex:1.2 1 0;display:flex;flex-direction:column;min-width:300px;max-width:460px;min-height:0}
-.tb3w-detail > .detail{flex:1 1 auto;min-height:0;overflow-y:auto}
-.tb3w-detail__empty{flex:1 1 auto;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:10px;background:var(--bg-card);color:var(--text-weak);font-size:12px}
-/* 详情里的状态 = 状态菜单的触发器（设计图没画胶囊，见 V3 报告） */
-.tb3w-detail [data-meta="status"]{position:relative;cursor:pointer;border-radius:5px}
-.tb3w-detail [data-meta="status"]:hover{background:var(--bg-hover)}
-.tb3w-detail [data-meta="status"]::after{content:"⌄";position:absolute;top:50%;right:-3px;transform:translateY(-50%);font-size:9px;color:var(--text-weak);opacity:.85}
-.tb3w-root[data-detail="closed"] .tb3w-split,.tb3w-root[data-detail="closed"] .tb3w-detail{display:none}
-
-/* ══════════════════════════════════════════════════════════
-   2. 已定稿组件的样式（作用域化；值照抄各自 preview 的 style.css）
-   ══════════════════════════════════════════════════════════ */
-
-/* ── SpaceBar ── */
-.tb3w-root .ghost-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text-secondary);font-family:inherit;font-size:12px;white-space:nowrap;cursor:pointer;transition:border-color .12s,color .12s,background .12s}
-.tb3w-root .ghost-btn:hover:not(:disabled){border-color:var(--text-weak);color:var(--text)}
-.tb3w-root .ghost-btn:disabled{opacity:.45;cursor:default}
-/*
- * 开关类控件的激活态 = **黑底白字**。用户 2026-11-20：
- * 「对于开关性质的。比如当前空间，展示已归档。这些切换开关的，
- *   用黑底白字来表示现在选用/激活。」
- *
- * 这一条只作用于「显示已归档」这个开关（SpaceBar 里的 .space-toggle）。
- * 筛选按钮（状态 / 类别 / 领域）不是开关，用蓝色 —— 见下面的 .filter-box 段。
- */
-.tb3w-root .ghost-btn.is-active{border-color:var(--text);background:var(--text);color:#fff}
-.tb3w-root .ghost-btn.is-active:hover:not(:disabled){border-color:var(--text);background:var(--text);color:#fff}
-.tb3w-root .space-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;padding:6px 2px}
-.tb3w-root .space-bar > *{flex:0 0 auto}
-.tb3w-root .space-action{min-width:84px;justify-content:center}
-.tb3w-root .space-action.is-emphasis-current{border-color:var(--accent);background:#eef4ff;color:var(--accent);font-weight:600;cursor:default}
-.tb3w-root .space-action.is-emphasis-current:hover{border-color:var(--accent);color:var(--accent)}
-.tb3w-root .space-action.is-emphasis-action{border-color:var(--border);background:var(--bg-card);color:var(--text-secondary)}
-.tb3w-root .space-action.is-emphasis-action:hover:not(:disabled){border-color:var(--accent);background:#f5f9ff;color:var(--accent)}
-.tb3w-root .space-action.is-emphasis-plain{color:var(--text-weak)}
-.tb3w-root .space-action.is-on{border-color:var(--text);background:var(--text);color:#fff}
-.tb3w-root .space-action.is-on:hover:not(:disabled){border-color:var(--text);background:var(--text);color:#fff}
-.tb3w-root .space-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid var(--border);border-radius:999px;background:var(--bg-card);color:var(--text-secondary);font-family:inherit;font-size:12px;white-space:nowrap;cursor:pointer;transition:border-color .12s,background .12s}
-.tb3w-root .space-chip:hover{border-color:var(--text-weak)}
-.tb3w-root .space-chip.is-current{border-color:var(--text);background:var(--text);color:#fff}
-.tb3w-root .space-chip.is-viewing{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
-.tb3w-root .space-chip.is-current.is-viewing{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
-.tb3w-root .space-chip.is-archived{border-style:dashed;opacity:.65}
-.tb3w-root .space-chip.is-archived:hover{opacity:1}
-.tb3w-root .space-chip.is-current.is-archived{opacity:1}
-.tb3w-root .space-chip__count{font-family:var(--font-mono);font-size:11px;opacity:.75}
-.tb3w-root .space-chip--add{padding:4px 9px;color:var(--text-weak)}
-
-/* ── FilterBox / FilterRow ── */
-.tb3w-root .filter-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
-/*
- * 筛选按钮 = **蓝色风格**（不是开关）。用户 2026-11-20：
- * 「对状态筛选按钮这些，突出可交互的，但只是可以点击，不是切换性质的，
- *   用蓝色的风格。」
- *
- * ⇒ 描边淡蓝、标题蓝字（看得出能点）；展开时描边变实蓝。
- *   激活态**不用黑底白字** —— 那是开关类的语言（见上面 .ghost-btn.is-active）。
- */
-.tb3w-root .filter-box{position:relative;flex:0 0 auto;height:32px;max-width:100%;border:1px solid #c7d9f7;border-radius:6px;background:var(--bg-card);overflow:hidden;cursor:pointer;user-select:none;transition:width .18s ease,border-color .12s ease}
-.tb3w-root .filter-box:hover{border-color:var(--accent)}
-.tb3w-root .filter-box.is-open{border-color:var(--accent)}
-.tb3w-root .filter-box__face{position:absolute;top:0;bottom:0;left:12px;display:inline-flex;align-items:center;white-space:nowrap;transition:opacity .12s ease}
-.tb3w-root .filter-box__face--expanded{opacity:0;pointer-events:none}
-.tb3w-root .filter-box.is-open .filter-box__face--collapsed{opacity:0;pointer-events:none}
-.tb3w-root .filter-box.is-open .filter-box__face--expanded{opacity:1;pointer-events:auto}
-.tb3w-root .filter-box__title{padding:0 2px;border:0;border-radius:4px;background:none;color:var(--accent);font-family:inherit;font-size:12.5px;cursor:pointer}
-.tb3w-root .filter-box__title:hover{background:#eff6ff;color:var(--accent-strong)}
-.tb3w-root .filter-box__colon{font-size:12.5px;color:var(--text-secondary)}
-.tb3w-root .filter-box__crumbs{display:inline-flex;align-items:center}
-/* 分隔斜杠要看得见（用过 #cbd5e1，截图里几乎看不见） */
-.tb3w-root .filter-box__csep{padding:0 1px;font-size:12px;color:#9aa1ad;user-select:none}
-.tb3w-root .filter-box__items{display:inline-flex;align-items:center}
-.tb3w-root .filter-box__item{display:inline-flex;align-items:center;gap:2px;padding:2px 4px;border:0;border-radius:4px;background:none;color:var(--text);font-family:inherit;font-size:12.5px;cursor:pointer}
-.tb3w-root .filter-box__item:hover{background:#f3f4f6}
-/*
- * 面包屑 / 选项的选中态 = **蓝字**（不是黑字加粗）。
- *
- * 用户 2026-11-20 骂的就是这一条：「你把面包屑做成黑色加粗字。
- * 这哪看的清他是可选的。」⇒ accent 已恢复蓝，字重从 700 降到 600
- * （700 看起来像小标题，不像可点的项）。
- */
-.tb3w-root .filter-box__item.is-picked{color:var(--accent);font-weight:600}
-.tb3w-root .filter-box__item.is-picked:hover{background:#eff6ff}
-.tb3w-root .filter-box__item--crumb:not(.is-picked){text-decoration:underline dotted #b6bec9;text-underline-offset:3px}
-.tb3w-root .filter-box__item--crumb:not(.is-picked):hover{color:var(--accent);text-decoration-color:var(--accent)}
-.tb3w-root .filter-box__more{margin-left:1px;font-size:9px;opacity:.5}
-.tb3w-root .filter-box__sep{padding:0 2px;font-size:12px;color:#cbd5e1;user-select:none}
-.tb3w-root .filter-box__vline{align-self:stretch;width:1px;margin:0 10px;background:#d1d5db}
-
-/* ── 状态圆点 / 编号 / 徽章（StatusCell 系） ── */
-.tb3w-root .dot{display:inline-block;flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--state-unspecified-dot)}
-.tb3w-root .dot--unspecified{background:var(--state-unspecified-dot)}
-.tb3w-root .dot--submitted{background:var(--state-submitted-dot)}
-.tb3w-root .dot--working{background:var(--state-working-dot)}
-.tb3w-root .dot--inputRequired{background:var(--state-inputRequired-dot)}
-.tb3w-root .dot--authRequired{background:var(--state-authRequired-dot)}
-.tb3w-root .dot--completed{background:var(--state-completed-dot)}
-.tb3w-root .dot--failed{background:var(--state-failed-dot)}
-.tb3w-root .dot--canceled{background:var(--state-canceled-dot)}
-.tb3w-root .dot--rejected{background:var(--state-rejected-dot)}
-.tb3w-root .card-id{flex:0 0 auto;font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;letter-spacing:-.2px}
-.tb3w-root .card-id--goal{color:var(--kind-goal-fg)}
-.tb3w-root .card-id--design{color:var(--kind-design-fg)}
-.tb3w-root .card-id--work{color:var(--kind-work-fg)}
-.tb3w-root .card-id--record{color:var(--kind-record-fg)}
-.tb3w-root .badge{display:inline-block;flex:0 0 auto;padding:0 5px;border-radius:3px;font-size:var(--fs-badge);line-height:1.6;white-space:nowrap}
-.tb3w-root .badge--goal{background:var(--kind-goal-bg);color:var(--kind-goal-fg)}
-.tb3w-root .badge--design{background:var(--kind-design-bg);color:var(--kind-design-fg)}
-.tb3w-root .badge--work{background:var(--kind-work-bg);color:var(--kind-work-fg)}
-.tb3w-root .badge--record{background:var(--kind-record-bg);color:var(--kind-record-fg)}
-.tb3w-root .badge--domain{background:#f3f4f6;color:var(--text-secondary)}
-.tb3w-root .badge--template{background:#eef1f5;color:var(--text-secondary)}
-/*
- * ⚠ 非紧凑态的 .task-card__status 原先只存在于旧面板的 CSS（.status-line 那段），
- *   V3 的详情头部用到了它 ⇒ 这里补一条基础规则（**样式钩子，不改组件行为**）。
- */
-.tb3w-root .task-card__status{display:inline-flex;align-items:center;gap:4px;min-width:0;font-size:11.5px;color:var(--text-secondary)}
-.tb3w-root .task-card__status-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tb3w-root .task-card__status.is-compact{flex:0 0 auto;align-items:center;gap:3px;font-size:9px;color:var(--text-weak)}
-
-/* ── CardRow ── */
-.tb3w-root .task-card{display:flex;align-items:stretch;gap:0;width:100%;margin-bottom:6px;padding:8px 12px;border:2px solid var(--card-border,#9aa1ad);border-radius:8px;background:var(--bg-card);color:inherit;font-family:inherit;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
-.tb3w-root .task-card:hover{background:#f8f9fb}
-.tb3w-root .task-card.is-selected{border-color:var(--accent);background:#f5f9ff}
-.tb3w-root .task-card.is-draft{border-color:transparent}
-.tb3w-root .task-card.is-draft:hover{border-color:var(--card-border,#9aa1ad)}
-.tb3w-root .task-card.is-draft.is-selected{border-color:var(--accent)}
-.tb3w-root .task-card.is-unread-user{border-left-width:4px;border-left-color:var(--warn);padding-left:10px}
-.tb3w-root .task-card.is-unread-ai{border-right-width:4px;border-right-color:var(--accent);padding-right:10px}
-.tb3w-root .task-card__square{flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0}
-.tb3w-root .task-card__square-id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;letter-spacing:-.2px}
-.tb3w-root .task-card__body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;min-width:0}
-.tb3w-root .task-card__line{display:flex;align-items:center;gap:6px;min-width:0}
-.tb3w-root .task-card__line .badge{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tb3w-root .task-card__title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-body);font-weight:600}
-.tb3w-root .task-card__when{flex:0 0 90px;overflow:hidden;text-align:right;font-size:11px;color:var(--text-weak);white-space:nowrap}
-.tb3w-root .task-card__when-label{display:block;font-size:9px;opacity:.7}
-.tb3w-root .task-card.is-unread-user .card-id{font-weight:800}
-
-/* ── CardDetail ── */
-.tb3w-root .detail{display:flex;flex-direction:column;gap:14px;min-width:0;padding:16px 18px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card)}
-.tb3w-root .detail-head{display:flex;flex-direction:column;gap:8px;min-width:0}
-.tb3w-root .detail-title-row{display:flex;align-items:flex-start;gap:8px;min-width:0}
-.tb3w-root .detail-title{flex:1 1 auto;min-width:0;margin:0;overflow-wrap:anywhere;color:var(--text);font-size:17px;font-weight:700;line-height:1.4;letter-spacing:-.01em}
-.tb3w-root .detail-title-row__spacer{flex:0 0 auto;width:0}
-.tb3w-root .icon-btn{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:1px solid transparent;border-radius:5px;background:none;color:var(--text-weak);font-family:inherit;font-size:14px;line-height:1;cursor:pointer}
-.tb3w-root .icon-btn:hover{border-color:var(--border);background:#f6f7f9;color:var(--text)}
-/* meta 行：状态是**固定 92px 首列**，不随 label 变宽而漂移 */
-.tb3w-root .detail-meta{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-width:0;font-size:11.5px;color:var(--text-secondary)}
-.tb3w-root .detail-meta > *{flex:0 0 auto;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 用户 2026-11-20：「为什么是固定宽度呢。应该是设计这个东西最小宽度 4em 啊」——
- * 用 min-width 而不是 flex-basis：短状态保持 4em（中文 1em = 1 字，正好容纳「需要信息」这种 4 字状态），
- * 更长的状态自动撑开，不会被截断。 */
-.tb3w-root .detail-status-col{display:inline-flex;align-items:center;min-width:4em;margin-left:0;padding:0}
-.tb3w-root .detail-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
-.tb3w-root .detail-action{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;font-size:12px}
-.tb3w-root .detail-action.is-primary{border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600}
-.tb3w-root .detail-action.is-primary:hover:not(:disabled){border-color:var(--accent-strong);background:var(--accent-strong);color:#fff}
-.tb3w-root .detail-action.is-primary:disabled{opacity:.4;cursor:not-allowed}
-.tb3w-root .detail-action__badge{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:rgb(255 255 255 / 24%);font-family:var(--font-mono);font-size:10px;font-weight:700;line-height:1}
-.tb3w-root .detail-action:not(.is-primary) .detail-action__badge{background:#eef1f5;color:var(--text-secondary)}
-.tb3w-root .detail-banner{padding:8px 11px;border:1px solid #fde68a;border-radius:7px;background:#fffbeb;color:#92400e;font-size:11.5px;line-height:1.6}
-.tb3w-root .detail-sections{display:flex;flex-direction:column;gap:12px;min-width:0}
-/*
- * ⚠ 这里曾经有 .detail-section / __label / __body / __empty —— 它们只服务
- *   CardDetail 里的占位组件 SectionStub。2026-11-20 章节改用定稿 Section
- *   （.section-block 那一套在 SECTION_CSS 里）⇒ 这几条已删，别再加回来。
- */
-.tb3w-root .detail-empty{font-size:12px;color:var(--text-weak)}
-.tb3w-root .detail-note{display:flex;flex-direction:column;gap:5px;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fbfcfd}
-.tb3w-root .detail-note__label{font-size:11.5px;font-weight:600;color:var(--text-secondary)}
-.tb3w-root .detail-note__input{width:100%;padding:7px 9px;border:1px solid transparent;border-radius:5px;background:var(--bg-card);resize:vertical;color:var(--text);font-family:inherit;font-size:12.5px;line-height:1.7}
-.tb3w-root .detail-note__input:focus{border-color:#93c5fd;box-shadow:0 0 0 3px rgb(37 99 235 / 10%);outline:none}
-.tb3w-root .detail-note__input:disabled{background:#f4f5f7;color:var(--text-weak);cursor:not-allowed}
-.tb3w-root .detail-note__readonly{font-size:11px;color:var(--text-weak)}
-.tb3w-root .detail-history{display:flex;flex-direction:column;gap:6px;min-width:0}
-.tb3w-root .detail-history__head{display:inline-flex;align-self:flex-start;align-items:center;gap:6px;margin-left:-6px;padding:2px 6px;color:var(--text-secondary);font-size:12px;font-weight:600}
-.tb3w-root .detail-history__list{display:flex;flex-direction:column;gap:7px;margin:0;padding:0 0 0 2px;list-style:none}
-.tb3w-root .detail-history__item{display:flex;align-items:baseline;gap:8px;min-width:0;color:#3f4652;font-size:11.5px;line-height:1.6}
-.tb3w-root .detail-history__dot{flex:0 0 auto;width:5px;height:5px;border-radius:50%;background:#cbd5e1;transform:translateY(-2px)}
-.tb3w-root .detail-history__item.is-ai .detail-history__dot{background:#2563eb}
-.tb3w-root .detail-history__item.is-user .detail-history__dot{background:var(--text)}
-.tb3w-root .detail-history__text{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
-.tb3w-root .detail-history__time{flex:0 0 auto;color:var(--text-weak);font-family:var(--font-mono);font-size:10.5px}
-
-/*
- * ── RelationPanel（关系折叠面板） ──
- *
- * 用户 2026-11-20：「关系的折叠面板。你也没有做独立组件给我看给我选。没有接入。」
- *
- * 结构（变体 A，原版形态）：
- *   .rel-head   [折叠头 关系 N] [父任务 chip] [spacer] [+ 派生子任务]
- *   .rel-table
- *     .rel-columns  进行 / 搁置 / 完成 三列表头（带计数）
- *     .rel-group    每个关系类型一条组横条 + 三列（卡按自身 status 落列）
- *
- * 组横条的线色/底色、三列表头的圆点色都是**内联 style** —— 值来自
- * pure/relations-block.ts（原版 relations.js:118-125 的颜色），
- * CSS 里不写第二份（写第二份就会漂）。
- */
-.tb3w-root .rel-panel{display:flex;flex-direction:column;gap:8px;min-width:0}
-.tb3w-root .rel-head{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
-.tb3w-root .rel-head__spacer{flex:1 1 auto}
-.tb3w-root .rel-head__total{display:inline-flex;align-items:center;padding:4px 2px;color:var(--text);font-size:12px;font-weight:600;white-space:nowrap}
-.tb3w-root .rel-toggle{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid var(--border);border-radius:6px;background:#f3f4f6;color:var(--text);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background .12s}
-.tb3w-root .rel-toggle:hover{background:#e5e7eb}
-.tb3w-root .rel-toggle.is-open{background:#eef1f5}
-.tb3w-root .rel-toggle__caret{flex:0 0 auto;color:var(--text-secondary);font-size:10px}
-.tb3w-root .rel-toggle__label{flex:0 0 auto;white-space:nowrap}
-.tb3w-root .rel-toggle__summary{min-width:0;margin-left:2px;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary);font-weight:400;white-space:nowrap}
-.tb3w-root .rel-parent-chip{display:inline-flex;align-items:center;gap:6px;max-width:260px;min-width:0;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12px;text-align:left;cursor:pointer}
-.tb3w-root .rel-parent-chip:hover{border-color:var(--text-weak)}
-.tb3w-root .rel-parent-chip__arrow{flex:0 0 auto;color:var(--text-weak);font-size:11px;white-space:nowrap}
-.tb3w-root .rel-table{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-card)}
-.tb3w-root .rel-columns{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #f2f4f7;background:#f9fafb}
-.tb3w-root .rel-columns__cell{display:flex;align-items:center;gap:5px;padding:7px 10px;border-top:2px solid transparent;border-right:1px solid #f2f4f7;color:var(--text-secondary);font-size:11.5px;font-weight:600}
-.tb3w-root .rel-columns__cell:last-child{border-right:none}
-.tb3w-root .rel-columns__cell--active{border-top-color:#2563eb}
-.tb3w-root .rel-columns__cell--shelved{border-top-color:#f59e0b}
-.tb3w-root .rel-columns__cell--ended{border-top-color:#10b981}
-.tb3w-root .rel-columns__dot{flex:0 0 auto;width:6px;height:6px;border-radius:50%}
-.tb3w-root .rel-columns__count{color:var(--text-weak);font-family:var(--font-mono);font-size:10.5px;font-weight:700}
-.tb3w-root .rel-group + .rel-group{border-top:1px solid #f2f4f7}
-.tb3w-root .rel-group__head{display:flex;align-items:center;gap:6px;padding:5px 10px 5px 8px;border-left:3px solid transparent;color:var(--text);font-size:11.5px;font-weight:600}
-.tb3w-root .rel-group__line{flex:0 0 auto;width:12px;height:2px}
-.tb3w-root .rel-group__label{flex:0 0 auto}
-.tb3w-root .rel-group__count{color:var(--text-secondary);font-family:var(--font-mono);font-size:10.5px}
-.tb3w-root .rel-group__body{display:grid;grid-template-columns:repeat(3,1fr)}
-.tb3w-root .rel-group__col{display:flex;flex-direction:column;gap:5px;min-width:0;padding:8px 10px;border-right:1px solid #f2f4f7}
-.tb3w-root .rel-group__col:last-child{border-right:none}
-.tb3w-root .rel-group__cards{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px}
-.tb3w-root .rel-flat{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg-card)}
-.tb3w-root .rel-chip{display:flex;align-items:center;gap:5px;width:100%;min-width:0;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12px;text-align:left;cursor:pointer}
-.tb3w-root .rel-chip:hover{border-color:var(--text-weak);background:#fafafa}
-.tb3w-root .rel-chip__arrow{flex:0 0 auto;color:var(--text-weak);font-size:10px}
-.tb3w-root .rel-chip__id{flex:0 0 auto;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:-.2px}
-.tb3w-root .rel-chip__title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
-.tb3w-root .rel-group__cards .rel-chip{width:auto;max-width:100%}
-.tb3w-root .rel-group__cards .rel-chip__title{max-width:200px}
-.tb3w-root .rel-empty{padding:16px;border:1px dashed var(--border);border-radius:8px;color:var(--text-weak);font-size:12px;text-align:center}
-.tb3w-root .rel-foot{display:flex}
-.tb3w-root .rel-add{font-size:11.5px}
-
-/* ── StatusMenu（portal 到 body ⇒ 用 data-menu 作用域） ── */
-[data-menu="status"]{position:fixed;z-index:150;width:280px;min-width:250px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);box-shadow:0 10px 30px rgb(0 0 0 / 14%);overflow-y:auto;color:var(--text);font-size:13px;line-height:1.5}
-[data-menu="status"] .menu__title{padding:4px 8px 6px;color:var(--text-weak);font-size:11px;font-weight:600}
-[data-menu="status"] .menu__item{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border:0;border-radius:5px;background:none;color:var(--text);font-family:inherit;font-size:12px;text-align:left;cursor:pointer}
-[data-menu="status"] .menu__item:hover,[data-menu="status"] .menu__item.is-active{background:#f3f4f6}
-[data-menu="status"] .menu__tone--unspecified{color:var(--state-unspecified-fg)}
-[data-menu="status"] .menu__tone--submitted{color:var(--state-submitted-fg)}
-[data-menu="status"] .menu__tone--working{color:var(--state-working-fg)}
-[data-menu="status"] .menu__tone--inputRequired{color:var(--state-inputRequired-fg)}
-[data-menu="status"] .menu__tone--authRequired{color:var(--state-authRequired-fg)}
-[data-menu="status"] .menu__tone--completed{color:var(--state-completed-fg)}
-[data-menu="status"] .menu__tone--failed{color:var(--state-failed-fg)}
-[data-menu="status"] .menu__tone--canceled{color:var(--state-canceled-fg)}
-[data-menu="status"] .menu__tone--rejected{color:var(--state-rejected-fg)}
-[data-menu="status"] .menu__icon{flex:0 0 auto;width:15px;text-align:center;color:var(--text-weak);font-size:11px}
-[data-menu="status"] .menu__item[class*="menu__tone--"] .menu__icon{color:inherit}
-[data-menu="status"] .menu__label{flex:0 0 auto}
-[data-menu="status"] .menu__hint{margin-left:auto;padding-left:14px;color:var(--text-weak);font-size:11px}
-[data-menu="status"] .menu__divider{height:1px;margin:4px 0;background:#f2f4f7}
-[data-menu="status"] .menu__empty{padding:8px;color:var(--text-weak);font-size:12px}
-[data-menu="status"] .menu__footer{margin-top:4px;padding:8px 8px 2px;border-top:1px solid #f2f4f7;color:var(--text-weak);font-size:11px;line-height:1.6}
-
-/* ══════════════════════════════════════════════════════════
-   3. 响应式：宽 < 700px ⇒ 上下堆叠（结构变）
-   ══════════════════════════════════════════════════════════ */
-
-@container tb3w (max-width: 700px) {
-  .tb3w-page{padding:10px 12px}
-  .tb3w-main{flex-direction:column;margin-top:6px}
-  .tb3w-list{flex:0 0 52%}
-  .tb3w-split{flex:0 0 20px;cursor:row-resize}
-  .tb3w-split__line{top:50%;bottom:auto;left:8px;right:8px;width:auto;height:0;border-left:0;border-top:3px dashed #c3cad4}
-  .tb3w-split__grip{display:none}
-  .tb3w-detail{flex:1 1 0;min-width:0;max-width:none;min-height:0}
-  /* 列名行在小容器里去掉 —— 8.5px 的列名比行本身还占地方 */
-  .tb3w-list__cols{display:none}
-
-  /* 设计图（570×920）里窄版控件小一号：chip 24px、工具栏 10.5px、筛选框 26px */
-  .tb3w-chrome > .space-bar{gap:5px;padding:4px 2px}
-  .tb3w-root .space-chip{padding:3px 10px;font-size:11px}
-  .tb3w-root .space-chip__count{font-size:9.5px}
-  .tb3w-root .ghost-btn{padding:3px 9px;font-size:11px}
-  .tb3w-root .space-action{min-width:72px}
-  .tb3w-toolbar{margin-top:8px;gap:4px 8px}
-  .tb3w-toolbar__title{font-size:12px}
-  .tb3w-toolbar__legend{order:3;flex:1 0 100%;gap:2px 9px;font-size:9.5px}
-  .tb3w-toolbar__actions{order:2}
-  .tb3w-toolbar__perm{display:none}
-  .tb3w-legend__hint--long{display:none}
-  .tb3w-legend__hint--short{display:inline}
-  .tb3w-seg__btn{padding:2px 9px;font-size:10.5px}
-  .tb3w-btn-primary{padding:3px 10px;font-size:10.5px}
-  .tb3w-filters{margin-top:6px}
-  .tb3w-filters .filter-row__spacer{display:none}
-  .tb3w-filters__tail{flex:0 1 auto;flex-wrap:wrap;gap:6px}
-  .tb3w-root .filter-row{gap:6px}
-  .tb3w-root .filter-box{height:26px}
-  .tb3w-root .filter-box__face{left:10px}
-  .tb3w-root .filter-box__title,.tb3w-root .filter-box__colon{font-size:11px}
-  .tb3w-root .filter-box__item{font-size:11px;padding:2px 3px}
-  .tb3w-root .filter-box__csep,.tb3w-root .filter-box__sep{font-size:11px}
-  .tb3w-root .filter-box__vline{margin:0 7px}
-  .tb3w-ai-chip{display:inline-flex}
-  .tb3w-filters__tail .search-box{flex:0 0 auto;width:160px}
-  .tb3w-list__head{padding:9px 12px 5px}
-  .tb3w-list__title{font-size:12px}
-  .tb3w-list__body{padding:6px 12px 10px}
-  .tb3w-root .task-card{margin-bottom:5px;padding:6px 10px}
-  .tb3w-root .task-card.is-unread-user{padding-left:8px}
-  .tb3w-root .task-card.is-unread-ai{padding-right:8px}
-  .tb3w-root .detail{padding:12px 14px;gap:11px}
-  .tb3w-root .detail-title{font-size:14px}
-  .tb3w-root .detail-history__item{font-size:10.5px}
-}
-`;
-	const DRAWER_CSS = `
-/* ── 0. 令牌（没宿主主题时用兜底色） ── */
-.tb3d-layer{
-  --tb3d-border:#d5dae1; --tb3d-border-weak:#eceff2; --tb3d-head-bg:#fbfcfd;
-  --tb3d-bg:#fff; --tb3d-text:#16181d; --tb3d-text-secondary:#6b7280;
-}
-
-/*
- * ── 1. 层：绝对定位、零高度 ──
- *
- * DSH 的 overlayAnchor 原文是 height:0;position:absolute;inset:0 0 auto。
- * 本层贴满它（= 输入框卡片顶部一条零高度线）；面板相对本层 bottom:100% 向上长，
- * 于是「面板底边 = 输入框上边缘 + 形态间距」是**结构保证**，不是调出来的。
- */
-.tb3d-layer{position:absolute;left:0;right:0;top:0;height:0;z-index:30;pointer-events:none}
-
-/* ── 2. 面板：底边贴输入框上边缘、宽度 = 输入框宽 ── */
-.tb3d-panel{
-  position:absolute;left:0;right:0;z-index:1;
-  display:flex;flex-direction:column;min-height:0;
-  border:1px solid var(--tb3d-border);background:var(--tb3d-bg);
-  overflow:hidden;pointer-events:auto;
-}
-${DRAWER_VARIANT_IDS.map((id) => `.tb3d-panel[data-drawer-variant="${id}"]{${drawerPanelCssOf(DRAWER_VARIANTS[id])}}`).join("\n")}
-/* 候选 B / C 的上滑动画；prefers-reduced-motion 下一律不动。 */
-@keyframes tb3d-rise{
-  from{transform:translateY(14px);opacity:.55}
-  to{transform:translateY(0);opacity:1}
-}
-@media (prefers-reduced-motion:reduce){.tb3d-panel{animation:none}}
-
-/* ── 3. 遮罩（只有候选 C 渲染；点它 = 点外部 = 关） ── */
-.tb3d-mask{${drawerMaskCssOf()};z-index:0}
-
-/* ── 4. 入口：正方形，右边缘贴输入框左边缘（相对 composer 卡片定位） ── */
-.tb3d-entry{
-  position:absolute;${drawerEntryCssOf()};
-  display:inline-flex;align-items:center;justify-content:center;padding:0;
-  border:1px solid var(--tb3d-border);border-radius:8px;
-  background:var(--tb3d-bg);color:var(--tb3d-text-secondary);
-  font-family:inherit;line-height:1;cursor:pointer;z-index:2;
+.tb3pbox-entry{
+  display:inline-flex;align-items:center;gap:5px;
+  height:28px;padding:0 9px;
+  border:1px solid #d5dae1;border-radius:8px;
+  background:#fff;color:#5f6673;
+  font-family:inherit;font-size:11px;line-height:1;white-space:nowrap;
+  cursor:pointer;
   transition:border-color .12s,background .12s,color .12s;
 }
-.tb3d-entry:hover{border-color:#cfd5dd;background:#f8fafc;color:#1f2328}
-.tb3d-entry[aria-expanded="true"]{border-color:#2563eb;background:#2563eb;color:#fff}
-.tb3d-entry svg{display:block}
-
-/* ── 5. 顶栏：标题 / 刷新 / 关闭 ── */
-.tb3d-head{
-  flex:0 0 auto;display:flex;align-items:center;gap:8px;height:${px(DRAWER_COMPACT_SPACING.headerHeight)};
-  padding:0 10px 0 16px;background:var(--tb3d-head-bg);border-bottom:1px solid var(--tb3d-border-weak);
-}
-.tb3d-head__title{
-  flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  color:var(--tb3d-text);font-size:13.5px;font-weight:700;letter-spacing:.01em;
-}
-.tb3d-head__actions{flex:0 0 auto;display:flex;align-items:center;gap:6px}
-.tb3d-iconbtn{
-  display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;
-  border:1px solid #e2e5ea;border-radius:6px;background:#fff;color:#6b7280;
-  font-family:inherit;line-height:1;cursor:pointer;transition:color .12s,border-color .12s,background .12s;
-}
-.tb3d-iconbtn:hover{color:#1f2328;border-color:#cfd5dd;background:#f8fafc}
-
-/* ── 6. 主体：装压缩版 Workspace；面板自己不滚（两栏各自滚） ── */
-.tb3d-body{flex:1 1 auto;display:flex;min-height:0;overflow:hidden}
-.tb3d-body > .tb3w-root{flex:1 1 auto;min-width:0;min-height:0}
-
-/*
- * ── 7. 压缩：**只收纵向间距**（数值全部来自 DRAWER_COMPACT_SPACING）──
- *
- * 面板高约 min(50vh,480px)，内容区比 V4 的 400 还略高；这套间距是照 400 高量的，
- * 只会更宽松。等用户选定形态、能测真实高度后再复量一次。
- */
-.tb3d-panel .tb3w-page{padding:${px(DRAWER_COMPACT_SPACING.pagePadY)} ${px(DRAWER_COMPACT_SPACING.pagePadX)}}
-
-/*
- * chrome 固定两行（用户 2026-11-20：「我要的抽屉视图是两行」）。
- *
- * ⚠ 旧版这里把 chrome 改成 flex-direction:row 并 display:none 掉了
- *   title / legend / filters —— 用户看到的「图例弄没了」「挤成一行」就是这 6 条
- *   造成的，**不是 flex-wrap**。
- *   行 1 = 任务条 + 关系图例 + 工具栏；行 2 = 筛选按钮 + 搜索。
- */
-.tb3d-panel .tb3w-chrome{flex-direction:column;gap:0}
-.tb3d-panel .tb3w-chrome > .space-bar{flex:0 1 auto;min-width:0;padding:2px 2px;gap:5px}
-.tb3d-panel .tb3w-toolbar{flex:0 0 auto;justify-content:flex-end;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)};gap:4px 8px}
-.tb3d-panel .tb3w-toolbar__perm{display:none}
-/* 行 2：筛选 + 搜索。参与文档流（不浮层）—— 展开只撑高这一行。 */
-.tb3d-panel .tb3w-filters{flex:0 0 auto;margin-top:${px(DRAWER_COMPACT_SPACING.toolbarGap)}}
-.tb3d-panel .tb3w-main{margin-top:${px(DRAWER_COMPACT_SPACING.mainGap)}}
-
-/* 控件小一号（高度不变形，只影响视觉密度） */
-.tb3d-panel .tb3w-root .space-chip{padding:2px 9px;font-size:11px}
-.tb3d-panel .tb3w-root .space-action{min-width:0;padding:2px 9px;font-size:11px}
-.tb3d-panel .tb3w-root .ghost-btn{padding:2px 9px;font-size:11px}
-.tb3d-panel .tb3w-seg__btn{padding:2px 9px;font-size:10.5px}
-.tb3d-panel .tb3w-btn-primary{padding:3px 10px;font-size:10.5px}
-
-/* 列表 */
-.tb3d-panel .tb3w-list__head{padding:${px(DRAWER_COMPACT_SPACING.listHeadPadTop)} 12px ${px(DRAWER_COMPACT_SPACING.listHeadPadBottom)}}
-.tb3d-panel .tb3w-list__cols{display:none}
-.tb3d-panel .tb3w-list__body{padding:${px(DRAWER_COMPACT_SPACING.listBodyPadTop)} ${px(DRAWER_COMPACT_SPACING.listBodyPadX)} ${px(DRAWER_COMPACT_SPACING.listBodyPadBottom)}}
-.tb3d-panel .tb3w-root .task-card{margin-bottom:${px(DRAWER_COMPACT_SPACING.cardGap)};padding:${px(DRAWER_COMPACT_SPACING.cardPadY)} 10px}
-
-/* 详情 */
-.tb3d-panel .tb3w-root .detail{padding:${px(DRAWER_COMPACT_SPACING.detailPadY)} ${px(DRAWER_COMPACT_SPACING.detailPadX)};gap:${px(DRAWER_COMPACT_SPACING.detailGap)}}
-.tb3d-panel .tb3w-root .detail-sections{gap:${px(DRAWER_COMPACT_SPACING.sectionGap)}}
-.tb3d-panel .tb3w-root .detail-title{font-size:14px}
-.tb3d-panel .tb3w-root .detail-history{gap:5px}
-.tb3d-panel .tb3w-root .detail-history__item{font-size:10.5px}
-.tb3d-panel .tb3w-root .detail-action{padding:3px 9px;font-size:11px}
-
-/*
- * ── 8. 宽版：左列固定 320（列表 316px、详情吃剩余）──
- *
- * ⚠ 只在容器宽 ≥ 700 时生效：窄于 700 时 Workspace 自己会切上下堆叠
- *   （@container tb3w (max-width:700px)），这时再钉死 320 宽会把堆叠挤坏。
- */
-@container tb3w (min-width: 700px) {
-  .tb3d-panel .tb3w-list{flex:0 0 ${px(DRAWER_COMPACT_SPACING.listWidth)}}
-  .tb3d-panel .tb3w-detail{flex:1 1 0;min-width:0;max-width:none}
-}
-`;
-	/**
-	* 章节渲染（`Section` / `Markdown` / `AskSection`）的样式 —— 作用域 `.tb3w-root`。
-	*
-	* ## 为什么单独一段
-	*
-	* 这三个组件是 C6 定稿的，但它们的 CSS 一直**只存在于预览**里：
-	* `dev/preview/section/style.css` + `dev/preview/markdown/style.css`。
-	* 2026-11-20 章节接进 `CardDetail`（详情是产品级页面）⇒ 必须在产品样式里
-	* 收口一份，否则详情里的章节是**裸文本**：没有外框、markdown 没有排版、
-	* ask 没有选项样式。
-	*
-	* 规则**逐条照搬**那两个 preview CSS，只加 `.tb3w-root` 前缀，类名一个没改
-	* （那些预览验收过的 DOM 仍然对得上）。
-	*
-	* ## 间距归父容器管
-	*
-	* `.section-block` 在预览里自带 `margin-bottom:10px`；产品里章节挂在
-	* `.detail-sections`（`display:flex;gap:12px`）下 ⇒ 这里**不加 margin**，
-	* 否则间距叠加成 22px。
-	*
-	* ⚠ 本文件是模板字符串 —— 注释里不能出现反引号。
-	*/
-	const SECTION_CSS = `
-/* ── 一章的外框 ── */
-.tb3w-root .section-block{padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card)}
-/* 可编辑：整章是点击目标 ⇒ 给 hover 反馈；只读时没有 pointer/hover（点不动看得出来） */
-.tb3w-root .section-block.is-editable{cursor:pointer;transition:border-color .12s,background .12s}
-.tb3w-root .section-block.is-editable:hover{border-color:var(--accent);background:#f8fbff}
-.tb3w-root .section-block__label{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;font-size:11.5px;color:var(--text-secondary)}
-.tb3w-root .section-block__label-text{font-weight:600}
-/* 内容类型标签（已建卡/草稿里只显示、不可改 —— 用户 2026-11-22） */
-.tb3w-root .section-block__kind{padding:1px 8px;border-radius:999px;background:#f1f3f6;color:var(--text-secondary);font-size:10.5px;white-space:nowrap}
-.tb3w-root .section-block__edit-hint{margin-left:auto;font-size:10.5px;color:var(--accent);opacity:0;transition:opacity .12s}
-.tb3w-root .section-block.is-editable:hover .section-block__edit-hint{opacity:1}
-/* text 正文：保留换行与缩进（text 与 markdown 的区别就在这里） */
-.tb3w-root .section-block__text{font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-wrap;word-break:break-word}
-/* ── 三相位的内联编辑（用户 2026-11-21 采纳） ── */
-.tb3w-root .section-block__field{display:flex;flex-direction:column;gap:6px;min-width:0}
-.tb3w-root .section-block__textarea{width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border-strong,#d7dbe2);border-radius:6px;background:#fff;color:var(--text);font:12.5px/1.7 inherit;resize:vertical}
-.tb3w-root .section-block__textarea:focus{outline:none;border-color:var(--accent)}
-.tb3w-root .section-block__textarea.is-readonly{background:#fafbfc;color:var(--text-secondary);border-color:var(--border,#e7e9ee);cursor:default}
-.tb3w-root .section-block__textarea.is-mono{font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
-.tb3w-root .section-block__decl{border:1px dashed var(--border-strong,#d7dbe2);border-radius:6px;background:#fafbfc;padding:5px 9px}
-.tb3w-root .section-block__decl summary{cursor:pointer;font-size:11px;color:var(--text-secondary)}
-.tb3w-root .section-block__decl-input{width:100%;box-sizing:border-box;margin-top:5px;padding:5px 8px;border:1px solid var(--border-strong,#d7dbe2);border-radius:5px;background:#fff;font:11.5px/1.6 inherit;color:var(--text)}
-.tb3w-root .section-block__actions{display:flex;gap:6px}
-/* 空态 / 模板作者写的灰字 */
-.tb3w-root .section-block__placeholder{font-size:12.5px;line-height:1.7;color:var(--text-weak);font-style:italic}
+.tb3pbox-entry:hover{border-color:#cfd5dd;background:#f8fafc;color:#1f2328}
+/* 有人动过档位 ⇒ 加一点强调（一眼看出「我设过什么」） */
+.tb3pbox-entry[data-non-default="true"]{border-color:#2563eb;color:#1d4ed8}
+.tb3pbox-entry svg{display:block;flex:0 0 auto}
+.tb3pbox-entry__summary{overflow:hidden;text-overflow:ellipsis;max-width:200px}
 
 /* ══════════════════════════════════════════════════════════
-   markdown（来自 dev/preview/markdown/style.css）
+   2. 浮层容器（用户 2026-11-23：「他还是全屏的」）
    ══════════════════════════════════════════════════════════ */
-.tb3w-root .md{line-height:1.65;color:var(--text);word-break:break-word}
-.tb3w-root .md > *:first-child{margin-top:0}
-.tb3w-root .md > *:last-child{margin-bottom:0}
-.tb3w-root .md p,.tb3w-root .md ul,.tb3w-root .md ol,.tb3w-root .md blockquote,.tb3w-root .md table,.tb3w-root .md pre{margin:.6em 0}
-.tb3w-root .md h1,.tb3w-root .md h2,.tb3w-root .md h3,.tb3w-root .md h4,.tb3w-root .md h5,.tb3w-root .md h6{margin:1em 0 .5em;line-height:1.3;font-weight:600;color:var(--text)}
-.tb3w-root .md h1{font-size:1.5em}
-.tb3w-root .md h2{font-size:1.28em}
-.tb3w-root .md h3{font-size:1.12em}
-.tb3w-root .md h4,.tb3w-root .md h5,.tb3w-root .md h6{font-size:1em}
-.tb3w-root .md ul,.tb3w-root .md ol{padding-left:1.5em}
-.tb3w-root .md li + li{margin-top:.2em}
-.tb3w-root .md blockquote{padding:.2em 0 .2em .9em;border-left:3px solid var(--border);color:var(--text-secondary)}
-.tb3w-root .md hr{margin:1.2em 0;border:0;border-top:1px solid var(--border)}
-.tb3w-root .md a{color:var(--accent);text-decoration:none}
-.tb3w-root .md a:hover{text-decoration:underline}
-.tb3w-root .md code{padding:.15em .35em;border-radius:4px;background:#f1f3f6;font-family:var(--font-mono);font-size:.92em}
-/* 代码块：pre.md-code 里再套 code.md-code__body（内层不重复加底色） */
-.tb3w-root .md pre.md-code{position:relative;overflow-x:auto;padding:.9em .9em .8em;border:1px solid var(--border);border-radius:7px;background:#f7f8fa}
-.tb3w-root .md pre.md-code > code.md-code__body{padding:0;background:none;font-size:.9em;white-space:pre}
-/* 语言标签挂右上角（data-lang 只是数据，展示靠伪元素） */
-.tb3w-root .md pre.md-code[data-lang]::before{content:attr(data-lang);position:absolute;top:.35em;right:.7em;font-size:.72em;color:#9aa1ad;text-transform:uppercase;letter-spacing:.06em}
-.tb3w-root .md table.md-table{border-collapse:collapse;width:100%;font-size:.95em}
-.tb3w-root .md table.md-table th,.tb3w-root .md table.md-table td{padding:.35em .7em;border:1px solid var(--border);text-align:left}
-.tb3w-root .md table.md-table th{background:#f7f8fa;font-weight:600}
-.tb3w-root .md table.md-table th[align='center'],.tb3w-root .md table.md-table td[align='center']{text-align:center}
-.tb3w-root .md table.md-table th[align='right'],.tb3w-root .md table.md-table td[align='right']{text-align:right}
-/* 任务项：方框由组件产出（span.md-task__box），这里只管排版 */
-.tb3w-root .md li.md-task{list-style:none;margin-left:-1.2em}
-.tb3w-root .md li.md-task .md-task__box{display:inline-block;width:1.5em;color:var(--text-secondary)}
-.tb3w-root .md li.md-task.is-done{color:var(--text-secondary)}
+
+/*
+ * 锚点：正好裹住入口按钮，给浮层当定位基准。
+ *
+ * ⚠ z-index:1200 不是随手写的（用户 2026-11-24：「有什么东西把权限的位置弄走了」）：
+ *   DSH 自己的「访问模式」下拉菜单是 position:fixed + z-index:1100，从它自己的
+ *   触发器往上弹。我们这一条入口就插在同一行、紧挨着那个触发器 ——
+ *   菜单一开，它的**右下角**正好压到我们按钮的左上角（实测水平重叠 ~6px，
+ *   垂直只差 4px 的间隙），看上去就是「权限的位置被弄走了」。
+ *
+ *   ⇒ 把锚点抬到 1200（高于 DSH 菜单的 1100），保证任何情况下我们的按钮
+ *     都画在菜单之上、且可点 —— 不改变位置，只保证不被盖住。
+ *     同处一个层叠上下文里才有效，所以 position:relative 必须保留。
+ */
+.tb3pbox-anchor{position:relative;z-index:1200;display:inline-flex;align-items:center}
+
+/*
+ * 浮层：贴按钮**上方**弹出（composer 在视口底部，向下弹会出界）。
+ *
+ * 宽度 340 —— 足够一行放「任务板限制工具调用」这种档位名 + 右侧单选圈，
+ * 又不至于把 composer 上方盖掉一大片。高度按内容，最多 70vh 后可滚。
+ */
+.tb3pbox-pop{
+  position:absolute;left:0;bottom:calc(100% + 8px);z-index:900;
+  width:340px;max-height:min(70vh,520px);overflow-y:auto;
+  border:1px solid #d5dae1;border-radius:12px;
+  background:#fff;color:#16181d;
+  box-shadow:0 12px 32px rgb(15 23 42 / 16%),0 2px 8px rgb(15 23 42 / 8%);
+  font-family:inherit;
+  animation:tb3pbox-pop-in .12s ease-out;
+}
+@keyframes tb3pbox-pop-in{
+  from{opacity:0;transform:translateY(4px)}
+  to{opacity:1;transform:translateY(0)}
+}
+/* 关闭按钮压在面板标题右侧（面板自带 h2，浮层不再重复渲染标题）。 */
+.tb3pbox-pop__close{
+  position:absolute;top:8px;right:8px;
+  display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;padding:0;
+  border:1px solid transparent;border-radius:7px;
+  background:transparent;color:#5f6673;
+  font-family:inherit;font-size:16px;line-height:1;
+  cursor:pointer;transition:background .12s,color .12s;
+}
+.tb3pbox-pop__close:hover{background:#f1f3f6;color:#16181d}
+
+/*
+ * 面板进浮层后要**收紧**：全屏版的 20px 段距 + 大标题在 340px 宽的浮层里太占地方。
+ * ⚠ 只覆盖间距/字号，不动 PermissionPanel 自己的结构（那份是全屏与预览共用的）。
+ * ⚠ 本段在模板字符串里 —— 注释中**不能出现反引号**，会提前结束字符串（踩过一次）。
+ */
+.tb3pbox-pop .tb3perm{padding:14px 14px 12px}
+.tb3pbox-pop .tb3perm__head{padding-right:26px;margin-bottom:10px}
+.tb3pbox-pop .tb3perm__title{font-size:13px}
+.tb3pbox-pop .tb3perm__intro{font-size:11px;margin-top:4px}
+.tb3pbox-pop .tb3perm__foot{font-size:11px;padding-top:8px}
+`;
+	// packages/dsh-permissions/src/renderers/tool-permission/template-auth-css.ts
+	/**
+	* 「模板授权」页的样式（前缀 `tb3ta-`，和其它页不共享类名）。
+	*
+	* ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**。
+	*
+	* ## 折叠（issue #56）
+	*
+	* 折叠组件的壳 / 两态 / 矩形都在 `@taskboard/dsh-client/fold-pill` 的
+	* `FOLD_PILL_CSS` 里（与科技树**同一份**），本文件只负责「在左栏里怎么摆」：
+	* 胶囊与矩形**同宽**（都撑满左栏），矩形内的内容留 6px 内边距。
+	*/
+	const TEMPLATE_AUTH_CSS = `
+/* ── 页面骨架：左栏固定宽 + 右栏吃剩余 ── */
+.tb3ta-page{display:flex;gap:10px;height:100%;min-height:0;padding:2px}
+.tb3ta-side{flex:0 0 252px;display:flex;flex-direction:column;min-height:0;overflow:auto;padding:8px 8px 10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff}
+.tb3ta-main{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid #e5e7eb;border-radius:10px;background:#fff;overflow:hidden}
+.tb3ta-scroll{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
+
+/* ── 左栏：折叠容器 ── */
+.tb3ta-fold{display:flex;flex-direction:column;flex:0 0 auto}
+.tb3ta-fold + .tb3ta-fold{margin-top:6px}
+/* 授权页在页面头之下，吃掉剩余高度（否则 height:100% 会把头部高度算重） */
+.tb3g-root > .tb3ta-page{flex:1 1 auto;min-height:0}
+/* 胶囊与矩形同宽（都撑满左栏）—— 用户要求矩形左右宽对齐胶囊 */
+.tb3ta-fold > .tb3-fold-pill{width:100%}
+.tb3ta-fold > .tb3-fold-rect{width:100%;padding-left:6px;padding-right:6px;padding-bottom:6px}
+/* 选中的档位 / 模板 ⇒ 那一节的胶囊也标出来（仅靠行内高亮时，收起后看不出选了什么） */
+.tb3ta-fold > .tb3-fold-pill[data-tone="selected"]{border-color:#2563eb;background:#e8f0fe;color:#1d4ed8}
+.tb3ta-fold--domain{margin:2px 0}
+
+/* ── 左栏：档位 / 领域 / 模板行 ── */
+.tb3ta-tiers{display:flex;flex-direction:column;gap:2px;padding:2px 0}
+.tb3ta-domain{display:flex;flex-direction:column;gap:1px;padding:2px 0 0}
+.tb3ta-tpl{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:5px 9px;border:0;background:transparent;color:#1f2328;font-family:inherit;font-size:12px;text-align:left;cursor:pointer;border-radius:6px}
+.tb3ta-tpl:hover{background:#f6f8fb}
+/*
+ * 选中态（issue #57）：左侧竖条 + 底色 + 加粗。
+ * 「点了一个也看不出选没选中」是 issue 的原话 ⇒ 三样都给上，不靠单一线索。
+ */
+.tb3ta-tpl.is-picked{background:#e8f0fe;color:#1d4ed8;font-weight:700;box-shadow:inset 3px 0 0 #2563eb}
+.tb3ta-tpl:focus-visible{outline:2px solid #2563eb;outline-offset:-1px}
+.tb3ta-tpl__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tb3ta-tpl__count{flex:0 0 auto;min-width:20px;padding:0 5px;border-radius:9px;background:#f1f3f7;color:#6b7280;font-size:10.5px;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
+.tb3ta-tpl.is-picked .tb3ta-tpl__count{background:#c7ddff;color:#1d4ed8}
+.tb3ta-tpl--tier{font-weight:600}
+.tb3ta-tpl--tier .tb3ta-tpl__name::before{content:'';display:inline-block;width:6px;height:6px;margin-right:7px;border-radius:2px;background:#a78bfa;vertical-align:middle}
+
+/* ── 右栏头部 ── */
+.tb3ta-head{flex:0 0 auto;padding:9px 12px;border-bottom:1px solid #eef1f5}
+.tb3ta-head__title{display:flex;align-items:baseline;gap:8px;min-width:0}
+.tb3ta-head__domain{flex:0 0 auto;padding:0 6px;border-radius:5px;background:#f1f3f7;color:#6b7280;font-size:10.5px;line-height:16px}
+.tb3ta-head__name{font-size:13px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb3ta-head__ref{flex:0 0 auto;color:#9ca3af;font-size:10.5px}
+.tb3ta-head__edit{margin-left:auto;flex:0 0 auto}
+.tb3ta-head__sum{margin:5px 0 0;color:#6b7280;font-size:11.5px}
+.tb3ta-head__sum b{color:#111827;font-variant-numeric:tabular-nums}
+/* 模板详情里「其中 N 个来自全局档位」那一行（全局档位不在这里逐段列） */
+.tb3ta-head__global{margin:3px 0 0;color:#7c6bb0;font-size:11px;line-height:1.6}
+.tb3ta-head__global b{color:#5b21b6;font-variant-numeric:tabular-nums}
+/* 不能编辑时的原因（issue #57：必须说清为什么） */
+.tb3ta-readonly{margin:5px 0 0;color:#b45309;font-size:11.5px;line-height:1.6}
+
+/* ── 来源分段 ── */
+.tb3ta-sec{padding:8px 12px;border-bottom:1px solid #f3f5f8}
+.tb3ta-sec:last-of-type{border-bottom:0}
+.tb3ta-sec__head{display:flex;align-items:center;gap:8px}
+.tb3ta-sec__name{font-size:12px;font-weight:600;color:#374151}
+.tb3ta-sec__count{min-width:20px;padding:0 5px;border-radius:9px;background:#f1f3f7;color:#6b7280;font-size:10.5px;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
+.tb3ta-sec__lock{padding:0 6px;border-radius:5px;background:#f3f4f6;color:#6b7280;font-size:10px;line-height:16px}
+.tb3ta-tools{display:flex;flex-wrap:wrap;gap:4px 6px;margin:6px 0 0;padding:0;list-style:none}
+.tb3ta-tools__item{padding:1px 7px;border:1px solid #e5e7eb;border-radius:6px;background:#fbfcfe;color:#374151;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* ── 编辑器（issue #57） ── */
+.tb3ta-editor{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0;padding:10px 12px}
+.tb3ta-editor__head{display:flex;flex-direction:column;gap:2px}
+.tb3ta-editor__title{font-size:12.5px;font-weight:600;color:#111827}
+.tb3ta-editor__hint{font-size:11px;color:#9ca3af}
+.tb3ta-editor__list{flex:1 1 auto;min-height:0;overflow:auto;border:1px solid #eef1f5;border-radius:8px;padding:4px}
+.tb3ta-editor__row{display:flex;align-items:center;gap:7px;padding:4px 7px;border-radius:6px;font-size:11.5px;cursor:pointer}
+.tb3ta-editor__row:hover{background:#f7f9fc}
+.tb3ta-editor__row.is-checked{background:#f0f7ff}
+.tb3ta-editor__row.is-locked{opacity:.72;cursor:not-allowed}
+.tb3ta-editor__row input{margin:0;accent-color:#2563eb}
+.tb3ta-editor__name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tb3ta-editor__tag{flex:0 0 auto;padding:0 5px;border-radius:5px;background:#f3f4f6;color:#6b7280;font-size:10px;line-height:15px}
+.tb3ta-editor__foot{display:flex;align-items:center;gap:8px;padding-top:8px;border-top:1px solid #eef1f5}
+.tb3ta-editor__foot .tb3g-btn--primary{margin-left:auto}
+
+/* ── 状态块 ── */
+.tb3ta-loading{margin:12px;color:#6b7280;font-size:12px}
+.tb3ta-empty{margin:10px 8px;color:#9ca3af;font-size:11.5px}
+.tb3ta-banner{margin:8px 12px;padding:6px 10px;border-radius:8px;font-size:11.5px;line-height:1.6;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+.tb3ta-banner--bad{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
+.tb3ta-foot{margin:12px;color:#9ca3af;font-size:11px;line-height:1.7}
+.tb3ta-foot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#6b7280}
+`;
+	// packages/dsh-permissions/src/renderers/tool-permission/tool-permission-css.ts
+	/**
+	* 「工具权限」页（组图编辑器）的样式 —— `.tb3g-` 前缀，只作用于本页。
+	*
+	* ## 来源
+	*
+	* 从 `dev/preview/graph-editor/style.css`（759 行）搬来，**内容一字未改**，
+	* 只做了两处必要处理：
+	*
+	*   1. 转成 TS 字符串常量（本仓约定：CSS 跟着组件走，见 `styles.ts` 的注入链）
+	*   2. 反引号与 `${` 转义
+	*
+	* 搬进 `src/` 之后它由 `injectStyles()` 注入，因此**预览页那份 .css 不再是唯一真值**
+	* —— 改样式请改本文件。
+	*
+	* ## 为什么前缀是 `tb3g-` 而不是 `tb3w-` / `tb3d-`
+	*
+	* 本页和「任务板」面板在同一个 `main` 槽里轮流出现，但两者样式互不继承。
+	* 独立前缀避免任何一条规则漏出去影响别的入口。
+	*/
+	const TOOL_PERMISSION_CSS = `/*
+ * 「工具组图编辑器」预览样式 —— 类名统一 tb3g- 前缀，不碰产品样式。
+ * 配色对齐设计稿（docs/perm-ui-v2/b-双栏画布拖拽）。
+ */
+
+:root {
+	--tb3g-bg: #f7f8fa;
+	--tb3g-card: #fff;
+	--tb3g-border: #e5e7eb;
+	--tb3g-border-strong: #d1d5db;
+	--tb3g-text: #111827;
+	--tb3g-text-2: #6b7280;
+	--tb3g-text-3: #9ca3af;
+	--tb3g-blue: #2563eb;
+	--tb3g-blue-bg: #eff6ff;
+	--tb3g-blue-border: #bfdbfe;
+	--tb3g-purple: #6d28d9;
+	--tb3g-purple-bg: #f5f3ff;
+	--tb3g-purple-border: #c4b5fd;
+	--tb3g-danger: #dc2626;
+	--tb3g-danger-bg: #fef2f2;
+	--tb3g-danger-border: #fecaca;
+	--tb3g-ok: #059669;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	height: 100%;
+	margin: 0;
+}
+
+body {
+	background: var(--tb3g-bg);
+	color: var(--tb3g-text);
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.tb3g-root {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	padding: 18px 24px 20px;
+	gap: 12px;
+}
+
+/* ── 头部 ── */
+.tb3g-head {
+	flex: 0 0 auto;
+}
+.tb3g-title {
+	margin: 0;
+	font-size: 19px;
+	font-weight: 650;
+	letter-spacing: 0.01em;
+}
+.tb3g-sub {
+	margin: 4px 0 10px;
+	font-size: 12px;
+	color: var(--tb3g-text-2);
+}
+.tb3g-tabs {
+	display: flex;
+	gap: 6px;
+}
+.tb3g-tab {
+	padding: 5px 16px;
+	border: 1px solid var(--tb3g-border);
+	border-radius: 7px;
+	background: var(--tb3g-card);
+	color: var(--tb3g-text-2);
+	font: inherit;
+	font-size: 12.5px;
+	cursor: pointer;
+}
+.tb3g-tab.is-on {
+	background: #111827;
+	border-color: #111827;
+	color: #fff;
+	font-weight: 600;
+}
+
+/* ── 组图页：两栏 ── */
+.tb3g-graph {
+	flex: 1 1 auto;
+	display: flex;
+	gap: 12px;
+	min-height: 0;
+}
+
+.tb3g-side {
+	flex: 0 0 268px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+	padding: 12px;
+	border: 1px solid var(--tb3g-border);
+	border-radius: 10px;
+	background: var(--tb3g-card);
+}
+.tb3g-side__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	font-size: 12.5px;
+	font-weight: 600;
+}
+.tb3g-side__hint {
+	font-size: 11px;
+	font-weight: 400;
+	color: var(--tb3g-text-3);
+}
+.tb3g-side__section {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	min-height: 0;
+}
+.tb3g-side__label {
+	font-size: 11px;
+	color: var(--tb3g-text-3);
+	letter-spacing: 0.04em;
+}
+.tb3g-scroll {
+	overflow: auto;
+	min-height: 0;
+}
+.tb3g-side__section .tb3g-scroll {
+	max-height: 190px;
+}
+
+.tb3g-drag {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 9px;
+	border: 1px solid var(--tb3g-border);
+	border-radius: 7px;
+	background: var(--tb3g-card);
+	font-size: 12px;
+	cursor: grab;
+	user-select: none;
+}
+.tb3g-drag:hover {
+	border-color: var(--tb3g-blue-border);
+	background: var(--tb3g-blue-bg);
+}
+.tb3g-drag--group {
+	border-color: var(--tb3g-purple-border);
+	background: var(--tb3g-purple-bg);
+	color: var(--tb3g-purple);
+}
+.tb3g-drag__name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.tb3g-drag__count {
+	flex: 0 0 auto;
+	font-size: 11px;
+	color: var(--tb3g-text-3);
+}
+.tb3g-drag__src {
+	flex: 0 0 auto;
+	font-size: 10.5px;
+	color: var(--tb3g-text-3);
+}
+
+.tb3g-create {
+	display: flex;
+	gap: 6px;
+}
+.tb3g-create__input {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 4px 8px;
+	border: 1px solid var(--tb3g-border-strong);
+	border-radius: 6px;
+	font: inherit;
+	font-size: 12px;
+}
+
+.tb3g-btn {
+	padding: 4px 10px;
+	border: 1px solid var(--tb3g-border-strong);
+	border-radius: 6px;
+	background: var(--tb3g-card);
+	color: var(--tb3g-text);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.tb3g-btn:hover {
+	border-color: var(--tb3g-blue);
+	color: var(--tb3g-blue);
+}
+.tb3g-btn--primary {
+	border-color: var(--tb3g-blue);
+	background: var(--tb3g-blue);
+	color: #fff;
+}
+.tb3g-btn--primary:hover {
+	color: #fff;
+	opacity: 0.92;
+}
+.tb3g-btn--tiny {
+	padding: 2px 8px;
+	font-size: 11px;
+}
+.tb3g-btn:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.tb3g-tips {
+	margin-top: auto;
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: #f9fafb;
+	border: 1px solid var(--tb3g-border);
+	font-size: 11px;
+	color: var(--tb3g-text-2);
+	line-height: 1.7;
+}
+
+/* ── 画布 ── */
+.tb3g-canvaswrap {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	position: relative;
+	border: 1px solid var(--tb3g-border);
+	border-radius: 10px;
+	background: var(--tb3g-card);
+	overflow: hidden;
+}
+.tb3g-canvasbar {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--tb3g-border);
+	font-size: 12px;
+	color: var(--tb3g-text-2);
+}
+.tb3g-zoom {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	gap: 6px;
+	min-width: 0;
+}
+.tb3g-zoom__label {
+	min-width: 42px;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.tb3g-canvaswrap > .tb3g-scroll {
+	flex: 1 1 auto;
+	overflow: auto;
+}
+.tb3g-canvas {
+	position: relative;
+	width: 1200px;
+	height: 760px;
+	transform-origin: 0 0;
+	/* 网格底 —— 让人看出这是画布 */
+	background-image:
+		linear-gradient(to right, #f1f3f6 1px, transparent 1px),
+		linear-gradient(to bottom, #f1f3f6 1px, transparent 1px);
+	background-size: 24px 24px;
+}
+
+.tb3g-edges {
+	position: absolute;
+	left: 0;
+	top: 0;
+	overflow: visible;
+	pointer-events: none;
+}
+.tb3g-edge {
+	fill: none;
+	stroke: #c4b5fd;
+	stroke-width: 1.6;
+}
+.tb3g-edge--temp {
+	stroke: var(--tb3g-blue);
+	stroke-dasharray: 5 4;
+}
+.tb3g-edge--temp.is-bad {
+	stroke: var(--tb3g-danger);
+	stroke-width: 2;
+}
+
+/* ── 节点 ── */
+.tb3g-node {
+	position: absolute;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	/*
+	 * issue #54：组与工具**同一套最小宽度 + 内边距**。
+	 * 布局给的宽度（TIGHT_LAYOUT 的 groupW / toolW 已统一为 176）之外，
+	 * 这里再用 min-width 兜住「某个尺寸参数被单独改小」的情况 ——
+	 * 两类卡片不该因为一个数字漂移就长得不一样宽。
+	 */
+	min-width: 176px;
+	padding: 0 10px;
+	border-radius: 9px;
+	border: 1px solid var(--tb3g-border-strong);
+	background: var(--tb3g-card);
+	cursor: grab;
+	user-select: none;
+	overflow: hidden;
+	box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
+}
+.tb3g-node--group {
+	border-color: var(--tb3g-purple-border);
+	background: var(--tb3g-purple-bg);
+	color: var(--tb3g-purple);
+}
+.tb3g-node.is-selected {
+	outline: 2px solid var(--tb3g-blue);
+	outline-offset: 1px;
+}
+.tb3g-node__main {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+.tb3g-node__name {
+	font-size: 12px;
+	font-weight: 600;
+	/* issue #54：单行 ellipsis，标题过长时省略号而不是被裁掉/挤没 */
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.tb3g-node--tool .tb3g-node__name {
+	font-weight: 500;
+	color: var(--tb3g-text);
+}
+.tb3g-node__meta {
+	font-size: 10.5px;
+	color: var(--tb3g-text-3);
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.tb3g-node__expanded {
+	position: absolute;
+	left: 0;
+	bottom: -16px;
+	font-size: 10px;
+	color: var(--tb3g-text-3);
+	white-space: nowrap;
+}
+.tb3g-anchor {
+	position: absolute;
+	right: -6px;
+	top: 50%;
+	width: 12px;
+	height: 12px;
+	margin-top: -6px;
+	padding: 0;
+	border: 2px solid var(--tb3g-purple-border);
+	border-radius: 50%;
+	background: var(--tb3g-card);
+	cursor: crosshair;
+}
+.tb3g-anchor:hover {
+	border-color: var(--tb3g-blue);
+	background: var(--tb3g-blue-bg);
+}
+
+/* ── 状态条 / 提示 / 拒绝 ── */
+.tb3g-status {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 6px 12px;
+	border-top: 1px solid var(--tb3g-border);
+	font-size: 11.5px;
+	color: var(--tb3g-text-3);
+}
+.tb3g-status__sel {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--tb3g-text-2);
+}
+
+.tb3g-draginfo {
+	position: absolute;
+	left: 14px;
+	bottom: 44px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-width: 460px;
+	padding: 7px 11px;
+	border-radius: 8px;
+	border: 1px solid var(--tb3g-blue-border);
+	background: var(--tb3g-blue-bg);
+	color: var(--tb3g-blue);
+	font-size: 11.5px;
+	pointer-events: none;
+}
+.tb3g-draginfo.is-bad {
+	border-color: var(--tb3g-danger-border);
+	background: var(--tb3g-danger-bg);
+	color: var(--tb3g-danger);
+}
+.tb3g-draginfo__path {
+	font-weight: 600;
+}
+
+.tb3g-reject {
+	position: absolute;
+	left: 14px;
+	right: 14px;
+	bottom: 44px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 11px 14px;
+	border-radius: 9px;
+	border: 1px solid var(--tb3g-danger-border);
+	background: var(--tb3g-danger-bg);
+	color: var(--tb3g-danger);
+	font-size: 12px;
+}
+.tb3g-reject__title {
+	font-weight: 650;
+}
+.tb3g-reject__path {
+	font-weight: 600;
+	font-size: 12.5px;
+}
+.tb3g-reject__hint {
+	color: #b91c1c;
+	font-size: 11.5px;
+}
+.tb3g-reject .tb3g-btn {
+	align-self: flex-start;
+	margin-top: 2px;
+}
+
+.tb3g-ghost {
+	position: fixed;
+	z-index: 50;
+	padding: 4px 9px;
+	border-radius: 7px;
+	border: 1px solid var(--tb3g-blue);
+	background: var(--tb3g-blue-bg);
+	color: var(--tb3g-blue);
+	font-size: 11.5px;
+	pointer-events: none;
+	opacity: 0.92;
+}
+
+/* ── 工具清单 / 模板授权 ── */
+.tb3g-page {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+	padding: 14px;
+	border: 1px solid var(--tb3g-border);
+	border-radius: 10px;
+	background: var(--tb3g-card);
+	overflow: auto;
+}
+.tb3g-page__bar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.tb3g-input {
+	padding: 5px 10px;
+	border: 1px solid var(--tb3g-border-strong);
+	border-radius: 7px;
+	font: inherit;
+	font-size: 12px;
+	min-width: 260px;
+}
+.tb3g-page__count {
+	font-size: 11.5px;
+	color: var(--tb3g-text-3);
+}
+.tb3g-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+.tb3g-table th {
+	text-align: left;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--tb3g-border);
+	color: var(--tb3g-text-3);
+	font-weight: 500;
+	font-size: 11px;
+}
+.tb3g-table td {
+	padding: 6px 8px;
+	border-bottom: 1px solid #f1f2f4;
+}
+.tb3g-table__name {
+	font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.tb3g-table__groups {
+	color: var(--tb3g-purple);
+}
+.tb3g-muted {
+	color: var(--tb3g-text-3);
+}
+.tb3g-pager {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 11.5px;
+	color: var(--tb3g-text-2);
+}
+.tb3g-placeholder {
+	max-width: 620px;
+	padding: 18px;
+	border: 1px dashed var(--tb3g-border-strong);
+	border-radius: 10px;
+	background: #fbfbfc;
+}
+.tb3g-placeholder__title {
+	font-weight: 650;
+	margin-bottom: 6px;
+}
+
+.tb3g-debug {
+	position: fixed;
+	right: 6px;
+	bottom: 4px;
+	font-size: 10px;
+	color: #c3c8d0;
+	pointer-events: none;
+}
 
 /* ══════════════════════════════════════════════════════════
-   ask（来自 dev/preview/section/style.css）
+   三栏点选版（2026-11-23 重做）—— 拖拽相关样式已弃用
    ══════════════════════════════════════════════════════════ */
-.tb3w-root .ask-group + .ask-group{margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)}
-.tb3w-root .ask-group__header{margin-bottom:2px;font-size:10.5px;color:var(--text-weak)}
-.tb3w-root .ask-group__question{margin-bottom:8px;font-size:12.5px;font-weight:600}
-.tb3w-root .ask-group__options{display:flex;flex-direction:column;gap:4px}
-.tb3w-root .ask-option{display:flex;align-items:flex-start;gap:7px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer;transition:border-color .12s,background .12s}
-.tb3w-root .ask-option:hover{border-color:#93c5fd;background:#f8fbff}
-/* 只读的选项是 div —— 不给指针、不给 hover */
-/*
- * 冻结态（用户 2026-11-21「这里没有css」+ 设计稿 detail-ask-states.png）：
- *   未选中 ⇒ **去掉边框、透明底、文字弱化**（降级成一行，不占版面）
- *   已选中 ⇒ 保留边框 + 淡蓝底 + 左侧竖线
- */
-.tb3w-root .ask-option.is-readonly{cursor:default;border-color:transparent;background:transparent;color:var(--text-weak)}
-.tb3w-root .ask-option.is-readonly .ask-option__desc{color:var(--text-weak);opacity:.75}
-.tb3w-root .ask-option.is-readonly.is-picked{border-color:var(--accent);background:#eff6ff;color:var(--text)}
-.tb3w-root .ask-option.is-readonly.is-picked .ask-option__desc{color:var(--text-secondary);opacity:1}
-.tb3w-root .ask-option.is-readonly:hover{border-color:var(--border);background:var(--bg-card)}
-/* 已选：accent 描边 + 淡蓝底 + 勾 */
-.tb3w-root .ask-option.is-picked{border-color:var(--accent);background:#eff6ff}
-.tb3w-root .ask-option.is-readonly.is-picked:hover{border-color:var(--accent);background:#eff6ff}
-/* 勾的位置固定占宽 ⇒ 未选中的文字不会左右跳 */
-.tb3w-root .ask-option__mark{flex:0 0 12px;color:var(--accent);font-weight:700;line-height:1.5}
-.tb3w-root .ask-option__body{display:flex;flex:1 1 auto;flex-direction:column;gap:1px;min-width:0}
-.tb3w-root .ask-option__label{font-weight:500}
-.tb3w-root .ask-option__desc{font-size:11px;line-height:1.6;color:var(--text-secondary)}
-/* 三态徽标：未选择灰 / 都不要橙 / 已选绿 */
-.tb3w-root .ask-group__state{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:10.5px;color:var(--text-weak)}
-.tb3w-root .ask-group__state-text{padding:0 6px;border-radius:4px;background:#f1f3f6;font-family:var(--font-mono)}
-.tb3w-root .ask-group__state[data-ask-state-label='unset'] .ask-group__state-text{color:#6b7280}
-.tb3w-root .ask-group__state[data-ask-state-label='none'] .ask-group__state-text{color:#b45309;background:#fef3c7}
-.tb3w-root .ask-group__state[data-ask-state-label='picked'] .ask-group__state-text{color:#047857;background:#d1fae5}
-/* ── 选项标记：单选圆圈 / 多选方框 / 冻结勾（用户 2026-11-21） ── */
-.tb3w-root .ask-option__mark--box{flex:0 0 14px;width:14px;height:14px;box-sizing:border-box;border:1.5px solid var(--border-strong,#c5ccd6);border-radius:50%;background:#fff;margin-top:2px}
-.tb3w-root .ask-option__mark--box[data-multi='true']{border-radius:3px}
-.tb3w-root .ask-option.is-picked .ask-option__mark--box{position:relative;border-color:var(--accent);background:#fff}
-.tb3w-root .ask-option.is-picked .ask-option__mark--box::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--accent)}
-.tb3w-root .ask-option.is-picked .ask-option__mark--box[data-multi='true']::after{border-radius:1px}
 
-.tb3w-root .ask-option__mark--check{flex:0 0 14px;width:14px;color:var(--accent);font-weight:700;text-align:center;line-height:14px}
-.tb3w-root .ask-group__state-text{padding:1px 8px;border-radius:999px;background:#f1f3f6;color:var(--text-secondary);font-family:var(--font-mono);font-size:10.5px}
-/* 冻结态「未选择」带边框 —— 暗示这是一个**结果**，不是按钮 */
-.tb3w-root .ask-group[data-ask-state='unset'] .ask-group__state-text{border:1px solid var(--border-strong,#c5ccd6);background:transparent;color:var(--text-weak)}
-/* ── 问题行：问题 + 单选/多选标签 + 状态按钮 ── */
-.tb3w-root .ask-group__qrow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.tb3w-root .ask-group__qrow .ask-group__question{margin:0;flex:1 1 auto;min-width:0}
-.tb3w-root .ask-group__multitag{flex:0 0 auto;padding:0 5px;border-radius:3px;background:#f3f4f6;color:var(--text-secondary);font-size:10px}
-.tb3w-root .ask-group__state-btn{flex:0 0 auto;padding:1px 8px;font-size:10.5px}
-/* 「未选择」按钮：当前就是未选择时**亮起**（黑底白字），点它能回到这个状态 */
-/* 未选择按钮「亮起」= **蓝边框 + 蓝字，不填充**（用户 2026-11-21：
-   和组件主题一致；用边框表示这个胶囊被选中，不是蓝底） */
-.tb3w-root .ask-group__state-btn{border:1px solid var(--border-strong,#c5ccd6);border-radius:5px;background:transparent;color:var(--text-secondary);cursor:pointer}
-.tb3w-root .ask-group__state-btn.is-on{color:var(--accent);background:transparent;box-shadow:inset 0 0 0 1.5px var(--accent)}
-/* 「自己填：」—— 可点的选中入口 */
-.tb3w-root .ask-option__custom-label{flex:0 0 auto;margin:0;padding:0;border:0;background:none;color:var(--text-secondary);font:inherit;font-size:12px;cursor:pointer}
-.tb3w-root .ask-option__custom-label:hover{color:var(--accent)}
-/* ── 「激活」的题目：左边竖边框 ── */
-/* 左侧 12px 内边距恒定（不随状态变），边框画在 left:0 ⇒ 零位移。选择态：不是未选择就打整页左边框 */
-.tb3w-root .ask-group{position:relative;padding-left:12px}
-.tb3w-root .ask-group[data-ask-active='true']::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:2px}
-/* 冻结态：不给整页打边框，只给**选中的选项**打左边框 */
+.tb3g-graph {
+	gap: 10px;
+}
+.tb3g-side--left {
+	flex: 0 0 216px;
+}
+.tb3g-side--right {
+	flex: 0 0 244px;
+}
+.tb3g-side--right .tb3g-scroll {
+	flex: 1 1 auto;
+}
+
+/* 左栏：组列表（单选） */
+.tb3g-groupitem {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 6px 9px;
+	margin-bottom: 4px;
+	border: 1px solid var(--tb3g-border);
+	border-radius: 7px;
+	background: var(--tb3g-card);
+	color: var(--tb3g-purple);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+.tb3g-groupitem:hover {
+	border-color: var(--tb3g-purple-border);
+	background: var(--tb3g-purple-bg);
+}
+.tb3g-groupitem.is-active {
+	border-color: var(--tb3g-blue);
+	background: var(--tb3g-blue-bg);
+	color: var(--tb3g-blue);
+	font-weight: 650;
+	box-shadow: inset 2px 0 0 var(--tb3g-blue);
+}
+.tb3g-groupitem__name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.tb3g-groupitem__count {
+	flex: 0 0 auto;
+	font-size: 10.5px;
+	color: var(--tb3g-text-3);
+}
+
+/* 右栏：工具复选 */
+.tb3g-input--side {
+	width: 100%;
+	min-width: 0;
+}
+.tb3g-checkitem {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 5px 8px;
+	border-radius: 6px;
+	font-size: 12px;
+	cursor: pointer;
+}
+.tb3g-checkitem:hover {
+	background: #f7f9fc;
+}
+.tb3g-checkitem.is-checked {
+	background: var(--tb3g-blue-bg);
+}
+.tb3g-checkitem input {
+	margin: 0;
+	accent-color: var(--tb3g-blue);
+}
+.tb3g-checkitem__name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+	font-size: 11.5px;
+}
+.tb3g-checkitem__src {
+	flex: 0 0 auto;
+	font-size: 10px;
+	color: var(--tb3g-text-3);
+}
+
+/* 节点三态 */
+.tb3g-node {
+	cursor: default;
+}
+.tb3g-node--group {
+	cursor: pointer;
+}
 /*
- * 左边框的两种态（用户 2026-11-21）：
- *   冻结（ended）⇒ **选中的那个选项框**左边有边
- *   选择（active）⇒ **整个问题页**左边有边（见下面的 [data-ask-active='true']）
- * 用 ::before 绝对定位，不占位、不位移。
+ * issue #53：白底工具卡是**组成员位**，不是可编辑对象 —— 明确只读。
+ * 视觉：降一档不透明度 + not-allowed；原因写在节点 title（"这是成员位…"）。
+ * 交互层：GraphNodeBox 对工具节点**不给** role / tabIndex / onClick。
  */
-.tb3w-root .ask-option.is-readonly.is-picked{position:relative}
-.tb3w-root .ask-option.is-readonly.is-picked::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:7px 0 0 7px}
-/* ── 自填行：圆圈 + 文本框 ── */
-.tb3w-root .ask-option--custom{cursor:default;align-items:center}
-.tb3w-root .ask-option--custom .ask-group__custom{flex:1 1 auto;min-width:0;padding:4px 8px;border:1px dashed var(--border-strong,#c5ccd6);border-radius:5px;background:#fafbfc;font:12px/1.5 inherit;color:var(--text)}
-.tb3w-root .ask-group__custom-values{font-size:10.5px;color:var(--text-secondary)}
-/* 「都不要」+ 自填 */
-.tb3w-root .ask-group__actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:9px;padding-top:9px;border-top:1px dashed #f0f2f6}
-.tb3w-root .ask-group__custom{flex:1 1 200px;min-width:120px;padding:4px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:12px}
-.tb3w-root .ask-group__custom:focus{outline:none;border-color:var(--accent)}
+.tb3g-node--tool.is-readonly {
+	cursor: not-allowed;
+	opacity: 0.86;
+}
+.tb3g-node--tool.is-readonly .tb3g-node__meta {
+	color: #9ca3af;
+}
+.tb3g-node.is-active {
+	border-color: var(--tb3g-blue);
+	box-shadow:
+		0 0 0 2px rgb(37 99 235 / 25%),
+		0 1px 2px rgb(15 23 42 / 8%);
+}
+.tb3g-node.is-member {
+	background: #eef4ff;
+	border-color: #93b4f8;
+}
+.tb3g-node.is-blocked {
+	border-color: var(--tb3g-danger);
+	background: var(--tb3g-danger-bg);
+	color: var(--tb3g-danger);
+	cursor: not-allowed;
+	opacity: 0.95;
+}
+.tb3g-node.is-blocked .tb3g-node__meta {
+	color: #ef4444;
+}
+
+/* 提示条 */
+.tb3g-notice {
+	position: absolute;
+	left: 14px;
+	bottom: 42px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	max-width: calc(100% - 28px);
+	padding: 8px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--tb3g-blue-border);
+	background: var(--tb3g-blue-bg);
+	color: var(--tb3g-blue);
+	font-size: 11.5px;
+}
+.tb3g-notice.is-bad {
+	border-color: var(--tb3g-danger-border);
+	background: var(--tb3g-danger-bg);
+	color: var(--tb3g-danger);
+}
+
+/* 状态条图例 */
+.tb3g-status__legend {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.tb3g-dot {
+	width: 9px;
+	height: 9px;
+	border-radius: 3px;
+	border: 1px solid var(--tb3g-border-strong);
+	margin-left: 6px;
+}
+.tb3g-dot--active {
+	border-color: var(--tb3g-blue);
+	background: var(--tb3g-blue-bg);
+}
+.tb3g-dot--member {
+	border-color: #93b4f8;
+	background: #eef4ff;
+}
+.tb3g-dot--blocked {
+	border-color: var(--tb3g-danger);
+	background: var(--tb3g-danger-bg);
+}
+/* issue #53：白底成员位（只读）的图例 */
+.tb3g-dot--readonly {
+	border-color: var(--tb3g-border-strong);
+	background: #fff;
+	opacity: 0.7;
+}
+
+.tb3g-crumb {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.tb3g-crumb__hint {
+	font-size: 11px;
+	color: var(--tb3g-text-3);
+}
+/* 节点内部改成一列（名字在上、元信息在下） */
+.tb3g-node {
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: center;
+	gap: 1px;
+}
+
+/* 调试数据只给 CDP 读，不该挡在界面上 */
+.tb3g-debug {
+	position: absolute;
+	left: -10000px;
+	top: 0;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+/* ── 列头标签（不画线，只标层） ── */
+.tb3g-collabel {
+	position: absolute;
+	font-size: 10px;
+	color: var(--tb3g-text-3);
+	letter-spacing: 0.04em;
+	pointer-events: none;
+	user-select: none;
+}
+
+/* ── 工具清单页：直接所属组 chips + 连通组数 ── */
+.tb3g-chips {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+.tb3g-chip {
+	padding: 1px 7px;
+	border-radius: 999px;
+	border: 1px solid var(--tb3g-purple-border);
+	background: var(--tb3g-purple-bg);
+	color: var(--tb3g-purple);
+	font-size: 10.5px;
+	white-space: nowrap;
+}
+.tb3g-chip--more {
+	border-color: var(--tb3g-border-strong);
+	background: #f3f4f6;
+	color: var(--tb3g-text-2);
+}
+.tb3g-table__count {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	color: var(--tb3g-text-2);
+	width: 84px;
+}
+
+/* 分列后节点更紧凑（行距由 layout 的 gapY=8 决定） */
+.tb3g-node {
+	box-shadow: 0 1px 1px rgb(15 23 42 / 5%);
+}
 
 /* ══════════════════════════════════════════════════════════
-   未知 $type / 脏数据（降级成可展开的原始 JSON）
+   页面外壳（ToolPermissionPage）：常驻提示条 + 载入态
    ══════════════════════════════════════════════════════════ */
-.tb3w-root .section-block__unknown{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
-.tb3w-root .payload-box{width:100%;max-height:260px;margin:0;padding:9px 11px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:#f6f7f9;font-family:var(--font-mono);font-size:10.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;cursor:text}
-`;
+
+/* 外壳：竖向排列「提示条 + 组图」，组图吃掉剩余高度 */
+.tb3g-shell {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+/*
+ * 常驻提示条（只用于**失败 / 降级**，不再有「暂不持久化」的黄条 —— issue #58）。
+ *
+ * ⚠ 不是组件里那个 .tb3g-notice —— 那是绝对定位、几秒后消失的一次性 toast
+ *   （操作反馈）；这里是常驻状态说明，两者语义不同，不要合并成一个类。
+ */
+.tb3g-banner {
+	margin: 8px 24px 0;
+	padding: 7px 12px;
+	border: 1px solid #fecaca;
+	border-radius: 8px;
+	background: #fef2f2;
+	color: #b91c1c;
+	font-size: 12px;
+	line-height: 1.5;
+	flex: 0 0 auto;
+}
+
+/*
+ * issue #55：工具清单的**来源说明**（共 N 个 / 来自哪里）。
+ * 常驻一行，和「失败红条」分开：一个说事实，一个说异常。
+ */
+.tb3g-source {
+	flex: 0 0 auto;
+	margin: 6px 24px 0;
+	font-size: 11.5px;
+	color: var(--tb3g-text-3);
+}
+.tb3g-source b {
+	color: var(--tb3g-text-2);
+	font-variant-numeric: tabular-nums;
+}
+
+/* ── 保存状态条（issue #58）：保存中 / 已保存 / 失败可重试 ── */
+.tb3g-save {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11.5px;
+	color: var(--tb3g-text-3);
+	max-width: 420px;
+}
+.tb3g-save.is-ok {
+	color: #047857;
+}
+.tb3g-save.is-bad {
+	color: var(--tb3g-danger);
+}
+.tb3g-save__text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.tb3g-save__code {
+	flex: 0 0 auto;
+	margin-right: 4px;
+	padding: 0 5px;
+	border-radius: 4px;
+	background: var(--tb3g-danger-bg);
+	border: 1px solid var(--tb3g-danger-border);
+	font-size: 10px;
+}
+.tb3g-save__spinner {
+	width: 10px;
+	height: 10px;
+	border: 2px solid #d1d5db;
+	border-top-color: var(--tb3g-blue);
+	border-radius: 50%;
+	animation: tb3g-save-spin 0.8s linear infinite;
+}
+@keyframes tb3g-save-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* 读失败 / 空图时的整块状态（不是一行小字：这是页面级结局） */
+.tb3g-empty-state {
+	margin: 18px 24px;
+	padding: 16px 18px;
+	border: 1px solid var(--tb3g-border-strong);
+	border-radius: 10px;
+	background: #fbfbfc;
+	flex: 0 0 auto;
+}
+.tb3g-empty-state__title {
+	margin: 0 0 6px;
+	font-weight: 650;
+	font-size: 13px;
+}
+.tb3g-empty-state__text {
+	margin: 0 0 10px;
+	font-size: 12px;
+	color: var(--tb3g-text-2);
+}
+
+.tb3g-loading {
+	margin: 0;
+	padding: 18px 24px;
+	color: #6b7280;
+	font-size: 13px;
+}
+
+/* 左栏面板顶部：编组 / 授权 两个选项卡 */
+.tb3g-side__head--tabs {
+	display: flex;
+	gap: 6px;
+	padding: 6px 8px;
+	align-items: center;
+}
+.tb3g-side__head--tabs .tb3g-tab {
+	padding: 3px 12px;
+	border: 1px solid #d7dbe2;
+	border-radius: 7px;
+	background: #fff;
+	color: #4b5563;
+	font-size: 11.5px;
+}
+.tb3g-side__head--tabs .tb3g-tab.is-on {
+	border-color: #2563eb;
+	background: #2563eb;
+	color: #fff;
+	font-weight: 600;
+}
+.tb3g-groupitem__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+/* 右栏工具：直接勾选=绿勾，因组间接包含=灰勾 */
+.tb3g-checkitem[data-check='direct'] input {
+	accent-color: #12b76a;
+}
+.tb3g-checkitem[data-check='inherited'] input {
+	accent-color: #9ca3af;
+}
+.tb3g-checkitem[data-check='inherited'].is-checked {
+	background: #f3f4f6;
+}
+.tb3g-checkitem[data-check='inherited'] .tb3g-checkitem__name {
+	color: #6b7280;
+}`;
+	// packages/dsh-permissions/src/styles.ts
 	/**
-	* 全部样式。
+	* 样式 —— 权限面的五段 CSS，一个 `<style>` 运行时注入一次。
 	*
-	* ⚠ 这是唯一一处写样式的地方。组件里只用类名字符串。
+	* 形态与 `@taskboard/dsh-client/src/styles.ts` 相同（DSH 客户端产物必须是
+	* 一个 JS 文件 ⇒ CSS 写成 TS 字符串常量；颜色全走宿主主题 token）。
+	* 这四段从 dsh-client 的 injectStyles 里移过来 —— dsh-client 不再注入它们，
+	* 两边的 `STYLE_ID` 不同，互不覆盖。
+	*
+	* ## 为什么第五段（`FOLD_PILL_CSS`）要从 dsh-client 取
+	*
+	* issue #56 要求复用 `FoldPill` / `FoldRect`（组件从
+	* `@taskboard/dsh-client/fold-pill` 来）。CSS 必须跟着组件走：折叠胶囊的
+	* 两态 / 矩形只在展开时存在 / 矩形顶边压住胶囊 —— 这些样式在
+	* `@taskboard/dsh-client` 的 `fold-pill-css.ts` 里，是**同一份**
+	* （科技树也在用）。这里 import 进来，而不是在本包再抄一遍：
+	*
+	* - dsh-client 行开着时：两处注入同样的规则（后注入的等价覆盖，无副作用）；
+	* - dsh-client 行**关着**时（本包可以独立激活）：胶囊仍然有样式，
+	*   不会退化成一颗裸按钮。
 	*/
-	const STYLES = `
-.tb3-board {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  font-size: var(--dsh-content-font-size, 14px);
-  color: var(--dsw-alias-text-primary);
-  container-type: inline-size;
-}
-
-.tb3-topbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  flex: none;
-  border-bottom: 1px solid var(--dsw-alias-border-subtle);
-}
-
-.tb3-select {
-  flex: 1;
-  min-width: 0;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--dsw-alias-border-subtle);
-  background: var(--dsw-alias-bg-raised);
-  color: var(--dsw-alias-text-primary);
-  font: inherit;
-}
-
-.tb3-btn {
-  flex: none;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--dsw-alias-border-subtle);
-  background: transparent;
-  color: var(--dsw-alias-text-secondary);
-  font: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.tb3-btn:hover:not(:disabled) {
-  background: var(--dsw-alias-bg-hover);
-  color: var(--dsw-alias-text-primary);
-}
-
-.tb3-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.tb3-error {
-  margin: 8px 12px 0;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--dsw-alias-border-subtle);
-  background: var(--dsw-alias-bg-raised);
-  color: var(--dsw-alias-text-primary);
-  font-size: 0.9em;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  flex: none;
-}
-
-.tb3-error-text {
-  flex: 1;
-  min-width: 0;
-  word-break: break-word;
-}
-
-.tb3-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-
-.tb3-list {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.tb3-detail {
-  flex: 1.2;
-  min-width: 0;
-  overflow-y: auto;
-  padding: 12px;
-  border-left: 1px solid var(--dsw-alias-border-subtle);
-}
-
-@container (max-width: 560px) {
-  .tb3-body {
-    flex-direction: column;
-  }
-  .tb3-detail {
-    border-left: none;
-    border-top: 1px solid var(--dsw-alias-border-subtle);
-  }
-}
-
-.tb3-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.tb3-row:hover {
-  background: var(--dsw-alias-bg-hover);
-}
-
-.tb3-row-selected {
-  border-color: var(--dsw-alias-border-subtle);
-  background: var(--dsw-alias-bg-hover);
-}
-
-.tb3-row-id {
-  flex: none;
-  font-family: var(--dsh-code-font-family, monospace);
-  font-size: 0.85em;
-  color: var(--dsw-alias-text-tertiary);
-  min-width: 4em;
-}
-
-.tb3-row-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tb3-row-title-done {
-  text-decoration: line-through;
-  opacity: 0.7;
-}
-
-.tb3-badge {
-  flex: none;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 0.8em;
-  line-height: 1.6;
-  border: 1px solid var(--dsw-alias-border-subtle);
-  background: var(--dsw-alias-bg-raised);
-  color: var(--dsw-alias-text-secondary);
-  white-space: nowrap;
-}
-
-.tb3-badge-active {
-  background: var(--dsw-alias-bg-hover);
-  color: var(--dsw-alias-text-primary);
-}
-
-.tb3-badge-shelved {
-  border-style: dashed;
-  color: var(--dsw-alias-text-primary);
-}
-
-.tb3-badge-ended {
-  opacity: 0.65;
-}
-
-.tb3-detail-head {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.tb3-detail-title {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  font-size: 1.05em;
-  font-weight: 600;
-  word-break: break-word;
-}
-
-.tb3-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  font-size: 0.85em;
-  color: var(--dsw-alias-text-tertiary);
-}
-
-.tb3-section {
-  margin-bottom: 12px;
-}
-
-.tb3-section-label {
-  font-size: 0.85em;
-  color: var(--dsw-alias-text-tertiary);
-  margin-bottom: 4px;
-}
-
-.tb3-section-body {
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-raised);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.tb3-note {
-  font-size: 0.9em;
-  color: var(--dsw-alias-text-secondary);
-  white-space: pre-wrap;
-}
-
-.tb3-menu-wrap {
-  position: relative;
-  flex: none;
-}
-
-.tb3-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 20;
-  min-width: 8em;
-  padding: 4px;
-  border-radius: 8px;
-  border: 1px solid var(--dsw-alias-border-subtle);
-  background: var(--dsw-alias-bg-raised);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.tb3-menu-item {
-  padding: 5px 10px;
-  border-radius: 5px;
-  border: none;
-  background: transparent;
-  color: var(--dsw-alias-text-primary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.tb3-menu-item:hover:not(:disabled) {
-  background: var(--dsw-alias-bg-hover);
-}
-
-.tb3-menu-item:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.tb3-menu-empty {
-  padding: 5px 10px;
-  color: var(--dsw-alias-text-tertiary);
-  white-space: nowrap;
-}
-
-.tb3-empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: var(--dsw-alias-text-tertiary);
-  font-size: 0.9em;
-}
-`;
-	/**
-	* 把样式插进文档（幂等）。
-	*
-	* ## 为什么不用 `ctx.effect` 管理
-	*
-	* 样式是**全局的、幂等的**：插一次就够，卸载时移除会让"另一个标签页
-	* 还在用"的情况白屏。所以故意不做清理 —— 一个 `<style>` 元素的开销
-	* 可以忽略，而漏删比多留危险得多。
-	*/
+	/** 注入用的 `<style>` 元素的 id（重复注入时用它去重）。 */
+	const STYLE_ID = "taskboard3-permissions-styles";
+	/** 把样式插进文档（幂等，故意不做清理 —— 全局幂等资源，漏删比多留危险）。 */
 	function injectStyles() {
 		if (typeof document === "undefined") return;
-		if (document.getElementById("taskboard3-styles") !== null) return;
+		if (document.getElementById("taskboard3-permissions-styles") !== null) return;
 		const element = document.createElement("style");
 		element.id = STYLE_ID;
-		element.textContent = `${STYLES}\n${CREATE_CSS}\n${WORKSPACE_CSS}\n${SECTION_CSS}\n${SEARCHBOX_CSS}\n${DRAWER_CSS}\n${TECHTREE_CSS}`;
-		document.head.appendChild(element);
+		element.textContent = `${PERMISSION_CSS}\n${PERMISSION_BOX_CSS}\n${TOOL_PERMISSION_CSS}\n${TEMPLATE_AUTH_CSS}\n${FOLD_PILL_CSS}`;
+		document.head.append(element);
 	}
-	// dev/preview/permission-container/main.tsx
+	// packages/dsh-permissions/dev/preview/permission-container/main.tsx
 	/**
 	* 权限面板的**容器形态**候选 —— 用户 2026-11-22：
 	*
@@ -20121,7 +20113,7 @@ ${DRAWER_VARIANT_IDS.map((id) => `.tb3d-panel[data-drawer-variant="${id}"]{${dra
 	* 全屏页面候选在 `dev/preview/permission-page/`。
 	*
 	* ```
-	* node dev/preview/build.mjs permission-container
+	* node packages/dsh-client/dev/preview/build.mjs ../../../dsh-permissions/dev/preview/permission-container
 	* ```
 	*/
 	const CARD_OPTIONS = [

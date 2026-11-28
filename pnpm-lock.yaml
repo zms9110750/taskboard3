@@ -140,6 +140,9 @@ importers:
       '@taskboard/core':
         specifier: workspace:*
         version: link:../core
+      '@taskboard/dsh-client':
+        specifier: workspace:*
+        version: link:../dsh-client
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0

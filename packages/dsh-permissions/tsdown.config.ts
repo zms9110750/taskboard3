@@ -32,8 +32,12 @@ const browserConfig = defineConfig({
 		/**
 		 * 组图纯逻辑必须打进产物（宿主模块表里没有 workspace 包）。
 		 * 同时列子路径：按包名匹配 external 的实现不一定认子路径。
+		 *
+		 * `@taskboard/dsh-client/fold-pill` 是折叠组件的共享入口（issue #56）——
+		 * 它是**纯 ESM 产物**（dsh-client 的 tsdown 单独出），照样必须打进本包，
+		 * 否则浏览器里会 `require("@taskboard/dsh-client/fold-pill")` 直接炸。
 		 */
-		alwaysBundle: ['@taskboard/core', '@taskboard/core/tool-graph'],
+		alwaysBundle: ['@taskboard/core', '@taskboard/core/tool-graph', '@taskboard/dsh-client', '@taskboard/dsh-client/fold-pill'],
 	},
 	banner: [
 		"window.__ModuleLoader__.load({",

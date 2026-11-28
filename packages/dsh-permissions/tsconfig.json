@@ -13,5 +13,11 @@
 		/* 这个包由 tsdown 打成浏览器半，tsc 只做类型检查 + 出 .d.ts。 */
 		"emitDeclarationOnly": true
 	},
-	"include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"]
+	"include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+	/*
+	 * 折叠组件走 `@taskboard/dsh-client/fold-pill` 子路径复用（issue #56）。
+	 * 那条导出指向 dsh-client 的 `lib/**` ⇒ 类型解析要求它**先被构建**，
+	 * 所以这里加项目引用，`tsc -b packages/dsh-permissions` 会自动带出它。
+	 */
+	"references": [{ "path": "../dsh-client" }]
 }

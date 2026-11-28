@@ -1,7 +1,8 @@
 /**
  * 权限面板预览 —— **只在 `dev/preview/permission/` 里，不碰根 `main.tsx`**。
  *
- * 构建：`node packages/dsh-client/dev/preview/build.mjs permission`
+ * 构建：`node packages/dsh-client/dev/preview/build.mjs ../../../dsh-permissions/dev/preview/permission`
+ * （预览构建器住在 dsh-client 的 dev/preview 下；参数是相对它的路径 —— 拆包后本包没有自己的 build.mjs。）
  * 产物：`dev/preview/permission/index.html`（双击看，自包含、file:// 直开）
  *
  * ## 六段

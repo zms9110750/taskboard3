@@ -4,6 +4,13 @@
  * ⚠ 本文件是模板字符串 —— 注释里**不能出现反引号**（会被当成字符串结束）。
  */
 
+/*
+ * 折叠组件的样式单独一份：权限链（`@taskboard/dsh-permissions`）通过
+ * `@taskboard/dsh-client/fold-pill` 复用组件时，也要能拿到**同一份** CSS。
+ * ⇒ 这里插值进去，而不是在这儿再写一遍（见 `fold-pill-css.ts` 的说明）。
+ */
+import { FOLD_PILL_CSS } from './fold-pill-css.ts';
+
 /** 根卡窄列 + 组节点 + 关系区面板。 */
 export const SIBLING_GROUPS_CSS = `
 /* ── 1. 画布行：最左窄列 + 画布 ── */
@@ -23,33 +30,10 @@ export const SIBLING_GROUPS_CSS = `
 
 /* ── 2. 折叠组件（FoldPill / FoldRect） ──
  *
- * 用户 2026-11-28 的裁定：
- * - 胶囊折叠/展开都在，而且两态完全一样（没有 is-collapsed 的 dashed / 换色）；
- * - 虚线矩形容器只在展开时存在（FoldRect 收起直接返回 null）；
- * - 展开时矩形顶边被胶囊压住：负 margin-top = 胶囊半高（16px）。
+ * 唯一一份 CSS 在 fold-pill-css.ts（权限链复用组件时 import 同一份）。
+ * 这里插值进来，styles.ts 照旧只注入 SIBLING_GROUPS_CSS 一段。
  */
-.tb3-fold-group{position:absolute}
-.tb3-fold-pill{
-  box-sizing:border-box;position:relative;z-index:5;
-  display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;
-  border:1px solid #a78bfa;border-radius:16px;background:#ede9fe;color:#4c1d95;
-  font-family:inherit;font-size:11.5px;font-weight:600;line-height:1;cursor:pointer;text-align:left;
-  box-shadow:0 1px 2px rgb(109 40 217 / 12%);
-}
-.tb3-fold-pill:hover{background:#e4ddfd;border-color:#5b21b6}
-.tb3-fold-pill:focus-visible{outline:2px solid #2563eb;outline-offset:1px}
-.tb3-fold-pill__caret{font-size:17px;font-weight:700;line-height:1;color:#6d28d9;flex:0 0 auto}
-.tb3-fold-pill__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.tb3-fold-pill__count{margin-left:auto;font-size:10.5px;color:#7c3aed;flex:0 0 auto}
-
-/* 容器矩形：只有展开才存在 */
-.tb3-fold-rect{
-  box-sizing:border-box;position:relative;
-  border:1px dashed #c4b5fd;border-radius:12px;background:#f5f3ff;
-  /* 顶边被胶囊压住：负的 margin-top = 胶囊半高，使矩形顶边落在胶囊中线上 */
-  margin-top:-16px;padding-top:24px;
-}
-.tb3-fold-rect__body{position:relative;width:100%}
+${FOLD_PILL_CSS}
 
 /* ── 3. 兄弟关系区面板（详情位 / 全屏页共用） ── */
 .tb3g-panel{display:flex;flex-direction:column;gap:8px;min-height:0;height:100%;

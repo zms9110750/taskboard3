@@ -1,7 +1,7 @@
 /**
  * 验证 PermissionPanel —— **SSR 结构断言**。
  *
- * `node packages/dsh-client/dev/preview/permission/verify.mjs`
+ * `node packages/dsh-permissions/dev/preview/permission/verify.mjs`
  *
  * ## 为什么不用 CDP（和 searchbox 一样）
  *
