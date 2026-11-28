@@ -280,7 +280,10 @@ body {
 .tb3g-zoom {
 	display: flex;
 	align-items: center;
+	justify-content: flex-end;
+	flex-wrap: wrap;
 	gap: 6px;
+	min-width: 0;
 }
 .tb3g-zoom__label {
 	min-width: 42px;
@@ -331,12 +334,20 @@ body {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	padding: 0 8px;
+	/*
+	 * issue #54：组与工具**同一套最小宽度 + 内边距**。
+	 * 布局给的宽度（TIGHT_LAYOUT 的 groupW / toolW 已统一为 176）之外，
+	 * 这里再用 min-width 兜住「某个尺寸参数被单独改小」的情况 ——
+	 * 两类卡片不该因为一个数字漂移就长得不一样宽。
+	 */
+	min-width: 176px;
+	padding: 0 10px;
 	border-radius: 9px;
 	border: 1px solid var(--tb3g-border-strong);
 	background: var(--tb3g-card);
 	cursor: grab;
 	user-select: none;
+	overflow: hidden;
 	box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
 }
 .tb3g-node--group {
@@ -357,6 +368,8 @@ body {
 .tb3g-node__name {
 	font-size: 12px;
 	font-weight: 600;
+	/* issue #54：单行 ellipsis，标题过长时省略号而不是被裁掉/挤没 */
+	max-width: 100%;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -368,6 +381,9 @@ body {
 .tb3g-node__meta {
 	font-size: 10.5px;
 	color: var(--tb3g-text-3);
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .tb3g-node__expanded {
@@ -672,6 +688,18 @@ body {
 .tb3g-node--group {
 	cursor: pointer;
 }
+/*
+ * issue #53：白底工具卡是**组成员位**，不是可编辑对象 —— 明确只读。
+ * 视觉：降一档不透明度 + not-allowed；原因写在节点 title（"这是成员位…"）。
+ * 交互层：GraphNodeBox 对工具节点**不给** role / tabIndex / onClick。
+ */
+.tb3g-node--tool.is-readonly {
+	cursor: not-allowed;
+	opacity: 0.86;
+}
+.tb3g-node--tool.is-readonly .tb3g-node__meta {
+	color: #9ca3af;
+}
 .tb3g-node.is-active {
 	border-color: var(--tb3g-blue);
 	box-shadow:
@@ -739,6 +767,12 @@ body {
 .tb3g-dot--blocked {
 	border-color: var(--tb3g-danger);
 	background: var(--tb3g-danger-bg);
+}
+/* issue #53：白底成员位（只读）的图例 */
+.tb3g-dot--readonly {
+	border-color: var(--tb3g-border-strong);
+	background: #fff;
+	opacity: 0.7;
 }
 
 .tb3g-crumb {
@@ -825,28 +859,99 @@ body {
 }
 
 /*
- * 常驻提示条。
+ * 常驻提示条（只用于**失败 / 降级**，不再有「暂不持久化」的黄条 —— issue #58）。
  *
- * ⚠ 不是组件里那个 .tb3g-notice —— 那是绝对定位、几秒后消失的一次性 toast。
- *   两者语义不同（常驻状态说明 vs 操作反馈），不要合并成一个类。
+ * ⚠ 不是组件里那个 .tb3g-notice —— 那是绝对定位、几秒后消失的一次性 toast
+ *   （操作反馈）；这里是常驻状态说明，两者语义不同，不要合并成一个类。
  */
 .tb3g-banner {
-	margin: 10px 24px 0;
+	margin: 8px 24px 0;
 	padding: 7px 12px;
-	border: 1px solid #fde68a;
+	border: 1px solid #fecaca;
 	border-radius: 8px;
-	background: #fffbeb;
-	color: #92400e;
+	background: #fef2f2;
+	color: #b91c1c;
 	font-size: 12px;
 	line-height: 1.5;
 	flex: 0 0 auto;
 }
 
-/* 降级提示（工具清单取不到）—— 红色，和黄色「不持久化」区分开 */
-.tb3g-banner--bad {
-	border-color: #fecaca;
-	background: #fef2f2;
-	color: #b91c1c;
+/*
+ * issue #55：工具清单的**来源说明**（共 N 个 / 来自哪里）。
+ * 常驻一行，和「失败红条」分开：一个说事实，一个说异常。
+ */
+.tb3g-source {
+	flex: 0 0 auto;
+	margin: 6px 24px 0;
+	font-size: 11.5px;
+	color: var(--tb3g-text-3);
+}
+.tb3g-source b {
+	color: var(--tb3g-text-2);
+	font-variant-numeric: tabular-nums;
+}
+
+/* ── 保存状态条（issue #58）：保存中 / 已保存 / 失败可重试 ── */
+.tb3g-save {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11.5px;
+	color: var(--tb3g-text-3);
+	max-width: 420px;
+}
+.tb3g-save.is-ok {
+	color: #047857;
+}
+.tb3g-save.is-bad {
+	color: var(--tb3g-danger);
+}
+.tb3g-save__text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.tb3g-save__code {
+	flex: 0 0 auto;
+	margin-right: 4px;
+	padding: 0 5px;
+	border-radius: 4px;
+	background: var(--tb3g-danger-bg);
+	border: 1px solid var(--tb3g-danger-border);
+	font-size: 10px;
+}
+.tb3g-save__spinner {
+	width: 10px;
+	height: 10px;
+	border: 2px solid #d1d5db;
+	border-top-color: var(--tb3g-blue);
+	border-radius: 50%;
+	animation: tb3g-save-spin 0.8s linear infinite;
+}
+@keyframes tb3g-save-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* 读失败 / 空图时的整块状态（不是一行小字：这是页面级结局） */
+.tb3g-empty-state {
+	margin: 18px 24px;
+	padding: 16px 18px;
+	border: 1px solid var(--tb3g-border-strong);
+	border-radius: 10px;
+	background: #fbfbfc;
+	flex: 0 0 auto;
+}
+.tb3g-empty-state__title {
+	margin: 0 0 6px;
+	font-weight: 650;
+	font-size: 13px;
+}
+.tb3g-empty-state__text {
+	margin: 0 0 10px;
+	font-size: 12px;
+	color: var(--tb3g-text-2);
 }
 
 .tb3g-loading {

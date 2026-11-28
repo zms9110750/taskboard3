@@ -21,6 +21,24 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
   background:var(--bg);color:var(--text);font-size:13px;line-height:1.6}
 #root{min-height:100%}
 
+/*
+ * ── `.tb3w-root` 外壳（2026-11-22）──
+ *
+ * 产品 CSS 全部挂在 `.tb3w-root` 作用域下（`src/styles.ts` 的约定），
+ * 单组件预览里没有这个根节点 ⇒ 规则全不命中。所以每个把真组件放进来的
+ * 预览都要在**最外层**包一个 `<div className="tb3w-root pv-shell">`。
+ *
+ * 但产品里的 `.tb3w-root` 是「撑满 tab」的（`height:100%` + `overflow:hidden`），
+ * 预览页是按内容高度撑开、整页滚动的 —— 这两个意图冲突。
+ * ⇒ 只在外壳上改这三条，**不改产品规则**（产品里仍然是撑满 + 裁切）。
+ */
+/*
+ * ⚠ 用 `.tb3w-root.pv-shell`（两个类）压过产品那条单类的 `.tb3w-root`
+ *   —— 产品 CSS 是 `injectStyles()` 运行时追加的 `<style>`，在静态 <style>
+ *   之后 ⇒ 同特异性时它会赢。两个类才有确定优先级，不靠注入顺序。
+ */
+.tb3w-root.pv-shell{display:block;height:auto;min-height:0;overflow:visible}
+
 .preview{max-width:1180px;margin:0 auto;padding:28px 26px 60px}
 .pv-head h1{margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:-.01em}
 .pv-head p{margin:0;color:var(--text-secondary);font-size:12px}
@@ -244,24 +262,55 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
  * 总宽度同时收了 20px（58 + 8 → 46 + 0）。
  */
 .task-card{gap:0}
-.task-card__status.is-compact{align-items:center}
 
 /* ── 左侧正方形：编号在上、状态在下 ── */
+/*
+ * 宽度**不再钉死 46px**：状态从「圆点 + 文字」变成带边框的 StatusButton 之后
+ * 比 46px 宽（#62 / #63）。`min-width` 保住原来的下限，内容更宽就让它撑开
+ * —— 硬钉 46px 会让按钮压到右边的 label 上。
+ */
 .task-card__square{
-  flex:0 0 46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
-  min-width:0;
+  flex:0 0 auto;min-width:46px;display:flex;flex-direction:column;justify-content:center;gap:2px;
 }
 .task-card__square-id{
   font-family:var(--font-mono);font-size:var(--fs-id);font-weight:700;
   letter-spacing:-.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+
 /*
- * 正方形里的状态：9px、点线间距 3px（不是 4px）—— 46px 宽要塞下「需要信息」四个字。
- * 4 字 × 9px + 点 6px + 间距 3px = 45px，刚好。
+ * 正方形里的状态按钮：高度收到 20px、9px 字（列表行密度）。
+ * 值照抄 `src/renderers/status-button-css.ts` 的上下文规则，改那边时这里跟着改。
  */
-.task-card__status.is-compact{
-  flex:0 0 auto;font-size:9px;gap:3px;color:var(--text-weak);
+.task-card__square .status-button{
+  align-self:flex-start;height:20px;padding:0 5px;gap:3px;border-radius:5px;font-size:9px;
 }
+
+/* ── StatusButton（预览用副本；产品样式在 src/renderers/status-button-css.ts） ── */
+.status-button{
+  display:inline-flex;flex:0 0 auto;align-items:center;gap:5px;
+  height:24px;padding:0 8px;
+  border:1px solid var(--status-button-border,#cbd5e1);border-radius:8px;
+  background:var(--bg-card);color:var(--text-secondary);
+  font-family:inherit;font-size:11.5px;line-height:1;white-space:nowrap;text-align:left;
+  transition:background .12s,border-color .12s;
+}
+.status-button--md{height:28px;padding:0 9px;font-size:12px}
+.status-button__label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-button__caret{flex:0 0 auto;font-size:9px;line-height:1;color:#9aa1ad}
+.status-button.is-static{cursor:default}
+.status-button.is-interactive{cursor:pointer}
+.status-button.is-interactive:hover{background:#eef1f5}
+.status-button.is-interactive:active{background:#e7e9ee}
+.status-button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.status-button--unspecified{--status-button-border:#9ca3af}
+.status-button--submitted{--status-button-border:#111827}
+.status-button--working{--status-button-border:#06b6d4}
+.status-button--inputRequired{--status-button-border:#eab308}
+.status-button--authRequired{--status-button-border:#a855f7}
+.status-button--completed{--status-button-border:#10b981}
+.status-button--failed{--status-button-border:#ef4444}
+.status-button--canceled{--status-button-border:#92400e}
+.status-button--rejected{--status-button-border:#f97316}
 
 /* ── 右侧：一行 ── */
 .task-card__body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
@@ -857,7 +906,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 <script>(function() {
 	// \0rolldown/runtime.js
 	var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod, mod.exports), cb = null), mod.exports);
-	// ../../node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react.development.js
+	// node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react.development.js
 	/**
 	* @license React
 	* react.development.js
@@ -1636,11 +1685,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
 		})();
 	}));
-	// ../../node_modules/.pnpm/react@19.3.1/node_modules/react/index.js
+	// node_modules/.pnpm/react@19.3.1/node_modules/react/index.js
 	var require_react = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_development();
 	}));
-	// ../../node_modules/.pnpm/scheduler@0.28.0/node_modules/scheduler/cjs/scheduler.development.js
+	// node_modules/.pnpm/scheduler@0.28.0/node_modules/scheduler/cjs/scheduler.development.js
 	/**
 	* @license React
 	* scheduler.development.js
@@ -1882,11 +1931,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
 		})();
 	}));
-	// ../../node_modules/.pnpm/scheduler@0.28.0/node_modules/scheduler/index.js
+	// node_modules/.pnpm/scheduler@0.28.0/node_modules/scheduler/index.js
 	var require_scheduler = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_scheduler_development();
 	}));
-	// ../../node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom.development.js
+	// node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom.development.js
 	/**
 	* @license React
 	* react-dom.development.js
@@ -2074,11 +2123,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
 		})();
 	}));
-	// ../../node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/index.js
+	// node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/index.js
 	var require_react_dom = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_dom_development();
 	}));
-	// ../../node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.development.js
+	// node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/cjs/react-dom-client.development.js
 	/**
 	* @license React
 	* react-dom-client.development.js
@@ -17670,11 +17719,11 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			"undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
 		})();
 	}));
-	// ../../node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/client.js
+	// node_modules/.pnpm/react-dom@19.3.1_react@19.3.1/node_modules/react-dom/client.js
 	var require_client = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_dom_client_development();
 	}));
-	// ../core/src/permission.ts
+	// packages/core/src/permission.ts
 	var import_react = require_react();
 	var import_client = require_client();
 	/**
@@ -17797,8 +17846,14 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			description: "AI 可以领取工作卡，也可以自己采纳草稿。"
 		}
 	];
+	Object.freeze({ ok: true });
+	// packages/dsh-agent-guard/src/tool-guard.ts
 	/**
-	* **宿主轴的全档位选项** —— 同上，给 UI / HTTP 路由用的唯一一份定义。
+	* 全档位选项 —— 给 UI / HTTP 路由渲染用的唯一一份定义。
+	*
+	* ⚠ 用 `as const satisfies`，不用类型标注（AGENTS 3.5 / 3.7）：
+	*   `satisfies` 让「`value` 写了个不存在的档位」编译失败；
+	*   `as const` 保留字面量类型 ⇒ `TOOL_GUARD_LEVELS` 从它派生而不是再抄一份。
 	*/
 	const TOOL_GUARD_OPTIONS = [
 		{
@@ -17809,7 +17864,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 		{
 			value: "manage",
 			label: "任务板管理权限",
-			description: "按 BASE / 持有卡 / 四档策略判定工具调用。"
+			description: "按 BASE / 持有卡 / 三档策略判定工具调用。"
 		},
 		{
 			value: "manage-edit",
@@ -17817,9 +17872,9 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			description: "在「管理权限」之上，额外允许 AI 读写档位权限工具。"
 		}
 	];
+	TOOL_GUARD_OPTIONS.map((one) => one.value);
 	Object.freeze({ ok: true });
-	Object.freeze({ ok: true });
-	// src/pure/permission-view.ts
+	// packages/dsh-permissions/src/pure/permission-view.ts
 	/** 两条轴都没有保存。 */
 	const NO_PENDING = Object.freeze({
 		card: null,
@@ -18041,7 +18096,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			saveError: null
 		};
 	}
-	// ../../node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.development.js
+	// node_modules/.pnpm/react@19.3.1/node_modules/react/cjs/react-jsx-runtime.development.js
 	/**
 	* @license React
 	* react-jsx-runtime.development.js
@@ -18252,7 +18307,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 			};
 		})();
 	}));
-	// src/renderers/PermissionPanel.tsx
+	// packages/dsh-permissions/src/renderers/PermissionPanel.tsx
 	var import_jsx_runtime = (/* @__PURE__ */ __commonJSMin(((exports, module) => {
 		module.exports = require_react_jsx_runtime_development();
 	})))();
@@ -18523,6 +18578,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 	function PermissionPanel(props) {
 		const state = props.state;
 		const visibleAxes = props.axes === void 0 ? AXES : AXES.filter((meta) => props.axes?.includes(meta.key));
+		const onlyAxis = visibleAxes.length === 1 ? visibleAxes[0] : void 0;
 		return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 			className: "tb3perm",
 			"data-panel": "permission",
@@ -18536,7 +18592,7 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						children: "任务板权限"
 					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 						className: "tb3perm__intro",
-						children: visibleAxes.length === 1 ? "选一档，点哪一档就立刻保存，没有「保存」按钮。" : "两条互相独立的轴，各选一档。点哪一档就立刻保存，没有「保存」按钮。"
+						children: onlyAxis === void 0 ? "两条互相独立的轴，各选一档。点哪一档就立刻保存，没有「保存」按钮。" : "选一档，点哪一档就立刻保存，没有「保存」按钮。"
 					})]
 				}),
 				state.phase === "loading" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LoadingView, { axes: visibleAxes }) : null,
@@ -18554,10 +18610,10 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						state,
 						onSelect: props.onSelect
 					}, meta.key)),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("footer", {
+					onlyAxis === void 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("footer", {
 						className: "tb3perm__foot",
 						"data-foot": "1",
-						children: visibleAxes.length === 1 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: "这一档管「AI 能不能领工作卡 / 能不能自己采纳草稿」。任何宿主都生效（MCP 也管它）。" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
 							"两条轴互不覆盖：",
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "卡片动作档位" }),
 							"管「AI 能不能领卡 / 采纳草稿」，",
@@ -18566,17 +18622,18 @@ html,body{margin:0;height:100%;font-family:-apple-system,'Segoe UI','Microsoft Y
 						] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "tb3perm__foot-sub",
 							children: "宿主把工具管控关掉时，领卡仍然受卡片动作档位管 —— 两条轴分开判定，谁都不替代谁。"
-						})] })
-					})
+						})]
+					}) : null
 				] }) : null
 			]
 		});
 	}
-	// dev/preview/permission/main.tsx
+	// packages/dsh-permissions/dev/preview/permission/main.tsx
 	/**
 	* 权限面板预览 —— **只在 `dev/preview/permission/` 里，不碰根 `main.tsx`**。
 	*
-	* 构建：`node packages/dsh-client/dev/preview/build.mjs permission`
+	* 构建：`node packages/dsh-client/dev/preview/build.mjs ../../../dsh-permissions/dev/preview/permission`
+	* （预览构建器住在 dsh-client 的 dev/preview 下；参数是相对它的路径 —— 拆包后本包没有自己的 build.mjs。）
 	* 产物：`dev/preview/permission/index.html`（双击看，自包含、file:// 直开）
 	*
 	* ## 六段

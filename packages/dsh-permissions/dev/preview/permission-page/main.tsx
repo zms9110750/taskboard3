@@ -11,7 +11,7 @@
  *   C · 3×3 矩阵（两轴交叉，直接点格子）
  *
  * ```
- * node dev/preview/build.mjs permission-page
+ * node packages/dsh-client/dev/preview/build.mjs ../../../dsh-permissions/dev/preview/permission-page
  * ```
  */
 

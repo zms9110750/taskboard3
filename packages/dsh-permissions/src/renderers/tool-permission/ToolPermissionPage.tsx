@@ -6,15 +6,15 @@
  * ```
  *  ① 取工具清单（GET /taskboard3/api/tools，真实数据）
  *  ② 取不到就降级到内置夹具，并把失败原因显示出来（**不许静默**）
- *  ③ 顶部常驻一行「组图改动暂不持久化」的说明
- *  ④ 挂 <GraphEditor tools={entries} />
+ *  ③ 说清「共 N 个工具、来自哪里」（issue #55）
+ *  ④ 挂 <GraphEditor tools={entries} />（组图自己读 / 自己存，issue #58）
  * ```
  *
  * ## 为什么要在外壳里取数（而不是组件自己取）
  *
- * `GraphEditor` 用 `useState(() => initialGraph(entries))` 建初始图 —— 一旦挂载，
- * 传进去的 tools 再变**不会**重建图（否则会把用户正在编辑的组冲掉）。
- * ⇒ 所以必须**先拿到清单再挂载**：外壳负责等待，组件只管画。
+ * `GraphEditor` 用工具清单判断「哪些工具节点已失效」，并且一旦开始编辑就
+ * **不该**因为清单重新拉取而重建画布（会把用户正在编辑的组冲掉）。
+ * ⇒ 外壳负责等待，组件只在挂载时收一次清单。
  *
  * ## 为什么不用 `createApi()`
  *
@@ -34,15 +34,16 @@ import { buildPath } from '../../api.ts';
 import { parseToolList } from '../../pure/tool-permission.ts';
 import type { ToolEntry } from '../../pure/tool-permission.ts';
 import { FALLBACK_TOOL_ENTRIES, GraphEditor } from './GraphEditor.tsx';
+import { ToolPermissionShell, type ToolOrigin } from './ToolPermissionShell.tsx';
 
 /** 取工具清单的三种结局。 */
-type ToolListState =
+export type ToolListState =
 	| { readonly kind: 'loading' }
 	| { readonly kind: 'ok'; readonly tools: readonly ToolEntry[] }
 	| { readonly kind: 'fallback'; readonly reason: string };
 
 /** 一次取数（失败返回原因字符串，不抛）。 */
-async function fetchToolList(signal: AbortSignal): Promise<readonly ToolEntry[] | string> {
+export async function fetchToolList(signal: AbortSignal): Promise<readonly ToolEntry[] | string> {
 	let response: Response;
 	try {
 		response = await fetch(buildPath('tools'), { signal, headers: { accept: 'application/json' } });
@@ -83,23 +84,15 @@ export function ToolPermissionPage(): ReactNode {
 	}
 
 	const tools = state.kind === 'ok' ? state.tools : FALLBACK_TOOL_ENTRIES;
+	const origin: ToolOrigin = state.kind === 'ok' ? 'host' : 'fallback';
 
 	return (
-		<div className="tb3g-shell" data-testid="tool-permission-page">
-			{/*
-			 * ⚠ 两行提示都是**产品要说的真话**，不是占位：
-			 *   ① 组图没有后端存储（tag / 组是新数据模型，还没实现）
-			 *   ② 工具清单取不到时降级了
-			 */}
-			<p className="tb3g-banner" data-testid="not-persisted-notice">
-				组图改动暂不持久化（后端存储待实现）—— 关闭或刷新页面后恢复示例分组。
-			</p>
-			{state.kind === 'fallback' ? (
-				<p className="tb3g-banner tb3g-banner--bad" data-testid="tools-fallback-notice">
-					工具清单取不到（{state.reason}），当前显示内置示例。
-				</p>
-			) : null}
+		<ToolPermissionShell
+			tools={tools}
+			origin={origin}
+			{...(state.kind === 'fallback' ? { fallbackReason: state.reason } : {})}
+		>
 			<GraphEditor tools={tools} />
-		</div>
+		</ToolPermissionShell>
 	);
 }

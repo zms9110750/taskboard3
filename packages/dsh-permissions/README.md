@@ -21,6 +21,27 @@ Host 半声明 `inject: ['taskboard3AgentGuard']`：守卫行（`@taskboard/dsh-
 src/index.ts     Host 半（激活闸门，无副作用）
 src/client.tsx   浏览器半（两个入口的槽注册）
 src/api.ts       权限面 HTTP 子集（buildPath + getPermission/setPermission）
-src/pure/        零 React 的判决逻辑（两轴面板 / 工具清单解析 / 组图 / 授权分组）
-src/renderers/   PermissionBoxEntry / PermissionPanel / ToolPermissionPage / 组图编辑器
+src/wire.ts      信封解析 / GET·PUT（组图与授权共用一份；保留 detail.code / detail.cycle）
+src/pure/        零 React 的判决逻辑（两轴面板 / 工具清单解析 / 组图 / 授权分组 / 组图线上文档 / 授权编辑 / 折叠偏好）
+src/renderers/   PermissionBoxEntry / PermissionPanel / ToolPermissionPage / 组图编辑器 / 授权页
+```
+
+## 跨包：折叠组件复用
+
+授权页的折叠（`档位` / `模板` / 每个领域块）用的是 `@taskboard/dsh-client/fold-pill`
+导出的 `FoldPill` / `FoldRect` —— **没有第二份实现**：
+
+- 组件：dsh-client 的 tsdown 额外产出一个纯 ESM 的 `lib/fold-pill.js`；
+- 样式：`FOLD_PILL_CSS` 是同一份字符串，本包的 `styles.ts` 也注入它
+  ⇒ dsh-client 行关着时胶囊仍然有样式。
+
+## 预览
+
+`dev/preview/` 下四个：`permission`（两轴面板）、`permission-container` / `permission-page`
+（权限选择的全屏页候选）、`tool-permission`（**本页**：编组 / 授权，桩后端把改动存
+localStorage）。
+
+```powershell
+node packages/dsh-client/dev/preview/build.mjs ../../../dsh-permissions/dev/preview/tool-permission
+node packages/dsh-permissions/dev/preview/tool-permission/verify.mjs
 ```

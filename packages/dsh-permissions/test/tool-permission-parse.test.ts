@@ -67,4 +67,94 @@ describe('parseToolList', () => {
 	it('全是脏条目 ⇒ undefined', () => {
 		assert.equal(parseToolList({ tools: [null, { name: '' }, { name: 1 }] }), undefined);
 	});
+
+	/*
+	 * issue #55：用户实测 `GET /api/tools` 返回 **53** 个工具。
+	 * 「右栏工具不是全集」的第一嫌疑是客户端解析丢项 ⇒ 这里用 53 项的样本钉住
+	 * 「进 53 出 53」。样本里的字段形状照宿主真实给的样子（name / description / parameters）。
+	 */
+	it('宿主实测样本 53 项 ⇒ 一个都不能少（issue #55）', () => {
+		const TASKBOARD_NAMES = [
+			'ask_user_question',
+			'taskboard_adopt',
+			'taskboard_card',
+			'taskboard_cards',
+			'taskboard_claim',
+			'taskboard_create',
+			'taskboard_definitions',
+			'taskboard_raw_card',
+			'taskboard_release',
+			'taskboard_render_check',
+			'taskboard_search',
+			'taskboard_tool_policy',
+			'taskboard_tool_policy_read',
+			'taskboard_transition',
+			'taskboard_update',
+			'taskboard_update_note',
+			'taskboard_workspaces',
+		];
+		const HOST_NAMES = [
+			'apply_patch',
+			'bash',
+			'code_search',
+			'cordis_inspect',
+			'cordis_inspect_config',
+			'cordis_inspect_context',
+			'create_goal',
+			'edit',
+			'exit_plan_mode',
+			'get_goal',
+			'glob',
+			'grep',
+			'job_kill',
+			'job_list',
+			'job_output',
+			'list_agents',
+			'list_resources',
+			'pwsh',
+			'read',
+			'read_image',
+			'read_resource',
+			'screenshot',
+			'send_message',
+			'update_goal',
+			'wait_agent',
+			'web_fetch',
+			'web_search',
+			'workflow',
+			'write',
+			'write_files',
+			'workspace_create',
+			'workspace_list',
+			'workspace_open',
+			'workspace_send',
+			'workspace_watch',
+			'agent_send',
+		];
+		const names = [...TASKBOARD_NAMES, ...HOST_NAMES];
+		assert.equal(names.length, 53, '样本本身就是 53 项');
+		assert.equal(new Set(names).size, 53, '样本没有重名');
+
+		const parsed = parseToolList({
+			tools: names.map((name) => ({ name, description: `${name} 的说明`, parameters: { type: 'object' } })),
+		});
+		assert.ok(parsed !== undefined);
+		assert.equal(parsed.length, 53);
+		assert.deepEqual(
+			parsed.map((one) => one.name),
+			names,
+			'顺序也不动（右栏按名字排序是组件的事，解析不应该重排）',
+		);
+		for (const entry of parsed) {
+			assert.equal(entry.source, entry.name.startsWith('taskboard_') ? '任务板' : '宿主', entry.name);
+		}
+	});
+
+	it('53 项外再混进一个坏条目 ⇒ 仍是 53 项，而不是整体失败', () => {
+		const names = Array.from({ length: 53 }, (_, index) => `tool_${String(index)}`);
+		const parsed = parseToolList({
+			tools: [...names.map((name) => ({ name })), { description: '没有 name' }],
+		});
+		assert.equal(parsed?.length, 53);
+	});
 });

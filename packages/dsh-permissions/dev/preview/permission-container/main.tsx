@@ -11,7 +11,7 @@
  * 全屏页面候选在 `dev/preview/permission-page/`。
  *
  * ```
- * node dev/preview/build.mjs permission-container
+ * node packages/dsh-client/dev/preview/build.mjs ../../../dsh-permissions/dev/preview/permission-container
  * ```
  */
 

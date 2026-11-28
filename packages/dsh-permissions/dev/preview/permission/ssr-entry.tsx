@@ -12,7 +12,7 @@
  * | 「当前」胶囊、保存中转圈、错误横幅、骨架、重试按钮 | 圆点 / 间距的像素位置（要 getBoundingClientRect） |
  * | 文案确实来自 props 的 options（自定义前缀那条） | 颜色 / 动画是否好看（要截图，让用户双击预览看） |
  *
- * ⚠ 交互判决的可信度来自 `packages/dsh-client/test/permission-view.test.ts`
+ * ⚠ 交互判决的可信度来自 `packages/dsh-permissions/test/permission-view.test.ts`
  *   （`node --test` 直接测**同一份纯函数源码**），不靠 SSR 间接证明。
  *
  * ⚠ 这个文件在 `dev/` 下，不进产品构建；它只是给 `node verify.mjs` 打包用的。

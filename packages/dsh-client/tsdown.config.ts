@@ -122,5 +122,33 @@ export const hostConfig = defineConfig({
 	dts: false,
 });
 
-/** 两个构建：浏览器半（ModuleLoader CJS）+ Host 半（Node ESM）。 */
-export default [browserConfig, hostConfig];
+/**
+ * ## 折叠组件的共享产物（issue #56）
+ *
+ * 权限链（`@taskboard/dsh-permissions`）要复用 `FoldPill` / `FoldRect`，
+ * 而浏览器半的 `lib/client.js` 是宿主的 IIFE 加载协议，**不能被别的包 import**。
+ * ⇒ 单独出一个纯 ESM 的 `lib/fold-pill.js`：
+ *
+ * - 不带 `__ModuleLoader__` banner（它是给 bundler 吃的模块，不是给宿主加载的插件）；
+ * - `react` / `react/jsx-runtime` 仍 external（消费方的 tsdown 照样 external，
+ *   最终由宿主提供，绝不会出现两份 React）；
+ * - 类型不走这里（tsdown 的 `dts: false` 是既有约定），而是 `tsc -b` 产出的
+ *   `lib/renderers/fold-pill-public.d.ts`，见 package.json 的 exports。
+ */
+export const foldPillConfig = defineConfig({
+	entry: { 'fold-pill': 'src/renderers/fold-pill-public.ts' },
+	outDir: 'lib',
+	outExtensions: () => ({ js: '.js' }),
+	format: 'esm',
+	platform: 'browser',
+	target: 'es2022',
+	sourcemap: true,
+	clean: false,
+	dts: false,
+	deps: {
+		neverBundle: ['react', 'react/jsx-runtime'],
+	},
+});
+
+/** 三个构建：浏览器半（ModuleLoader CJS）+ Host 半（Node ESM）+ 折叠组件共享产物。 */
+export default [browserConfig, hostConfig, foldPillConfig];
