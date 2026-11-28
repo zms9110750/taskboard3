@@ -1,6 +1,7 @@
 /**
- * 科技树的 **SSR 断言** —— 本机 headless Edge 起不来（mojo IPC 被沙箱拒，已多次验证），
- * 所以验收方式改成「把真组件渲染成静态 HTML，然后断言 HTML」。
+ * 科技树的 **SSR 断言** —— 把真组件渲染成静态 HTML，然后断言 HTML。
+ * 几何测量（`getBoundingClientRect`）在 `verify.mjs` 的浏览器阶段跑，
+ * 两者共用同一个 runnable：`node dev/preview/techtree/verify.mjs`。
  *
  * ## 为什么 SSR 能验这几件事
  *
@@ -31,6 +32,7 @@ import { STATE_LABELS, TASK_STATES } from '@taskboard/protocol';
 import { boxOf, canvasSizeOf, layoutTree } from '../../../src/pure/tree-layout.ts';
 import { jumpTargetOf, treeCardsOf, visibleCardIds } from '../../../src/pure/tree-filter.ts';
 import type { TreeFilterCriteria } from '../../../src/pure/tree-filter.ts';
+import { FoldPill, FoldRect } from '../../../src/renderers/FoldPill.tsx';
 import {
 	TECHTREE_CSS,
 	TREE_HEADER_HEIGHT,
@@ -127,6 +129,9 @@ function render(
 		readonly selectedId?: string | null;
 		readonly hoverId?: string | null;
 		readonly filter?: TreeFilterCriteria;
+		readonly groups?: readonly { readonly id: string; readonly memberIds: readonly string[] }[];
+		readonly foldedIds?: readonly string[];
+		readonly expandedIds?: readonly string[];
 	} = {},
 ): string {
 	return renderToStaticMarkup(
@@ -137,6 +142,9 @@ function render(
 			onSelect={noop}
 			{...(extra.hoverId === undefined ? {} : { hoverId: extra.hoverId })}
 			{...(extra.filter === undefined ? {} : { filter: extra.filter })}
+			{...(extra.groups === undefined ? {} : { groups: extra.groups })}
+			{...(extra.foldedIds === undefined ? {} : { foldedIds: extra.foldedIds })}
+			{...(extra.expandedIds === undefined ? {} : { expandedIds: extra.expandedIds })}
 		/>,
 	);
 }
@@ -337,6 +345,72 @@ const showcase = render(SHOWCASE_CARDS);
 for (const rel of ['derives', 'dependsOn', 'supersedes', 'constrains', 'related', 'references']) {
 	contains(`六种关系全览含 ${rel}`, showcase, `data-edge="${rel}"`);
 }
+
+/* ══════════════════════════════════════════════════════════════
+ * ⑦ 折叠组件（FoldPill / FoldRect）—— 真组件 SSR 渲染
+ *
+ * 用户 `2026-11-28` 的硬约束：
+ * 1. 胶囊两态都在，class / 形状 / 样式不变，只差 caret；
+ * 2. 虚线矩形收起时 **DOM 里不存在**；
+ * 3. 展开时胶囊与矩形同宽、同左边缘。
+ * ══════════════════════════════════════════════════════════════ */
+
+/** 从 SSR HTML 里取第一个 class 属性的值。 */
+function firstClassOf(html: string): string {
+	return /class="([^"]*)"/.exec(html)?.[1] ?? '';
+}
+
+const closedPill = renderToStaticMarkup(
+	<FoldPill open={false} label="组 1" count={3} onToggle={noop} width={190} />,
+);
+const openPill = renderToStaticMarkup(
+	<FoldPill open={true} label="组 1" count={3} onToggle={noop} width={190} />,
+);
+
+eq('FoldPill 两态 class 完全相同', firstClassOf(closedPill), firstClassOf(openPill));
+contains('FoldPill 收起 caret = ▸', closedPill, '>▸</span>');
+contains('FoldPill 展开 caret = ▾', openPill, '>▾</span>');
+contains('FoldPill 收起 aria-expanded=false', closedPill, 'aria-expanded="false"');
+contains('FoldPill 展开 aria-expanded=true', openPill, 'aria-expanded="true"');
+contains('FoldPill 两态都带同一个宽度样式', closedPill, 'style="width:190px"');
+contains('FoldPill 展开后宽度样式不变', openPill, 'style="width:190px"');
+
+const closedRect = renderToStaticMarkup(
+	<FoldRect open={false}>内容</FoldRect>,
+);
+const openRect = renderToStaticMarkup(
+	<FoldRect open={true}>内容</FoldRect>,
+);
+eq('FoldRect open=false ⇒ 返回空字符串（DOM 里没有矩形）', closedRect, '');
+contains('FoldRect open=true ⇒ .tb3-fold-rect', openRect, 'class="tb3-fold-rect"');
+contains('FoldRect 包住 children', openRect, '>内容</div>');
+
+/* ── 接进 TechTree：同一组 g1 的收起 / 展开 ── */
+const FOLD_GROUPS = [{ id: 'g1', memberIds: ['GU01', 'RB01'] }] as const;
+const foldedTree = render(CARDS, { groups: FOLD_GROUPS, foldedIds: ['g1'] });
+const openTree = render(CARDS, { groups: FOLD_GROUPS, foldedIds: [] });
+
+eq('收起态仍有 1 个胶囊', countOf(foldedTree, 'data-fold-pill='), 1);
+eq('展开态仍有 1 个胶囊（两态都在）', countOf(openTree, 'data-fold-pill='), 1);
+eq('收起态没有容器矩形（不是透明）', countOf(foldedTree, 'data-fold-rect'), 0);
+eq('展开态恰好 1 个容器矩形', countOf(openTree, 'data-fold-rect'), 1);
+contains('两态胶囊 class 同一个', foldedTree, 'class="tb3-fold-pill"');
+contains('展开态矩形 class 在', openTree, 'class="tb3-fold-rect"');
+contains('胶囊与矩形同宽 190', openTree, 'style="width:190px"');
+contains('组容器带 data-fold-group', openTree, 'data-fold-group="g1"');
+
+/* 展开时两个成员卡必须真的被矩形包住（不是画布层另画一份）。 */
+const rectAt = openTree.indexOf('data-fold-rect');
+const firstMemberAt = openTree.indexOf('data-card-id="GU01"');
+const secondMemberAt = openTree.indexOf('data-card-id="RB01"');
+check(
+	'展开态成员卡在矩形之后（DOM 里被矩形包住）',
+	rectAt >= 0 && firstMemberAt > rectAt && secondMemberAt > rectAt,
+	`rect@${String(rectAt)} GU01@${String(firstMemberAt)} RB01@${String(secondMemberAt)}`,
+);
+/* 收起态成员卡不露出（锚点也被胶囊取代）。 */
+notContains('收起态 GU01 不露出', foldedTree, 'data-card-id="GU01"');
+notContains('收起态 RB01 不露出', foldedTree, 'data-card-id="RB01"');
 
 /* ══════════════════════════════════════════════════════════════
  * 汇总

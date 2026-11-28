@@ -72,8 +72,11 @@ import { useUiState } from '../use-ui-state.ts';
 import type { TreeGroup } from '../pure/ui-state.ts';
 import type { TreeFilterCriteria } from '../pure/tree-filter.ts';
 import {
+	FOLD_HEADER_ADVANCE,
+	FOLD_PILL_HEIGHT,
 	boxOf,
 	canvasSizeOf,
+	foldSpanOf,
 	lanePlansOf,
 	layoutTree,
 	linkCurve,
@@ -81,6 +84,7 @@ import {
 	toPathData,
 } from '../pure/tree-layout.ts';
 import type {
+	FoldSpan,
 	TreeBox,
 	TreeCurve,
 	TreeLane,
@@ -89,6 +93,7 @@ import type {
 	TreeMetrics,
 } from '../pure/tree-layout.ts';
 import type { Card } from '../types.ts';
+import { FoldPill, FoldRect } from './FoldPill.tsx';
 import { StatusDot } from './StatusDot.tsx';
 import { TreeCard } from './TreeCard.tsx';
 
@@ -123,22 +128,20 @@ export const TREE_METRICS = {
 export const TREE_HEADER_HEIGHT = 34;
 
 /**
- * 组横幅的高度（用户 2026-11-24：「把组变成很矮的横幅」）。
+ * 折叠胶囊的高度（用户 `2026-11-24` 要「很矮的横幅」，`2026-11-28` 裁定两态都是胶囊）。
  *
- * 卡片高 78，横幅只有 18 ⇒ 一眼能看出「这是一条横幅，不是一张卡」。
- * 展开时把它挤在行距（14px）附近，尽量减少压到上面的卡。
+ * 数值真值在 `pure/tree-layout.ts`（布局与 CSS 共用同一套常量），这里只做转发。
  */
-export const GROUP_BANNER_HEIGHT = 32;
+export const GROUP_BANNER_HEIGHT = FOLD_PILL_HEIGHT;
 
 /**
- * 一列里「收起的分组横幅」的**槽位步进**（含与下一项的间距）。
+ * 收起态的槽位步进（含与下一项的间距）。
  *
  * 用户 `2026-11-24`：
  * > 「让列成为一个组件。内部管理。」
  * > 「一个横幅的占位（包括间距），让他变成0.5卡高。也就是说两个横幅=1卡（包括间距）」
  *
  * 卡槽 = 78 + 14 = 92 ⇒ 横幅槽 = 46（**两个横幅正好一个卡槽**）。
- * 横幅本体仍是 `GROUP_BANNER_HEIGHT`（18），多的 28 是这一槽的余白 —— 不把横幅拉高。
  */
 export const GROUP_BANNER_PITCH = (TREE_METRICS.cardHeight + TREE_METRICS.rowGap) / 2;
 
@@ -470,6 +473,12 @@ interface CardsLayerProps {
 	/** 「N 张」的数量查询。 */
 	readonly badgeCountOf: (id: string) => number;
 	readonly onToggleFold: (id: string, folded: boolean) => void;
+	/**
+	 * 卡片坐标的额外顶边偏移。
+	 *
+	 * 画布层 = `TREE_HEADER_HEIGHT`（列头占用）；组内层 = `0`（已经在矩形内容坐标里）。
+	 */
+	readonly topOffset: number;
 }
 
 /**
@@ -485,90 +494,106 @@ interface CardsLayerProps {
 const CardsLayer = memo(function CardsLayer(props: CardsLayerProps): ReactNode {
 	return (
 		<>
-			{props.items.map((item) => (
-				<TreeCard
-					key={item.card.id}
-					card={item.card}
-					kindLabel={props.kindLabelOf(item.card.template.kind)}
-					templateLabel={props.templateLabelOf?.(item.card.template.ref) ?? ''}
-					selected={item.card.id === props.selectedId}
-					{...(item.node.warning === undefined ? {} : { warning: item.node.warning })}
-					layer={item.node.layer}
-					onSelect={props.onSelect}
-					onHoverChange={props.onHoverChange}
-					style={{
-						left: item.box.left,
-						top: TREE_HEADER_HEIGHT + item.box.top,
-						width: props.metrics.cardWidth,
-						height: props.metrics.cardHeight,
-					}}
-				/>
-			))}
-			{/*
-			 * ── 折叠控件：有子卡的节点才有（用户 2026-11-24） ──
-			 *
-			 * 用户原话：「这个箭头，放的不太对。挡住东西了。放在卡的右下角。并且不用三角形。用加号。
-			 *   而且还要现实数字。默认数字。鼠标放上去他就变成加号。展开以后就是减号，不显示数字了。」
-			 *
-			 * ⇒ 一个控件、三态：
-			 *   折叠且未 hover  → 数字（后代数）
-			 *   折叠且 hover    → ＋
-			 *   已展开          → －（不显示数字）
-			 * 位置：卡片**右下角内侧**（原来是右上角，挡住了类别/状态）。
-			 */}
 			{props.items.map((item) => {
-				if (!props.foldable.has(item.card.id)) return null;
+				const isFoldable = props.foldable.has(item.card.id);
 				const isFolded = props.folded.has(item.card.id);
+
 				return (
-					<button
-						key={`fold:${item.card.id}`}
-						type="button"
-						className={`tb3t-fold${isFolded ? ' is-folded' : ' is-open'}`}
-						data-fold-toggle={item.card.id}
-						data-folded={isFolded ? '1' : '0'}
-						title={isFolded ? '展开这一棵子树' : '折叠这一棵子树'}
-						aria-label={isFolded ? '展开' : '折叠'}
-						aria-expanded={!isFolded}
-						onClick={(event) => {
-							event.stopPropagation();
-							props.onToggleFold(item.card.id, !isFolded);
-						}}
+					/*
+					 * 卡片槽：TreeCard 自己仍占满这个槽（left/top 归零），
+					 * 折叠角标则用 **inset（right/bottom）** 钉在槽的内右下角。
+					 *
+					 * 为什么需要这层：角标必须相对「卡片矩形」定位才能 `right:10px;bottom:10px`。
+					 * 把按钮留在画布层、用 left/top 算「右下」时，它必然骑在 2px 边框上
+					 * —— 这正是 #50 的现象（不同文本换行还会漂）。
+					 */
+					<div
+						key={item.card.id}
+						className="tb3t-card-slot"
+						data-card-slot={item.card.id}
 						style={{
-							position: 'absolute',
-							left: item.box.left + props.metrics.cardWidth - 28,
-							top: TREE_HEADER_HEIGHT + item.box.top + props.metrics.cardHeight - 22,
+							left: item.box.left,
+							top: props.topOffset + item.box.top,
+							width: props.metrics.cardWidth,
+							height: props.metrics.cardHeight,
 						}}
 					>
-						{isFolded ? (
-							<>
-								<span className="tb3t-fold__count">
-									{String(props.badgeCountOf(item.card.id))}
-								</span>
-								<span className="tb3t-fold__plus" aria-hidden="true">
-									+
-								</span>
-							</>
-						) : (
-							<span className="tb3t-fold__minus" aria-hidden="true">
-								−
-							</span>
-						)}
-					</button>
+						<TreeCard
+							card={item.card}
+							kindLabel={props.kindLabelOf(item.card.template.kind)}
+							templateLabel={props.templateLabelOf?.(item.card.template.ref) ?? ''}
+							selected={item.card.id === props.selectedId}
+							{...(item.node.warning === undefined ? {} : { warning: item.node.warning })}
+							layer={item.node.layer}
+							onSelect={props.onSelect}
+							onHoverChange={props.onHoverChange}
+							style={{
+								left: 0,
+								top: 0,
+								width: props.metrics.cardWidth,
+								height: props.metrics.cardHeight,
+							}}
+						/>
+						{/*
+						 * ── 折叠控件：有子卡的节点才有（用户 2026-11-24） ──
+						 *
+						 * 用户原话：「这个箭头，放的不太对。挡住东西了。放在卡的右下角。并且不用三角形。用加号。
+						 *   而且还要现实数字。默认数字。鼠标放上去他就变成加号。展开以后就是减号，不显示数字了。」
+						 *
+						 * ⇒ 一个控件、三态：
+						 *   折叠且未 hover  → 数字（后代数）
+						 *   折叠且 hover    → ＋
+						 *   已展开          → －（不显示数字）
+						 * 位置：卡片**内部右下角**，`right:10px;bottom:10px`（#50：不压边框、不随内容漂移）。
+						 */}
+						{isFoldable ? (
+							<button
+								type="button"
+								className={`tb3t-fold${isFolded ? ' is-folded' : ' is-open'}`}
+								data-fold-toggle={item.card.id}
+								data-folded={isFolded ? '1' : '0'}
+								title={isFolded ? '展开这一棵子树' : '折叠这一棵子树'}
+								aria-label={isFolded ? '展开' : '折叠'}
+								aria-expanded={!isFolded}
+								onClick={(event) => {
+									event.stopPropagation();
+									props.onToggleFold(item.card.id, !isFolded);
+								}}
+							>
+								{isFolded ? (
+									<>
+										<span className="tb3t-fold__count">
+											{String(props.badgeCountOf(item.card.id))}
+										</span>
+										<span className="tb3t-fold__plus" aria-hidden="true">
+											+
+										</span>
+									</>
+								) : (
+									<span className="tb3t-fold__minus" aria-hidden="true">
+										−
+									</span>
+								)}
+							</button>
+						) : null}
+					</div>
 				);
 			})}
 		</>
 	);
 });
 
-/** 一条组横幅的渲染位置与文案（由主组件算好，列只负责画）。 */
+/** 一组折叠加容器的渲染数据（由主组件算好，列只负责画）。 */
 interface BannerView {
 	readonly group: TreeGroup;
 	readonly label: string;
-	readonly collapsed: boolean;
+	readonly open: boolean;
 	readonly count: number;
-	readonly left: number;
-	readonly top: number;
-	readonly width: number;
+	readonly lane: number;
+	/** 胶囊与矩形**共用的**左边缘 / 宽度 / 顶边（`foldSpanOf` 的唯一来源）。 */
+	readonly span: FoldSpan;
+	/** 展开时放进矩形里的成员卡（坐标已换成矩形内容坐标）。 */
+	readonly members: readonly CardItem[];
 }
 
 /** 列组件的属性。 */
@@ -579,9 +604,9 @@ interface TreeColumnProps {
 	readonly band:
 		| { readonly layer: number; readonly label: string; readonly height: number }
 		| undefined;
-	/** 这一列要画的卡（已剔除被横幅取代的锚点）。 */
+	/** 这一列要画的卡（组内成员已剔除，改由 FoldRect 包着画）。 */
 	readonly items: readonly CardItem[];
-	/** 这一列的组横幅。 */
+	/** 这一列的折叠组（胶囊两态都在，矩形只在展开时存在）。 */
 	readonly banners: readonly BannerView[];
 	readonly metrics: TreeMetrics;
 	readonly selectedId: string | null;
@@ -635,32 +660,58 @@ function TreeColumn(props: TreeColumnProps): ReactNode {
 				templateLabelOf={props.templateLabelOf}
 				onSelect={props.onSelect}
 				onHoverChange={props.onHoverChange}
+				topOffset={TREE_HEADER_HEIGHT}
 			/>
 
 			{banners.map((banner) => (
-				<button
-					type="button"
+				<div
 					key={`group:${banner.group.id}`}
-					className={`tb3t-groupbanner${banner.collapsed ? ' is-collapsed' : ' is-expanded'}`}
-					data-tree-group-banner={banner.group.id}
-					data-collapsed={banner.collapsed ? '1' : '0'}
-					title={banner.collapsed ? '展开这个组' : '收起这个组'}
-					aria-expanded={!banner.collapsed}
+					className="tb3-fold-group"
+					data-fold-group={banner.group.id}
 					style={{
-						left: banner.left,
-						top: TREE_HEADER_HEIGHT + banner.top,
-						width: banner.width,
-					}}
-					onClick={(event) => {
-						event.stopPropagation();
-						/* 折叠 → 展开传 false；展开 → 收起传 true。 */
-						props.onToggleFold(banner.group.id, !banner.collapsed);
+						left: banner.span.left,
+						top: TREE_HEADER_HEIGHT + banner.span.pillTop,
+						width: banner.span.width,
 					}}
 				>
-					<span className="tb3t-groupbanner__caret">{banner.collapsed ? '▸' : '▾'}</span>
-					<span className="tb3t-groupbanner__name">{banner.label}</span>
-					<span className="tb3t-groupbanner__count">{String(banner.count)} 张</span>
-				</button>
+					{/*
+					 * 胶囊两态都在；容器矩形收起时由 FoldRect 直接返回 null。
+					 * 两者只读同一个 span.width —— 不存在「各写一遍宽度」的入口。
+					 */}
+					<FoldPill
+						open={banner.open}
+						label={banner.label}
+						count={banner.count}
+						countSuffix=" 张"
+						tone="plain"
+						width={banner.span.width}
+						onToggle={() => {
+							/* 折叠 → 展开传 false；展开 → 收起传 true。 */
+							props.onToggleFold(banner.group.id, banner.open);
+						}}
+					/>
+					<FoldRect open={banner.open} width={banner.span.width}>
+						<div
+							className="tb3-fold-rect__body"
+							style={{ height: banner.span.contentHeight }}
+						>
+							<CardsLayer
+								items={banner.members}
+								metrics={metrics}
+								selectedId={props.selectedId}
+								kindLabelOf={props.kindLabelOf}
+								foldable={props.foldable}
+								folded={props.folded}
+								badgeCountOf={props.badgeCountOf}
+								onToggleFold={props.onToggleFold}
+								templateLabelOf={props.templateLabelOf}
+								onSelect={props.onSelect}
+								onHoverChange={props.onHoverChange}
+								topOffset={0}
+							/>
+						</div>
+					</FoldRect>
+				</div>
 			))}
 		</>
 	);
@@ -794,7 +845,7 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	const layout = useMemo(() => layoutTree(treeCards), [treeCards]);
 
 	/*
-	 * 收起的分组：那一槽只画一条 18px 横幅 ⇒ 槽位步进 46（两个横幅 = 一个卡槽）。
+	 * 收起的分组：那一槽只画胶囊 ⇒ 槽位步进 46（两个胶囊 = 一个卡槽）。
 	 *
 	 * 用户 `2026-11-24`：
 	 * > 「让列成为一个组件。内部管理。」
@@ -804,19 +855,240 @@ export function TechTree(props: TechTreeProps): ReactNode {
 	 *   所以别的列同一行还有卡时，这一列压不下去。现在 `lanePlansOf` **按列独立累加**，
 	 *   收起的组只影响它自己那一列后面的 item，别的列纹丝不动。
 	 */
-	const collapsedAnchorIds = useMemo(
-		() => new Set(groupPlan.anchors.values()),
-		[groupPlan.anchors],
+	const cardById = useMemo(
+		() => new Map(props.cards.map((card) => [card.id, card])),
+		[props.cards],
 	);
-	const lanePlans = useMemo(
-		() =>
-			lanePlansOf(layout, metrics, (id) =>
-				collapsedAnchorIds.has(id)
-					? { height: GROUP_BANNER_HEIGHT, pitch: GROUP_BANNER_PITCH }
-					: undefined,
-			),
-		[layout, metrics, collapsedAnchorIds],
-	);
+	/*
+	 * 基础列排版只提供「顺序 + 列号 + 列宽」；纵向 y 在下面的 `foldPlan` 里
+	 * 统一按折叠块重新累加（组要作为一个整体占位，成员卡不能散落在别的卡之间）。
+	 */
+	const baseLanePlans = useMemo(() => lanePlansOf(layout, metrics), [layout, metrics]);
+
+	/**
+	 * ②.5 折叠展开的纵向占位。
+	 *
+	 * ## 为什么不是「横幅绝对定位盖在卡上」
+	 *
+	 * 用户 `2026-11-28`（#49）：展开**不能上移、不能覆盖上方内容**，只能向下推后续内容。
+	 * ⇒ 组是**一个纵向块**：从胶囊 top 开始占 `span.height`，块内成员卡从
+	 *   `FOLD_HEADER_ADVANCE = 40px` 处开始连续排；块后面的普通卡整体后移。
+	 *   40 = 胶囊 32 + 矩形 padding-top 24 − 顶边重叠 16 —— 扣掉重叠才不会多出 16。
+	 *
+	 * ## 两态宽度同源
+	 *
+	 * 胶囊与矩形都只读 `foldSpanOf()` 返回的 `span.width`；宽度从**锚点卡的列宽**来，
+	 * 不按展开后的成员重新外扩（旧实现左右各加 6px，两态差 12px）。
+	 */
+	const foldPlan = useMemo(() => {
+		const baseBoxes = baseLanePlans.boxes;
+		interface BaseItem {
+			readonly node: TreeLayoutNode;
+			readonly box: TreeBox;
+			readonly lane: number;
+		}
+		const baseItemById = new Map<string, BaseItem>();
+		for (const lane of baseLanePlans.lanes) {
+			for (const item of lane.items) {
+				const box = baseBoxes.get(item.node.id);
+				if (box !== undefined) {
+					baseItemById.set(item.node.id, { node: item.node, box, lane: lane.lane });
+				}
+			}
+		}
+
+		/*
+		 * 组的成员必须先收成「一个块」：组内卡按行序连续排，别的卡不能插在中间。
+		 * 否则一个组 [A, C] 中间夹着非成员 B 时，矩形会把 B 也圈进去。
+		 */
+		interface GroupMeta {
+			readonly group: TreeGroup;
+			readonly open: boolean;
+			readonly lane: number;
+			readonly memberIds: readonly string[];
+			readonly anchorId: string;
+		}
+		const groupByMember = new Map<string, GroupMeta>();
+		for (const group of groupPlan.presentGroups) {
+			const ids = group.memberIds.filter((id) => baseItemById.has(id));
+			const firstId = ids[0];
+			if (firstId === undefined) continue;
+			const first = baseItemById.get(firstId);
+			if (first === undefined) continue;
+			ids.sort(
+				(a, b) =>
+					(baseItemById.get(a)?.node.row ?? 0) - (baseItemById.get(b)?.node.row ?? 0),
+			);
+			const anchorId = ids[0];
+			if (anchorId === undefined) continue;
+			const meta: GroupMeta = {
+				group,
+				open: !foldedIdSet.has(group.id),
+				lane: first.lane,
+				memberIds: ids,
+				anchorId,
+			};
+			for (const id of ids) groupByMember.set(id, meta);
+		}
+
+		const boxes = new Map<string, TreeBox>();
+		const itemById = new Map<string, CardItem>();
+		const views: BannerView[] = [];
+		const presentIds = new Set(groupableCards.map((card) => card.id));
+
+		const lanes = baseLanePlans.lanes.map((lane) => {
+			let cursor = metrics.padding;
+			const laneItems: { node: TreeLayoutNode; top: number; height: number }[] = [];
+			const emittedGroups = new Set<string>();
+
+			for (const baseItem of lane.items) {
+				const node = baseItem.node;
+				const card = cardById.get(node.id);
+				const baseBox = baseBoxes.get(node.id);
+				if (card === undefined || baseBox === undefined) continue;
+
+				const meta = groupByMember.get(node.id);
+				if (meta !== undefined) {
+					if (emittedGroups.has(meta.group.id)) continue;
+					emittedGroups.add(meta.group.id);
+
+					const members = meta.memberIds
+						.map((id) => {
+							const base = baseItemById.get(id);
+							const memberCard = cardById.get(id);
+							if (base === undefined || memberCard === undefined) return undefined;
+							return { base, card: memberCard, node: base.node };
+						})
+						.filter((one): one is { base: BaseItem; card: Card; node: TreeLayoutNode } => one !== undefined);
+					if (members.length === 0) continue;
+
+					const anchor = members[0];
+					if (anchor === undefined) continue;
+					const pillTop = cursor;
+					const memberBoxes: TreeBox[] = [];
+					if (meta.open) {
+						/* 展开：成员卡从矩形内容顶边开始，一张接一张（组内连续）。 */
+						let top = pillTop + FOLD_HEADER_ADVANCE;
+						for (const member of members) {
+							const box: TreeBox = {
+								left: member.base.box.left,
+								top,
+								right: member.base.box.right,
+								bottom: top + metrics.cardHeight,
+								midX: member.base.box.midX,
+								midY: top + metrics.cardHeight / 2,
+							};
+							memberBoxes.push(box);
+							boxes.set(member.card.id, box);
+							itemById.set(member.card.id, { card: member.card, node: member.node, box });
+							top += metrics.cardHeight + metrics.rowGap;
+						}
+					} else {
+						/* 收起：只留锚点的槽（胶囊），成员卡不画。 */
+						const box: TreeBox = {
+							left: anchor.base.box.left,
+							top: pillTop,
+							right: anchor.base.box.right,
+							bottom: pillTop + FOLD_PILL_HEIGHT,
+							midX: anchor.base.box.midX,
+							midY: pillTop + FOLD_PILL_HEIGHT / 2,
+						};
+						memberBoxes.push(box);
+						boxes.set(anchor.card.id, box);
+						itemById.set(anchor.card.id, { card: anchor.card, node: anchor.node, box });
+					}
+
+					const span = foldSpanOf({
+						open: meta.open,
+						anchor: {
+							left: anchor.base.box.left,
+							right: anchor.base.box.right,
+							top: pillTop,
+						},
+						members: memberBoxes,
+						gap: metrics.rowGap,
+					});
+					const relativeMembers = members.map((member, index) => {
+						const box = memberBoxes[index];
+						if (box === undefined) throw new Error('折叠成员矩形缺失');
+						return {
+							card: member.card,
+							node: member.node,
+							box: {
+								left: box.left - span.left,
+								top: box.top - span.contentTop,
+								right: box.right - span.left,
+								bottom: box.bottom - span.contentTop,
+								midX: box.midX - span.left,
+								midY: box.midY - span.contentTop,
+							},
+						};
+					});
+					const index = groups.indexOf(meta.group);
+					views.push({
+						group: meta.group,
+						label: groupLabelOf(meta.group, index < 0 ? 0 : index),
+						open: meta.open,
+						count: meta.group.memberIds.filter((id) => presentIds.has(id)).length,
+						lane: lane.lane,
+						span,
+						members: relativeMembers,
+					});
+					laneItems.push({ node, top: pillTop, height: span.height });
+					cursor += span.height + metrics.rowGap;
+					continue;
+				}
+
+				/* 普通卡：按列内顺序连续排（和 `lanePlansOf` 的旧行为一致）。 */
+				const box: TreeBox = {
+					left: baseBox.left,
+					top: cursor,
+					right: baseBox.right,
+					bottom: cursor + metrics.cardHeight,
+					midX: baseBox.midX,
+					midY: cursor + metrics.cardHeight / 2,
+				};
+				boxes.set(card.id, box);
+				itemById.set(card.id, { card, node, box });
+				laneItems.push({ node, top: cursor, height: metrics.cardHeight });
+				cursor += metrics.cardHeight + metrics.rowGap;
+			}
+
+			const last = laneItems[laneItems.length - 1];
+			const bottom = last === undefined ? metrics.padding : last.top + last.height;
+			return { ...lane, items: laneItems, bottom };
+		});
+
+		views.sort((a, b) => a.lane - b.lane || a.span.pillTop - b.span.pillTop);
+
+		let stageHeight = metrics.padding;
+		for (const lane of lanes) {
+			const candidate = lane.bottom + metrics.padding;
+			if (candidate > stageHeight) stageHeight = candidate;
+		}
+		if (lanes.length === 0) stageHeight = metrics.padding * 2;
+
+		return {
+			lanes,
+			boxes,
+			stageHeight,
+			views,
+			items: [...itemById.values()],
+		};
+	}, [
+		baseLanePlans,
+		layout.nodes,
+		groupPlan.presentGroups,
+		foldedIdSet,
+		groupableCards,
+		cardById,
+		groups,
+		metrics,
+	]);
+
+	const lanePlans = foldPlan;
+	const groupBanners = foldPlan.views;
+	const items = foldPlan.items;
 
 	const canvas = useMemo(
 		() => ({
@@ -826,120 +1098,23 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		[layout, metrics, lanePlans.stageHeight],
 	);
 
-	const cardById = useMemo(
-		() => new Map(props.cards.map((card) => [card.id, card])),
-		[props.cards],
-	);
-
-	const items = useMemo<readonly CardItem[]>(() => {
-		const out: CardItem[] = [];
-		for (const node of layout.nodes) {
-			const card = cardById.get(node.id);
-			const box = lanePlans.boxes.get(node.id);
-			if (card === undefined || box === undefined) continue;
-			out.push({ card, node, box });
-		}
-		return out;
-	}, [layout, cardById, lanePlans.boxes]);
-
 	const edges = useMemo(
 		() => buildEdges(props.cards, layout, lanePlans.boxes),
 		[props.cards, layout, lanePlans.boxes],
 	);
 
-	/** 展开组的整块底色（横幅 + 成员卡的外接矩形）。 */
-	const groupBoxes = useMemo(() => {
-		const byId = new Map(items.map((item) => [item.card.id, item]));
-		const out: { readonly id: string; readonly left: number; readonly top: number; readonly width: number; readonly height: number }[] = [];
-		for (const group of groupPlan.presentGroups) {
-			if (groupPlan.hidden.has(group.id)) continue;
-			const members = group.memberIds
-				.map((id) => byId.get(id))
-				.filter((one): one is CardItem => one !== undefined);
-			if (members.length === 0) continue;
-			const top = Math.max(0, Math.min(...members.map((one) => one.box.top)) - GROUP_BANNER_HEIGHT - 4);
-			const bottom = Math.max(...members.map((one) => one.box.bottom)) + 6;
-			const left = Math.min(...members.map((one) => one.box.left)) - 6;
-			const right = Math.max(...members.map((one) => one.box.right)) + 6;
-			out.push({ id: group.id, left, top, width: right - left, height: bottom - top });
-		}
-		return out;
-	}, [groupPlan, items]);
-
-	/* 组横幅：**折叠态也画、展开态也画** —— 展开后必须还能点回收起（用户 2026-11-24 报的 bug）。 */
-	const groupBanners = useMemo(() => {
-		if (groupPlan.presentGroups.length === 0) return [];
-		const byCard = new Map(items.map((item) => [item.card.id, item]));
-		/*
-		 * ⚠ 「N 张」的数必须按**这个空间里真实存在的成员**算，不能按 items 算。
-		 *
-		 * 折叠时非锚点成员已被藏掉、不在 items 里 ⇒ 用 items 数出来永远是 1。
-		 * 这是上一版真踩到的 bug（横幅写着「1 张」，实际 5 张）。
-		 */
-		const presentIds = new Set(groupableCards.map((card) => card.id));
-		const out: {
-			readonly group: TreeGroup;
-			readonly label: string;
-			readonly collapsed: boolean;
-			readonly count: number;
-			readonly left: number;
-			readonly top: number;
-			readonly width: number;
-		}[] = [];
-		for (const group of groupPlan.presentGroups) {
-			const members = group.memberIds
-				.map((id) => byCard.get(id))
-				.filter((item): item is CardItem => item !== undefined);
-			if (members.length === 0) continue;
-			const collapsed = foldedIdSet.has(group.id);
-			let left: number;
-			let top: number;
-			let width: number;
-			if (collapsed) {
-				// 折叠：横幅占锚点（第一个成员）的位置，其余成员已藏 ⇒ 只剩这一条
-				const anchorId = groupPlan.anchors.get(group.id) ?? members[0]?.card.id;
-				const anchorItem = (anchorId === undefined ? undefined : byCard.get(anchorId)) ?? members[0];
-				const box = anchorItem?.box ?? { left: 0, top: 0 };
-				left = box.left;
-				width = metrics.cardWidth;
-				/*
-				 * 折叠时这一槽的步进已经是 `GROUP_BANNER_PITCH`（46，两个横幅=一卡槽）
-				 * ⇒ 横幅直接贴槽顶，不在卡高里居中（居中会上下各留 30px 空白）。
-				 */
-				top = box.top;
-			} else {
-				// 展开：横幅横跨成员区域，画在成员最上方（挤进行距里，尽量不压卡）
-				const lefts = members.map((item) => item.box.left);
-				const rights = members.map((item) => item.box.left + metrics.cardWidth);
-				const tops = members.map((item) => item.box.top);
-				/* 横幅比成员卡左右各宽 6px，正好盖住组范围圈的上边框。 */
-				left = Math.min(...lefts) - 6;
-				width = Math.max(...rights) - left + 6;
-				top = Math.max(0, Math.min(...tops) - GROUP_BANNER_HEIGHT - 4);
-			}
-			const index = groups.indexOf(group);
-			out.push({
-				group,
-				label: groupLabelOf(group, index < 0 ? 0 : index),
-				collapsed,
-				count: group.memberIds.filter((id) => presentIds.has(id)).length,
-				left,
-				top,
-				width,
-			});
-		}
-		return out;
-	}, [groupPlan, items, groupableCards, foldedIdSet, groups, metrics]);
-
 	/*
-	 * 折叠的组：锚点那张卡**不画**（横幅取代它）。
-	 * 否则横幅下面还露出一张卡，读起来像「组里只有一张卡」。
+	 * 组里的所有成员都由 `FoldRect` / `FoldPill` 画（展开在矩形里，收起只剩胶囊）。
+	 * 不能再让画布层重复画一遍，否则会从胶囊/矩形下面露出成员卡。
 	 */
 	const renderItems = useMemo<readonly CardItem[]>(() => {
-		if (groupPlan.anchors.size === 0) return items;
-		const hide = new Set(groupPlan.anchors.values());
+		if (groupBanners.length === 0) return items;
+		const hide = new Set<string>();
+		for (const banner of groupBanners) {
+			for (const member of banner.members) hide.add(member.card.id);
+		}
 		return items.filter((item) => !hide.has(item.card.id));
-	}, [items, groupPlan.anchors]);
+	}, [items, groupBanners]);
 
 	/*
 	 * ── ③ 列背景 + 列头（每个**物理栏**一条） ──
@@ -968,20 +1143,15 @@ export function TechTree(props: TechTreeProps): ReactNode {
 		return out;
 	}, [layout.bands, lanePlans.lanes, metrics.padding]);
 
-	/*
-	 * 横幅按**所在物理栏**分组（列渲染单元只画自己那一列的横幅）。
-	 * 横幅的 `left` 是画布绝对坐标 ⇒ 反推栏号：left = padding + lane * (卡宽 + 列间距)。
-	 */
+	/* 折叠组件按**所在物理栏**分组（列渲染单元只画自己那一列）。 */
 	const bannersByLane = useMemo(() => {
 		const out = new Map<number, readonly BannerView[]>();
-		const pitch = metrics.cardWidth + metrics.columnGap;
 		for (const banner of groupBanners) {
-			const lane = Math.max(0, Math.round((banner.left - metrics.padding) / pitch));
-			const list = out.get(lane) ?? [];
-			out.set(lane, [...list, banner]);
+			const list = out.get(banner.lane) ?? [];
+			out.set(banner.lane, [...list, banner]);
 		}
 		return out;
-	}, [groupBanners, metrics.cardWidth, metrics.columnGap, metrics.padding]);
+	}, [groupBanners]);
 
 	/* ── ④ hover / 选中 ⇒ 相连的边高亮，无关的淡到 25% ── */
 	const nodeIds = useMemo(() => new Set(layout.nodes.map((node) => node.id)), [layout]);
@@ -1068,20 +1238,6 @@ export function TechTree(props: TechTreeProps): ReactNode {
 						data-edge-count={String(edges.length)}
 						style={{ width: stageWidth, height: stageHeight }}
 					>
-					{/* 展开组的整块底色：横幅 + 成员卡外接矩形（虚线容器） */}
-					{groupBoxes.map((box) => (
-						<div
-							key={`box:${box.id}`}
-							className="tb3t-groupbox"
-							data-group-box={box.id}
-							style={{
-								left: box.left,
-								top: TREE_HEADER_HEIGHT + box.top,
-								width: box.width,
-								height: box.height,
-							}}
-						/>
-					))}
 					{/* SVG 线层：箭头 / 关系色 / hover 淡化都在这层 */}
 					<svg
 						className="tb3t-links"

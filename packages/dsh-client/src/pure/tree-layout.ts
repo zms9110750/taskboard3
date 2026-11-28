@@ -486,6 +486,127 @@ export interface TreeBox {
 	readonly midY: number;
 }
 
+/* ══════════════════════════════════════════════════════════════
+ * 折叠组件（FoldPill / FoldRect）的几何 —— **唯一真值**
+ *
+ * 用户 `2026-11-28` 的裁定：
+ * - 胶囊两态都在，形状/位置/样式不变；
+ * - 虚线矩形只在展开时存在；
+ * - 展开时矩形顶边被胶囊压住（顶边落在胶囊中线上）；
+ * - 矩形左右宽度 = 胶囊宽度。
+ *
+ * CSS 里的 `height:32px` / `margin-top:-16px` / `padding-top:24px` 必须与这里
+ * 三个常量同步；测试同时钉住行为与 CSS 文本，改一处漏一处会红。
+ * ══════════════════════════════════════════════════════════════ */
+
+/** 胶囊高度（CSS `.tb3-fold-pill{height:...}`）。 */
+export const FOLD_PILL_HEIGHT = 32;
+
+/** 矩形顶边被胶囊压住的高度 = 胶囊半高（CSS `.tb3-fold-rect{margin-top:-16px}`）。 */
+export const FOLD_RECT_OVERLAP = 16;
+
+/** 矩形顶部内边距（CSS `.tb3-fold-rect{padding-top:24px}`）。 */
+export const FOLD_RECT_PADDING_TOP = 24;
+
+/**
+ * 展开时，成员内容相对胶囊顶部要下移多少。
+ *
+ * `32 + 24 - 16 = 40`：胶囊 32，矩形顶边在 16，内容从矩形顶边再往下 24。
+ * **不是 56** —— 忘了扣掉 16px 顶边重叠，整体会多出一截，正是任务书点名的坑。
+ */
+export const FOLD_HEADER_ADVANCE = FOLD_PILL_HEIGHT + FOLD_RECT_PADDING_TOP - FOLD_RECT_OVERLAP;
+
+/** 折叠的宽度/顶边输入：只需要胶囊锚点与成员矩形。 */
+export interface FoldSpanInput {
+	/** 展开 = true；收起 = false（收起时矩形不存在）。 */
+	readonly open: boolean;
+	/** 胶囊锚点（通常是组里第一个可见成员卡）。**宽度从它来，两态必须同一个值。** */
+	readonly anchor: Pick<TreeBox, 'left' | 'right' | 'top'>;
+	/** 已按展开偏移排好的成员矩形（只要上下边，用来算矩形内容高）。 */
+	readonly members: readonly Pick<TreeBox, 'top' | 'bottom'>[];
+	/** 覆盖胶囊高度（默认 `FOLD_PILL_HEIGHT`）。 */
+	readonly pillHeight?: number;
+	/** 覆盖顶边重叠（默认 `FOLD_RECT_OVERLAP`）。 */
+	readonly overlap?: number;
+	/** 覆盖矩形顶部内边距（默认 `FOLD_RECT_PADDING_TOP`）。 */
+	readonly paddingTop?: number;
+	/** 这一槽和下一槽之间的间距（通常 = `TreeMetrics.rowGap`）。 */
+	readonly gap?: number;
+}
+
+/** 一组折叠几何：胶囊 + 容器矩形 + 槽位。 */
+export interface FoldSpan {
+	readonly open: boolean;
+	/** 胶囊左边缘 = 矩形左边缘（只有这一个来源）。 */
+	readonly left: number;
+	/** 胶囊宽度 = 矩形宽度（只有这一个来源）。 */
+	readonly width: number;
+	/** 胶囊顶边（两态同源；展开不会把胶囊往上推）。 */
+	readonly pillTop: number;
+	/** 矩形顶边（= 胶囊中线；收起时无意义）。 */
+	readonly rectTop: number;
+	/** 矩形内容顶边（成员卡第一行的最终 top）。 */
+	readonly contentTop: number;
+	/** 内容高（第一个成员顶上 → 最后一个成员底）。 */
+	readonly contentHeight: number;
+	/** 矩形边框盒高（含 padding-top；收起 = 0）。 */
+	readonly rectHeight: number;
+	/** 整个折叠槽的高度：收起 = 胶囊高；展开 = 胶囊高 + 矩形高 − 顶边重叠。 */
+	readonly height: number;
+	/** 到下一项的步进（含 `gap`）。 */
+	readonly pitch: number;
+}
+
+/**
+ * 算一组折叠的几何。
+ *
+ * ## 为什么宽度从 `anchor` 来，而不是从展开后的成员重新算
+ *
+ * 收起时非锚点成员根本不在布局里（DOM 都没有），如果展开时用 `max(right)-min(left)`
+ * 重新算宽度，两态就可能差 12px（旧实现左右各外扩 6px 的 bug）。
+ * ⇒ **宽度永远从锚点 / 列宽来**，胶囊和矩形都只读 `span.width`，物理上不可能各写一遍。
+ *
+ * @param input 见 `FoldSpanInput`
+ */
+export function foldSpanOf(input: FoldSpanInput): FoldSpan {
+	const pillHeight = input.pillHeight ?? FOLD_PILL_HEIGHT;
+	const overlap = input.overlap ?? FOLD_RECT_OVERLAP;
+	const paddingTop = input.paddingTop ?? FOLD_RECT_PADDING_TOP;
+	const gap = input.gap ?? 0;
+
+	const left = input.anchor.left;
+	const width = input.anchor.right - input.anchor.left;
+	const pillTop = input.anchor.top;
+	const rectTop = pillTop + overlap;
+	const contentTop = rectTop + paddingTop;
+
+	let contentHeight = 0;
+	if (input.open) {
+		let bottom = Number.NEGATIVE_INFINITY;
+		for (const member of input.members) {
+			if (member.bottom > bottom) bottom = member.bottom;
+		}
+		contentHeight = Number.isFinite(bottom) ? Math.max(0, bottom - contentTop) : 0;
+	}
+
+	const rectHeight = input.open ? paddingTop + contentHeight : 0;
+	/* 展开：胶囊 + 矩形 − 顶边重叠。收起：只剩胶囊。 */
+	const height = input.open ? pillHeight + rectHeight - overlap : pillHeight;
+
+	return {
+		open: input.open,
+		left,
+		width,
+		pillTop,
+		rectTop,
+		contentTop,
+		contentHeight,
+		rectHeight,
+		height,
+		pitch: height + gap,
+	};
+}
+
 /** 三次贝塞尔：`start → (c1, c2) → end`。**可序列化**，不含 DOM。 */
 export interface TreeCurve {
 	readonly start: TreePoint;
@@ -514,7 +635,7 @@ function round(value: number): number {
  * @param rowTops 可选的**每行顶边**（`rowMetricsOf()` 算出来的 `tops`）。
  *
  * ⚠ 不传 = 旧行为（每行等高 `cardHeight + rowGap`）。
- *   传了 = 行高可以不等（收起的分组横幅只占 18px，见 `rowMetricsOf()` 注释）。
+ *   传了 = 行高可以不等（收起的分组胶囊只占 `FOLD_PILL_HEIGHT`，见 `foldSpanOf()`）。
  *   用户 `2026-11-24`：「组收起的时候只有组的高度，而不是组内容的大小还占在那里」。
  */
 export function boxOf(
@@ -543,7 +664,7 @@ export function boxOf(
  * >   组收起了就如果那些组内卡不存在一样。」
  *
  * 科技树的物理行本来是等高的（`cardHeight + rowGap`）。但「收起的分组」在那一行里
- * 只画一条 18px 的横幅 —— 如果行高还是 78px，横幅下面就会空出 60px，看起来像
+ * 只画一个 32px 的胶囊 —— 如果行高还是 78px，胶囊下面就会空出一截，看起来像
  * 组里还有一张看不见的卡在占位。
  *
  * ⇒ 由渲染层给「这一行里最矮/最高的实际内容高」：某行只有横幅 ⇒ 该行 18px；
