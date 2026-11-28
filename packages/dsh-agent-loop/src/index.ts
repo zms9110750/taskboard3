@@ -38,6 +38,11 @@
  *   （第一版在 apply 时取一次值 ⇒ 永远拿不到）。
  * · `Agent.inject(message)` 进 inbox、**不唤醒**；`Agent.followup(message)` 排 next-turn
  *   并唤醒（活 driver 在轮末自己接手，不打断正在跑的轮次）。
+ * · 定时器：**只用全局 `setInterval` / `setTimeout`，绝不读 `ctx.*`**。真实 Cordis 的
+ *   `Context` 是代理，读 `ctx.setInterval` 这个**动作本身**就路由到没 `inject` 的
+ *   `timer` 服务并当场抛 `cannot get property "timer" without inject`（2026-11-28
+ *   真实 profile 启动实测）——`ctx.setInterval ?? 全局` 的回落永远轮不到。手写的
+ *   `ApplyContext` 垫片是普通对象，读它不抛，所以这个错在测试里发现不了。
  * · 冷会话（没有活 agent）要先 `ctx.get('sessionController').resolveAgent(sessionId)`
  *   resume 再 followup —— **v1 不做**，见下面的 TODO。
  * · 消息形状是结构式的：`{ content: [{ type: 'text', text }], source: { kind: 'user' } }`
@@ -171,6 +176,10 @@ export interface CoreLike {
  *
  * `effect` / `get` 沿用 dsh-agent-guard 的垫片风格：`effect` 可选（真实 ctx 一定有），
  * `get` 惰性解析可选服务。
+ *
+ * ⚠ **定时器不在这个面上**：`apply` 只用全局定时器（见文件头「宿主 API 事实」）。
+ *   别再把 `ctx.setInterval` 之类加回来 —— 真实 Cordis ctx 上读它就是抛错，
+ *   而不是返回 `undefined` 让 `??` 兜底。
  */
 export interface ApplyContext {
 	readonly taskboard3Core: CoreLike;
@@ -181,11 +190,6 @@ export interface ApplyContext {
 	get?(name: string): unknown;
 	/** 注册副作用；入参返回清理函数，Cordis 卸载时调用它。 */
 	effect?(effect: () => () => void, label?: string): void;
-	/* 定时器口子：真实 ctx 不提供，省略即用全局。测试注入假件后不用等 10 分钟。 */
-	setInterval?(fn: () => void, ms: number): unknown;
-	clearInterval?(handle: unknown): void;
-	setTimeout?(fn: () => void, ms: number): unknown;
-	clearTimeout?(handle: unknown): void;
 }
 
 /** 统一告警前缀（本行只 warn，不抛 —— 一行出问题不该拖垮宿主消息循环）。 */
@@ -207,27 +211,6 @@ function textMessage(text: string): AgentMessage {
  */
 export function apply(ctx: ApplyContext, config: Config = {}): void {
 	const taskboard = ctx.taskboard3Core;
-
-	/* 定时器口子：省略 = 全局；测试注入假件（否则用例要等 10 分钟）。 */
-	const setIntervalFn: (fn: () => void, ms: number) => unknown =
-		ctx.setInterval ?? ((fn, ms) => setInterval(fn, ms));
-	const clearIntervalFn: (handle: unknown) => void =
-		ctx.clearInterval ??
-		((handle) => {
-			/* 真实句柄是 Timeout 对象（Node）或数字（浏览器）—— 两种都交给全局。 */
-			if (typeof handle === 'object' || typeof handle === 'number') {
-				clearInterval(handle as ReturnType<typeof setInterval>);
-			}
-		});
-	const setTimeoutFn: (fn: () => void, ms: number) => unknown =
-		ctx.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
-	const clearTimeoutFn: (handle: unknown) => void =
-		ctx.clearTimeout ??
-		((handle) => {
-			if (typeof handle === 'object' || typeof handle === 'number') {
-				clearTimeout(handle as ReturnType<typeof setTimeout>);
-			}
-		});
 
 	/* ── 配置（默认值 + 坏值留痕，不抛） ── */
 
@@ -341,14 +324,14 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	/** 本泵是否有一次推进在飞（一次 followup 到 agent 空闲之间都算）。 */
 	let pumpInFlight = false;
 	/** 兜底 sleep 的句柄与 resolve（卸载时要能清掉并解开挂起的 Promise）。 */
-	let pumpTimeout: unknown;
+	let pumpTimeout: ReturnType<typeof setTimeout> | undefined;
 	let pendingSleepResolve: (() => void) | undefined;
 
 	/** 可被卸载打断的 sleep（卸载时不留下永远 pending 的 Promise）。 */
 	const sleep = (ms: number): Promise<void> =>
 		new Promise<void>((resolve) => {
 			pendingSleepResolve = resolve;
-			pumpTimeout = setTimeoutFn(() => {
+			pumpTimeout = setTimeout(() => {
 				pendingSleepResolve = undefined;
 				pumpTimeout = undefined;
 				resolve();
@@ -357,16 +340,16 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 
 	/** 等 `work` 落定或超时（超时后清掉定时器，别让宿主进程被挂 5 分钟）。 */
 	const raceWithTimeout = async (work: Promise<unknown>, ms: number): Promise<void> => {
-		let handle: unknown = undefined;
+		let handle: ReturnType<typeof setTimeout> | undefined;
 		const timer = new Promise<void>((resolve) => {
-			handle = setTimeoutFn(() => {
+			handle = setTimeout(() => {
 				resolve();
 			}, ms);
 		});
 		try {
 			await Promise.race([work.then(() => undefined), timer]);
 		} finally {
-			clearTimeoutFn(handle);
+			clearTimeout(handle);
 		}
 	};
 
@@ -437,8 +420,8 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 	};
 
 	/* pump=false ⇒ 不建定时器（「关掉工作泵」不该留一个空转的 interval）。 */
-	let intervalHandle: unknown;
-	if (pumpEnabled) intervalHandle = setIntervalFn(tick, intervalMs);
+	let intervalHandle: ReturnType<typeof setInterval> | undefined;
+	if (pumpEnabled) intervalHandle = setInterval(tick, intervalMs);
 
 	/* ───────────────────────── 清理（全部进 effect） ───────────────────────── */
 
@@ -453,11 +436,11 @@ export function apply(ctx: ApplyContext, config: Config = {}): void {
 		() => () => {
 			disposeBus();
 			if (intervalHandle !== undefined) {
-				clearIntervalFn(intervalHandle);
+				clearInterval(intervalHandle);
 				intervalHandle = undefined;
 			}
 			if (pumpTimeout !== undefined) {
-				clearTimeoutFn(pumpTimeout);
+				clearTimeout(pumpTimeout);
 				pumpTimeout = undefined;
 			}
 			/* 解开可能挂起的兜底 sleep（否则闭包与 Promise 都留在内存里）。 */
