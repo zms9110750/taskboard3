@@ -559,6 +559,14 @@ pnpm install
 - 聚类完成后再映射到包；现有包只作为「落位参考」
 - 保留的是行为，不是目录
 
+### 8.7 PR 流程：先 issue 后 PR（用户 `2026-11-28`）
+
+- **每个 PR 必须先有描述它要解决的问题的 issue**——如同真实 GitHub 开发流程；
+  没有任务描述记录时，用 GitHub issue 描述整个过程
+- issue：开 issue 描述问题，**link 相关 issue / 讨论**；由 AI 起草的正文注明 AI 作者（issue 经 MCP 建立时会显示为 owner 账号，正文首段声明）
+- PR：body 里 **link 那个 issue**（`Closes #N` 或引用），说明改动如何回应问题
+- 本规则适用于功能与修复类 PR；纯会话存档类 docs 推送不在此列
+
 
 
 
