@@ -191,11 +191,14 @@ describe('askPayloadAfter', () => {
    **必须失焦才选中**。根因是「选中态只能来自 payload，而 payload 失焦才写」。
    ⇒ 草稿层（`askDraftViewOf`）负责同一帧的显示，`askCustomCommitOf` 负责失焦落库。
 
-   ⚠ 两条用户原话必须同时成立，别为一条牺牲另一条：
+   ⚠ 裁定（lead `2026-11-28`）：**显示选中 = 会保存的选中，没有例外。**
+     两句用户原话合起来只允许这一个自洽解：
      · 2026-11-28（issue #61）：「输入内容的时候没有自动立刻选择自填框」
-       ⇒ 聚焦 / 打字都要**同一帧**显示选中；
+       ⇒ 打上字就要**同一帧**看到选中；
      · 2026-11-21 第 3 条：「点输入框不是选择（可能只是想刮取/看文字）」
-       ⇒ **只聚焦不打字 ⇒ 失焦回到原答案、不写库**。
+       ⇒ 只聚焦不许改答案。
+     ⇒ 只聚焦 / 没打字 / 只有空白：**不显示选中**，也不写库（否则就是
+       「看起来选了、其实没保存」的欺骗态）。
    ══════════════════════════════════════════════════════════ */
 
 /** 造一份草稿（`edited` = 这一轮里真的打过字）。 */
@@ -217,7 +220,7 @@ function selectionOf(group: ReturnType<typeof groupOf>) {
 	};
 }
 
-describe('askDraftViewOf · 聚焦/输入 ⇒ 同一帧选中 custom', () => {
+describe('askDraftViewOf · 打上字 ⇒ 同一帧选中 custom', () => {
 	it('单选：打字 ⇒ 自填选中 + 同组其它选项立刻取消', () => {
 		const group = groupOf(payloadOf(['A', 'B'], { picked: ['A'] }));
 		const shown = askDraftViewOf(group, draftOf('444', true));
@@ -234,16 +237,27 @@ describe('askDraftViewOf · 聚焦/输入 ⇒ 同一帧选中 custom', () => {
 		assert.equal(shown.pickedCount, 1);
 	});
 
-	it('单选：只聚焦（还没打字）也立刻选中 —— 不靠失焦', () => {
+	it('单选：只聚焦（还没打字）⇒ **不显示**选中、选项原样', () => {
 		const group = groupOf(payloadOf(['A', 'B'], { picked: ['A'] }));
-		const shown = askDraftViewOf(group, draftOf('', false));
+		assert.equal(askDraftViewOf(group, draftOf('', false)), group);
+		assert.equal(askDraftViewOf(group, draftOf('旧', false)), group);
+	});
 
-		assert.equal(shown.customActive, true);
-		assert.deepEqual(
-			shown.options.map((one) => one.picked),
-			[false, false],
-		);
-		assert.equal(shown.pickedState, 'picked');
+	it('单选：打过字但只有空白 ⇒ 不显示选中（空白不算文字）', () => {
+		const group = groupOf(payloadOf(['A', 'B'], { picked: ['A'] }));
+		assert.equal(askDraftViewOf(group, draftOf('   ', true)), group);
+	});
+
+	it('单选：打过又删空 ⇒ 不显示选中（这个草稿不会落库成选中）', () => {
+		const group = groupOf(payloadOf(['A', 'B'], { picked: ['A'] }));
+		assert.equal(askDraftViewOf(group, draftOf('', true)), group);
+	});
+
+	it('已落库的选中 ⇒ 原样返回（payload 本来就选着，不需要叠加）', () => {
+		const group = groupOf(payloadOf(['A'], { picked: ['旧'], custom: ['旧'] }));
+		assert.equal(group.customActive, true);
+		assert.equal(askDraftViewOf(group, draftOf('新的', true)), group);
+		assert.equal(askDraftViewOf(group, draftOf('', false)), group);
 	});
 
 	it('多选：草稿和已选选项**共存**（不挤掉选项，和 custom-input 一致）', () => {
@@ -259,19 +273,11 @@ describe('askDraftViewOf · 聚焦/输入 ⇒ 同一帧选中 custom', () => {
 		assert.equal(shown.pickedCount, 2);
 	});
 
-	it('多选：草稿为空 ⇒ 原样返回（没输入文字不算选中，界面一个像素都不动）', () => {
+	it('多选：草稿为空 / 只聚焦 ⇒ 原样返回（界面一个像素都不动）', () => {
 		const group = groupOf(payloadOf(['A'], { multi_select: true }));
-		/* 打过字又删空，也还是「没有文字」⇒ 不算选中。 */
 		assert.equal(askDraftViewOf(group, draftOf('', true)), group);
-	});
-
-	it('多选：自填本来就选中 ⇒ 计数不重复加', () => {
-		const group = groupOf(payloadOf(['A'], { multi_select: true, picked: ['A', '旧'], custom: ['旧'] }));
-		const shown = askDraftViewOf(group, draftOf('新的', true));
-
-		assert.equal(shown.customActive, true);
-		assert.equal(shown.pickedCount, 2);
-		assert.deepEqual(shown.custom, ['新的']);
+		assert.equal(askDraftViewOf(group, draftOf('   ', true)), group);
+		assert.equal(askDraftViewOf(group, draftOf('补充', false)), group);
 	});
 
 	it('没有草稿（undefined）⇒ 原样返回', () => {
@@ -321,14 +327,16 @@ describe('askCustomCommitOf · 失焦那一次动作（写库节奏不变）', (
 	});
 });
 
-describe('⚠ 打过字的草稿：看到的选中 = 落库后的选中', () => {
+describe('⚠ 显示选中 ⇔ 失焦会落库（lead 2026-11-28 的等价性）', () => {
 	/*
-	 * 这条是本修复的**核心不变量**：打字时叠出来的选中态，必须和
-	 * 「失焦 → `askCustomCommitOf()` → `applyAskAction()`」之后画出来的选中态一致。
+	 * 这是比「草稿显示 = 落库后显示」更强的一条：**屏幕上「自填被选中」当且仅当
+	 * 失焦后真的会落库成选中**。它钉住「没有欺骗态」——
+	 * 任何「看起来选了、其实没保存」或者「没显示却偷偷写了」都会在这里红。
 	 *
-	 * 少了它，两个函数各自都对、合起来仍然会闪一下 —— 那种 bug 单看一个函数看不出来。
-	 *
-	 * 只对**界面上真的有变化**的草稿对账：多选 + 空文字不显示选中（见下一个用例）。
+	 * 三个断言逐条对应裁定：
+	 *   ① 等价：`shown.customActive === after.customActive`（双向，不是单向）；
+	 *   ② 显示为选中 ⇒ 整组选中态（选项让位 / 计数）也必须和落库后一致；
+	 *   ③ 没显示选中 ⇒ 界面一个像素都没动（选项 / 徽章保持原样）。
 	 */
 	const CASES: ReadonlyArray<readonly [string, unknown]> = [
 		['单选 · 已选 A', payloadOf(['A', 'B'], { picked: ['A'] })],
@@ -341,48 +349,74 @@ describe('⚠ 打过字的草稿：看到的选中 = 落库后的选中', () => 
 		['多选 · 未选择', payloadOf(['A'], { multi_select: true })],
 	];
 
-	const DRAFTS = ['', '444', '旧'];
+	/** 文字 × 是否打过字 —— 空串、只有空白、改回原值、新文字各来一遍。 */
+	const DRAFTS: ReadonlyArray<readonly [string, boolean]> = [
+		['', false],
+		['旧', false],
+		['', true],
+		['   ', true],
+		['旧', true],
+		['444', true],
+	];
 
-	it('每种（组 × 草稿）组合都一致', () => {
+	it('每种（组 × 草稿）组合都逐条等价', () => {
 		for (const [name, payload] of CASES) {
-			for (const text of DRAFTS) {
+			for (const [text, edited] of DRAFTS) {
 				const group = groupOf(payload);
-				const draft = draftOf(text, true);
+				const draft = draftOf(text, edited);
 				const shown = askDraftViewOf(group, draft);
-				/* 界面没变化（多选 + 空文字）⇒ 没有「看到的选中」可对账。 */
-				if (shown === group) continue;
-
 				const action = askCustomCommitOf(group, draft);
-				assert.ok(action !== undefined, `${name} / 草稿「${text}」：界面变了，却没有落库动作`);
+				const after = action === undefined ? group : groupOf(applyAskAction(payload, 0, action));
+				const where = `${name} / 草稿「${text}」/ edited=${String(edited)}`;
 
-				const after = groupOf(applyAskAction(payload, 0, action));
-				assert.deepEqual(
-					selectionOf(shown),
-					selectionOf(after),
-					`${name} / 草稿「${text}」：草稿显示与落库后不一致`,
+				/* ① 等价：显示选中 ⇔ 落库为选中。 */
+				assert.equal(
+					shown.customActive,
+					after.customActive,
+					`${where}：屏幕显示与落库结果不一致`,
 				);
+
+				if (shown.customActive) {
+					/* ② 显示为选中 ⇒ 整组选中态与落库后完全一致。 */
+					assert.deepEqual(selectionOf(shown), selectionOf(after), `${where}：整组选中态与落库后不一致`);
+				} else {
+					/* ③ 没显示选中 ⇒ 界面保持原样（不许偷偷取消别的选项）。 */
+					assert.deepEqual(selectionOf(shown), selectionOf(group), `${where}：没显示选中却改了界面`);
+				}
 			}
 		}
 	});
 
-	it('多选 + 空文字：界面不变，就不发动作（不凭空写出一份「选中」）', () => {
-		for (const payload of [payloadOf(['A', 'B'], { multi_select: true, picked: ['A'] }), payloadOf(['A'], { multi_select: true })]) {
-			const group = groupOf(payload);
-			assert.equal(askDraftViewOf(group, draftOf('', true)), group, '前置：界面本就不变');
-			assert.equal(askCustomCommitOf(group, draftOf('', true)), undefined);
-		}
-	});
-
-	it('⚠ 只聚焦（没打字）⇒ 任何一组都不落库（预览而已）', () => {
+	it('只聚焦（没打字）⇒ 一律不落库（等价性的另一半）', () => {
 		for (const [name, payload] of CASES) {
-			for (const text of DRAFTS) {
-				const group = groupOf(payload);
+			for (const text of ['', '444', '旧']) {
 				assert.equal(
-					askCustomCommitOf(group, draftOf(text, false)),
+					askCustomCommitOf(groupOf(payload), draftOf(text, false)),
 					undefined,
 					`${name} / 草稿「${text}」：只聚焦竟然要写库`,
 				);
 			}
+		}
+	});
+
+	it('把没选中的自填文字删空 ⇒ 只清文字，不凭空写出一份「选中」', () => {
+		for (const multiSelect of [false, true]) {
+			const payload = payloadOf(['A'], { multi_select: multiSelect, picked: ['A'], custom: ['旧'] });
+			const group = groupOf(payload);
+			assert.equal(askDraftViewOf(group, draftOf('', true)), group, '前置：删空时界面不显示选中');
+
+			const action = askCustomCommitOf(group, draftOf('', true));
+			assert.deepEqual(action, { type: 'custom-input', text: '' }, '前置：清空文字仍要写一次');
+			assert.ok(action !== undefined);
+
+			const after = groupOf(applyAskAction(payload, 0, action));
+			assert.equal(after.customActive, false, '删空文字不能变成「选中空字符串」');
+			assert.deepEqual(after.custom, []);
+			assert.deepEqual(
+				after.options.map((one) => one.picked),
+				[true],
+				'选项 A 必须原样选着',
+			);
 		}
 	});
 });

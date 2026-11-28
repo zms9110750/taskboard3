@@ -267,15 +267,15 @@ check(
 
 /*
  * 用户 2026-11-21 第 3 条：「点他，就不是未选择，而是选了 0 个了」——
- * 那时的结论是「点输入框不是选择，可能只是想刮取文字」。
+ * 「点输入框不是选择（可能只是想刮取/看文字）」。
  *
- * ⚠ issue #61（用户 2026-11-28）改的是**选中时机**（聚焦/输入即选中，见 ⑦ 节），
- *   **没有**改「点输入框 = toggle」这条：点一下不会把已选中的自填取消掉。
- *   下面钉的是这一半（幂等），不是「点了不选中」。
+ * ⚠ 这条被 lead 2026-11-28 的裁定钉死了：**显示选中 = 会保存的选中**。
+ *   只聚焦 / 没打字 ⇒ 既不是 toggle、也不显示选中、也不写库（选中只发生在
+ *   打上字之后，见 ⑦ 段）。这里从「未选择」开始，钉「点一下什么都不发生」。
  */
 await evalJs(`((${G(1)}).querySelector('[data-ask-custom]').click(), true)`);
 check(
-	'点输入框不是 toggle（合成 click 不聚焦 ⇒ 选中态不变）',
+	'点输入框不选中自填行（也不是 toggle）',
 	await evalJs(`(${G(1)}).querySelector('[data-row-kind="custom"]').classList.contains('is-picked')`),
 	false,
 );
@@ -416,10 +416,13 @@ check(
 );
 
 /* ══════════════════════════════════════════════════════════
-   ⑦ 自填框：聚焦 / 输入 ⇒ 立刻选中（issue #61）
+   ⑦ 自填框：**打上字** ⇒ 立刻选中（issue #61 + lead 2026-11-28 的裁定）
+
+   裁定：**显示选中 = 会保存的选中**（没有例外）。
+   ⇒ 只聚焦 / 没打字 ⇒ 界面不许显示选中；打上字 ⇒ 同一帧显示，失焦后落库。
    ══════════════════════════════════════════════════════════ */
 
-console.log('\n自填框 · 聚焦/输入即选中（issue #61）');
+console.log('\n自填框 · 输入即选中（issue #61）');
 
 /** 某一组整组的选中快照（行 / 三态 / 徽章 / 输入框文字）。 */
 const snapshotOf = (gi) => `(function(){
@@ -497,7 +500,7 @@ async function resetGroup(gi) {
 	await sleep(120);
 }
 
-/* ── ⑦-a 只聚焦、不输入：也立刻选中（徽章同一帧熄灭） ── */
+/* ── ⑦-a 只聚焦、不输入 ⇒ **不选中**（显示选中 = 会保存的选中） ── */
 
 await resetGroup(1);
 check('前置：单选组整组未选择、徽章亮着', await evalJs(snapshotOf(1)), {
@@ -513,22 +516,22 @@ check('前置：单选组整组未选择、徽章亮着', await evalJs(snapshotO
 });
 
 const focusOnly = await evalJs(focusIn(1, null));
-check('单选 · 只聚焦（不输入、不失焦）⇒ 自填行立刻选中', focusOnly.afterFocus.rows, [
+check('单选 · 只聚焦（不输入）⇒ 自填行不选中', focusOnly.afterFocus.rows, [
 	{ kind: 'option', picked: false },
 	{ kind: 'option', picked: false },
 	{ kind: 'option', picked: false },
-	{ kind: 'custom', picked: true },
+	{ kind: 'custom', picked: false },
 ]);
-check('单选 · 只聚焦 ⇒ 「未选择」徽章同一帧熄灭', [focusOnly.afterFocus.state, focusOnly.afterFocus.badgeOn], [
-	'picked',
-	false,
+check('单选 · 只聚焦 ⇒ 「未选择」徽章照旧亮着', [focusOnly.afterFocus.state, focusOnly.afterFocus.badgeOn], [
+	'unset',
+	true,
 ]);
 
 /* 失焦：**只聚焦不打字不算作答**（用户 2026-11-21 第 3 条「点输入框不是选择」）
- * ⇒ 界面回到原答案，而且**不写库**（冻结栏看不到任何选中）。 */
+ * ⇒ 屏幕上本来就什么都没显示，失焦后自然也不该写库。 */
 await evalJs(`((${G(1)}).querySelector('[data-ask-custom]').blur(), true)`);
 await sleep(200);
-check('单选 · 只聚焦后失焦 ⇒ 回到原答案（预览结束，不落库）', await evalJs(snapshotOf(1)), {
+check('单选 · 只聚焦后失焦 ⇒ 什么都没变（不落库）', await evalJs(snapshotOf(1)), {
 	rows: [
 		{ kind: 'option', picked: false },
 		{ kind: 'option', picked: false },
@@ -545,11 +548,10 @@ check(
 	0,
 );
 
-/* ── ⑦-b 用户截图 11 的原场景：已选 A，然后在框里打 444 ── */
+/* ── ⑦-a2 A 已选时只聚焦 ⇒「其它选项保持原样」 ── */
 
-await resetGroup(1);
 await evalJs(clickRow(1, 0));
-check('前置：选项 A 选中、自填未选中', await evalJs(snapshotOf(1)), {
+check('前置：选项 A 已选中', await evalJs(snapshotOf(1)), {
 	rows: [
 		{ kind: 'option', picked: true },
 		{ kind: 'option', picked: false },
@@ -561,18 +563,30 @@ check('前置：选项 A 选中、自填未选中', await evalJs(snapshotOf(1)),
 	value: '',
 });
 
+const focusKeep = await evalJs(focusIn(1, null));
+check('单选 · A 已选时只聚焦 ⇒ A 保持选中、自填仍不选中', focusKeep.afterFocus.rows, [
+	{ kind: 'option', picked: true },
+	{ kind: 'option', picked: false },
+	{ kind: 'option', picked: false },
+	{ kind: 'custom', picked: false },
+]);
+await evalJs(`((${G(1)}).querySelector('[data-ask-custom]').blur(), true)`);
+await sleep(150);
+
+/* ── ⑦-b 用户截图 11 的原场景：已选 A，然后在框里打 444 ── */
+
 /*
  * ⚠ 用户原话：「输入内容的时候没有自动立刻选择自填框，而是失去焦点以后才选中。」
- * ⇒ 聚焦那一刻就要互斥（A 让位），输入 444 之后仍然只有自填选中。
+ * ⇒ **输入那一刻**（不是聚焦那一刻）就要切到自填并让 A 让位。
  */
 const typed = await evalJs(focusIn(1, '444'));
-check('单选 · 聚焦（A 还选着）⇒ 同一帧切到自填、A 立刻让位', typed.afterFocus.rows, [
+check('单选 · 聚焦那一刻还没打字 ⇒ 仍不选中（显示=会保存）', typed.afterFocus.rows, [
+	{ kind: 'option', picked: true },
 	{ kind: 'option', picked: false },
 	{ kind: 'option', picked: false },
-	{ kind: 'option', picked: false },
-	{ kind: 'custom', picked: true },
+	{ kind: 'custom', picked: false },
 ]);
-check('单选 · 输入 444（不失焦）⇒ 仍然只有自填选中', typed.afterInput.rows, [
+check('单选 · 输入 444（不失焦）⇒ 自填行立刻选中、A 让位', typed.afterInput.rows, [
 	{ kind: 'option', picked: false },
 	{ kind: 'option', picked: false },
 	{ kind: 'option', picked: false },
@@ -650,14 +664,32 @@ check(
 	'已选 2',
 );
 
-/* 已经有文字时，多选聚焦也立刻选中（和单选同一个入口）。 */
-const multiRefocus = await evalJs(focusIn(2, null));
-check('多选 · 已有文字时只聚焦 ⇒ 自填选中 + 选项保留', multiRefocus.afterFocus.rows, [
+/* 已经有文字、但**没选中**时只聚焦 ⇒ 仍不显示选中（等价性的关键一条）。
+ * ⇒ 这条钉住「聚焦不是选择」（用户 2026-11-21 第 3 条），也钉住
+ *   「有草稿文字 ≠ 显示选中」—— 显示的判据是「会保存」。 */
+await evalJs(clickRow(2, 3));
+await sleep(150);
+check('前置：自填文字还在、但没选中', await evalJs(snapshotOf(2)), {
+	rows: [
+		{ kind: 'option', picked: true },
+		{ kind: 'option', picked: false },
+		{ kind: 'option', picked: false },
+		{ kind: 'custom', picked: false },
+	],
+	state: 'picked',
+	badgeOn: false,
+	value: '补充',
+});
+
+const keepText = await evalJs(focusIn(2, null));
+check('多选 · 有文字但没选中时只聚焦 ⇒ 仍不显示选中', keepText.afterFocus.rows, [
 	{ kind: 'option', picked: true },
 	{ kind: 'option', picked: false },
 	{ kind: 'option', picked: false },
-	{ kind: 'custom', picked: true },
+	{ kind: 'custom', picked: false },
 ]);
+await evalJs(`((${G(2)}).querySelector('[data-ask-custom]').blur(), true)`);
+await sleep(150);
 
 /* ── ⑦-d 回归：多选空框聚焦**不算选中**（不能从「未选择」变「已选 0 个」） ── */
 

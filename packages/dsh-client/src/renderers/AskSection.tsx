@@ -13,11 +13,13 @@
  * `useState<AskCustomDraft | undefined>`，issue #61「输入即选中」）：
  *
  * ```
- * 草稿 ──askDraftViewOf()──▶ 这一帧画的东西（自填选中 / 同组选项取消 / 未选择熄灭）
- * 草稿 ──askCustomCommitOf()─▶ 失焦那一次 PATCH（只聚焦不打字 ⇒ 没有 PATCH）
+ * 草稿 ──askDraftViewOf()──▶ 这一帧画的东西（打上字 ⇒ 自填选中 / 同组选项取消 / 未选择熄灭）
+ * 草稿 ──askCustomCommitOf()─▶ 失焦那一次 PATCH（同样只认「打过字且有文字」）
  * ```
  *
- * 草稿**不落库**，所以「一次编辑一次 PATCH」的既有节奏不变；两个判决都在
+ * **两条判据严格互逆**（lead `2026-11-28`：显示选中 = 会保存的选中）：屏幕上「自填被
+ * 选中」⇔ 失焦后会落库为选中。所以只聚焦 / 没打字 / 只打空白 ⇒ 两边都不认，界面
+ * 保持原样。草稿**不落库**，所以「一次编辑一次 PATCH」的既有节奏不变；两个判决都在
  * `src/pure/section.ts`，组件只调用。
  *
  * > 用户 2026-11-21：「重构这个组件。还继续细分组件的就细分。不要写胶水代码。
@@ -197,14 +199,17 @@ export function AskOptionRow(props: {
  *
  * - 文字：输入中显示 `draft.text`（**组件级草稿**，见 `AskGroupCard`），
  *   不在输入时显示 `group.custom[0]`（答案字段）
- * - **输入即选中**（issue #61）：`onFocus` / `onInput` 任一触发 ⇒ 交给 `onDraft`
- *   记下草稿，同一次渲染里这一行就是选中态（叠加规则在 `askDraftViewOf()`）
+ * - **输入即选中**（issue #61）：`onFocus` / `onInput` 都上报草稿，但**只有打上字**
+ *   才显示选中（叠加规则在 `askDraftViewOf()`：已落库的选中 / 打过字且有文字 ⇒ 画；
+ *   只聚焦 / 空白 ⇒ 不画）
  * - **落库节奏不变**：只有「真的打过字」的那一轮，才在失焦时发一次 `custom-input`
- *   （lead `2026-11-28`：一次编辑一次 PATCH；否则每敲一个字都写一次库）。
- *   只聚焦不打字 ⇒ 界面选了一下、失焦回到原答案，**不产生 PATCH**
+ *   （lead `2026-11-28`：一次编辑一次 PATCH；否则每敲一个字都写一次库）
+ * - **显示选中 = 会保存的选中**（lead `2026-11-28` 裁定）：上面两条是同一枚硬币的
+ *   两面，所以屏幕上「自填被选中」⇔ 失焦后会落库，没有「看起来选了其实没保存」
+ *   的欺骗态；只聚焦 / 只打空白 ⇒ 界面一个像素不动，也不写库
  *   （用户 `2026-11-21`：「点输入框不是选择（可能只是想刮取/看文字）」）
  * - 点整行 / 点「自己填：」⇒ 上报 `custom-toggle`，父层决定互斥
- * - 点输入框本身**不是 toggle**（不会把已选中的自填取消掉）；它只是聚焦 ⇒ 选中
+ * - 点输入框本身**不是 toggle**（不会把已选中的自填取消掉）
  *
  * @param props group / picked / draft / readonly / onDraft / onAsk
  */
@@ -279,8 +284,9 @@ export function AskCustomRow(props: {
 						onMouseDown={(event) => event.stopPropagation()}
 						onFocus={() => {
 							/*
-							 * 聚焦 ⇒ 草稿 = 当前文字（`edited: false`）⇒ 同一帧切到 custom。
-							 * 没打字就失焦 ⇒ 不落库（见 `AskCustomDraft.edited` 的说明）。
+							 * 聚焦也上报草稿（`edited: false`），但 `askDraftViewOf()` 不画
+							 * 选中 —— 只聚焦不写库，界面就不许显示「选了」（lead 2026-11-28：
+							 * 显示选中 = 会保存的选中）。真正切到 custom 发生在下一次按键。
 							 */
 							props.onDraft?.({ text: value, edited: false });
 						}}
@@ -358,11 +364,12 @@ export function AskGroupHead(props: {
  *
  * ```
  * draft ──askDraftViewOf()──▶ shown（这一帧真正画的东西）
- * draft ──askCustomCommitOf()─▶ 失焦那一次 PATCH（打过字才有，仍是 custom-input）
+ * draft ──askCustomCommitOf()─▶ 失焦那一次 PATCH
  * ```
  *
- * 规则一条都不在这里判：单选清同组、多选共存、多选空文字不算选中、只聚焦不落库，
- * 全在 pure 里（`AskCustomDraft`）。
+ * **两条判据互逆**（lead `2026-11-28`：显示选中 = 会保存的选中）：只有「已落库的
+ * 选中」或「打过字且真有文字」才画选中；只聚焦 / 全空白 ⇒ 什么都不画、也什么都不写。
+ * 规则一条都不在这里判：单选清同组、多选共存、空白不算文字，全在 pure 里。
  *
  * @param props sectionId / group / readonly / onAsk
  */
