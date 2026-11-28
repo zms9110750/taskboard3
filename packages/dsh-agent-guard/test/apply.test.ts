@@ -9,7 +9,7 @@
  * · 少列一个 `inject` ⇒ profile 启动只是 `dsh: warning: 1 entry did not activate`，
  *   功能静默消失；
  * · 卸载先清工具再摘 guard ⇒ 卸载过程中还有一次按旧档位判定的机会；
- * · DI cell 没接上 ⇒ holder 永久回落 UUID（权限按 UUID 找卡，永远找不到）。
+ * · DI cell 没接上 ⇒ holder 为空（无卡），权限判定静默按「没领卡」走。
  *
  * ## 用假 ctx 的理由
  *
@@ -322,7 +322,7 @@ describe('apply：DI cell（subagents 走 ctx.inject）', () => {
 			const set = await taskboard.setTemplatePolicy(card.card.template.ref, ['bash']);
 			assert.equal(set.ok, true);
 
-			/* cell 空 ⇒ holder 回落 UUID，找不到 lead 的卡 ⇒ 拒。 */
+			/* cell 空 ⇒ 无 holder（issue #42 Bug 2：不再回落 UUID）⇒ 找不到 lead 的卡 ⇒ 拒。 */
 			assert.notEqual(guard?.(exec('bash', 'uuid-1')), undefined, 'cell 空时无持有卡应拒');
 
 			/* 服务出现 ⇒ 同一次 apply 的 guard 立刻看到（cell 每次判定都读）。 */
@@ -332,9 +332,9 @@ describe('apply：DI cell（subagents 走 ctx.inject）', () => {
 			assert.equal(typeof cleanup, 'function', 'inject 回调应返回清理函数');
 			assert.equal(guard?.(exec('bash', 'uuid-1')), undefined, 'cell 有 lead ⇒ 用名字找到持有卡，放行');
 
-			/* 服务消失 ⇒ cell 清空、回落 UUID ⇒ 又拒。 */
+			/* 服务消失 ⇒ cell 清空、holder 为空 ⇒ 又拒。 */
 			cleanup?.();
-			assert.notEqual(guard?.(exec('bash', 'uuid-1')), undefined, 'cell 清空后回落 UUID，权限不生效');
+			assert.notEqual(guard?.(exec('bash', 'uuid-1')), undefined, 'cell 清空后无 holder，权限不生效');
 		} finally {
 			await taskboard.close();
 		}
