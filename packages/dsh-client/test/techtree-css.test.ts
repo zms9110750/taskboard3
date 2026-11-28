@@ -33,6 +33,8 @@ void test('TECHTREE_CSS 非空，且关键规则在（不是空壳骗过相等�
 		'.tb3t-edge.is-dim{opacity:0.25}', // 用户 2026-11-19：hover 时无关的边淡到 25%
 		'.tb3t-card.is-draft{border-color:transparent;box-shadow:none}', // 用户 2026-11-10：草稿无边框
 		'.tb3t-links{position:absolute;z-index:2;left:0;pointer-events:none;overflow:visible}', // 线层不吃鼠标事件（z=2：组底色 1 < 线层 2 < 卡片 3）
+		'.tb3t-card-slot{position:absolute;z-index:3}', // #50：角标相对卡片槽做 inset 定位
+		'position:absolute;z-index:4;right:10px;bottom:10px', // #50：角标 inset，不骑边框
 	]) {
 		assert.ok(FROM_PURE.includes(rule), `缺少关键规则：${rule}`);
 	}

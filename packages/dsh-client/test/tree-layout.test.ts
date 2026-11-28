@@ -27,8 +27,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+	FOLD_HEADER_ADVANCE,
+	FOLD_PILL_HEIGHT,
+	FOLD_RECT_OVERLAP,
+	FOLD_RECT_PADDING_TOP,
 	boxOf,
 	canvasSizeOf,
+	foldSpanOf,
 	lanePlansOf,
 	layoutTree,
 	linkCurve,
@@ -803,6 +808,59 @@ describe('lanePlansOf —— 列内独立排版', () => {
 		const plans = lanePlansOf(layout, METRICS);
 		const deepest = Math.max(...plans.lanes.map((one) => one.bottom));
 		assert.equal(plans.stageHeight, deepest + METRICS.padding);
+	});
+});
+
+/* ══════════════════════════════════════════════════════════════
+ * 折叠组件几何（FoldPill / FoldRect）
+ *
+ * 用户 `2026-11-28`：
+ * - 胶囊两态都在，形状/位置/样式不变；
+ * - 虚线矩形只在展开时存在；
+ * - 展开时矩形顶边被胶囊压住（顶边落在胶囊中线上）；
+ * - 矩形左右宽 = 胶囊宽，且宽度**只有一个来源**。
+ * ══════════════════════════════════════════════════════════════ */
+
+describe('foldSpanOf —— 胶囊 + 容器矩形几何', () => {
+	/* 锚点卡 190 宽；展开后成员从胶囊 top + 40 开始。 */
+	const anchor = { left: 24, right: 214, top: 100 } as const;
+	const members = [
+		{ top: 140, bottom: 218 },
+		{ top: 232, bottom: 310 },
+	] as const;
+
+	it('收起 ⇒ 只有胶囊（矩形高 0、内容高 0）', () => {
+		const span = foldSpanOf({ open: false, anchor, members, gap: 14 });
+		assert.equal(span.left, 24);
+		assert.equal(span.width, 190);
+		assert.equal(span.pillTop, 100);
+		assert.equal(span.rectHeight, 0);
+		assert.equal(span.contentHeight, 0);
+		assert.equal(span.height, FOLD_PILL_HEIGHT);
+		assert.equal(span.pitch, FOLD_PILL_HEIGHT + 14);
+	});
+
+	it('展开 ⇒ 高度 = 胶囊高 + 矩形高 − 顶边重叠（不是多算 16）', () => {
+		const span = foldSpanOf({ open: true, anchor, members, gap: 14 });
+		assert.equal(span.rectTop, 100 + FOLD_RECT_OVERLAP);
+		assert.equal(span.contentTop, 100 + FOLD_HEADER_ADVANCE);
+		assert.equal(span.contentHeight, 310 - 140);
+		assert.equal(span.rectHeight, FOLD_RECT_PADDING_TOP + 170);
+		assert.equal(span.height, FOLD_PILL_HEIGHT + 194 - FOLD_RECT_OVERLAP);
+		assert.equal(span.pitch, span.height + 14);
+	});
+
+	it('⭐ 给定同一锚点，展开/收起的宽度与左边缘完全相同（同源）', () => {
+		const closed = foldSpanOf({ open: false, anchor, members });
+		const open = foldSpanOf({ open: true, anchor, members });
+		assert.equal(closed.width, open.width);
+		assert.equal(closed.left, open.left);
+		assert.equal(closed.pillTop, open.pillTop, '展开不许把胶囊往上/下推');
+	});
+
+	it('40px 头部 = 胶囊 + 矩形 padding − 顶边重叠', () => {
+		assert.equal(FOLD_HEADER_ADVANCE, 40);
+		assert.equal(FOLD_HEADER_ADVANCE, FOLD_PILL_HEIGHT + FOLD_RECT_PADDING_TOP - FOLD_RECT_OVERLAP);
 	});
 });
 

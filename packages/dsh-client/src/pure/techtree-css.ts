@@ -29,7 +29,7 @@ export const TECHTREE_CSS = `
 .tb3t-stage{position:relative;flex:0 0 auto}
 
 /* ── 列背景 + 列头 ── */
-/* z-index：带底色 0 < 线层 1 < 卡片 2 < 组横幅 3 < 折叠控件 4（见各自规则） */
+/* z-index：带底色 0 < 线层 2 < 卡片槽 3 < 折叠控件 4 < 折叠胶囊 5（见各自规则） */
 .tb3t-band{position:absolute;z-index:0;border-radius:12px;background:var(--bg-soft,#f9fafb);pointer-events:none}
 .tb3t-band__title{position:absolute;left:0;right:0;top:0;height:2em;line-height:2em;text-align:center;font-size:11.5px;font-weight:600;color:var(--text-weak,#9ca3af);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--bg-soft,#f9fafb);border-radius:12px 12px 0 0}
 
@@ -65,6 +65,8 @@ export const TECHTREE_CSS = `
 .tb3t-arrow--references path{fill:#6b7280}
 
 /* ── 卡片 ── */
+/* 卡片槽：角标的 inset 定位基准；TreeCard 自己 left/top 归零填满这个槽。 */
+.tb3t-card-slot{position:absolute;z-index:3}
 .tb3t-card{position:absolute;z-index:3;display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:2px solid var(--card-border,#9aa1ad);border-radius:10px;background:var(--bg-card,#fff);color:inherit;font-family:inherit;text-align:left;cursor:pointer;overflow:hidden;box-shadow:0 1px 2px rgb(15 23 42 / 7%);transition:border-color .12s,background .12s,box-shadow .12s}
 .tb3t-card:hover{background:#fbfcfe;border-color:#cbd5e1}
 .tb3t-card.is-selected{border-color:var(--accent,#2563eb);box-shadow:0 0 0 4px rgb(37 99 235 / 16%),0 1px 2px rgb(15 23 42 / 7%)}
@@ -121,7 +123,8 @@ export const TECHTREE_CSS = `
  * 放在右下角内侧，不再挡卡片上的类别/状态。
  */
 .tb3t-fold{
-  position:absolute;z-index:4;
+  /* #50：内部右下角固定内距（inset），不再用卡宽 − 28 算 left，所以不骑在 2px 边框上。 */
+  position:absolute;z-index:4;right:10px;bottom:10px;
   display:inline-flex;align-items:center;justify-content:center;gap:0;
   min-width:22px;height:24px;padding:0 6px;
   border:1px solid #d7dbe2;border-radius:12px;background:#fff;color:#4b5563;
